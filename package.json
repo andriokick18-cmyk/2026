@@ -1,0 +1,19 @@
+{
+  "name": "h2bapply",
+  "version": "15.0.0",
+  "description": "H2BApply - Vagas H-2B e H-2A automatizadas v15",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "reset": "node reset_h2bapply.js",
+    "check": "node --check server.js && node --check storage.js && node --check restaurar_backup_irmao.js && for f in mod-*.js; do node --check \"$f\" || exit 1; done && node check-duplicates.js",
+    "test": "npm run check && node smoke-test.js",
+    "restaurar-irmao": "node restaurar_backup_irmao.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^11.0.0"
+  }
+}

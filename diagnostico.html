@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>🩺 Diagnóstico H2BApply</title>
+<link rel="stylesheet" href="/vendor/tabler-icons.min.css">
+<style>
+body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:16px;max-width:560px;margin:0 auto}
+h1{font-size:20px;margin:8px 0 4px}
+.sub{font-size:12px;opacity:.7;margin-bottom:16px}
+.test{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:14px;margin-bottom:10px;display:flex;align-items:center;gap:12px}
+.test .st{font-size:26px;flex-shrink:0;width:34px;text-align:center}
+.test .tx{flex:1}
+.test .tx b{display:block;font-size:14px}
+.test .tx span{font-size:12px;opacity:.75}
+.ok{border-color:#16a34a;background:#052e16}
+.bad{border-color:#dc2626;background:#450a0a}
+.wait{border-color:#f59e0b}
+#resumo{margin-top:14px;padding:14px;border-radius:12px;font-weight:800;font-size:15px;text-align:center}
+.icon-demo{font-size:22px;display:flex;gap:10px;margin-top:6px}
+img.avtest{width:34px;height:34px;border-radius:50%;object-fit:cover}
+.mono{font-family:monospace;font-size:11px;word-break:break-all;opacity:.8}
+</style>
+</head>
+<body>
+<h1>🩺 Diagnóstico Visual — H2BApply</h1>
+<div class="sub">Tire um print DESTA TELA INTEIRA depois que todos os testes terminarem (≈10 segundos) e envie.</div>
+
+<div class="test wait" id="t-versao"><div class="st">⏳</div><div class="tx"><b>1. Código novo no servidor?</b><span id="t-versao-d">Verificando se h2b-extras-user.js existe...</span></div></div>
+<div class="test wait" id="t-sw"><div class="st">⏳</div><div class="tx"><b>2. Versão do cache (Service Worker)</b><span id="t-sw-d">Consultando...</span></div></div>
+<div class="test wait" id="t-font"><div class="st">⏳</div><div class="tx"><b>3. Fonte de ícones (Tabler) carregou?</b><span id="t-font-d">Testando...</span><div class="icon-demo"><i class="ti ti-rocket"></i><i class="ti ti-mail"></i><i class="ti ti-search"></i><i class="ti ti-user"></i><i class="ti ti-settings"></i></div><span style="font-size:11px;opacity:.6">↑ Você deve ver 5 desenhos acima (foguete, carta, lupa, pessoa, engrenagem)</span></div></div>
+<div class="test wait" id="t-img"><div class="st">⏳</div><div class="tx"><b>4. Fotos do Google carregam?</b><span id="t-img-d">Testando imagem externa...</span><div style="margin-top:6px"><img class="avtest" id="img-google" referrerpolicy="no-referrer" alt="G" src="https://lh3.googleusercontent.com/a/default-user=s64-c"></div></div></div>
+<div class="test wait" id="t-cdn"><div class="st">⏳</div><div class="tx"><b>5. CDN de ícones acessível da sua rede?</b><span id="t-cdn-d">Testando conexão com jsdelivr...</span></div></div>
+<div class="test wait" id="t-server"><div class="st">⏳</div><div class="tx"><b>6. Servidor respondendo?</b><span id="t-server-d">Consultando /api/public-stats...</span></div></div>
+
+<div id="resumo" style="background:#1e293b">Aguarde... rodando testes</div>
+<div class="mono" id="info"></div>
+
+<script>
+const set=(id,ok,msg)=>{const el=document.getElementById(id);el.classList.remove("wait");el.classList.add(ok?"ok":"bad");el.querySelector(".st").textContent=ok?"✅":"❌";document.getElementById(id+"-d").textContent=msg;};
+const results={};
+async function run(){
+  // 1. Código novo existe?
+  try{
+    const r=await fetch("/h2b-extras-user.js?nocache="+Date.now(),{cache:"no-store"});
+    const t=r.ok?await r.text():"";
+    const has=t.includes("BLINDAGEM VISUAL");
+    results.codigo=r.ok?(has?"novo-completo":"antigo"):"ausente";
+    set("t-versao", r.ok&&has, r.ok?(has?"Código NOVO com blindagem visual está no servidor ✔":"Arquivo existe mas é versão ANTIGA (sem blindagem) — suba o zip mais recente"):"ARQUIVO NÃO EXISTE no servidor — o deploy não subiu os arquivos novos (status "+r.status+")");
+  }catch(e){results.codigo="erro";set("t-versao",false,"Erro ao consultar: "+e.message);}
+  // 2. Service worker
+  try{
+    if("serviceWorker" in navigator){
+      const regs=await navigator.serviceWorker.getRegistrations();
+      if(regs.length){
+        const r2=await fetch("/sw.js?nocache="+Date.now(),{cache:"no-store"});const sw=await r2.text();
+        const m=sw.match(/h2bapply-v(\d+)/);
+        results.sw=m?m[1]:"?";
+        set("t-sw", m&&+m[1]>=9, m?("Versão do sw.js no servidor: v"+m[1]+(+m[1]>=9?" ✔":" (esperado v9+ — servidor está com código antigo)")) : "sw.js sem versão identificável");
+      } else { results.sw="nenhum"; set("t-sw", true, "Nenhum service worker registrado (sem cache travado) ✔"); }
+    } else { set("t-sw", true, "Navegador sem SW"); }
+  }catch(e){set("t-sw",false,"Erro: "+e.message);}
+  // 3. Fonte de ícones
+  try{
+    await (document.fonts?document.fonts.ready:Promise.resolve());
+    const loaded=document.fonts&&document.fonts.check('1em "tabler-icons"');
+    results.font=loaded;
+    set("t-font", !!loaded, loaded?"Fonte Tabler carregada — ícones devem aparecer ✔":"Fonte de ícones NÃO carregou nesta rede/aparelho");
+  }catch(e){set("t-font",false,"Erro: "+e.message);}
+  // 4. Foto Google
+  const gi=document.getElementById("img-google");
+  await new Promise(res=>{const done=ok=>{results.gimg=ok;set("t-img",ok,ok?"Imagens do Google carregam ✔":"Imagens do Google BLOQUEADAS nesta rede/aparelho");res();};
+    if(gi.complete&&gi.naturalWidth>0)return done(true);
+    gi.onload=()=>done(true);gi.onerror=()=>done(false);setTimeout(()=>done(gi.naturalWidth>0),5000);});
+  // 5. CDN acessível
+  try{
+    const t0=Date.now();
+    const r=await fetch("https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.29.0/package.json",{cache:"no-store"});
+    results.cdn=r.ok;
+    set("t-cdn", r.ok, r.ok?("CDN acessível ("+(Date.now()-t0)+"ms) ✔"):"CDN respondeu erro "+r.status);
+  }catch(e){results.cdn=false;set("t-cdn",false,"CDN INACESSÍVEL desta rede: "+e.message);}
+  // 6. Servidor
+  try{
+    const r=await fetch("/api/public-stats",{cache:"no-store"});const d=await r.json();
+    set("t-server", r.ok, r.ok?("Servidor OK — "+(d.totalUsers||0)+" usuários ✔"):"Erro "+r.status);
+  }catch(e){set("t-server",false,"Erro: "+e.message);}
+
+  // RESUMO
+  const R=document.getElementById("resumo");
+  if(results.codigo==="ausente"||results.codigo==="antigo"){
+    R.style.background="#450a0a";R.style.border="1px solid #dc2626";
+    R.textContent="🔴 CAUSA: o código novo NÃO está no servidor. O deploy não subiu os arquivos. Refaça o upload do zip garantindo TODOS os arquivos.";
+  } else if(results.codigo==="novo-completo" && !results.font && !results.cdn){
+    R.style.background="#451a03";R.style.border="1px solid #f59e0b";
+    R.textContent="🟠 Código novo OK, mas sua REDE bloqueia o CDN de ícones. A blindagem vai ativar o modo emoji automaticamente no app.";
+  } else if(results.codigo==="novo-completo" && results.font){
+    R.style.background="#052e16";R.style.border="1px solid #16a34a";
+    R.textContent="🟢 TUDO OK no servidor e nesta rede! Se o app ainda parece quebrado, é cache: feche o app/aba, reabra, ou teste em aba anônima.";
+  } else {
+    R.style.background="#1e293b";R.textContent="Resultado misto — envie o print para análise.";
+  }
+  document.getElementById("info").textContent="UA: "+navigator.userAgent.slice(0,80)+" · "+new Date().toLocaleString("pt-BR");
+}
+run();
+</script>
+</body>
+</html>

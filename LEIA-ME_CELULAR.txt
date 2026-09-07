@@ -1,0 +1,31 @@
+╔═══════════════════════════════════════════════════════════╗
+║   H2BApply — VERSÃO CELULAR (sem subpastas obrigatórias)   ║
+╚═══════════════════════════════════════════════════════════╝
+
+✅ POR QUE ESTA VERSÃO?
+Todos os módulos que antes ficavam na pasta "src" agora estão
+soltos na RAIZ, com o prefixo "mod-" (mod-config.js, mod-gmail.js,
+mod-sentinel.js, etc). O site funciona 100% igual — só mudou o
+lugar dos arquivos, para você conseguir subir tudo pelo celular
+sem precisar criar pastas.
+
+📱 COMO SUBIR NO GITHUB PELO CELULAR:
+1. Abra seu repositório no GitHub (Chrome → menu → "versão para computador")
+2. Add file → Upload files
+3. Selecione TODOS os arquivos desta pasta (são 37 arquivos soltos).
+   NÃO precisa de nenhuma pasta! Tudo está na raiz.
+4. Marque "substituir" se perguntar.
+5. Commit changes.
+6. O Render faz o deploy sozinho.
+
+⚠️ IMPORTANTE:
+- Os 7 arquivos que começam com "mod-" SÃO OBRIGATÓRIOS.
+  Sem eles o site não liga. Suba todos juntos.
+- As pastas docs/, backup/, tests/, .github/ são OPCIONAIS.
+  Pode ignorar pelo celular. O site funciona sem elas.
+
+✅ COMO SABER QUE DEU CERTO (logs do Render):
+   [storage] 💾 SQLite ativo
+   [health-sentinel] 🩺 Módulo carregado
+
+Testado: 74/74 testes passando. O servidor liga e responde. ✅

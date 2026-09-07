@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Moderação de Avaliações — H2BApply Admin</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=3">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f172a;color:#e2e8f0;font-size:14px;line-height:1.55;padding:20px}
+a{color:#60a5fa}
+h1{font-size:19px;font-weight:800;margin-bottom:4px}
+.sub{color:#94a3b8;font-size:12.5px;margin-bottom:18px}
+.tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.tab{background:#1e293b;border:1px solid #334155;color:#cbd5e1;padding:7px 14px;border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer}
+.tab.active{background:#3b82f6;border-color:#3b82f6;color:#fff}
+.tab .n{opacity:.75;margin-left:4px}
+#list{display:flex;flex-direction:column;gap:10px;max-width:720px}
+.card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:14px 16px}
+.card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px}
+.stars{color:#fbbf24;font-size:14px}
+.meta{font-size:11px;color:#94a3b8}
+.text{font-size:13.5px;color:#e2e8f0;line-height:1.6;margin-bottom:10px;white-space:pre-wrap}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+button.act{border:none;border-radius:7px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
+.btn-approve{background:#10b981;color:#052e1f}
+.btn-reject{background:#f59e0b;color:#452a05}
+.btn-delete{background:#ef4444;color:#450a0a}
+.btn-pending{background:#334155;color:#e2e8f0}
+.empty{color:#64748b;font-size:13px;padding:24px 0;text-align:center}
+.denied{max-width:420px;margin:80px auto;text-align:center}
+.denied h2{margin-bottom:10px}
+.status-badge{font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.04em}
+.sb-pending{background:rgba(245,158,11,.18);color:#fbbf24}
+.sb-approved{background:rgba(16,185,129,.18);color:#34d399}
+.sb-rejected{background:rgba(239,68,68,.18);color:#f87171}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <h1>⭐ Moderação de Avaliações</h1>
+  <div class="sub">Aprove só o que for real — o que for aprovado aqui aparece na home pública do H2BApply.</div>
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-f="pending" onclick="loadReviews('pending')">Pendentes <span class="n" id="c-pending"></span></button>
+    <button class="tab" data-f="approved" onclick="loadReviews('approved')">Aprovadas <span class="n" id="c-approved"></span></button>
+    <button class="tab" data-f="rejected" onclick="loadReviews('rejected')">Rejeitadas <span class="n" id="c-rejected"></span></button>
+    <button class="tab" data-f="all" onclick="loadReviews('all')">Todas</button>
+  </div>
+  <div id="list"><div class="empty">Carregando...</div></div>
+</div>
+
+<script>
+function esc(s){if(!s&&s!==0)return"";return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
+
+async function loadReviews(filter){
+  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t.dataset.f===filter));
+  const list=document.getElementById("list");
+  list.innerHTML='<div class="empty">Carregando...</div>';
+  try{
+    const r=await fetch("/api/admin/reviews?status="+encodeURIComponent(filter),{credentials:"include"});
+    if(r.status===401||r.status===403){
+      document.getElementById("app").innerHTML=`<div class="denied">
+        <h2>🔒 Acesso restrito</h2>
+        <p style="color:#94a3b8;margin-bottom:16px">Faça login como administrador no H2BApply e volte a esta página.</p>
+        <a href="/">← Voltar para o H2BApply</a>
+      </div>`;
+      return;
+    }
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||"Erro ao carregar.");
+    document.getElementById("c-pending").textContent=d.counts.pending||0;
+    document.getElementById("c-approved").textContent=d.counts.approved||0;
+    document.getElementById("c-rejected").textContent=d.counts.rejected||0;
+    if(!d.reviews.length){list.innerHTML='<div class="empty">Nenhuma avaliação aqui.</div>';return;}
+    list.innerHTML=d.reviews.map(rv=>{
+      const stars="★".repeat(rv.rating||0)+"☆".repeat(5-(rv.rating||0));
+      const badge=`<span class="status-badge sb-${rv.status}">${rv.status}</span>`;
+      return `<div class="card" id="card-${rv.id}">
+        <div class="card-top">
+          <div>
+            <div class="stars">${stars} ${badge}</div>
+            <div class="meta">${esc(rv.displayName||"Usuário")}${rv.location?" · "+esc(rv.location):""} · ${esc(rv.email||"")} · plano ${esc(rv.plan||"free")} · ${new Date(rv.createdAt).toLocaleString("pt-BR")}</div>
+          </div>
+        </div>
+        <div class="text">${esc(rv.text)}</div>
+        <div class="actions">
+          ${rv.status!=="approved"?`<button class="act btn-approve" onclick="setStatus('${rv.id}','approved')">✅ Aprovar</button>`:""}
+          ${rv.status!=="rejected"?`<button class="act btn-reject" onclick="setStatus('${rv.id}','rejected')">🚫 Rejeitar</button>`:""}
+          ${rv.status!=="pending"?`<button class="act btn-pending" onclick="setStatus('${rv.id}','pending')">↩️ Voltar p/ pendente</button>`:""}
+          <button class="act btn-delete" onclick="delReview('${rv.id}')">🗑️ Excluir</button>
+        </div>
+      </div>`;
+    }).join("");
+  }catch(e){
+    list.innerHTML='<div class="empty">Erro: '+esc(e.message)+'</div>';
+  }
+}
+
+async function setStatus(id,status){
+  const active=document.querySelector(".tab.active").dataset.f;
+  await fetch("/api/admin/reviews/status",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,status})});
+  loadReviews(active);
+}
+async function delReview(id){
+  if(!confirm("Excluir esta avaliação permanentemente?"))return;
+  const active=document.querySelector(".tab.active").dataset.f;
+  await fetch("/api/admin/reviews/status",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,action:"delete"})});
+  loadReviews(active);
+}
+
+loadReviews("pending");
+</script>
+</body>
+</html>

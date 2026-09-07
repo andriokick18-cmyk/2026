@@ -1,0 +1,21 @@
+# CI do H2BApply (repo "2026") — roda só `npm run check` (sintaxe de todos
+# os arquivos + check-duplicates.js). O smoke-test.js antigo (`npm test`)
+# NÃO roda aqui de propósito: ele ainda assume features que esta
+# reconstrução removeu (ranking, IA/Cérebro Contábil, notícias, chat,
+# admin antigo) e precisa ser reescrito do zero para este repo antes de
+# voltar pro CI — até lá, rodá-lo só geraria falhas conhecidas e
+# desinformativas em todo push.
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run check

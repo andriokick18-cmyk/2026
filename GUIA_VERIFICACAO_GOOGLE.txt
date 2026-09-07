@@ -1,0 +1,155 @@
+════════════════════════════════════════════════════════════════════
+ ✅ GUIA COMPLETO — VERIFICAÇÃO DO OAUTH NOVO NO GOOGLE (h2bapply.com)
+ Escrito em 15/08/2026 (v145). Siga NA ORDEM. Cada passo importa.
+════════════════════════════════════════════════════════════════════
+
+POR QUE ISSO RESOLVE DE VEZ: o teto de 100 usuários só existe enquanto
+o app NÃO é verificado. Nosso escopo (gmail.send) é classificado como
+"SENSÍVEL" — não "restrito" — então a verificação é a PADRÃO e GRATUITA
+(sem a auditoria CASA paga, que só vale pra apps que LEEM a caixa de
+entrada — nós removemos a leitura de propósito em julho, regra 13d).
+Depois de aprovado: sem teto de 100, sem tela de "app não verificado",
+sem token expirando.
+
+⚠️ REGRA DE OURO: NUNCA crie vários projetos OAuth pro mesmo app pra
+driblar o limite — é contra a política do Google e pode banir TUDO.
+Um projeto novo, verificado, é a solução definitiva.
+
+────────────────────────────────────────────────────────────────────
+ PARTE 0 — O QUE O SITE JÁ TEM PRONTO (v145 conferiu tudo)
+────────────────────────────────────────────────────────────────────
+ ✔ Política de privacidade: https://h2bapply.com/privacidade
+   (com o "Google API Limited Use Disclosure" em inglês — obrigatório)
+ ✔ Termos de uso:           https://h2bapply.com/termos
+ ✔ Homepage com a seção "🔒 Como o H2BApply usa sua conta Google"
+   explicando o escopo gmail.send e linkando a política (v145)
+ ✔ Footer da landing com links de Privacidade/Termos/Contato
+ ✔ O app só pede UM escopo: gmail.send (hardcoded, regra 13d)
+
+────────────────────────────────────────────────────────────────────
+ PARTE 1 — SEARCH CONSOLE (fazer ANTES de tudo)
+────────────────────────────────────────────────────────────────────
+1. Entre em https://search.google.com/search-console
+   ⚠️ COM A MESMA CONTA GOOGLE que vai ser dona do projeto novo.
+2. Adicionar propriedade → "Domínio" → h2bapply.com
+3. Ele pede um registro TXT no DNS (Namecheap → Advanced DNS →
+   TXT Record @ → colar o valor → salvar). Espere e clique verificar.
+   Sem isso o Google recusa a verificação do OAuth (o domínio da
+   homepage/política precisa ser SEU, comprovado).
+
+────────────────────────────────────────────────────────────────────
+ PARTE 2 — PROJETO NOVO NO GOOGLE CLOUD
+────────────────────────────────────────────────────────────────────
+1. https://console.cloud.google.com → criar projeto novo
+   (nome sugerido: "H2BApply Producao 2026")
+2. APIs e serviços → Biblioteca → ativar "Gmail API"
+3. APIs e serviços → Tela de permissão OAuth (OAuth consent screen):
+   • Tipo de usuário: EXTERNO
+   • Nome do app: H2BApply          ← EXATAMENTE igual ao site
+   • E-mail de suporte: seu e-mail
+   • ⚠️ LOGO: NÃO SUBA LOGO AGORA. Logo dispara uma "verificação de
+     marca" separada que ATRASA tudo. Suba o logo DEPOIS de aprovado.
+   • Domínio autorizado: h2bapply.com
+   • Página inicial do app:      https://h2bapply.com
+   • Política de privacidade:    https://h2bapply.com/privacidade
+   • Termos de serviço:          https://h2bapply.com/termos
+   • E-mail de contato do desenvolvedor: seu e-mail
+4. ESCOPOS → "Adicionar ou remover escopos" → marque SOMENTE:
+     https://www.googleapis.com/auth/gmail.send
+   ⚠️ NADA de gmail.readonly/modify — além de proibido pela regra 13d,
+   viraria escopo RESTRITO e exigiria a auditoria paga.
+5. Credenciais → Criar credenciais → ID do cliente OAuth →
+   "Aplicativo da Web":
+   • Origens JavaScript autorizadas: https://h2bapply.com
+   • URIs de redirecionamento (os DOIS):
+       https://h2bapply.com/oauth/callback
+       https://h2bapply.com/oauth/add-sender/callback
+6. Copie o CLIENT_ID e o CLIENT_SECRET → Render → serviço do Servidor 1
+   → Environment → troque GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET →
+   Save (o serviço reinicia sozinho).
+   💡 A partir DESTE momento todo mundo é deslogado (tokens antigos
+   morrem com o client novo). É AQUI que você:
+   a) Liga o aviso: Admin → Configurações → "📢 Aviso do reset de
+      login" → marcar → Salvar.
+   b) Roda a FUSÃO (Admin → Configurações → 🚚 Fusão de Servidores →
+      Puxar Servidor 2, depois Puxar Servidor 3 — com os irmãos ainda
+      NO AR). Confira o relatório de cada um.
+   c) Só DEPOIS da fusão ok, suspenda os serviços 2 e 3 no Render.
+
+────────────────────────────────────────────────────────────────────
+ PARTE 3 — O VÍDEO DE DEMONSTRAÇÃO (roteiro exato)
+────────────────────────────────────────────────────────────────────
+Formato: YouTube "não listado" (unlisted). Pode ser sem narração —
+legendas/zoom ajudam. 2 a 4 minutos. Grave DEPOIS do client novo estar
+no ar em h2bapply.com (o vídeo tem que mostrar o app REAL no domínio
+REAL com a tela de consentimento REAL).
+
+Roteiro (nesta ordem):
+ 1. Abra o navegador e digite h2bapply.com — mostre a homepage
+    carregando (o revisor vê o domínio na barra de endereço).
+ 2. Role até a seção "🔒 Como o H2BApply usa sua conta Google"
+    (mostra a transparência) e clique no link da Política.
+ 3. Volte e clique em "Entrar com Google".
+ 4. ⚠️ MOMENTO MAIS IMPORTANTE: a TELA DE CONSENTIMENTO do Google —
+    deixe visível o nome "H2BApply" e a permissão "Enviar e-mail em
+    seu nome". Pare 3-4 segundos nela. Clique em permitir.
+ 5. Dentro do app: abra o Envio Manual, escolha uma vaga, mostre o
+    modal com o e-mail que O USUÁRIO escreve (assunto/corpo/currículo
+    anexado) e clique Enviar.
+ 6. Abra o Gmail do usuário na aba "Enviados" e mostre o e-mail de
+    candidatura lá — provando que o escopo gmail.send é usado
+    EXATAMENTE pro que foi declarado, e que o app não mexe em mais nada.
+ 7. (Opcional, forte) Mostre myaccount.google.com → Segurança → apps
+    com acesso → H2BApply aparecendo só com "enviar e-mail".
+
+────────────────────────────────────────────────────────────────────
+ PARTE 4 — SUBMETER A VERIFICAÇÃO
+────────────────────────────────────────────────────────────────────
+Na Tela de permissão OAuth → "Publicar app" → status Em produção →
+o botão "Preparar para verificação" aparece. Preencha e envie.
+
+JUSTIFICATIVA DO ESCOPO (cole em inglês — é o que eles pedem):
+
+  "H2BApply helps Brazilian workers apply to seasonal H-2B/H-2A jobs
+  in the United States. The user writes their own application e-mail
+  (subject and body) and attaches their own resume; the app then sends
+  that e-mail from the user's own Gmail account to the employer, at
+  the user's explicit request — either one by one (manual) or through
+  a queue the user configures. This is the core functionality of the
+  product and is impossible without the gmail.send scope. We request
+  ONLY gmail.send: the app never reads, stores or accesses the user's
+  inbox in any way (no readonly/modify scopes). Replies from employers
+  arrive in the user's own Gmail and are never touched by the app.
+  Our use of Google user data adheres to the Google API Services User
+  Data Policy, including the Limited Use requirements, as disclosed at
+  https://h2bapply.com/privacidade."
+
+Prazo típico: alguns dias a ~2 semanas pra escopo sensível. Eles
+respondem por e-mail (olhe spam!) e às vezes pedem ajuste no vídeo —
+responda pelo MESMO thread do e-mail.
+
+────────────────────────────────────────────────────────────────────
+ PARTE 5 — ERROS QUE MAIS REPROVAM (não caia neles)
+────────────────────────────────────────────────────────────────────
+ ✗ Nome do app na tela de consent diferente do nome no site
+ ✗ Logo enviado junto (trava na verificação de marca — deixe pra depois)
+ ✗ Homepage/política em domínio não verificado no Search Console
+ ✗ Vídeo sem mostrar a tela de consentimento ou fora do domínio real
+ ✗ Vídeo mostrando localhost/teste em vez de h2bapply.com
+ ✗ Pedir escopo a mais "por precaução" (só gmail.send!)
+ ✗ Política de privacidade sem a frase de Limited Use (a nossa TEM)
+
+────────────────────────────────────────────────────────────────────
+ ORDEM COMPLETA DA VIRADA (resumo de 1 página)
+────────────────────────────────────────────────────────────────────
+ 1. Search Console: verificar h2bapply.com          (Parte 1)
+ 2. Projeto novo + consent screen + client novo      (Parte 2, 1-5)
+ 3. Trocar CLIENT_ID/SECRET no Render do Servidor 1  (Parte 2, 6)
+ 4. Ligar o aviso de reset no admin                  (Parte 2, 6a)
+ 5. Rodar a Fusão: Puxar Servidor 2 e 3              (Parte 2, 6b)
+ 6. Conferir relatório da fusão + amostras de contas (Pagantes & Dias
+    VIP → clicar em usuários que estavam no 2/3)
+ 7. Suspender serviços 2 e 3 no Render               (Parte 2, 6c)
+ 8. Gravar o vídeo no site real                      (Parte 3)
+ 9. Submeter a verificação                           (Parte 4)
+10. Aprovou → subir logo (opcional) e desligar o aviso de reset

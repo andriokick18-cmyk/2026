@@ -1,0 +1,43 @@
+# ═══════════════════════════════════════════════════════════════════════
+#  ESPELHO AUTOMÁTICO — 1 código, 3 servidores (ordem do dono, 26/07/2026)
+#  Todo push no main DESTE repo (Applyh2b.com, a FONTE ÚNICA) é replicado
+#  sozinho pros repos dos Servidores 1 (New-repository) e 2 (Teste).
+#  Cada Render já tem Auto-Deploy ligado → os 3 publicam JUNTOS.
+#
+#  ⚙️ CONFIGURAÇÃO (1 vez, só o dono pode fazer — precisa de um token):
+#  1. github.com → foto de perfil → Settings → Developer settings →
+#     Personal access tokens → Fine-grained tokens → Generate new token
+#     · Repository access: Only select repositories →
+#       New-repository e Teste
+#     · Permissions → Repository permissions → Contents: Read and write
+#     · Expiração: 1 ano (anotar pra renovar)
+#  2. Copiar o token → repo Applyh2b.com → Settings → Secrets and
+#     variables → Actions → New repository secret →
+#     Name: MIRROR_TOKEN · Value: (colar o token) → Add secret
+#  Pronto: a partir daí, todo deploy no main daqui vira deploy nos 3.
+# ═══════════════════════════════════════════════════════════════════════
+name: Espelho — main pros Servidores 1 e 2
+on:
+  push:
+    branches: [main]
+jobs:
+  espelhar:
+    # Só roda no repo-fonte — o arquivo também é copiado pros espelhos
+    # (código idêntico nos 3), mas lá ele fica quieto, sem erro vermelho.
+    if: github.repository == 'andriokick18-cmyk/Applyh2b.com'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Conferir o token
+        run: |
+          if [ -z "${{ secrets.MIRROR_TOKEN }}" ]; then
+            echo "::error::Secret MIRROR_TOKEN não configurado — siga o passo a passo no topo deste arquivo (.github/workflows/espelho.yml). Sem ele o espelho automático não roda e os Servidores 1 e 2 ficam para trás."
+            exit 1
+          fi
+      - name: Espelhar para o Servidor 1 (New-repository)
+        run: git push --force "https://x-access-token:${{ secrets.MIRROR_TOKEN }}@github.com/andriokick18-cmyk/New-repository.git" HEAD:main
+      - name: Espelhar para o Servidor 2 (Teste)
+        run: git push --force "https://x-access-token:${{ secrets.MIRROR_TOKEN }}@github.com/andriokick18-cmyk/Teste.git" HEAD:main
