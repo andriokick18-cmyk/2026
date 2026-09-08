@@ -1245,12 +1245,18 @@ textarea.input,input.input,select.input{background:#f5f7ff;color:#1e1b4b}
 .ln-hero-inner{
   display:grid;
   grid-template-columns:1fr 340px;
-  gap:48px;align-items:start;
+  gap:48px;align-items:stretch;
 }
 @media(max-width:860px){.ln-hero-inner{grid-template-columns:1fr}}
-.ln-hero-visual{position:relative;border-radius:20px;overflow:hidden;box-shadow:0 20px 50px rgba(15,23,42,.35);aspect-ratio:4/3}
+/* v169 (dono, 08/09/2026 — "imagem desproporcional ao espaço que tem ali pra
+   baixo"): era uma caixa 4:3 de altura FIXA (255px) ao lado de uma coluna de
+   texto com o dobro/triplo disso (badge+título+subtítulo+chips+3 botões+
+   trust row+card do Instagram, ~770px de altura real). Sobrava fundo escuro
+   vazio embaixo da imagem. Trocado por altura 100% (stretch no grid — a
+   imagem some acompanha a coluna de texto, nunca mais fica curta) + foto
+   nova, vertical, feita sob medida pelo dono pra esse formato mais alto. */
+.ln-hero-visual{position:relative;border-radius:20px;overflow:hidden;box-shadow:0 20px 50px rgba(15,23,42,.35);height:100%;min-height:340px}
 .ln-hero-visual img{width:100%;height:100%;object-fit:cover;display:block}
-.ln-hero-visual-tag{position:absolute;left:12px;bottom:12px;right:12px;background:rgba(15,23,42,.72);backdrop-filter:blur(4px);border-radius:12px;padding:9px 12px;font-size:12px;font-weight:800;color:#fff;display:flex;align-items:center;gap:6px}
 @media(max-width:860px){.ln-hero-visual{display:none}}
 /* ── VITRINE (foto real de exemplo de vagas) ── */
 .ln-showcase{padding:20px 20px 8px;max-width:1100px;margin:0 auto;width:100%}
@@ -2149,8 +2155,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
 
       <!-- Coluna direita: foto real (Estátua da Liberdade + farol de Martha's Vineyard) -->
       <div class="ln-hero-visual" aria-hidden="true">
-        <img src="/img/landing-hero-card.jpg" alt="" loading="eager">
-        <div class="ln-hero-visual-tag">🇺🇸 <span>Vagas H-2B &amp; H-2A nos EUA</span></div>
+        <img src="/img/landing-hero-tall.jpg" alt="" loading="eager">
       </div>
 
     </div>

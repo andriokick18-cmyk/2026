@@ -42,7 +42,7 @@
 //    completa (6 temporadas, vagas com e-mail) + reestruturação visual
 //    das abas (seção recolhível "Temporadas Anteriores", Manual+Automático).
 //
-const CACHE_NAME = "h2bapply-2026-v7"; // v7: bug real do Diego — 3 assuntos idênticos no onboarding só mostravam um toast de 2,8s (fácil de não notar em celular real, parecia "o botão não faz nada"); agora fica um aviso vermelho PERSISTENTE na tela (igual ao editor de perfil completo) até o usuário corrigir de verdade, distinguindo "faltam textos" de "os textos são iguais"
+const CACHE_NAME = "h2bapply-2026-v8"; // v8: foto do hero da landing trocada por uma vertical feita sob medida (dono) + caixa da imagem agora estica pra acompanhar a altura real da coluna de texto (era 4:3 fixo, sobrava fundo vazio embaixo)
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).
