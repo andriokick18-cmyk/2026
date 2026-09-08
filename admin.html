@@ -368,6 +368,17 @@ tbody tr:hover{background:var(--glass2)}
   </div>
 </div>
 
+<div class="modal-bg" id="modal-divergencia">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title"><i class="ti ti-alert-triangle" style="color:var(--amber)"></i> Suspeita de divergência</div><button class="modal-close" onclick="fecharModal('modal-divergencia')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body" id="div-body"></div>
+    <div class="modal-foot">
+      <button type="button" class="btn" onclick="responderDivergencia(false)"><i class="ti ti-x"></i> Não, é um problema</button>
+      <button type="button" class="btn btn-green" id="div-btn-ok" onclick="responderDivergencia(true)"><i class="ti ti-check"></i> Concordo, está OK</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="modal-gasto">
   <div class="modal">
     <div class="modal-head"><div class="modal-title"><i class="ti ti-minus" style="color:var(--red)"></i> Lançar Gasto</div><button class="modal-close" onclick="fecharModal('modal-gasto')"><i class="ti ti-x"></i></button></div>
@@ -686,7 +697,7 @@ function renderLinhasUsuarios(lista){
       +'<td><span class="badge blue">'+esc(u.plano||"free")+'</span></td>'
       +'<td>'+esc(dias)+'</td>'
       +'<td>'+esc(creditados)+' dia'+((creditados===1)?"":"s")+'</td>'
-      +'<td>'+(u.suspeita?('<button class="warn-flag" title="Ver motivo da suspeita" onclick="verMotivoSuspeita(\''+encodeURIComponent(u.email||"")+'\',\''+encodeURIComponent(u.motivo||"")+'\')"><i class="ti ti-alert-triangle"></i></button>'):'')+'</td>'
+      +'<td>'+(u.suspeita?('<button class="warn-flag" title="Ver motivo da suspeita" onclick="abrirDivergencia(\''+encodeURIComponent(u.email||"")+'\')"><i class="ti ti-alert-triangle"></i></button>'):'')+'</td>'
       +'</tr>';
   }
   tbody.innerHTML=html;
@@ -702,12 +713,67 @@ function filtrarUsuarios(){
   renderLinhasUsuarios(filtrados);
 }
 
-function verMotivoSuspeita(emailEnc,motivoEnc){
+// v166: estado da divergência aberta no modal (só existe enquanto o modal
+// está aberto — não é cache de decisão nenhuma, só carrega o necessário
+// pra chamar a rota quando o admin clicar "Concordo, está OK").
+var _divAtual=null;
+
+function abrirDivergencia(emailEnc){
   var email=decodeURIComponent(emailEnc);
-  var motivo=decodeURIComponent(motivoEnc)||"Sem detalhes adicionais.";
-  abrirModalInfo("⚠️ Suspeita de divergência",
-    '<p style="font-size:13.5px;color:var(--t2);margin-bottom:10px"><b style="color:#fff">'+esc(email)+'</b></p>'
-    +'<p style="font-size:13.5px;color:var(--text);line-height:1.6">'+esc(motivo)+'</p>');
+  var lista=(STATE.dash&&STATE.dash.usuarios)||[];
+  var u=lista.find(function(x){return x.email===email;});
+  if(!u){toast("Usuário não encontrado — atualize a lista e tente de novo.","err");return;}
+  _divAtual={email:u.email,nome:u.nome||u.email,assinatura:u.assinatura||null};
+  var restam=(u.daysLeft!=null)?u.daysLeft:0;
+  var creditados=u.diasCreditadosPagos!=null?u.diasCreditadosPagos:0;
+  var html='<p style="font-size:13.5px;margin-bottom:10px"><b style="color:#fff">'+esc(u.nome||u.email)+'</b><br>'
+    +'<span style="color:var(--t2);font-size:12.5px">'+esc(u.email)+'</span></p>';
+  if(u.isAdmin){
+    html+='<div style="background:var(--amberg);border:1px solid var(--amberb);border-radius:8px;padding:10px 12px;margin-bottom:10px;color:var(--amber);font-size:13px;line-height:1.5">'
+      +'<b><i class="ti ti-shield-lock"></i> Conta de administrador</b><br>'
+      +'Esta é uma conta de administrador — dias podem ter sido concedidos manualmente pra teste, sem lançamento formal.'
+      +'</div>';
+  }
+  html+='<p style="font-size:13.5px;color:var(--text);line-height:1.6;margin-bottom:10px">'
+    +'Restam <b>'+restam+' dia'+(restam===1?"":"s")+'</b> de VIP, mas só <b>'+creditados+' dia'+(creditados===1?"":"s")+'</b> '
+    +'foram creditados como pago.</p>'
+    +'<p style="font-size:12.5px;color:var(--t2)">Essa divergência é esperada/está OK, ou é um problema real que precisa ser investigado?</p>';
+  document.getElementById("div-body").innerHTML=html;
+  abrirModal("modal-divergencia");
+}
+
+async function responderDivergencia(concordo){
+  if(!concordo){
+    // v166b: "Não, é um problema" não chama rota nenhuma (nada pra marcar
+    // como OK) — mas o admin precisa de uma confirmação visível de que o
+    // clique fez alguma coisa, senão parece que não aconteceu nada. O
+    // alerta ⚠️ CONTINUA na linha do usuário na aba Usuários (nada foi
+    // silenciado) — é aí que fica o próximo passo: reabrir quando for
+    // investigar, ou confirmar "está OK" depois de checar.
+    var nomeAlvo=(_divAtual&&_divAtual.nome)||"";
+    fecharModal("modal-divergencia");
+    _divAtual=null;
+    toast("Marcado como pendente — o ⚠️ continua em "+(nomeAlvo||"Usuários")+" até você confirmar que está OK.","err");
+    return;
+  }
+  if(!_divAtual||!_divAtual.assinatura){
+    toast("Não foi possível identificar essa divergência — atualize a lista e tente de novo.","err");
+    fecharModal("modal-divergencia");
+    return;
+  }
+  var btn=document.getElementById("div-btn-ok");
+  btn.disabled=true;
+  try{
+    await api("/api/admin/contabilidade/divergencia",{method:"POST",body:{email:_divAtual.email,assinatura:_divAtual.assinatura,concordo:true}});
+    toast("Divergência confirmada como OK.","ok");
+    fecharModal("modal-divergencia");
+    _divAtual=null;
+    carregarDashboard(false);
+  }catch(e){
+    toast("Erro ao salvar: "+e.message,"err");
+  }finally{
+    btn.disabled=false;
+  }
 }
 
 /* ═══════════════════ PEDIDOS PENDENTES ═══════════════════ */

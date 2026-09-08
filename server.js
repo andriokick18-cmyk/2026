@@ -364,6 +364,13 @@ const TRIAL_USED_FILE  = path.join(DATA_DIR, "trial_used.json");       // Histó
 // de verdade entre reinícios do processo.
 const NOTIF_COOLDOWN_FILE = path.join(DATA_DIR, "notif_cooldowns.json");
 const KB_FILE          = path.join(DATA_DIR, "knowledge_base.json");  // Base de Conhecimento Permanente (IA↔IA)
+// v166: divergências de contabilidade que o admin já revisou e confirmou
+// como OK (ex.: conta de admin com dias de teste sem crédito formal — não
+// é bug, é esperado). Chave é uma ASSINATURA dos valores exatos da
+// divergência (email + regra + números) — nunca "email X resolvido pra
+// sempre": se os números mudarem (nova divergência), volta a alertar.
+const DIVERGENCIAS_OK_FILE = path.join(DATA_DIR, "divergencias_ok.json");
+let DB_DIVERGENCIAS_OK = {}; // { assinatura → {email,motivo,confirmadoEm,confirmadoPor} }
 const AI_KB_FILE       = path.join(DATA_DIR, "ai_knowledge.json");    // v25: experiências reais + treino extra do IA Chat (editável pelo admin, sem deploy)
 let DB_AI_KB = { entries: [] };
 try { fs.mkdirSync(CVS_DIR, { recursive: true }); } catch {}
@@ -1333,6 +1340,7 @@ function boot() {
   DB_APP_INDEX = load(APPIDX_FILE, {});
   const savedAdminSettings = load(ADMIN_SETTINGS_FILE, null);
   if(savedAdminSettings) Object.assign(DB_ADMIN_SETTINGS, savedAdminSettings);
+  DB_DIVERGENCIAS_OK = load(DIVERGENCIAS_OK_FILE, {});
   // v58-MIGRAÇÃO (one-shot, dono 25/07: "1 e 2 bloqueados, cadastro só no 3"):
   // servidores que JÁ têm lista salva em disco ganham o Servidor 3 automatica-
   // mente e têm 1/2 marcados como lotado — UMA vez só (_migSrv3), pra edição
@@ -12979,6 +12987,15 @@ if(pathname==="/api/admin/pagantes"&&req.method==="GET"){try{
 // Checagem de consistência simples e honesta: dias restantes > soma dos
 // dias creditados (vip.creditos tipo:"pago") = flag de suspeita — é só
 // matemática, sem IA, sem Cérebro Contábil.
+// v166: assinatura de uma divergência de contabilidade — identifica a
+// divergência EXATA (regra + usuário + os números que a causaram), nunca
+// só o e-mail. Se os números mudarem depois (nova divergência), a
+// assinatura muda junto e o alerta volta a aparecer — "confirmar OK" nunca
+// é um "silenciar pra sempre" por usuário.
+function _divergenciaAssinatura(regraId,email,valores){
+  const partes=[regraId,String(email||"").toLowerCase(),...(valores||[]).map(v=>String(v))];
+  return crypto.createHash("sha256").update(partes.join("|")).digest("hex").slice(0,24);
+}
 // ── GET /api/admin/contabilidade — dashboard ────────────────────────────
 if(pathname==="/api/admin/contabilidade"&&req.method==="GET"){
   const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
@@ -13012,12 +13029,20 @@ if(pathname==="/api/admin/contabilidade"&&req.method==="GET"){
       // 🔎 checagem de consistência simples: dias restantes > total creditado
       // como "pago" = suspeita (dias apareceram sem crédito registrado que
       // os explique). Só flaga quando há dias restantes de verdade.
-      const suspeita=(daysLeft!=null&&daysLeft>0&&diasCreditadosPagos<daysLeft);
+      const regraId="dias_maior_creditado";
+      const rawSuspeita=(daysLeft!=null&&daysLeft>0&&diasCreditadosPagos<daysLeft);
+      // a assinatura carrega os NÚMEROS exatos da divergência atual — o
+      // cálculo roda sempre do zero (nunca cacheia o resultado), só a
+      // DECISÃO do admin sobre ESSES números específicos é que persiste.
+      const assinatura=rawSuspeita?_divergenciaAssinatura(regraId,u.email,[daysLeft,diasCreditadosPagos]):null;
+      const jaConfirmadaOk=!!(assinatura&&DB_DIVERGENCIAS_OK[assinatura]);
+      const suspeita=rawSuspeita&&!jaConfirmadaOk;
       usuarios.push({
         email:u.email,nome:u.name||u.email,plano:getPlan(u),
         manualExpires:vip.manualExpires||0,autoExpires:vip.autoExpires||0,
         daysLeft,diasCreditadosPagos,
-        suspeita:!!suspeita,motivo:suspeita?"dias restantes maiores que o total creditado":null
+        isAdmin:isAdminVip(u),assinatura,
+        suspeita:!!suspeita,motivo:rawSuspeita?"dias restantes maiores que o total creditado":null
       });
     }
     // DESC: quem tem MAIS dias primeiro; sem data (null) sempre por último.
@@ -13031,6 +13056,27 @@ if(pathname==="/api/admin/contabilidade"&&req.method==="GET"){
       totalRecebido,gastosAndrio,gastosDiego,gastosEmpresa,totalGastos,
       qtdUsuarios:usuarios.length,qtdSuspeitas:usuarios.filter(u=>u.suspeita).length,
       usuarios,geradoEm:now});
+  }catch(e){return json(res,500,{error:e.message});}
+}
+// ── POST /api/admin/contabilidade/divergencia — admin confirma (ou não)
+// que uma divergência ESPECÍFICA é esperada/está OK. Só grava quando
+// concordo:true — a resposta "não, é um problema" não precisa nem chamar
+// esta rota (fire-and-forget do front), e mesmo se chamar, não persiste
+// nada. Gravar é por ASSINATURA (regra+usuário+números), nunca por e-mail
+// sozinho — se os números da divergência mudarem depois, ela volta a
+// alertar mesmo pro mesmo usuário.
+if(pathname==="/api/admin/contabilidade/divergencia"&&req.method==="POST"){
+  const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
+  const pAdm=getUser(s.user_email);if(!isAdminVip(pAdm))return json(res,403,{error:"Acesso negado."});
+  try{
+    const d=JSON.parse(await readBody(req));
+    const email=String(d.email||"").trim().toLowerCase();
+    const assinatura=String(d.assinatura||"").trim();
+    if(!email||!assinatura)return json(res,400,{error:"email e assinatura são obrigatórios."});
+    if(d.concordo!==true)return json(res,200,{ok:true,gravado:false});
+    DB_DIVERGENCIAS_OK[assinatura]={email,confirmadoEm:Date.now(),confirmadoPor:s.user_email};
+    persist(DIVERGENCIAS_OK_FILE,DB_DIVERGENCIAS_OK);
+    return json(res,200,{ok:true,gravado:true});
   }catch(e){return json(res,500,{error:e.message});}
 }
 // ── POST /api/admin/contabilidade/gasto — registra gasto com comprovante ──

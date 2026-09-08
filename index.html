@@ -127,7 +127,7 @@ a{color:inherit;text-decoration:none}
   radial-gradient(ellipse 900px 600px at 15% 30%, rgba(99,102,241,.10) 0%, transparent 70%),
   radial-gradient(ellipse 700px 500px at 85% 70%, rgba(139,92,246,.09) 0%, transparent 70%),
   radial-gradient(ellipse 500px 400px at 50% 0%, rgba(59,130,246,.07) 0%, transparent 60%)}
-[data-theme="dark"] .home-view{background:#0d0f1a!important}
+[data-theme="dark"] .home-view{background:transparent!important}
 [data-theme="dark"] .jcard{background:var(--surface)!important}
 [data-theme="dark"] .jcard:hover,[data-theme="dark"] .jcard.active{background:var(--sf2)!important}
 [data-theme="dark"] .jdetail{background:var(--surface)!important}
@@ -436,9 +436,6 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 .sb-item{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:11px;font-size:13px;color:var(--t2);cursor:pointer;transition:all .13s;border:none;background:none;width:100%;font-family:inherit;font-weight:600;position:relative}
 .sb-item:hover{background:var(--sf2);color:var(--text);transform:translateX(2px)}
 /* v104: seletor compacto de modo de tela na sidebar */
-.sbm-btn{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;gap:2px;background:var(--sf2);border:1.5px solid var(--border2);border-radius:9px;padding:7px 2px;font-size:9.8px;font-weight:800;color:var(--t2);cursor:pointer;font-family:inherit;transition:all .12s;white-space:nowrap;overflow:hidden}
-.sbm-btn.active{background:linear-gradient(135deg,#4f46e5,#7c3aed);border-color:transparent;color:#fff;box-shadow:0 3px 10px rgba(99,102,241,.35)}
-.sbm-btn:not(.active):hover{background:var(--sf3)}
 .sb-item.active{background:rgba(99,102,241,.12);color:#4f46e5;font-weight:800}
 .sb-item.active i{color:#4f46e5!important}
 [data-theme="dark"] .sb-item.active{background:rgba(129,140,248,.16);color:#a5b4fc}
@@ -593,17 +590,9 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 .stab:hover{color:var(--text)}
 .stab.active{color:var(--blue);border-bottom-color:var(--blue)}
 .stab-cnt{font-size:10px;font-weight:700;padding:1px 6px;border-radius:20px;background:var(--sf3);color:var(--t3);border:1px solid var(--border);min-width:18px;text-align:center}
-/* v96: subtabs do Perfil em CARDS GRANDES — a régua fininha de antes escondia
-   o caminho pro editor de Currículos (reclamação real do dono com print). */
-#profile-subtabs{background:var(--surface);border-bottom:1.5px solid var(--border);display:flex;gap:8px;padding:10px 12px}
-#profile-subtabs .stab{flex:1;flex-direction:column;gap:5px;padding:13px 6px;margin-bottom:0;border:2px solid var(--border2);border-radius:14px;background:var(--sf2);font-weight:800}
-#profile-subtabs .stab i{font-size:22px}
-#profile-subtabs .stab span{font-size:12.5px;font-weight:800;line-height:1.1}
-#profile-subtabs .stab.active{background:linear-gradient(135deg,#4f46e5,#7c3aed)!important;border-color:transparent!important;color:#fff!important;box-shadow:0 6px 18px rgba(99,102,241,.35)}
-#profile-subtabs .stab.active i,#profile-subtabs .stab.active span{color:#fff!important}
-#profile-subtabs #ptab-admin i,#profile-subtabs #ptab-admin span{color:#f59e0b}
-#profile-subtabs #ptab-admin.active{background:linear-gradient(135deg,#f59e0b,#f97316)!important}
-#profile-subtabs #ptab-admin.active i,#profile-subtabs #ptab-admin.active span{color:#fff!important}
+/* v168: sub-abas do Perfil REMOVIDAS (dono pediu tela única, sem abas —
+   ver #v-profile em index.html). CSS de #profile-subtabs/#ptab-admin
+   (v96) removido junto por ficar morto. */
 .stab.active .stab-cnt{background:var(--bluel);color:var(--blue);border-color:var(--blueb)}
 /* Sheet tab special badges */
 .stab-sheet-jan{position:relative}
@@ -935,7 +924,13 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 .admin-msg-bar{background:linear-gradient(90deg,#7e3af2,#1a56db);color:#fff;font-size:13px;padding:8px 14px;display:flex;align-items:center;gap:8px;flex-shrink:0;cursor:pointer}
 
 /* ══ HOME VIEW ══ */
-.home-view{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--bg)}
+/* v168: era background:var(--bg) sólido — pintava por cima do gradiente
+   decorativo que #app::before já desenha atrás do app inteiro (visível em
+   TODAS as outras views, que não têm fundo opaco próprio). Era a causa raiz
+   do "buraco vazio" embaixo dos cards na Home (v166 enxugou o conteúdo e
+   sobrou muita área só com a cor chapada) — transparent deixa o mesmo
+   gradiente sutil de sempre aparecer, sem inventar decoração nova. */
+.home-view{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;background:transparent}
 /* v19: coluna central com largura máxima (layout do print) + foguete some no mobile */
 .home-view>div{max-width:1160px;margin-left:auto;margin-right:auto}
 @media(max-width:640px){.home-hero-rocket{font-size:52px!important;right:8px!important}}
@@ -1110,6 +1105,11 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 /* Card Automático do hero: gradiente vibrante SEMPRE (texto interno é branco —
    fundo branco aqui deixava o card "vazio"/ilegível no tema claro) */
 .home-auto-card,.home-auto-card.inactive{background:linear-gradient(135deg,#7c3aed,#4f46e5 55%,#2563eb)!important;border-color:rgba(255,255,255,.25)!important;color:#fff!important;box-shadow:0 10px 30px rgba(79,70,229,.45)!important}
+/* Card Automático — envio CONCLUÍDO: precisa de mais especificidade que a
+   regra acima (que já é !important) pra realmente pintar de verde — style
+   inline do JS nunca vencia isso, o card ficava roxo mesmo depois de "✅
+   Envio Concluído!" (achado de revisão, corrigido). */
+.home-auto-card.finished{background:linear-gradient(135deg,var(--green),#059669)!important;border-color:rgba(255,255,255,.25)!important;color:#fff!important;box-shadow:0 10px 30px rgba(5,150,105,.45)!important}
 .icard{background:#ffffff;border-bottom:1px solid rgba(99,102,241,.1)}
 .icard:hover{background:#f5f7ff!important}
 .icard.unread{background:rgba(59,130,246,.05)}
@@ -1707,9 +1707,6 @@ textarea.input,input.input,select.input{background:#f5f7ff;color:#1e1b4b}
 #si-logs{opacity:.75;font-size:12px}
 #si-logs:hover{opacity:1}
 
-/* Home auto card - cleaner inactive state */
-.home-auto-card.inactive{background:var(--sf2);border:1.5px solid var(--border)}
-.home-auto-card.inactive:hover{background:var(--sf3);border-color:var(--border2)}
 
 /* ══ SUGESTÕES ══ */
 .sug-cat-btn{display:inline-flex;align-items:center;padding:6px 12px;border:1.5px solid var(--border2);border-radius:20px;background:var(--sf2);color:var(--t2);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .14s;}
@@ -2535,17 +2532,6 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
         <button class="sb-item" id="si-app" onclick="installAppClick()"><i class="ti ti-device-mobile-down"></i>Baixar App</button>
       </div>
 
-      <!-- v104: MODO DE TELA sempre visível na sidebar (dono: "precisa
-           aparecer, tanto no apk quanto no pc — a pessoa escolhe como usar") -->
-      <div style="padding:2px 3px 0">
-        <div style="font-size:9.5px;font-weight:800;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin:0 6px 4px">🖥️ Modo de tela</div>
-        <div style="display:flex;gap:5px">
-          <button id="sb-mode-auto" class="sbm-btn" onclick="setScreenMode('auto')" title="O app decide pelo tamanho da tela">✨ Auto</button>
-          <button id="sb-mode-cel" class="sbm-btn" onclick="setScreenMode('cel')" title="Modo tela pequena">📱 Pequena</button>
-          <button id="sb-mode-pc" class="sbm-btn" onclick="setScreenMode('pc')" title="Modo tela cheia">🖥️ Cheia</button>
-        </div>
-      </div>
-
       <!-- RODAPÉ: modo escuro + cartão do usuário (layout do print) -->
       <div style="margin-top:auto;padding:8px 5px 4px">
         <button id="theme-toggle-btn-sidebar" onclick="toggleTheme()" style="display:flex;align-items:center;gap:7px;padding:9px 14px;border-radius:var(--r);border:none;background:var(--theme-btn-bg);color:var(--theme-btn-c);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;width:100%;transition:background .15s">
@@ -2594,45 +2580,53 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
             </div>
           </div>
 
-          <!-- ══ CTAs LADO A LADO — Automático + Manual (layout do print) ══ -->
+          <!-- ══ v168: CTAs redesenhados — dono pediu "cards grandes de
+               verdade" (eram 3 clones do mesmo template só com a cor
+               trocada). Padrão comum em apps de referência (Duolingo,
+               apps bancários): 1 CTA primário em banner cheio + 2 CTAs
+               secundários lado a lado — dá identidade própria pro
+               Automático (é a ação nº1 da casa) sem os 3 virarem réguas
+               idênticas. Cada card ganhou um ícone-marca-d'água gigante
+               de fundo (mesma técnica do foguete decorativo do hero). ══ -->
+          <!-- CTA PRIMÁRIO — Envio Automático (mesmos ids de sempre: renderHome atualiza o status ao vivo) -->
           <div style="padding:14px 14px 0">
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px">
-              <!-- Envio Automático (mesmos ids de sempre: renderHome atualiza o status ao vivo) -->
-              <div class="home-auto-card inactive" id="home-auto-card" onclick="openAutoModal()" role="button" tabindex="0" style="cursor:pointer;border-radius:18px;padding:18px;transition:transform .15s,box-shadow .15s" onmouseenter="this.style.transform='translateY(-2px)'" onmouseleave="this.style.transform=''">
-                <div style="display:flex;align-items:center;gap:13px">
-                  <div style="width:50px;height:50px;border-radius:14px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:26px" id="home-auto-icon">🤖</div>
-                  <div style="flex:1;min-width:0">
-                    <div style="font-size:15.5px;font-weight:900;color:#fff" id="home-auto-title" data-i18n="g_1">Envio Automático</div>
-                    <div style="font-size:11.5px;color:rgba(255,255,255,.82);margin-top:3px;line-height:1.4" id="home-auto-sub" data-i18n="g_2">Configure e deixe o sistema trabalhar por você</div>
-                  </div>
-                  <div style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                    <i class="ti ti-arrow-right" style="font-size:17px;color:#fff"></i>
+            <div class="home-auto-card inactive" id="home-auto-card" onclick="openAutoModal()" role="button" tabindex="0" style="cursor:pointer;margin:0;border-radius:24px;padding:26px 24px;position:relative;overflow:hidden;transition:transform .15s,box-shadow .15s" onmouseenter="this.style.transform='translateY(-2px)'" onmouseleave="this.style.transform=''">
+              <div aria-hidden="true" style="position:absolute;right:-12px;bottom:-20px;font-size:112px;line-height:1;opacity:.14;transform:rotate(-10deg);pointer-events:none">🤖</div>
+              <div style="display:flex;align-items:center;gap:16px;position:relative;z-index:1">
+                <div style="width:64px;height:64px;border-radius:18px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:32px" id="home-auto-icon">🤖</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:19px;font-weight:900;color:#fff;line-height:1.2" id="home-auto-title" data-i18n="g_1">Envio Automático</div>
+                  <div style="font-size:12.5px;color:rgba(255,255,255,.85);margin-top:4px;line-height:1.45" id="home-auto-sub" data-i18n="g_2">Configure e deixe o sistema trabalhar por você</div>
+                </div>
+                <div style="width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                  <i class="ti ti-arrow-right" style="font-size:20px;color:#fff"></i>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- CTAs SECUNDÁRIOS — Manual + Planos (tiles verticais, formato
+               diferente do banner primário de propósito) -->
+          <div style="padding:12px 14px 0">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">
+              <div onclick="sv('jobs')" role="button" tabindex="0" style="cursor:pointer;background:linear-gradient(135deg,#2563eb,#3b82f6);border-radius:20px;padding:22px 20px;box-shadow:0 10px 30px rgba(37,99,235,.32);position:relative;overflow:hidden;transition:transform .15s" onmouseenter="this.style.transform='translateY(-2px)'" onmouseleave="this.style.transform=''">
+                <div aria-hidden="true" style="position:absolute;right:-14px;bottom:-16px;font-size:80px;line-height:1;opacity:.16;transform:rotate(-6deg);pointer-events:none">📤</div>
+                <div style="position:relative;z-index:1">
+                  <div style="width:56px;height:56px;border-radius:16px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;font-size:28px;margin-bottom:14px">📤</div>
+                  <div style="font-size:17px;font-weight:900;color:#fff" data-i18n="manual_send_title">Envio Manual</div>
+                  <div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:4px;line-height:1.4" data-i18n="manual_send_sub">Busque vagas e envie candidaturas agora</div>
+                  <div style="width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;margin-top:14px">
+                    <i class="ti ti-arrow-right" style="font-size:18px;color:#fff"></i>
                   </div>
                 </div>
               </div>
-              <!-- Envio Manual -->
-              <div onclick="sv('jobs')" role="button" tabindex="0" style="cursor:pointer;background:linear-gradient(135deg,#2563eb,#3b82f6);border-radius:18px;padding:18px;box-shadow:0 10px 30px rgba(37,99,235,.32);transition:transform .15s" onmouseenter="this.style.transform='translateY(-2px)'" onmouseleave="this.style.transform=''">
-                <div style="display:flex;align-items:center;gap:13px">
-                  <div style="width:50px;height:50px;border-radius:14px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:26px">📤</div>
-                  <div style="flex:1;min-width:0">
-                    <div style="font-size:15.5px;font-weight:900;color:#fff" data-i18n="manual_send_title">Envio Manual</div>
-                    <div style="font-size:11.5px;color:rgba(255,255,255,.82);margin-top:3px;line-height:1.4" data-i18n="manual_send_sub">Busque vagas e envie candidaturas agora</div>
-                  </div>
-                  <div style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                    <i class="ti ti-arrow-right" style="font-size:17px;color:#fff"></i>
-                  </div>
-                </div>
-              </div>
-              <!-- v166: Planos — 3º CTA grande (era só um card de comparação de preço mais abaixo, removido por redundância) -->
-              <div onclick="sv('plans')" role="button" tabindex="0" style="cursor:pointer;background:linear-gradient(135deg,#7c3aed,#a855f7);border-radius:18px;padding:18px;box-shadow:0 10px 30px rgba(124,58,237,.32);transition:transform .15s" onmouseenter="this.style.transform='translateY(-2px)'" onmouseleave="this.style.transform=''">
-                <div style="display:flex;align-items:center;gap:13px">
-                  <div style="width:50px;height:50px;border-radius:14px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:26px">💎</div>
-                  <div style="flex:1;min-width:0">
-                    <div style="font-size:15.5px;font-weight:900;color:#fff" data-i18n="plans_send_title">Planos</div>
-                    <div style="font-size:11.5px;color:rgba(255,255,255,.82);margin-top:3px;line-height:1.4" data-i18n="plans_send_sub">Turbine seus envios com diamantes</div>
-                  </div>
-                  <div style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                    <i class="ti ti-arrow-right" style="font-size:17px;color:#fff"></i>
+              <div onclick="sv('plans')" role="button" tabindex="0" style="cursor:pointer;background:linear-gradient(135deg,#7c3aed,#a855f7);border-radius:20px;padding:22px 20px;box-shadow:0 10px 30px rgba(124,58,237,.32);position:relative;overflow:hidden;transition:transform .15s" onmouseenter="this.style.transform='translateY(-2px)'" onmouseleave="this.style.transform=''">
+                <div aria-hidden="true" style="position:absolute;right:-14px;bottom:-16px;font-size:80px;line-height:1;opacity:.16;transform:rotate(8deg);pointer-events:none">💎</div>
+                <div style="position:relative;z-index:1">
+                  <div style="width:56px;height:56px;border-radius:16px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;font-size:28px;margin-bottom:14px">💎</div>
+                  <div style="font-size:17px;font-weight:900;color:#fff" data-i18n="plans_send_title">Planos</div>
+                  <div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:4px;line-height:1.4" data-i18n="plans_send_sub">Turbine seus envios com diamantes</div>
+                  <div style="width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;margin-top:14px">
+                    <i class="ti ti-arrow-right" style="font-size:18px;color:#fff"></i>
                   </div>
                 </div>
               </div>
@@ -2837,17 +2831,23 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
 
       <!-- ══ PROFILE ══ -->
       <div class="view gone" id="v-profile" style="display:flex;flex-direction:column;overflow:hidden">
-        <!-- ── Subtabs (v96: cards grandes — usuário não achava "Currículos" na régua fininha) ── -->
-        <div id="profile-subtabs" style="flex-shrink:0">
-          <button class="stab active" id="ptab-me"       onclick="switchProfileTab('me')"><i class="ti ti-user"></i><span>Eu</span></button>
-          <button class="stab"        id="ptab-profiles" onclick="switchProfileTab('profiles')" style="position:relative"><i class="ti ti-file-cv"></i><span data-i18n="g_7">Currículos</span><span id="ptab-profiles-cnt" style="position:absolute;top:7px;right:9px;background:var(--blue);color:#fff;border-radius:20px;font-size:10px;font-weight:800;padding:1px 6px;display:none"></span></button>
-          <button class="stab"        id="ptab-stats"    onclick="switchProfileTab('stats')"><i class="ti ti-chart-bar"></i><span data-i18n="g_11">Números</span></button>
-          <button class="stab" id="ptab-admin" onclick="switchProfileTab('admin')" style="display:none"><i class="ti ti-shield"></i><span>Admin</span></button>
-        </div>
+        <!-- v168 (ordem expressa do dono): Perfil virou TELA ÚNICA, sem
+             sub-abas — dados pessoais e perfis de e-mail em sequência, sem
+             precisar clicar entre abas pra achar coisa. Eram 4 abas (Eu/
+             Currículos/Números/Admin) alternadas por switchProfileTab() via
+             display:none/block; a aba "Números" (gamificação — resquício
+             que não devia ter sobrevivido a esta reconstrução) foi REMOVIDA
+             por completo. switchProfileTab(tab) FOI MANTIDA com a mesma
+             assinatura — ~20 call sites no app inteiro chamam ela de fora
+             da Perfil (Home, tour de boas-vindas, callback de Gmail extra,
+             modais de "criar perfil"...) — só que agora ela chama a função
+             de renderização que a seção precisa (renderProfiles/
+             renderAdminTab, que já existiam) e rola até a seção certa com
+             scrollIntoView, em vez de esconder/mostrar aba. -->
         <div id="profile-tab-scroll" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch">
 
-          <!-- ══ TAB: EU ══ -->
-          <div id="ptab-content-me" style="padding:0 0 80px">
+          <!-- ══ SEÇÃO: EU ══ -->
+          <div id="pf-sec-me" style="padding:0 0 4px">
 
             <!-- ══ HERO DO PERFIL ══ -->
             <div class="prof-hdr" style="position:relative;padding:20px 18px 18px;border-bottom:1px solid var(--border)">
@@ -3043,8 +3043,8 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
               <div style="padding:14px 16px">
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
                   <div>
-                    <div style="font-size:13px;font-weight:700;margin-bottom:2px" data-i18n="g_28">🛫 Alerta de nova resposta</div>
-                    <div style="font-size:11px;color:var(--t2);line-height:1.5">Som + aviso quando uma empresa te responder</div>
+                    <div style="font-size:13px;font-weight:700;margin-bottom:2px" data-i18n="g_28">🛫 Alertas do H2BApply</div>
+                    <div style="font-size:11px;color:var(--t2);line-height:1.5">Som + aviso de diamantes, missões e novidades (o site não lê e-mail — não avisamos quando a empresa responde)</div>
                   </div>
                   <button id="notif-toggle-btn" onclick="toggleNotifications()" style="flex-shrink:0;width:52px;height:28px;border-radius:14px;border:none;cursor:pointer;position:relative;transition:background .2s;background:var(--border2)">
                     <div id="notif-toggle-dot" style="width:22px;height:22px;border-radius:50%;background:#fff;position:absolute;top:3px;left:3px;transition:transform .2s;box-shadow:0 1px 4px rgba(0,0,0,.2)"></div>
@@ -3055,50 +3055,15 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
               </div>
             </div>
 
-            <!-- CARD: Mais — v167: achado E2E, #v-tutorial e #v-settings
-                 ficaram órfãs depois da navegação reduzida a 3 itens (v166) —
-                 nenhum botão levava mais pra Central de Tutoriais nem pra
-                 Configurações (onde mora "Deletar minha conta"). -->
-            <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:14px">
-              <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
-                <i class="ti ti-dots" style="font-size:15px;color:var(--t3)"></i>
-                <span style="font-size:12px;font-weight:800;color:var(--text)" data-i18n="g_239c">Mais</span>
-              </div>
-              <div style="padding:8px;display:flex;flex-direction:column;gap:2px">
-                <button class="btn btn-secondary w100" style="justify-content:flex-start;border:none;background:none" onclick="sv('tutorial')"><i class="ti ti-book"></i> <span data-i18n="tut_center">Central de Tutoriais</span></button>
-                <button class="btn btn-secondary w100" style="justify-content:flex-start;border:none;background:none" onclick="sv('settings')"><i class="ti ti-settings"></i> <span data-i18n="settings_adv">Configurações avançadas</span></button>
-              </div>
-            </div>
-
-            <!-- CARD: Sessão — v167: achado E2E crítico, nenhum botão levava
-                 a doLogout(); aqui é o único lugar visitado tanto pela
-                 sidebar (desktop) quanto pela bottom-nav (mobile). -->
-            <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:16px;overflow:hidden">
-              <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
-                <i class="ti ti-door-exit" style="font-size:15px;color:var(--t3)"></i>
-                <span style="font-size:12px;font-weight:800;color:var(--text)" data-i18n="g_239b">Sessão</span>
-              </div>
-              <div style="padding:14px 16px">
-                <button class="btn btn-secondary w100" onclick="confirmLogout()"><i class="ti ti-logout"></i> <span data-i18n="logout">Sair</span></button>
-              </div>
-            </div>
-
             </div><!-- fim padding container -->
-          </div>
+          </div><!-- /pf-sec-me -->
 
-          <div id="ptab-content-docs" style="padding:14px 16px;display:none">
-            <div style="background:#1e3a2f;border:1.5px solid #10b981;border-radius:12px;padding:20px;text-align:center;margin-bottom:12px">
-              <i class="ti ti-info-circle" style="font-size:28px;color:#10b981;margin-bottom:8px;display:block"></i>
-              <div style="font-size:15px;font-weight:800;color:#10b981;margin-bottom:6px">PDFs agora ficam dentro dos Perfis</div>
-              <div style="font-size:12px;color:#6ee7b7;line-height:1.6"><span data-i18n="g_186">Cada perfil de currículo tem o currículo vinculado diretamente.</span><br><span data-i18n="g_187">O envio automático sempre usa o PDF do perfil correto — sem confusão.</span></div>
+          <!-- ══ SEÇÃO: PERFIS DE E-MAIL H-2B / H-2A ══ -->
+          <div id="pf-sec-profiles" style="padding:18px 16px 6px;border-top:1.5px solid var(--border)">
+            <div style="font-size:16px;font-weight:800;margin-bottom:14px;display:flex;align-items:center;gap:8px">
+              <i class="ti ti-file-cv" style="color:var(--purple)"></i> <span data-i18n="g_7">Perfis de E-mail</span>
+              <span id="ptab-profiles-cnt" style="font-size:10px;font-weight:800;background:var(--blue);color:#fff;border-radius:20px;padding:2px 8px;display:none"></span>
             </div>
-            <button class="btn btn-primary w100" onclick="switchProfileTab('profiles')">
-              <i class="ti ti-user-circle"></i> Ir para Perfis e gerenciar PDFs
-            </button>
-          </div>
-
-                    <!-- ══ TAB: PERFIS DE EMAIL ══ -->
-          <div id="ptab-content-profiles" style="padding:14px 16px;display:none">
             <!-- Explicação clara do que é um Perfil de Currículo -->
             <div style="background:linear-gradient(135deg,rgba(99,102,241,.1),rgba(124,58,237,.06));border:1.5px solid rgba(99,102,241,.25);border-radius:14px;padding:14px;margin-bottom:16px">
               <div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:8px">
@@ -3134,49 +3099,18 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
                 <small style="font-size:12px;color:var(--t3);line-height:1.5"><span data-i18n="g_190">Crie seu primeiro Perfil de Currículo para</span><br><span data-i18n="g_191">começar a enviar candidaturas</span></small>
               </div>
             </div>
-          </div>
+          </div><!-- /pf-sec-profiles -->
 
-          <!-- ══ TAB: STATS ══ -->
-          <div id="ptab-content-stats" style="padding:14px 16px;display:none">
-            <div style="font-size:16px;font-weight:800;margin-bottom:14px;display:flex;align-items:center;gap:8px"><i class="ti ti-chart-bar" style="color:var(--blue)"></i> <span data-i18n="g_192">Estatísticas</span></div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;min-width:0">
-              <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--rl);padding:14px;text-align:center">
-                <div style="font-size:28px;font-weight:800;color:var(--blue)" id="pstat-total-stats">–</div>
-                <div style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;margin-top:2px">Total enviados</div>
-              </div>
-              <!-- v92: "Respostas"/"Taxa resposta" eram cards MORTOS (app é
-                   só-envio, nunca conta resposta — ficavam em 0 pra sempre).
-                   Substituídos por métricas reais: empresas e estados. -->
-              <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--rl);padding:14px;text-align:center">
-                <div style="font-size:28px;font-weight:800;color:var(--green)" id="pstat-responses">–</div>
-                <div style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;margin-top:2px">🏢 Empresas</div>
-              </div>
-              <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--rl);padding:14px;text-align:center">
-                <div style="font-size:28px;font-weight:800;color:var(--purple)" id="pstat-rate">–</div>
-                <div style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;margin-top:2px">🗺️ Estados</div>
-              </div>
-            </div>
-            <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--rl);padding:14px;margin-bottom:12px">
-              <div style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:10px" data-i18n="g_37">📈 Últimos 7 dias</div>
-              <div id="pstat-chart" style="display:flex;align-items:flex-end;gap:4px;height:60px"></div>
-              <div id="pstat-chart-labels" style="display:flex;gap:4px;margin-top:4px"></div>
-            </div>
-            <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--rl);padding:14px;margin-bottom:12px">
-              <div style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:10px">🏆 Top Estados</div>
-              <div id="pstat-states" style="display:flex;flex-direction:column;gap:6px"></div>
-            </div>
-            <button onclick="shareStats()" class="btn btn-secondary w100"><i class="ti ti-share"></i> Compartilhar resultado</button>
-          </div>
-
-          <!-- ══ TAB: ADMIN (exclusiva) ══ -->
-          <div id="ptab-content-admin" style="padding:14px 16px;display:none">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-              <i class="ti ti-shield" style="font-size:20px;color:#f59e0b"></i>
-              <div>
-                <div style="font-size:16px;font-weight:800;color:var(--text)">Painel Admin</div>
-                <div style="font-size:11px;color:var(--t3)" data-i18n="g_38">Configurações exclusivas de administrador</div>
-              </div>
-            </div>
+          <!-- ══ SEÇÃO: ADMIN (exclusiva, recolhível — conteúdo raro no
+               dia a dia; escondida por completo pra quem não é admin
+               via _initAdminTab()/renderAdminTab() em app.js) ══ -->
+          <div id="pf-sec-admin" style="display:none;padding:14px 16px 6px;border-top:1.5px solid var(--border)">
+            <details id="pf-admin-details">
+              <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;padding:14px 16px;background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(234,88,12,.08));border:1.5px solid rgba(245,158,11,.4);border-radius:14px;font-size:14px;font-weight:800;color:#f59e0b">
+                <i class="ti ti-shield" style="font-size:18px"></i> ⚙️ Configurações de Admin
+                <i class="ti ti-chevron-down" style="margin-left:auto;color:#f59e0b"></i>
+              </summary>
+              <div style="padding:14px 2px 0">
 
             <!-- VIP Status -->
             <div style="background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(234,88,12,.08));border:1.5px solid rgba(245,158,11,.4);border-radius:12px;padding:14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
@@ -3241,6 +3175,37 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
               <i class="ti ti-device-floppy"></i> Salvar configurações admin
             </button>
             <div id="adm-save-status" style="font-size:12px;text-align:center;margin-top:8px;color:var(--green);display:none">✓ Salvo!</div>
+              </div>
+            </details>
+          </div><!-- /pf-sec-admin -->
+
+          <!-- ══ Mais + Sessão — fim da tela única (v167: achado E2E, sem
+               eles ninguém chegava no Tutorial/Configurações/Sair) ══ -->
+          <div style="padding:14px 16px 24px;display:flex;flex-direction:column;gap:12px">
+
+            <!-- CARD: Mais -->
+            <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:16px;overflow:hidden">
+              <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+                <i class="ti ti-dots" style="font-size:15px;color:var(--t3)"></i>
+                <span style="font-size:12px;font-weight:800;color:var(--text)" data-i18n="g_239c">Mais</span>
+              </div>
+              <div style="padding:8px;display:flex;flex-direction:column;gap:2px">
+                <button class="btn btn-secondary w100" style="justify-content:flex-start;border:none;background:none" onclick="sv('tutorial')"><i class="ti ti-book"></i> <span data-i18n="tut_center">Central de Tutoriais</span></button>
+                <button class="btn btn-secondary w100" style="justify-content:flex-start;border:none;background:none" onclick="sv('settings')"><i class="ti ti-settings"></i> <span data-i18n="settings_adv">Configurações avançadas</span></button>
+              </div>
+            </div>
+
+            <!-- CARD: Sessão -->
+            <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:16px;overflow:hidden">
+              <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+                <i class="ti ti-door-exit" style="font-size:15px;color:var(--t3)"></i>
+                <span style="font-size:12px;font-weight:800;color:var(--text)" data-i18n="g_239b">Sessão</span>
+              </div>
+              <div style="padding:14px 16px">
+                <button class="btn btn-secondary w100" onclick="confirmLogout()"><i class="ti ti-logout"></i> <span data-i18n="logout">Sair</span></button>
+              </div>
+            </div>
+
           </div>
 
         </div><!-- /profile-tab-scroll -->
@@ -6115,22 +6080,6 @@ html, body, #app, .bottom-nav, .sidebar, .drawer{
 
 
 
-<style>
-/* v104: MODO CELULAR FORÇADO NO PC (html.force-cel) — precisa vir DEPOIS
-   de todas as @media de desktop pra vencer o cascade (mob-detail usa
-   !important lá em cima). Num celular a classe é inofensiva (as regras
-   mobile já valem naturalmente abaixo de 768px). */
-html.force-cel .sidebar{display:none!important}
-html.force-cel .bottom-nav{display:flex!important}
-html.force-cel .main-area{max-width:520px;margin:0 auto;width:100%;border-left:1.5px solid var(--border);border-right:1.5px solid var(--border)}
-html.force-cel .jobs-view{flex-direction:column!important}
-html.force-cel .jlist-panel{width:100%!important;min-width:0!important;border-right:none!important;flex:1!important}
-html.force-cel .jdetail{display:none!important}
-html.force-cel .mob-detail.show{display:flex!important}
-html.force-cel .plans-grid{grid-template-columns:1fr!important}
-html.force-cel .view-scroll{padding:14px 12px}
-</style>
-
 <!-- ══ 📊 DESEMPENHO DOS MEUS TEXTOS (v23) ══ -->
 <div class="overlay gone" id="text-stats-overlay" onclick="if(event.target===this)g('#text-stats-overlay').classList.add('gone')">
   <div class="modal" style="max-width:460px;max-height:85dvh;display:flex;flex-direction:column;overflow:hidden">
@@ -6169,7 +6118,6 @@ html.force-cel .view-scroll{padding:14px 12px}
       <div class="tour-slide"><div class="tour-emoji">🤖</div><div class="tour-title">Passo 3 — Envio automático</div><div class="tour-text">Na aba <b>Automático</b> (planos VIP), o robô envia por você <b>24 horas por dia</b>:<br><br>1️⃣ Escolha a fonte de vagas<br>2️⃣ Ajuste os filtros (os mesmos do manual)<br>3️⃣ Escolha seu perfil<br>4️⃣ Toque em <b>Iniciar</b><br><br>🛡️ O robô envia em <b>ritmo humano</b> (um a cada 5-6 min) pra proteger seu Gmail, e você acompanha tudo em tempo real.</div></div>
       <div class="tour-slide"><div class="tour-emoji">💎</div><div class="tour-title">Diamantes, planos e recompensas</div><div class="tour-text">Aqui <b>não existe compra</b>: você <b>doa via PIX</b>, recebe <b>💎 diamantes</b> e <b>troca por planos</b> quando quiser — a troca ativa <b>na hora</b>.<br><br>🎁 E dá pra ganhar 💎 <b>de graça</b> nas <b>Recompensas</b> (aba Planos): primeira candidatura, perfil completo, marcos de envios…<br><br>Diamante de doação pode até ser <b>doado a um amigo</b>. Seu saldo fica sempre à vista no ☰ Menu.</div></div>
       <div class="tour-slide"><div class="tour-emoji">📬</div><div class="tour-title">Quando a empresa responder…</div><div class="tour-text">A resposta chega <b>direto na caixa de entrada do SEU Gmail</b> — a conversa é sua com a empresa, do seu próprio e-mail. O H2BApply nunca lê nem guarda sua caixa de entrada.<br><br>💡 Fique de olho no Gmail (e na pasta de spam, às vezes cai lá).<br><br>📊 Em <b>Enviadas</b> você vê o histórico completo de todas as candidaturas.</div></div>
-      <div class="tour-slide"><div class="tour-emoji">🖥️</div><div class="tour-title">Escolha como ver o app</div><div class="tour-text">No <b>☰ Menu</b> você escolhe o <b>modo de tela</b>:<br><br>✨ <b>Auto</b> — o app decide pelo tamanho da tela<br>📱 <b>Tela pequena</b> — visual de celular<br>🖥️ <b>Tela cheia</b> — visual de computador<br><br>💡 Dica: <b>vire o celular deitado</b> que a Tela cheia fica perfeita. Teste os dois — a escolha fica salva neste aparelho.</div></div>
       <div class="tour-slide"><div class="tour-emoji">🚀</div><div class="tour-title">Pronto pra começar!</div><div class="tour-text">Ordem que funciona:<br><br>1️⃣ <b>Criar perfil</b> (currículo + seus textos) <span style="color:#d97706;font-weight:700">+3 💎</span><br>2️⃣ <b>Testar um envio manual</b> <span style="color:#d97706;font-weight:700">+2 💎</span><br>3️⃣ <b>Ligar o automático</b> e deixar trabalhar<br><br>Este guia fica pra sempre no <b>☰ Menu → Como usar o app</b> (e no atalho 📖 Como Usar da tela inicial) · <span style="color:var(--blue);cursor:pointer;font-weight:700" onclick="window.open('/como-usar','_blank')">ver o guia completo com fotos →</span></div>
         <div style="display:flex;gap:8px;margin-top:14px"><button class="btn btn-primary" style="flex:1" onclick="closeTour();sv('profile');setTimeout(function(){if(typeof switchProfileTab==='function')switchProfileTab('profiles')},150)">👤 Criar meu perfil</button><button class="btn btn-secondary" style="flex:1" onclick="closeTour();sv('jobs')">🔎 Ver vagas</button></div>
       </div>

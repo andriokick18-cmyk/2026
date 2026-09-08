@@ -123,13 +123,6 @@ for (let i = 0; i < 5000; i++) {
 // nada — e o /api/status precisa AVISAR (planRulesNotice).
 // ⏫ v125: dono do robô que dorme em waiting_limit (fixture em auto_jobs.json)
 users["dormindo@test.com"] = { name: "Dormindo", plan: "free", cvs: [], profiles: [] };
-// 🔖 v126: usuário que salvou vagas ANTES do sistema de snapshot (só ids no
-// u.saved, sem u.savedJobs) — a auto-cura do GET /api/saved tem que resolver
-// os snapshots pelas planilhas carregadas. Pega um case REAL da jul2025
-// bundled (o boot recupera essa planilha das cópias do código).
-const _jul2025Rows = JSON.parse(fs.readFileSync(path.join(__dirname, "jul2025_compact.json"), "utf8"));
-const _caseAntigo = _jul2025Rows.find((r) => r.c && r.e && r.e.includes("@")).c;
-users["colecionador@test.com"] = { name: "Colecionador", plan: "free", cvs: [], profiles: [], saved: [_caseAntigo, "H-999-NUNCA-EXISTIU"] };
 users["legadoplano@test.com"] = {
   name: "Legado Plano", plan: "vipro", cvs: [], profiles: [],
   vip: { manualExpires: Date.now() + 20 * 86400_000, autoExpires: Date.now() + 20 * 86400_000, days: 30, source: "pix", active: true },
@@ -659,17 +652,8 @@ async function testAuthWatchdogPush() {
     check(`🌐 i18n-5: CATRACA de tradução — textos PT sem data-i18n nas views: ${_semTag.length} (teto 5 — v136 zerou o site, só pode continuar zerado)`,
       _semTag.length <= 5, `estourou o teto: ${_semTag.length} — novas telas PRECISAM nascer com data-i18n (amostra: ${_semTag.slice(0, 3).join(" | ")})`);
 
-    // 🔖 v126: a aba Vagas Salvas tem entrada VISÍVEL na sidebar, o card de
-    // PLANILHA também tem o 🔖 (antes só a Seasonal tinha), e a lista vem
-    // dos snapshots do servidor (não mais do filtro da página carregada).
-    const _v126Front = home.body.includes('id="si-saved"') &&
-      frontAll.includes("_savedJobsCache") &&
-      frontAll.includes("function openSavedJob") &&
-      /mkSheetCard[\s\S]{0,2000}save-btn/.test(frontAll) &&
-      /"saved_jobs":"Vagas Salvas"/.test(frontAll) &&
-      /"saved_jobs":"Saved Jobs"/.test(frontAll);
-    check("🔖 v126: aba Vagas Salvas na sidebar + 🔖 nos cards de planilha + lista via snapshots + dicionário PT/EN",
-      _v126Front, "si-saved, _savedJobsCache, openSavedJob, save-btn no mkSheetCard ou chaves saved_* não encontrados");
+    // 🔖 v126 (Vagas Salvas) removido de propósito nesta reconstrução enxuta
+    // (README.md) — não há mais aba/estado/rota pra testar aqui.
 
     // v95 (reestruturação parte 8): o wizard de ativação NUNCA cobre o
     // caminho do dinheiro — no checkout de doação (#plan-step-2 visível) o
@@ -919,32 +903,9 @@ async function testAuthWatchdogPush() {
     await req2("POST", "/api/auto/stop", {});
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
 
-    // ═══ 🔖 v126 (dono, 12/08): VAGAS SALVAS de verdade ═══
-    // (a) salvar guarda SNAPSHOT: aparece na aba mesmo se a vaga sumir das
-    // planilhas; (b) quem salvou ANTES (só id) é curado no GET; (c) remover
-    // tira id + snapshot juntos.
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "colecionador@test.com" });
-    const svAdd = await req2("POST", "/api/saved", { add: true, job: { id: "H-400-FAKE-SNAP-01", title: "Housekeeper", company: "Hotel Snapshot", city: "Miami", state: "FL", wage: "$15.00/h", email: "rh@hotelsnapshot.com", visa: "H-2B", sheet: "jan2026" } });
-    const svGet = await get("/api/saved");
-    const _snapNovo = (svGet.json?.jobs || []).find((j) => j.id === "H-400-FAKE-SNAP-01");
-    check("🔖 v126: salvar guarda o SNAPSHOT completo com data (vaga fictícia não existe em planilha nenhuma — e mesmo assim aparece)",
-      svAdd.json?.ok === true && _snapNovo && _snapNovo.company === "Hotel Snapshot" && _snapNovo.savedAt > 0,
-      JSON.stringify(_snapNovo || svGet.json).slice(0, 160));
-    const _snapAntigo = (svGet.json?.jobs || []).find((j) => j.id === _caseAntigo);
-    check("🔖 v126: vaga salva ANTES do snapshot (só id, 'meses atrás') é CURADA sozinha pelas planilhas — título e empresa aparecem",
-      _snapAntigo && _snapAntigo.title && _snapAntigo.company && (svGet.json?.saved || []).includes("H-999-NUNCA-EXISTIU"),
-      JSON.stringify(_snapAntigo || svGet.json?.saved).slice(0, 160));
-    const svDel = await req2("POST", "/api/saved", { remove: "H-400-FAKE-SNAP-01" });
-    const svGet2 = await get("/api/saved");
-    check("🔖 v126: remover dos salvos tira o id E o snapshot juntos",
-      svDel.json?.ok === true && !(svGet2.json?.saved || []).includes("H-400-FAKE-SNAP-01") && !(svGet2.json?.jobs || []).some((j) => j.id === "H-400-FAKE-SNAP-01"),
-      JSON.stringify({ saved: svGet2.json?.saved?.length, jobs: svGet2.json?.jobs?.length }));
-    const svLegacy = await req2("POST", "/api/saved", { saved: [_caseAntigo] });
-    const svGet3 = await get("/api/saved");
-    check("🔖 v126: POST legado (lista de ids do front antigo em cache) segue funcionando e poda snapshots órfãos",
-      svLegacy.json?.ok === true && (svGet3.json?.saved || []).length === 1 && (svGet3.json?.jobs || []).every((j) => j.id === _caseAntigo),
-      JSON.stringify({ saved: svGet3.json?.saved, jobs: (svGet3.json?.jobs || []).map((j) => j.id) }));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
+    // 🔖 v126 (Vagas Salvas) removido de propósito nesta reconstrução enxuta
+    // (README.md) — a rota /api/saved não existe mais aqui, então os testes
+    // de snapshot/cura/remoção dela foram removidos junto (testavam 404).
 
     // ═══ ⏫ v125 (print do dono, 12/08): plano ativado ACORDA o robô ═══
     // dormindo@test.com está em waiting_limit até amanhã (limite do plano
