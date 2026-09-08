@@ -42,7 +42,7 @@
 //    completa (6 temporadas, vagas com e-mail) + reestruturação visual
 //    das abas (seção recolhível "Temporadas Anteriores", Manual+Automático).
 //
-const CACHE_NAME = "h2bapply-2026-v6"; // v6: auditoria da jornada doação→diamante→plano→envio — formatação de R$ (vírgula) em 2 telas de doação, tabela de limites manual/auto derivada da fonte única (nunca mais hardcoded) e correção do "hoje" inflado na Visão do Dono quando uma entrada é cancelada no mesmo dia
+const CACHE_NAME = "h2bapply-2026-v7"; // v7: bug real do Diego — 3 assuntos idênticos no onboarding só mostravam um toast de 2,8s (fácil de não notar em celular real, parecia "o botão não faz nada"); agora fica um aviso vermelho PERSISTENTE na tela (igual ao editor de perfil completo) até o usuário corrigir de verdade, distinguindo "faltam textos" de "os textos são iguais"
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).

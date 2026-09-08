@@ -5632,11 +5632,23 @@ html, body, #app, .bottom-nav, .sidebar, .drawer{
         <label>Assuntos do email <span style="font-weight:500;color:var(--t3)">— mínimo 3, cada envio usa um diferente</span></label>
         <div id="ob-h2b-subjects-list" style="display:flex;flex-direction:column;gap:6px;margin-top:6px"></div>
         <button type="button" onclick="obAddVtSubject('h2b')" style="margin-top:8px;font-size:12px;color:var(--blue);font-weight:700;background:none;border:none;cursor:pointer;font-family:inherit;padding:0">+ Adicionar outro assunto</button>
+        <div id="ob-h2b-subjects-warn" style="display:none;align-items:center;gap:7px;background:var(--redl);border:1.5px solid var(--redb);border-radius:var(--r);padding:8px 11px;font-size:12px;color:var(--red);font-weight:600;margin-top:8px">
+          <i class="ti ti-alert-circle" style="font-size:15px;flex-shrink:0"></i>
+          <span id="ob-h2b-subjects-warn-txt">Mínimo 3 assuntos diferentes entre si.</span>
+        </div>
       </div>
       <div class="field" style="margin-bottom:14px">
         <label>Corpo do email <span style="font-weight:500;color:var(--t3)">— mínimo 3, escritos por você</span></label>
         <div id="ob-h2b-bodies-list" style="display:flex;flex-direction:column;gap:10px;margin-top:6px"></div>
         <button type="button" onclick="obAddVtBody('h2b')" style="margin-top:8px;font-size:12px;color:var(--blue);font-weight:700;background:none;border:none;cursor:pointer;font-family:inherit;padding:0">+ Adicionar outro corpo de email</button>
+        <div id="ob-h2b-bodies-warn" style="display:none;align-items:center;gap:7px;background:var(--redl);border:1.5px solid var(--redb);border-radius:var(--r);padding:8px 11px;font-size:12px;color:var(--red);font-weight:600;margin-top:8px">
+          <i class="ti ti-alert-circle" style="font-size:15px;flex-shrink:0"></i>
+          <span id="ob-h2b-bodies-warn-txt">Mínimo 3 corpos diferentes entre si.</span>
+        </div>
+      </div>
+      <div id="ob-h2b-pdf-warn" style="display:none;align-items:center;gap:7px;background:var(--redl);border:1.5px solid var(--redb);border-radius:var(--r);padding:8px 11px;font-size:12px;color:var(--red);font-weight:600;margin-bottom:10px">
+        <i class="ti ti-alert-circle" style="font-size:15px;flex-shrink:0"></i>
+        Anexe pelo menos um Currículo ou uma Carta (PDF) acima antes de salvar.
       </div>
       <button onclick="obSaveVisaProfile('h2b')" class="btn btn-primary w100" id="ob-btn-h2b" style="padding:13px;font-size:14px">Salvar Perfil H-2B →</button>
       <button onclick="obSkipVisaProfile('h2b')" style="margin-top:8px;width:100%;background:none;border:none;cursor:pointer;font-size:12px;color:var(--t3);font-family:inherit">Pular este perfil</button>
@@ -5690,11 +5702,23 @@ html, body, #app, .bottom-nav, .sidebar, .drawer{
         <label>Assuntos do email <span style="font-weight:500;color:var(--t3)">— mínimo 3, cada envio usa um diferente</span></label>
         <div id="ob-h2a-subjects-list" style="display:flex;flex-direction:column;gap:6px;margin-top:6px"></div>
         <button type="button" onclick="obAddVtSubject('h2a')" style="margin-top:8px;font-size:12px;color:#059669;font-weight:700;background:none;border:none;cursor:pointer;font-family:inherit;padding:0">+ Adicionar outro assunto</button>
+        <div id="ob-h2a-subjects-warn" style="display:none;align-items:center;gap:7px;background:var(--redl);border:1.5px solid var(--redb);border-radius:var(--r);padding:8px 11px;font-size:12px;color:var(--red);font-weight:600;margin-top:8px">
+          <i class="ti ti-alert-circle" style="font-size:15px;flex-shrink:0"></i>
+          <span id="ob-h2a-subjects-warn-txt">Mínimo 3 assuntos diferentes entre si.</span>
+        </div>
       </div>
       <div class="field" style="margin-bottom:14px">
         <label>Corpo do email <span style="font-weight:500;color:var(--t3)">— mínimo 3, escritos por você</span></label>
         <div id="ob-h2a-bodies-list" style="display:flex;flex-direction:column;gap:10px;margin-top:6px"></div>
         <button type="button" onclick="obAddVtBody('h2a')" style="margin-top:8px;font-size:12px;color:#059669;font-weight:700;background:none;border:none;cursor:pointer;font-family:inherit;padding:0">+ Adicionar outro corpo de email</button>
+        <div id="ob-h2a-bodies-warn" style="display:none;align-items:center;gap:7px;background:var(--redl);border:1.5px solid var(--redb);border-radius:var(--r);padding:8px 11px;font-size:12px;color:var(--red);font-weight:600;margin-top:8px">
+          <i class="ti ti-alert-circle" style="font-size:15px;flex-shrink:0"></i>
+          <span id="ob-h2a-bodies-warn-txt">Mínimo 3 corpos diferentes entre si.</span>
+        </div>
+      </div>
+      <div id="ob-h2a-pdf-warn" style="display:none;align-items:center;gap:7px;background:var(--redl);border:1.5px solid var(--redb);border-radius:var(--r);padding:8px 11px;font-size:12px;color:var(--red);font-weight:600;margin-bottom:10px">
+        <i class="ti ti-alert-circle" style="font-size:15px;flex-shrink:0"></i>
+        Anexe pelo menos um Currículo ou uma Carta (PDF) acima antes de salvar.
       </div>
       <button onclick="obSaveVisaProfile('h2a')" class="btn btn-primary w100" id="ob-btn-h2a" style="padding:13px;font-size:14px;background:linear-gradient(135deg,#059669,#10b981)">Salvar Perfil H-2A →</button>
       <button onclick="obSkipVisaProfile('h2a')" style="margin-top:8px;width:100%;background:none;border:none;cursor:pointer;font-size:12px;color:var(--t3);font-family:inherit">Pular este perfil</button>

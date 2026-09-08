@@ -6947,14 +6947,42 @@ async function obSaveVisaProfile(vt){
   // DEPOIS de já ter gasto 1 upload de currículo (rate-limitado a 10/hora). Agora
   // deduplica igual ao editor de perfil completo (saveProfileFromEditor) e ao
   // servidor — as 3 validações sempre concordam.
-  const subjects=[...new Set(_obPrf[vt].subjects.map(s=>(s||"").trim()).filter(Boolean))];
-  const emailBodies=[...new Set(_obPrf[vt].bodies.map(b=>(b||"").trim()).filter(Boolean))];
-  if(subjects.length<3){toast("Preencha pelo menos 3 assuntos DIFERENTES entre si","r");return;}
-  if(emailBodies.length<3){toast("Preencha pelo menos 3 corpos de e-mail DIFERENTES entre si","r");return;}
-  if(!_obPrf[vt].res&&!_obPrf[vt].cov){
-    toast("Anexe pelo menos um currículo ou uma carta de apresentação a este perfil","r");
+  const subjRaw=_obPrf[vt].subjects.map(s=>(s||"").trim()).filter(Boolean);
+  const bodyRaw=_obPrf[vt].bodies.map(b=>(b||"").trim()).filter(Boolean);
+  const subjects=[...new Set(subjRaw)];
+  const emailBodies=[...new Set(bodyRaw)];
+  // v168 (bug real, "cliente clica em Salvar e não acontece nada" — 22/09/2026,
+  // print do Diego com 3 assuntos IDÊNTICOS "H-2B Worker Available"): a
+  // validação já bloqueava certo (regra 7 do CLAUDE.md: nunca deixar sair
+  // texto igual de todo mundo), mas o ÚNICO aviso era um toast de 2,8s — em
+  // aparelho real, fácil de não notar (o botão volta ao normal, nada muda na
+  // tela, PARECE que "não fez nada"). Agora, igual ao editor de perfil
+  // completo (#pe-subjects-warn), fica um aviso PERSISTENTE na tela — só some
+  // quando o problema é corrigido de verdade — e a mensagem distingue "faltam
+  // textos" de "os textos são iguais" (o caso real do cliente).
+  const subjWarn=g("#ob-"+vt+"-subjects-warn"),subjWarnTxt=g("#ob-"+vt+"-subjects-warn-txt");
+  const bodyWarn=g("#ob-"+vt+"-bodies-warn"),bodyWarnTxt=g("#ob-"+vt+"-bodies-warn-txt");
+  const pdfWarn=g("#ob-"+vt+"-pdf-warn");
+  if(subjects.length<3){
+    if(subjWarnTxt)subjWarnTxt.textContent=subjRaw.length<3?"Faltam assuntos — escreva pelo menos 3.":"Os assuntos não podem ser todos iguais — mude o texto de cada um.";
+    if(subjWarn){subjWarn.style.display="flex";subjWarn.scrollIntoView({behavior:"smooth",block:"center"});}
+    toast("⚠️ Mínimo 3 assuntos DIFERENTES entre si","r");
     return;
   }
+  if(subjWarn)subjWarn.style.display="none";
+  if(emailBodies.length<3){
+    if(bodyWarnTxt)bodyWarnTxt.textContent=bodyRaw.length<3?"Faltam corpos de e-mail — escreva pelo menos 3.":"Os corpos não podem ser todos iguais — mude o texto de cada um.";
+    if(bodyWarn){bodyWarn.style.display="flex";bodyWarn.scrollIntoView({behavior:"smooth",block:"center"});}
+    toast("⚠️ Mínimo 3 corpos de e-mail DIFERENTES entre si","r");
+    return;
+  }
+  if(bodyWarn)bodyWarn.style.display="none";
+  if(!_obPrf[vt].res&&!_obPrf[vt].cov){
+    if(pdfWarn){pdfWarn.style.display="flex";pdfWarn.scrollIntoView({behavior:"smooth",block:"center"});}
+    toast("⚠️ Anexe pelo menos um currículo ou uma carta de apresentação a este perfil","r");
+    return;
+  }
+  if(pdfWarn)pdfWarn.style.display="none";
   const label=vt==="h2a"?"Salvar Perfil H-2A →":"Salvar Perfil H-2B →";
   const btn=g("#ob-btn-"+vt);
   if(btn){btn.disabled=true;btn.innerHTML='<span class="spin spin-sm"></span> Salvando...';}
