@@ -13,12 +13,13 @@ const T = (msg,type)=>{ try{ if(typeof toast==="function"){toast(msg,type||"");r
 /* ─── CSS do módulo ─── */
 const css = document.createElement("style");
 css.textContent = `
-/* v110 (dono, 02/08): botão flutuante ✨ REMOVIDO da tela ("não pode ficar
-   sempre incomodando") — o hub Extras mora agora no MENU ☰ (item injetado
-   abaixo). O elemento #hx-fab continua existindo escondido só porque o
-   badge #hx-fab-badge dentro dele é referenciado pelo contador de
-   lembretes — nunca reexibir. Atalho de teclado X continua funcionando. */
-#hx-fab{display:none!important}
+/* v-2026: o botão flutuante tinha sido escondido com a promessa de que o
+   hub Extras passaria a morar no "MENU ☰" — mas esta reconstrução enxuta
+   nunca teve esse menu (navegação reduzida a Início/Perfil/Planos), então
+   as 6 ferramentas (notas, lembretes, calculadora, backup etc.) ficavam
+   inacessíveis pra quem não sabia do atalho de teclado X (e inacessíveis
+   de vez no celular, sem teclado). Restaurado como botão flutuante. */
+#hx-fab{position:fixed;right:14px;bottom:100px;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;cursor:pointer;z-index:480;display:flex;align-items:center;justify-content:center;font-size:21px;box-shadow:0 4px 16px rgba(99,102,241,.45)}
 #hx-fab:active{transform:scale(.92)}
 #hx-fab .hx-badge{position:absolute;top:-3px;right:-3px;background:#ef4444;color:#fff;font-size:9px;font-weight:800;min-width:16px;height:16px;border-radius:8px;display:none;align-items:center;justify-content:center;padding:0 4px}
 #hx-top{position:fixed;right:14px;bottom:180px;width:40px;height:40px;border-radius:50%;background:rgba(30,41,59,.85);color:#fff;border:none;cursor:pointer;z-index:9490;display:none;align-items:center;justify-content:center;font-size:17px;backdrop-filter:blur(4px)}
@@ -93,7 +94,7 @@ window.addEventListener("load",()=>{ setTimeout(()=>{
 document.addEventListener("keydown",e=>{
   if(["INPUT","TEXTAREA","SELECT"].includes(document.activeElement.tagName))return;
   if(e.ctrlKey||e.metaKey||e.altKey)return;
-  const map={"1":"jobs","2":"profile","3":"plans","4":"hist","5":"saved"}; // v72: "respostas" removida (aba não existe mais)
+  const map={"1":"jobs","2":"profile","3":"plans"}; // v-2026: "4"/"5" apontavam pra "hist"/"saved", views que não existem mais nesta reconstrução (apagavam a tela inteira) — removidas
   if(map[e.key] && typeof sv==="function"){sv(map[e.key]);T("Aba: "+map[e.key]);}
   if(e.key==="/"){e.preventDefault();const s=$$("input[type='search'],input[placeholder*='uscar'],input[placeholder*='earch']").find(i=>i.offsetParent);if(s)s.focus();}
   if(e.key.toLowerCase()==="t"){toggleTheme();}
@@ -190,7 +191,7 @@ panel.innerHTML=`<div id="hx-sheet">
  <div class="hx-sub" id="hx-sub-tips">
   <h4>⌨️ Atalhos de teclado</h4>
   <div style="font-size:13px;line-height:2">
-   <b>1–5</b> troca de aba · <b>/</b> foca a busca · <b>T</b> alterna tema · <b>X</b> abre Extras · <b>ESC</b> fecha janelas · <b>duplo clique</b> na busca limpa o campo
+   <b>1–3</b> troca de aba · <b>/</b> foca a busca · <b>T</b> alterna tema · <b>X</b> abre Extras · <b>ESC</b> fecha janelas · <b>duplo clique</b> na busca limpa o campo
   </div>
  </div>
 </div>`;

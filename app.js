@@ -394,8 +394,6 @@ function showApp(){
   sv("home");
   // v27: carrega o conjunto de empregadores bloqueados (enviados + fila)
   setTimeout(loadEmpregadoresBloqueados,800);
-  // Carrega inbox em background para badge
-  setTimeout(()=>fetch("/api/inbox?limit=200",{credentials:"include"}).then(r=>r.json()).then(d=>{if(d.ok){INBOX_EMAILS=d.emails||[];_mergeReadState();_updateInboxStats();updInboxBadge(INBOX_EMAILS.filter(e=>!e.isRead).length);_renderHomeReplies();}}).catch(()=>{}),1500);
   // Mensagem de boas-vindas: APENAS no primeiro login verdadeiro (onboarded===false)
   // Após configurar perfil + upload de CV, o servidor persiste onboarded=true e nunca mais exibe
   // Mensagem de boas-vindas removida
@@ -1787,44 +1785,10 @@ function mkDetailHTML(j){
   </div>`;
 }
 
-/* v112: 🇧🇷 tradução automática das Funções da Vaga — o servidor traduz 1x
-   por vaga (cache compartilhado) e o front troca o texto quando chega, com
-   "Ver original em inglês" embaixo. Sem Gemini/erro → fica no inglês em
-   silêncio. */
-const _tradCache={};
-async function _traduzirDescRun(){
-  const els=[...document.querySelectorAll(".vaga-desc-txt:not([data-pt])")];
-  if(!els.length)return;
-  const cs=els[0].getAttribute("data-case")||"";
-  const en=els[0].textContent||"";
-  if(!en.trim())return;
-  els.forEach(e2=>e2.setAttribute("data-pt","1"));
-  const setSt=t=>document.querySelectorAll(".vaga-desc-status").forEach(s=>s.textContent=t);
-  try{
-    let pt=_tradCache[cs||en.slice(0,60)];
-    if(!pt){
-      setSt("· 🇧🇷 traduzindo…");
-      const r=await fetch("/api/traduzir-vaga",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({case:cs,text:en})});
-      const d=await r.json();
-      if(!d.ok){setSt("");return;}
-      pt=d.pt;_tradCache[cs||en.slice(0,60)]=pt;
-    }
-    setSt("· traduzido 🇧🇷");
-    document.querySelectorAll(".vaga-desc-txt").forEach(e2=>{
-      if((e2.getAttribute("data-case")||"")!==cs)return;
-      e2.textContent=pt;
-      const det=document.createElement("details");det.style.marginTop="8px";
-      const sum=document.createElement("summary");sum.textContent="Ver original em inglês";sum.style.cssText="cursor:pointer;font-size:11px;color:var(--t3);font-weight:700";
-      const ori=document.createElement("div");ori.textContent=en;ori.style.cssText="white-space:pre-wrap;margin-top:6px;font-size:11px;color:var(--t3)";
-      det.appendChild(sum);det.appendChild(ori);e2.appendChild(det);
-    });
-  }catch(e){setSt("");}
-}
 function showDetail(html){
   const dc=g("#jd-content");const de=g("#jd-empty");
   if(dc&&de){de.classList.add("gone");dc.style.display="block";dc.innerHTML=html;}
   const mc=g("#mob-detail-content");if(mc)mc.innerHTML=html;
-  setTimeout(_traduzirDescRun,80); // v112: dispara a tradução da descrição
   g("#mob-detail")?.classList.add("show");
 }
 function closeMobDetail(){g("#mob-detail")?.classList.remove("show");}
@@ -2406,7 +2370,7 @@ function updDocBadge(){const n=DOCS.length;const b=g("#sib-docs");if(b){b.style.
 //  PROFILE / TEMPLATE
 // ═══════════════════════════════════════════
 function loadProfile(){
-  g("#cfg-name").value=CFG.name||U.name||"";g("#cfg-country").value=CFG.country||"Brazil";g("#cfg-phone").value=CFG.phone||"";g("#cfg-city").value=CFG.city||"";g("#cfg-lang").value=CFG.language||"pt-BR";
+  g("#cfg-name").value=CFG.name||U.name||"";g("#cfg-country").value=CFG.country||"Brazil";g("#cfg-phone").value=CFG.phone||"";g("#cfg-city").value=CFG.city||"";
   // v168: removida a escrita em #pstat-total-stats — a aba "Números"
   // (gamificação) foi excluída por completo do Perfil.
   // Novos campos
@@ -2521,7 +2485,7 @@ async function _removeSenderEmail(email){
 }
 
 async function saveProfile(){
-  CFG.name=g("#cfg-name").value.trim();CFG.country=g("#cfg-country").value.trim();CFG.phone=g("#cfg-phone").value.trim();CFG.city=g("#cfg-city").value.trim();CFG.language=g("#cfg-lang").value;
+  CFG.name=g("#cfg-name").value.trim();CFG.country=g("#cfg-country").value.trim();CFG.phone=g("#cfg-phone").value.trim();CFG.city=g("#cfg-city").value.trim();
   const newWhatsapp=(g("#cfg-whatsapp")?.value||"").trim();
   // Feedback visual no botão durante salvamento
   const saveBtn=document.querySelector("[onclick='saveProfile()']")||document.querySelector('[onclick="saveProfile()"]');
@@ -3298,7 +3262,7 @@ function openProfileEditor(id,visaType){
   const resSlots=g("#pe-res-slots");
   if(resSlots){
     const res=DOCS.filter(c=>(c.cvType||"resume")==="resume");
-    if(!res.length){resSlots.innerHTML='<div style="font-size:11px;color:var(--t3)">Nenhum currículo na conta. <span style="color:var(--blue);cursor:pointer" onclick="closeProfileEditor();sv(\'docs\')">Adicionar →</span></div>';}
+    if(!res.length){resSlots.innerHTML='<div style="font-size:11px;color:var(--t3)">Nenhum currículo na conta. <span style="color:var(--blue);cursor:pointer" onclick="closeProfileEditor();sv(\'profile\');setTimeout(()=>switchProfileTab(\'profiles\'),100)">Adicionar →</span></div>';}
     else{
       resSlots.innerHTML=[
         `<label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;padding:6px 8px;border-radius:7px;border:1.5px solid var(--border);background:var(--sf2)"><input type="radio" name="pe-res" value="" style="accent-color:var(--purple)"> <span style="color:var(--t2)">Nenhum</span></label>`,
@@ -3336,7 +3300,7 @@ function openProfileEditor(id,visaType){
   const coverSlots=g("#pe-cover-slots");
   if(coverSlots){
     const covers=DOCS.filter(c=>c.cvType==="cover");
-    if(!covers.length){coverSlots.innerHTML='<div style="font-size:11px;color:var(--t3)">Nenhuma cover letter na conta. <span style="color:var(--blue);cursor:pointer" onclick="closeProfileEditor();sv(\'docs\')">Adicionar →</span></div>';}
+    if(!covers.length){coverSlots.innerHTML='<div style="font-size:11px;color:var(--t3)">Nenhuma cover letter na conta. <span style="color:var(--blue);cursor:pointer" onclick="closeProfileEditor();sv(\'profile\');setTimeout(()=>switchProfileTab(\'profiles\'),100)">Adicionar →</span></div>';}
     else{
       coverSlots.innerHTML=[
         `<label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;padding:6px 8px;border-radius:7px;border:1.5px solid var(--border);background:var(--sf2)"><input type="radio" name="pe-cover" value="" style="accent-color:var(--purple)"> <span style="color:var(--t2)">Nenhuma</span></label>`,
@@ -3584,48 +3548,6 @@ const _origPickTemplate=typeof pickTemplate==="function"?pickTemplate:null;
 // v18-FIX: pickTemplateForProfile() removida — era outro caminho (órfão, sem
 // botão chamando) que despejava um corpo de e-mail ENLATADO direto no perfil,
 // o oposto do que foi pedido: perfil só com texto escrito pela própria pessoa.
-
-// ── HELPERS MODAL RESPOSTAS ──────────────────────────
-function toggleLinkedJobExpanded(){
-  const exp=g("#ed-linked-expanded");const btn=g("#ed-lnk-expand-btn");if(!exp)return;
-  const hidden=exp.classList.toggle("gone");
-  if(btn)btn.innerHTML=hidden?'<i class="ti ti-chevron-down"></i>':'<i class="ti ti-chevron-up"></i>';
-}
-function toggleReplySubject(){
-  const s=g("#ed-reply-subject");if(!s)return;
-  s.classList.toggle("gone");
-  if(!s.classList.contains("gone"))s.focus();
-}
-function openChangeLinkedJobModal(){
-  const email=g("#email-detail-overlay")?._currentEmail;if(!email)return;
-  const items=HIST.slice().reverse().slice(0,40);
-  if(!items.length){toast("Nenhum envio encontrado","r");return;}
-  const ol=document.createElement("div");
-  ol.style.cssText="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.65);display:flex;align-items:flex-end;justify-content:center";
-  ol.innerHTML=`<div style="background:var(--sf);border-radius:16px 16px 0 0;width:100%;max-width:540px;max-height:70dvh;display:flex;flex-direction:column;overflow:hidden">
-    <div style="padding:12px 16px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
-      <div style="font-size:15px;font-weight:800">Trocar vaga vinculada</div>
-      <button aria-label="Fechar" title="Fechar" onclick="this.closest('[data-chg]').remove()" style="background:none;border:none;cursor:pointer;color:var(--t3);font-size:20px"><i class="ti ti-x"></i></button>
-    </div>
-    <div style="overflow-y:auto;padding:8px 12px 16px;display:flex;flex-direction:column;gap:6px">
-      ${items.map((h,i)=>`<button onclick="window._chgJob('${email.id}',${HIST.length-1-i})" style="text-align:left;background:var(--sf2);border:1px solid var(--border);border-radius:10px;padding:9px 12px;cursor:pointer;width:100%">
-        <div style="font-size:13px;font-weight:700">${esc(h.job||"Vaga")}</div>
-        <div style="font-size:11px;color:var(--t3)">${esc(h.company||"")} · ${h.date?new Date(h.date).toLocaleDateString("pt-BR"):""}</div>
-      </button>`).join("")}
-    </div>
-  </div>`;
-  ol.dataset.chg="1";
-  ol.addEventListener("click",e=>{if(e.target===ol)ol.remove();});
-  document.body.appendChild(ol);
-  window._chgJob=(emailId,histIdx)=>{
-    const em=INBOX_EMAILS.find(e=>e.id===emailId);const h=HIST[histIdx];
-    if(!em||!h)return;
-    em.linkedApp={job:h.job,company:h.company,to:h.to,jobSnapshot:null,date:h.date,matchType:"manual"};
-    document.querySelector("[data-chg]")?.remove();
-    renderLinkedAppCard(em,(em.from||"").match(/<([^>]+)>/)?.[1]||em.from||"");
-    toast("Vaga atualizada","g");
-  };
-}
 
 // v18-FIX: useMyTpl() removida — escrevia num elemento #af-body que nem
 // existe mais no HTML (sobra do wizard de automático pré-redesign) e caía no
@@ -5299,37 +5221,11 @@ setTimeout(()=>{
   }catch{}
 },2500);
 
-// ═══════════════════════════════════════════
-//  CAIXA DE ENTRADA — INBOX REAL DO GMAIL
-// ═══════════════════════════════════════════
-let INBOX_EMAILS = [];      // todos os e-mails carregados
-let INBOX_FILTER = "all";   // filtro de sub-aba atual
-let INBOX_MAIN_TAB = "replies"; // aba principal: "replies" | "all"
-let INBOX_LOADING = false;
-let INBOX_LAST_LOAD = 0;
-let INBOX_POLL = null;
-let _currentEmailId = null; // e-mail aberto no modal
-let _edTranslationVisible=false;
-let _edTranslating=false;
-
-// Estado local persistido em localStorage
-let _STARRED_IDS = new Set();   // IDs marcados como favoritos
-let _ARCHIVED_IDS = new Set();  // IDs arquivados
-
-function _loadInboxLocalState(){
-  try{
-    const st=JSON.parse(localStorage.getItem("h2b-inbox-starred")||"[]");
-    _STARRED_IDS=new Set(st);
-  }catch{}
-  try{
-    const ar=JSON.parse(localStorage.getItem("h2b-inbox-archived")||"[]");
-    _ARCHIVED_IDS=new Set(ar);
-  }catch{}
-}
-function _saveStarred(){try{localStorage.setItem("h2b-inbox-starred",JSON.stringify([..._STARRED_IDS]));}catch{}}
-function _saveArchived(){try{localStorage.setItem("h2b-inbox-archived",JSON.stringify([..._ARCHIVED_IDS]));}catch{}}
-
 // ── Estado de leitura persistido localmente E no servidor ──
+// (v-2026: a lista/detalhe de inbox foi removida junto com a aba Respostas —
+// GMAIL_SEND_ONLY no servidor nunca devolve e-mails reais — mas o servidor
+// ainda manda readEmailIds no /api/status e esse estado local é mesclado
+// nele no login; mantido só por isso.)
 let _READ_IDS = new Set();
 function _loadReadState(){
   try{const r=JSON.parse(localStorage.getItem("h2b-inbox-read")||"[]");_READ_IDS=new Set(r);}catch{}
@@ -5342,326 +5238,6 @@ function _loadReadStateFromServer(serverIds){
   }
 }
 function _saveReadState(){try{localStorage.setItem("h2b-inbox-read",JSON.stringify([..._READ_IDS]));}catch{}}
-
-function _mergeReadState(){
-  // Aplica estado de leitura local em cima do que veio do servidor
-  INBOX_EMAILS.forEach(e=>{if(_READ_IDS.has(e.id))e.isRead=true;});
-}
-
-// ── Carregar inbox ────────────────────────────────────────
-let INBOX_PAGE = 100; // carrega mais por padrão
-async function loadInbox(force=false){
-  // FIX: se já está carregando mas temos emails, renderiza o que temos (evita tela em branco)
-  if(INBOX_LOADING){if(INBOX_EMAILS.length)renderInbox();return;}
-  // FIX: se cache ainda válido, garante render mesmo assim
-  if(!force&&Date.now()-INBOX_LAST_LOAD<30000&&INBOX_EMAILS.length){renderInbox();_updateInboxStats();return;}
-  INBOX_LOADING=true;
-
-  const list=g("#inbox-list");
-  const sub=g("#inbox-subtitle");
-  const btn=g("#inbox-refresh-btn");
-  if(btn){btn.disabled=true;btn.innerHTML='<span class="spin spin-sm"></span>';}
-  if(sub)sub.textContent="Atualizando...";
-
-  if(!INBOX_EMAILS.length&&list){
-    list.innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 20px;gap:12px;color:var(--t3)"><span class="spin spin-lg"></span><div style="font-size:13px;font-weight:600">Buscando e-mails no Gmail...</div></div>`;
-  }
-
-  try{
-    // Busca até 200 e-mails para garantir que TODAS as respostas apareçam
-    // FIX: passa fresh=1 quando force=true para bypassar cache do servidor (90s)
-    const r=await fetch(`/api/inbox?limit=200${force?"&fresh=1":""}`,{credentials:"include"});
-    const d=await r.json();
-    // FIX: detecta token expirado via HTTP 401 OU flag tokenExpired OU string (3 camadas de segurança)
-    if(r.status===401||d.tokenExpired||d.error==="TOKEN_EXPIRED"){
-      const _showTokenErr=()=>{
-        if(list)list.innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;padding:40px 20px;gap:14px;text-align:center"><i class="ti ti-lock-open" style="font-size:44px;color:var(--amber)"></i><div style="font-size:15px;font-weight:800;color:var(--text)">Sessão do Gmail expirada</div><div style="font-size:13px;color:var(--t2)">Sua conexão com o Gmail expirou. Reconecte para ver as respostas.</div><a href="/oauth/start" class="btn btn-primary" style="padding:10px 22px;font-size:14px;font-weight:700;border-radius:10px;text-decoration:none"><i class="ti ti-brand-google"></i> Reconectar Gmail</a></div>`;
-        if(sub)sub.textContent="Reconexão necessária";
-      };
-      _showTokenErr();
-      INBOX_LOADING=false;
-      if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-refresh"></i>';}
-      return;
-    }
-    if(!d.ok)throw new Error(d.error||"Erro ao buscar inbox");
-    INBOX_EMAILS=d.emails||[];
-    _mergeReadState(); // aplica estado local de leitura
-    INBOX_LAST_LOAD=Date.now();
-    _updateInboxStats();
-    renderInbox();
-    const unreadCnt=INBOX_EMAILS.filter(e=>!e.isRead).length;
-    const replyCnt=INBOX_EMAILS.filter(e=>e.isReply).length;
-    if(sub)sub.textContent=`${replyCnt} respostas · ${unreadCnt} não lidas`;
-    updInboxBadge(unreadCnt);
-    _checkAndShowNotifBanner();
-    // Atualiza Home se estiver ativa
-    _renderHomeReplies();
-  }catch(e){
-    // Fallback: detecção por string caso erro venha de outro caminho
-    const isTokenErr = e.message==="TOKEN_EXPIRED"||e.message.includes("TOKEN_EXPIRED")||e.message.includes("Sessão expirada");
-    if(isTokenErr){
-      if(list)list.innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;padding:40px 20px;gap:14px;text-align:center"><i class="ti ti-lock-open" style="font-size:44px;color:var(--amber)"></i><div style="font-size:15px;font-weight:800;color:var(--text)">Sessão do Gmail expirada</div><div style="font-size:13px;color:var(--t2)">Sua conexão com o Gmail expirou. Reconecte para ver as respostas.</div><a href="/oauth/start" class="btn btn-primary" style="padding:10px 22px;font-size:14px;font-weight:700;border-radius:10px;text-decoration:none"><i class="ti ti-brand-google"></i> Reconectar Gmail</a></div>`;
-      if(sub)sub.textContent="Reconexão necessária";
-    } else {
-      if(list)list.innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;padding:40px 20px;gap:12px;color:var(--t3);text-align:center"><i class="ti ti-alert-circle" style="font-size:40px;color:var(--red)"></i><div style="font-size:14px;font-weight:700;color:var(--red)">Erro ao carregar</div><div style="font-size:12px">${esc(e.message)}</div><button class="btn btn-primary btn-sm" onclick="loadInbox(true)"><i class="ti ti-refresh"></i> Tentar novamente</button></div>`;
-      if(sub)sub.textContent="Erro ao carregar";
-    }
-  }finally{
-    INBOX_LOADING=false;
-    if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-refresh"></i>';}
-  }
-}
-
-function _updateInboxStats(){
-  const replies=INBOX_EMAILS.filter(e=>e.isReply&&!_ARCHIVED_IDS.has(e.id));
-  const unread=INBOX_EMAILS.filter(e=>!e.isRead&&!_ARCHIVED_IDS.has(e.id));
-  const starred=INBOX_EMAILS.filter(e=>_STARRED_IDS.has(e.id));
-  const total=INBOX_EMAILS.filter(e=>!_ARCHIVED_IDS.has(e.id));
-
-  if(g("#inbox-stat-replies"))g("#inbox-stat-replies").textContent=String(replies.length);
-  if(g("#inbox-stat-total"))g("#inbox-stat-total").textContent=String(total.length);
-  if(g("#inbox-stat-unread"))g("#inbox-stat-unread").textContent=String(unread.length);
-  if(g("#inbox-stat-starred"))g("#inbox-stat-starred").textContent=String(starred.length);
-
-  // Tab badges
-  const repliesUnread=replies.filter(e=>!e.isRead).length;
-  const allUnread=unread.length;
-  const rb=g("#imtab-replies-badge");if(rb){rb.style.display=repliesUnread?"":"none";rb.textContent=String(repliesUnread);}
-  const ab=g("#imtab-all-badge");if(ab){ab.style.display=allUnread?"":"none";ab.textContent=String(allUnread);}
-
-  // Bulk bar
-  const vis=total.length>0;
-  const bulk=g("#inbox-bulk-bar");
-  if(bulk){
-    bulk.classList.toggle("gone",!vis);
-    const cnt=g("#inbox-bulk-count");
-    if(cnt)cnt.textContent=`${total.length} mensagem${total.length!==1?"s":""}`;
-  }
-}
-
-// ── Badge na nav ─────────────────────────────────────────
-function updInboxBadge(unread){
-  const sb=g("#sib-respostas");if(sb){sb.style.display=unread?"":"none";sb.textContent=String(unread);}
-  const bd=g("#bnd-respostas");if(bd)bd.style.display=unread?"block":"none";
-  // Atualiza o card de stat da Home
-  const sr=g("#home-stat-replies");if(sr)sr.textContent=unread>0?String(unread):"–";
-  const hb=g("#home-badge-resp");if(hb){hb.style.display=unread?"":"none";hb.textContent=String(unread);}
-}
-
-// ── Aba principal: Respostas de Enviados | Todos ─────────
-function setInboxMainTab(tab){
-  INBOX_MAIN_TAB=tab;
-  // Reset filtro rápido para "all" ao trocar aba principal
-  INBOX_FILTER="all";
-  ["all","unread","starred","new"].forEach(k=>g("#ibf-"+k)?.classList.toggle("on",k==="all"));
-  // Aplica estilos visuais distintos por aba
-  const repliesBtn=g("#imtab-replies");const allBtn=g("#imtab-all");
-  if(repliesBtn){
-    repliesBtn.classList.toggle("active",tab==="replies");
-    repliesBtn.style.color=tab==="replies"?"var(--green)":"";
-    repliesBtn.style.borderBottomColor=tab==="replies"?"var(--green)":"transparent";
-    repliesBtn.style.background=tab==="replies"?"var(--greenl)":"";
-  }
-  if(allBtn){
-    allBtn.classList.toggle("active",tab==="all");
-    allBtn.style.color=tab==="all"?"var(--blue)":"";
-    allBtn.style.borderBottomColor=tab==="all"?"var(--blue)":"transparent";
-    allBtn.style.background=tab==="all"?"var(--bluel)":"";
-  }
-  renderInbox();
-}
-
-// ── Filtro rápido ────────────────────────────────────────
-function setInboxFilter(f){
-  INBOX_FILTER=f;
-  // "archived" não tem botão próprio na barra de filtros — remove "on" de todos
-  ["all","unread","starred","new"].forEach(k=>g("#ibf-"+k)?.classList.toggle("on",k===f));
-  renderInbox();
-}
-
-// ── Render lista ─────────────────────────────────────────
-function renderInbox(){
-  const list=g("#inbox-list");if(!list)return;
-  const q=(g("#inbox-search")?.value||"").toLowerCase().trim();
-  // FIX: filtro "archived" mostra emails arquivados; outros filtros excluem arquivados
-  const showArchived=INBOX_FILTER==="archived";
-  let emails=INBOX_EMAILS.slice().filter(e=>showArchived?_ARCHIVED_IDS.has(e.id):!_ARCHIVED_IDS.has(e.id));
-
-  // Filtro por aba principal
-  if(INBOX_MAIN_TAB==="replies") emails=emails.filter(e=>e.isReply);
-
-  // Filtro rápido
-  if(INBOX_FILTER==="unread")   emails=emails.filter(e=>!e.isRead);
-  else if(INBOX_FILTER==="starred") emails=emails.filter(e=>_STARRED_IDS.has(e.id));
-  else if(INBOX_FILTER==="new"){const cut=Date.now()-7*24*3600*1000;emails=emails.filter(e=>e.timestamp>cut);}
-  // "archived" e "all" não precisam de filtro extra (já filtrado acima)
-
-  // Busca por texto
-  if(q)emails=emails.filter(e=>(e.from||"").toLowerCase().includes(q)||(e.subject||"").toLowerCase().includes(q)||(e.snippet||"").toLowerCase().includes(q));
-
-  if(!emails.length){
-    const isEmptyAll=INBOX_EMAILS.length===0;
-    const isRepliesTab=INBOX_MAIN_TAB==="replies";
-    const isArchived=INBOX_FILTER==="archived";
-    list.innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;padding:40px 24px;gap:10px;color:var(--t3);text-align:center">
-      <i class="ti ti-${isArchived?"archive":isRepliesTab?"arrow-back-up":"inbox"}" style="font-size:52px;color:var(--t4)"></i>
-      <div style="font-size:15px;font-weight:700;color:var(--t2)">${isArchived?"Nenhuma mensagem arquivada":isEmptyAll?"Nenhuma mensagem ainda":isRepliesTab&&INBOX_FILTER==="all"?"Nenhuma resposta recebida ainda":q?"Nenhum resultado para \""+esc(q)+"\"":"Nenhuma mensagem com esse filtro"}</div>
-      <div style="font-size:12px;max-width:280px;line-height:1.6">${isArchived?"Mensagens que você arquivar aparecerão aqui.":isEmptyAll?"Quando empresas responderem seus e-mails, as mensagens aparecerão aqui.":isRepliesTab&&INBOX_FILTER==="all"?"Quando uma empresa responder seu e-mail enviado, a conversa aparece aqui.":"Tente outro filtro"}</div>
-    </div>`;
-    return;
-  }
-
-  list.innerHTML=emails.map(e=>{
-    const fromRaw=e.from||"";
-    const fromName=fromRaw.replace(/<[^>]+>/g,"").replace(/"/g,"").trim()||fromRaw;
-    const fromEmail=(fromRaw.match(/<([^>]+)>/)||[])[1]||fromRaw;
-    const initial=(fromName[0]||"?").toUpperCase();
-    const colors=["#1a56db","#057a55","#7e3af2","#d97706","#059669","#0891b2","#b45309","#dc2626"];
-    const color=colors[Math.abs(fromEmail.split("").reduce((a,c)=>a+c.charCodeAt(0),0))%colors.length];
-    const timeLabel=formatInboxTime(e.timestamp);
-    const isUnread=!e.isRead;
-    const isStarred=_STARRED_IDS.has(e.id);
-    const subjectHighlighted=q?esc(e.subject||"(sem assunto)").replace(new RegExp(esc(q).replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"gi"),m=>`<mark style="background:#fef08a;border-radius:2px">${m}</mark>`):esc(e.subject||"(sem assunto)");
-    return`<div class="icard${isUnread?" unread":""}${isStarred?" starred":""}" id="icard-${e.id}" onclick="openEmailDetail('${e.id}')">
-      ${isUnread?`<div class="icard-unread-dot" style="margin-top:14px"></div>`:`<div style="width:8px;flex-shrink:0"></div>`}
-      <div class="icard-avatar" style="background:${color}">${initial}</div>
-      <div class="icard-main">
-        <div class="icard-top">
-          <div class="icard-from">${esc(fromName.length>28?fromName.slice(0,26)+"…":fromName)}</div>
-          <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-            <div class="icard-time">${timeLabel}</div>
-            <div class="icard-actions">
-              <button class="icard-action-btn" onclick="event.stopPropagation();toggleStar('${e.id}')" title="${isStarred?"Remover favorito":"Favoritar"}">
-                <i class="ti ${isStarred?"ti-star-filled":"ti-star"} icard-star" style="${isStarred?"color:#f59e0b":""}"></i>
-              </button>
-              <button class="icard-action-btn" onclick="event.stopPropagation();navigator.clipboard.writeText('${esc(e.fromEmail||e.from||"")}');toast('Email copiado!','g')" title="Copiar email do remetente">
-                <i class="ti ti-copy" style="font-size:13px"></i>
-              </button>
-              <button class="icard-action-btn" onclick="event.stopPropagation();toggleReadEmail('${e.id}')" title="${isUnread?"Marcar como lido":"Marcar como não lido"}">
-                <i class="ti ${isUnread?"ti-mail-opened":"ti-mail"}"></i>
-              </button>
-              <button class="icard-action-btn" onclick="event.stopPropagation();archiveEmail('${e.id}')" title="Arquivar">
-                <i class="ti ti-archive"></i>
-              </button>
-            </div>
-          </div>
-        </div>
-        <div class="icard-subject">${subjectHighlighted}</div>
-        <div class="icard-snippet">${esc(e.snippet||"")}</div>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px">
-          ${(()=>{const cl=classifyEmail(e);return cl.type!=="neutral"?`<span style="background:${cl.bg};color:${cl.color};border:1px solid ${cl.border};border-radius:10px;padding:2px 8px;font-size:10px;font-weight:800">${cl.label}</span>`:""})()}
-          ${e.isReply?`<span class="icard-reply-badge" style="font-weight:700"><i class="ti ti-arrow-back-up" style="font-size:10px"></i> Respondeu você!</span>`:""}
-          ${e.linkedApp?`<button class="icard-linked-btn" style="font-weight:700" onclick="event.stopPropagation();openLinkedJobModal('${e.id}')" title="Ver vaga vinculada"><i class="ti ti-briefcase" style="font-size:11px"></i> ${esc((e.linkedApp.company||e.linkedApp.jobSnapshot?.company||"Vaga").slice(0,25))}</button>`:""}
-        </div>
-      </div>
-    </div>`;
-  }).join("");
-}
-
-// ── Ações Gmail ────────────────────────────────────────────
-function toggleStar(emailId){
-  if(_STARRED_IDS.has(emailId)){_STARRED_IDS.delete(emailId);toast("Favorito removido");}
-  else{_STARRED_IDS.add(emailId);toast("⭐ Marcado como favorito","g");}
-  _saveStarred();
-  _updateInboxStats();
-  // Atualiza só o card específico sem re-render completo
-  const card=g("#icard-"+emailId);
-  if(card){
-    card.classList.toggle("starred",_STARRED_IDS.has(emailId));
-    const starIcon=card.querySelector(".icard-star");
-    if(starIcon){starIcon.className=`ti ${_STARRED_IDS.has(emailId)?"ti-star-filled":"ti-star"} icard-star`;starIcon.style.color=_STARRED_IDS.has(emailId)?"#f59e0b":"";}
-  }
-}
-
-function toggleReadEmail(emailId){
-  const email=INBOX_EMAILS.find(e=>e.id===emailId);if(!email)return;
-  if(email.isRead){
-    // Marcar como não lido
-    email.isRead=false;
-    _READ_IDS.delete(emailId);
-    _saveReadState();
-    toast("Marcado como não lido");
-  }else{
-    _markEmailRead(emailId);
-    toast("Marcado como lido","g");
-  }
-  _updateInboxStats();
-  renderInbox();
-}
-
-function archiveEmail(emailId){
-  _ARCHIVED_IDS.add(emailId);
-  _saveArchived();
-  _updateInboxStats();
-  renderInbox();
-  toast("Arquivado","g");
-}
-
-// ── Ações em lote ─────────────────────────────────────────
-async function inboxMarkAllRead(){
-  const unread=INBOX_EMAILS.filter(e=>!e.isRead&&!_ARCHIVED_IDS.has(e.id));
-  if(!unread.length){toast("Não há mensagens não lidas");return;}
-  unread.forEach(e=>{e.isRead=true;_READ_IDS.add(e.id);});
-  _saveReadState();
-  _updateInboxStats();
-  renderInbox();
-  toast(`✅ ${unread.length} mensagem${unread.length!==1?"s":""} marcadas como lidas`,"g");
-  // Envia bulk para servidor (persiste no banco + marca no Gmail)
-  const ids=unread.map(e=>e.id);
-  fetch("/api/inbox/read",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({ids})}).catch(()=>{});
-}
-
-function inboxViewAll(){
-  setInboxMainTab("all");
-  setInboxFilter("all");
-  if(g("#inbox-search"))g("#inbox-search").value="";
-}
-
-function _markEmailRead(emailId,persist=true){
-  const email=INBOX_EMAILS.find(e=>e.id===emailId);
-  if(!email||email.isRead)return;
-  email.isRead=true;
-  _READ_IDS.add(emailId);
-  if(persist)_saveReadState();
-  // Chama API do servidor para marcar no Gmail
-  fetch("/api/inbox/read",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({messageId:emailId})}).catch(()=>{});
-}
-
-// ── Opções inbox (menu flutuante) ─────────────────────────
-function showInboxOptions(){
-  const menu=document.createElement("div");
-  menu.style.cssText="position:fixed;top:60px;right:14px;background:#fff;border:1.5px solid var(--border2);border-radius:var(--rl);box-shadow:var(--shadowl);z-index:999;min-width:200px;overflow:hidden;animation:fadeScale .15s ease";
-  const items=[
-    {icon:"ti-checks",label:"Marcar todas como lidas",fn:()=>{inboxMarkAllRead();menu.remove();}},
-    {icon:"ti-refresh",label:"Atualizar inbox",fn:()=>{loadInbox(true);menu.remove();}},
-    {icon:"ti-bell",label:"Configurar notificações",fn:()=>{sv("profile");menu.remove();setTimeout(()=>document.getElementById("notif-toggle-btn")?.scrollIntoView({behavior:"smooth"}),300);}},
-    {icon:"ti-archive",label:"Ver arquivados",fn:()=>{setInboxMainTab("all");setInboxFilter("archived");menu.remove();},id:"opt-archived"},
-  ];
-  menu.innerHTML=items.map((it,i)=>`<button id="${it.id||""}" style="display:flex;align-items:center;gap:9px;padding:11px 16px;border:none;background:none;width:100%;text-align:left;cursor:pointer;font-family:inherit;font-size:13px;color:var(--text);${i>0?"border-top:1px solid var(--border)":""}" onmouseover="this.style.background='var(--sf2)'" onmouseout="this.style.background='none'" onclick="${"__menu_fn_"+i}()"><i class="ti ${it.icon}" style="font-size:15px;color:var(--t2)"></i>${it.label}</button>`).join("");
-  items.forEach((it,i)=>{window["__menu_fn_"+i]=it.fn;});
-  const dismiss=()=>{menu.remove();document.removeEventListener("click",dismiss);items.forEach((_,i)=>delete window["__menu_fn_"+i]);};
-  document.body.appendChild(menu);
-  setTimeout(()=>document.addEventListener("click",dismiss),100);
-}
-
-function formatInboxTime(ts){
-  if(!ts)return"";
-  const d=new Date(ts);const now=new Date();
-  if(d.toDateString()===now.toDateString())return d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
-  const diff=(now-d)/86400000;
-  if(diff<7)return["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][d.getDay()];
-  return d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"});
-}
-
-// ── Notificação Push Banner ───────────────────────────────
-function _checkAndShowNotifBanner(){
-  const banner=g("#inbox-notif-banner");if(!banner)return;
-  const dismissed=localStorage.getItem("h2b-notif-banner-dismissed")==="1";
-  const granted=("Notification" in window)&&Notification.permission==="granted";
-  const show=!dismissed&&!granted&&("Notification" in window)&&Notification.permission!=="denied";
-  banner.style.display=show?"flex":"none";
-}
 
 function dismissNotifBanner(){
   localStorage.setItem("h2b-notif-banner-dismissed","1");
@@ -5693,178 +5269,12 @@ async function requestPushPermission(){
     _renderNotifToggle();
     playPlaneSound();
     toast("🔔 Notificações ativadas! Você será avisado de diamantes, missões e novidades do plano.","g");
-    // v36-FIX: registra a INSCRIÇÃO no servidor JÁ — sem isso a permissão
-    // ficava concedida mas o servidor só ganhava a subscription na PRÓXIMA
-    // visita (o timer de 4s pós-load já tinha passado), e os robôs
-    // (renovação, robô parado, plano ativado) falavam com o vazio até lá.
-    try{if(typeof _registerPushSubscription==="function")await _registerPushSubscription();}catch{}
     // Testa notificação imediatamente
     try{new Notification("✅ H2BApply",{body:"Notificações ativadas! Você será avisado de diamantes, missões e novidades.",icon:"/icon-192.png",tag:"h2b-test"});}catch{}
   }else if(p==="denied"){
     toast("Permissão negada. Ative manualmente nas configurações do navegador.","r");
   }
 }
-
-// ── Abrir e-mail ─────────────────────────────────────────
-// ── Classifica resposta com heurística simples ──
-function classifyEmail(e){
-  const body=(e.body||e.snippet||"").toLowerCase();
-  const subj=(e.subject||"").toLowerCase();
-  const positive=["interview","schedule","interested","offer","position","start date","hire","accept","pleased","congratul","welcome","selected","chosen","proceed"];
-  const negative=["unfortunately","regret","not moving forward","filled","no longer","position has been","decline","unable to","not selected","decided not","other candidates"];
-  const moreInfo=["please send","please provide","can you","additional","resume","more info","questions","details","clarif"];
-  if(positive.some(w=>body.includes(w)||subj.includes(w)))return{type:"positive",label:"🟢 Interesse!",color:"var(--green)",bg:"var(--greenl)",border:"var(--greenb)"};
-  if(negative.some(w=>body.includes(w)||subj.includes(w)))return{type:"negative",label:"🔴 Recusado",color:"var(--red)",bg:"var(--redl)",border:"var(--redb)"};
-  if(moreInfo.some(w=>body.includes(w)||subj.includes(w)))return{type:"info",label:"🟡 Mais infos",color:"var(--amber)",bg:"var(--amberl)",border:"var(--amberb)"};
-  return{type:"neutral",label:"💬 Respondeu",color:"var(--blue)",bg:"var(--bluel)",border:"var(--blueb)"};
-}
-
-// ── Templates de resposta rápida ──
-const QUICK_REPLY_TEMPLATES=[
-  {id:"interest",label:"✅ Confirmar interesse",icon:"ti-check",body:"Dear Hiring Manager,\n\nThank you for your response! I am very interested in the {vaga} position at {empresa}.\n\nI am fully available for the proposed dates and ready to start. Please let me know the next steps.\n\nBest regards,\n{nome}\n{telefone}"},
-  {id:"interview",label:"📅 Confirmar entrevista",icon:"ti-calendar",body:"Dear Hiring Manager,\n\nThank you for considering my application for the {vaga} position at {empresa}.\n\nI confirm my availability for the interview. Please let me know the date and time that works best for you.\n\nBest regards,\n{nome}\n{telefone}"},
-  {id:"details",label:"❓ Pedir mais detalhes",icon:"ti-help",body:"Dear Hiring Manager,\n\nThank you for your message regarding the {vaga} position at {empresa}.\n\nCould you please provide more details about the start date, housing arrangements, and next steps in the hiring process?\n\nBest regards,\n{nome}\n{telefone}"},
-  {id:"followup",label:"🔄 Follow-up (7 dias)",icon:"ti-clock",body:"Dear Hiring Manager,\n\nI am writing to follow up on my application for the {vaga} position submitted on {data}.\n\nI remain very interested in this opportunity and would appreciate any update on my candidacy.\n\nBest regards,\n{nome}\n{telefone}"},
-];
-
-function openQuickReplyModal(emailId){
-  const e=INBOX_EMAILS.find(x=>x.id===emailId);if(!e)return;
-  const linked=e.linkedApp;
-  const job=linked?.job||linked?.jobSnapshot?.title||"a vaga";
-  const company=linked?.company||linked?.jobSnapshot?.company||(e.from||"").split("<")[0].trim()||"a empresa";
-  const fromEmail=(e.from||"").match(/<([^>]+)>/)?.[1]||e.from||"";
-  const cl=classifyEmail(e);
-  const el=document.createElement("div");
-  el.className="overlay";el.id="quick-reply-overlay";el.style.zIndex="300";
-  el.onclick=function(ev){if(ev.target===el)el.remove();};
-  el.innerHTML=`<div class="modal" style="max-width:500px">
-    <div class="mhandle"></div>
-    <div class="mhdr">
-      <div>
-        <div class="mttl">✈️ Resposta Rápida</div>
-        <div class="msub">${esc(company)} — <span style="background:${cl.bg};color:${cl.color};border:1px solid ${cl.border};border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700">${cl.label}</span></div>
-      </div>
-      <button aria-label="Fechar" title="Fechar" class="mx" onclick="document.getElementById('quick-reply-overlay').remove()"><i class="ti ti-x"></i></button>
-    </div>
-    <div class="mbody">
-      <div style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:8px">Escolha um template:</div>
-      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
-        ${QUICK_REPLY_TEMPLATES.map(t=>`
-          <button onclick="selectQuickTemplate('${t.id}','${esc(job)}','${esc(company)}')" 
-            style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--border2);border-radius:var(--r);background:var(--sf2);cursor:pointer;font-family:inherit;text-align:left;transition:all .14s"
-            id="qt-${t.id}">
-            <i class="ti ${t.icon}" style="font-size:16px;color:var(--blue);flex-shrink:0"></i>
-            <span style="font-size:13px;font-weight:600">${t.label}</span>
-          </button>`).join("")}
-      </div>
-      <div style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:6px">Mensagem:</div>
-      <textarea id="qr-body" class="input" style="min-height:130px;font-size:13px" placeholder="Selecione um template acima ou escreva sua resposta..."></textarea>
-      <div id="qr-warn" style="margin-top:6px"></div>
-    </div>
-    <div class="mfoot">
-      <div style="display:none;align-items:center;gap:6px;font-size:12px;color:var(--t2)" id="qr-sending"><span class="spin spin-sm"></span>Enviando...</div>
-      <button class="btn btn-secondary" onclick="document.getElementById('quick-reply-overlay').remove()">Cancelar</button>
-      <button class="btn btn-primary" onclick="sendQuickReply('${emailId}','${fromEmail}')"><i class="ti ti-send"></i> Enviar</button>
-    </div>
-  </div>`;
-  document.body.appendChild(el);
-}
-
-function selectQuickTemplate(id, job, company){
-  const t=QUICK_REPLY_TEMPLATES.find(x=>x.id===id);if(!t)return;
-  document.querySelectorAll("[id^='qt-']").forEach(b=>{b.style.background="var(--sf2)";b.style.borderColor="var(--border2)";});
-  const btn=document.getElementById("qt-"+id);if(btn){btn.style.background="var(--bluel)";btn.style.borderColor="var(--blueb)";}
-  const body=t.body.replace(/{vaga}/g,job).replace(/{empresa}/g,company).replace(/{nome}/g,CFG.name||U.name||"").replace(/{telefone}/g,CFG.phone||"").replace(/{data}/g,new Date().toLocaleDateString("pt-BR"));
-  const ta=document.getElementById("qr-body");if(ta){ta.value=body;ta.focus();}
-}
-
-async function sendQuickReply(emailId, toEmail){
-  const e=INBOX_EMAILS.find(x=>x.id===emailId);if(!e)return;
-  const body=(document.getElementById("qr-body")?.value||"").trim();
-  const warn=s=>{const d=document.getElementById("qr-warn");if(d)d.innerHTML=`<div class="alert al-red" style="margin-top:4px"><i class="ti ti-alert-circle"></i>${esc(s)}</div>`;};
-  if(!body)return warn("Escreva ou selecione um template.");
-  const sd=document.getElementById("qr-sending");const sb=document.querySelector("#quick-reply-overlay .btn-primary");
-  if(sd)sd.style.display="flex";if(sb)sb.disabled=true;
-  try{
-    const subj=(e.subject||"").startsWith("Re:")?"Re: "+e.subject:"Re: "+e.subject;
-    const r=await fetch("/api/send",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({to:toEmail,subject:subj,message:body,isReply:true,threadId:e.threadId,messageId:e.messageId,fromName:CFG.name||U.name||""})});
-    const d=await r.json();
-    if(d.ok){document.getElementById("quick-reply-overlay")?.remove();toast("Resposta enviada ✓","g");}
-    else throw new Error(d.error);
-  }catch(err){if(sd)sd.style.display="none";if(sb)sb.disabled=false;warn("Erro: "+err.message);}
-}
-
-function openEmailDetail(emailId){
-  const email=INBOX_EMAILS.find(e=>e.id===emailId);if(!email)return;
-  _currentEmailId=emailId;
-
-  // Marcar como lido (persiste localmente E no servidor)
-  if(!email.isRead){
-    _markEmailRead(emailId);
-    // Atualiza card visualmente sem re-render completo
-    const card=g("#icard-"+emailId);
-    if(card){card.classList.remove("unread");const dot=card.querySelector(".icard-unread-dot");if(dot){dot.style.width="8px";dot.style.opacity="0";}}
-    _updateInboxStats();
-    updInboxBadge(INBOX_EMAILS.filter(e=>!e.isRead).length);
-  }
-
-  // Extrair nome e email do remetente
-  const fromRaw=email.from||"";
-  const fromName=fromRaw.replace(/<[^>]+>/g,"").replace(/"/g,"").trim()||fromRaw;
-  const fromEmail=(fromRaw.match(/<([^>]+)>/)||[])[1]||fromRaw;
-  const initial=(fromName[0]||"?").toUpperCase();
-  const colors=["#1a56db","#057a55","#7e3af2","#d97706","#059669","#0891b2","#b45309","#dc2626"];
-  const color=colors[Math.abs(fromEmail.split("").reduce((a,c2)=>a+c2.charCodeAt(0),0))%colors.length];
-
-  // Preencher modal
-  if(g("#ed-subject"))g("#ed-subject").textContent=email.subject||"(sem assunto)";
-  if(g("#ed-avatar")){g("#ed-avatar").textContent=initial;g("#ed-avatar").style.background=color;}
-  if(g("#ed-from-name"))g("#ed-from-name").textContent=fromName;
-  if(g("#ed-from-email"))g("#ed-from-email").textContent=fromEmail;
-  if(g("#ed-date"))g("#ed-date").textContent=email.timestamp?new Date(email.timestamp).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"";
-
-  // v13: vaga vinculada — prioriza linkedApp do servidor (preciso), fallback heurística antiga
-  renderLinkedAppCard(email, fromEmail);
-
-  // Assunto de resposta
-  const replySubj=email.subject?.startsWith("Re:")?email.subject:`Re: ${email.subject||""}`;
-  if(g("#ed-reply-subject"))g("#ed-reply-subject").value=replySubj;
-  if(g("#ed-reply-body"))g("#ed-reply-body").value="";
-  if(g("#ed-send-status"))g("#ed-send-status").style.display="none";
-  if(g("#ed-translation-box"))g("#ed-translation-box")?.style&&(g("#ed-translation-box").style.display="none");
-  if(g("#ed-translate-btn"))g("#ed-translate-btn").innerHTML='<i class="ti ti-language" style="font-size:12px"></i> Traduzir';
-  _edTranslationVisible=false;
-
-  g("#email-detail-overlay")._currentEmail=email;
-
-  // Renderizar histórico de conversa estilo chat
-  // Usa threadId como chave primária — agrupa todas as mensagens do mesmo thread
-  _renderChatHistory(email.threadId||email.id, email);
-
-  g("#email-detail-overlay").classList.remove("gone");
-  // Scroll para o fim do chat
-  setTimeout(()=>{const ch=g("#ed-chat-history");if(ch)ch.scrollTop=ch.scrollHeight;},120);
-}
-
-// ── Respostas rápidas ─────────────────────────────────────
-function quickReply(type){
-  const email=g("#email-detail-overlay")?._currentEmail;
-  const name=CFG.name||U?.name||"";
-  const phone=CFG.phone?"📱 "+CFG.phone:"";
-  const fromName=(email?.from||"").replace(/<[^>]+>/g,"").replace(/"/g,"").trim()||"Hiring Manager";
-  const firstWord=fromName.split(" ")[0]||"Hiring Manager";
-  const templates={
-    interest:`Dear ${firstWord},\n\nThank you for reaching out! I am very interested in this opportunity.\n\nI am available to speak at your convenience.\n\n${phone}\n\nBest regards,\n${name}`,
-    available:`Dear ${firstWord},\n\nThank you for contacting me! I am fully available and ready to start as soon as needed.\n\nPlease let me know the next steps.\n\n${phone}\n\nBest regards,\n${name}`,
-    confirm:`Dear ${firstWord},\n\nThank you for the invitation! I am happy to confirm my availability for the interview.\n\nPlease send me the details (date, time, format) and I will be ready.\n\nBest regards,\n${name}`,
-    question:`Dear ${firstWord},\n\nThank you for your message. I have a few questions:\n\n1. What is the hourly wage?\n2. What is the start date?\n3. Is housing provided?\n4. Is transportation provided?\n\nBest regards,\n${name}`,
-    thanks:`Dear ${firstWord},\n\nThank you for your time and consideration.\n\nI remain very interested and look forward to your response.\n\nBest regards,\n${name}`,
-  };
-  const body=g("#ed-reply-body");
-  if(body){body.value=templates[type]||"";body.focus();}
-}
-
-function closeEmailDetail(){g("#email-detail-overlay").classList.add("gone");_currentEmailId=null;}
 
 // ── Modal Envio Automático ──────────────────────────────
 // ── Seleção de e-mails de envio no wizard do Automático ──────────────────
@@ -5989,583 +5399,6 @@ function closeAutoModal(fromBack){
   const warn=g("#gmail-risk-warn");if(warn)warn.style.display="none";
 }
 // ── Interceptação sv("auto") → modal: consolidada na função sv() original ──
-
-// ═══════════════════════════════════════════
-//  v13 — VAGA VINCULADA À RESPOSTA
-// ═══════════════════════════════════════════
-// Tenta achar linkedApp já anexado pelo /api/inbox; senão, busca por /api/inbox/match;
-// se ainda assim falhar, faz heurística no HIST local
-async function _resolveLinkedApp(email, fromEmail){
-  if(email.linkedApp) return email.linkedApp;
-  try{
-    const r=await fetch("/api/inbox/match",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-      threadId:email.threadId||"",inReplyTo:email.inReplyTo||"",references:email.references||"",
-      from:email.from||"",messageId:email.messageId||""
-    })});
-    const d=await r.json();
-    if(d?.linked&&d.app){email.linkedApp={...d.app,matchType:d.matchType};return email.linkedApp;}
-  }catch{}
-  // Heurística local com scoring
-  const subj=(email.subject||"").toLowerCase();
-  const body=(email.body||email.snippet||"").toLowerCase();
-  const fromDomain=(fromEmail||"").toLowerCase().replace(/^[^@]+@/,"");
-  const emailTs=email.timestamp?new Date(email.timestamp).getTime():0;
-  let best=null,bestScore=0;
-  for(const h of HIST){
-    if(h.appId)continue;
-    let score=0;
-    const co=(h.company||"").toLowerCase();
-    const job=(h.job||"").toLowerCase();
-    const toDomain=(h.to||"").toLowerCase().replace(/^[^@]+@/,"");
-    const sentTs=h.date?new Date(h.date).getTime():0;
-    if(fromDomain&&toDomain&&fromDomain===toDomain)score+=4;
-    else if(fromDomain&&toDomain&&(fromDomain.includes(toDomain.split(".")[0])||toDomain.includes(fromDomain.split(".")[0])))score+=2;
-    const coFirst=co.split(" ")[0];
-    if(co.length>2){
-      if(subj.includes(co))score+=3;else if(coFirst.length>3&&subj.includes(coFirst))score+=2;
-      if(body.includes(co))score+=2;else if(coFirst.length>3&&body.includes(coFirst))score+=1;
-    }
-    if(job.length>2){if(subj.includes(job))score+=2;if(body.includes(job))score+=1;}
-    if(emailTs&&sentTs){const diff=(emailTs-sentTs)/(864e5);if(diff>=0&&diff<=14)score+=2;else if(diff>=0&&diff<=30)score+=1;}
-    if(score>bestScore){bestScore=score;best=h;}
-  }
-  if(best&&bestScore>=2)return{job:best.job,company:best.company,to:best.to,jobSnapshot:null,date:best.date,matchType:"heuristic"};
-  return null;
-}
-
-function _matchTypeLabel(t){
-  return {thread:"Vinculação por thread Gmail",
-    "in-reply-to":"Vinculação por header Message-Id",
-    references:"Vinculação por References",
-    recipient:"Vinculação por destinatário",
-    heuristic:"Vinculação aproximada"}[t]||"Vinculada";
-}
-
-function toggleLinkedExpand(){
-  const exp=document.getElementById("ed-lnk-expanded");
-  const chev=document.getElementById("ed-lnk-chevron");
-  if(!exp)return;
-  const open=exp.style.display==="none"||!exp.style.display;
-  exp.style.display=open?"block":"none";
-  if(chev)chev.style.transform=open?"rotate(180deg)":"";
-}
-
-async function renderLinkedAppCard(email, fromEmail){
-  // Reset panels
-  const miniEl=g("#ed-linked-mini");
-  const noLinked=g("#ed-no-linked");
-  const badge=g("#ed-classification-badge");
-  if(miniEl)miniEl.style.display="none";
-  if(noLinked)noLinked.style.display="none";
-  if(badge){badge.style.display="none";badge.innerHTML="";}
-
-  // Classification badge
-  if(badge){
-    const cl=classifyEmail(email);
-    if(cl.type!=="neutral"){
-      badge.style.display="flex";
-      badge.style.cssText=`display:flex;align-items:center;gap:6px;background:${cl.bg};border:1.5px solid ${cl.border};border-radius:8px;padding:7px 10px;margin-bottom:2px`;
-      badge.innerHTML=`<span style="font-size:16px">${cl.type==="positive"?"🟢":cl.type==="negative"?"🔴":"🟡"}</span><div><div style="font-size:12px;font-weight:800;color:${cl.color}">${cl.label}</div><div style="font-size:11px;color:${cl.color};opacity:.8">${cl.type==="positive"?"Esta empresa demonstrou interesse na sua candidatura!":cl.type==="negative"?"Esta posição parece ter sido preenchida.":"A empresa solicitou mais informações."}</div></div>`;
-    }
-  }
-
-  const linked=await _resolveLinkedApp(email,fromEmail);
-
-  if(!linked){
-    if(noLinked)noLinked.style.display="flex";
-    return;
-  }
-
-  // Preenche vaga vinculada
-  const snap=linked.jobSnapshot||{};
-  const co=snap.company||linked.company||"Empresa";
-  const job=snap.title||linked.job||"Vaga";
-  const loc=[snap.city,snap.state].filter(Boolean).join(", ");
-  const visa=(snap.visa||"").toUpperCase();
-  const wage=snap.wage||(linked.jobSnapshot?.wage)||"";
-  const sentDate=linked.sentAt?new Date(linked.sentAt).toLocaleDateString("pt-BR","pt-BR"):linked.date||"";
-
-  if(g("#ed-lnk-job"))g("#ed-lnk-job").textContent=job;
-  if(g("#ed-lnk-co"))g("#ed-lnk-co").textContent=co+(loc?" · "+loc:"");
-
-  const metaEl=g("#ed-lnk-meta");
-  if(metaEl){
-    const pills=[];
-    if(visa)pills.push(`<span style="background:${visa.includes("H-2A")?"var(--amberl)":"var(--bluel)"};border:1px solid ${visa.includes("H-2A")?"var(--amberb)":"var(--blueb)"};border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;color:${visa.includes("H-2A")?"var(--amber)":"var(--blue)"}">${esc(visa)}</span>`);
-    if(wage)pills.push(`<span style="background:var(--greenl);border:1px solid var(--greenb);border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;color:var(--green)">💰 ${esc(wage)}</span>`);
-    if(sentDate)pills.push(`<span style="background:var(--sf2);border:1px solid var(--border);border-radius:20px;padding:2px 8px;font-size:10px;color:var(--t2)">📤 Enviado ${esc(sentDate)}</span>`);
-    metaEl.innerHTML=pills.join("");
-  }
-
-  // Extra info: início, fim, vagas, e-mail destinatário, tipo envio
-  const extraEl=g("#ed-lnk-extra");
-  if(extraEl){
-    const extras=[];
-    if(snap.start)extras.push(`<span style="background:var(--sf2);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:11px;color:var(--t2)">🗓️ Início: <strong>${esc(snap.start)}</strong></span>`);
-    if(snap.end)extras.push(`<span style="background:var(--sf2);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:11px;color:var(--t2)">⏳ Fim: <strong>${esc(snap.end)}</strong></span>`);
-    if(snap.workers)extras.push(`<span style="background:var(--sf2);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:11px;color:var(--t2)">👷 ${esc(String(snap.workers))} vagas</span>`);
-    if(linked.to)extras.push(`<span style="background:var(--bluel);border:1px solid var(--blueb);border-radius:6px;padding:3px 8px;font-size:11px;color:var(--blue);word-break:break-all">📧 ${esc(linked.to)}</span>`);
-    if(linked.type)extras.push(`<span style="background:${linked.type==="auto"?"var(--purplel)":"var(--sf2)"};border:1px solid ${linked.type==="auto"?"var(--purpleb)":"var(--border)"};border-radius:6px;padding:3px 8px;font-size:11px;color:${linked.type==="auto"?"var(--purple)":"var(--t2)"}">${linked.type==="auto"?"🤖 Automático":"✋ Manual"}</span>`);
-    extraEl.innerHTML=extras.join("");
-  }
-
-  const matchEl=g("#ed-lnk-match-type");
-  if(matchEl)matchEl.textContent=_matchTypeLabel(linked.matchType)||"";
-
-  // Mostra o card compacto; reset expanded
-  const expPanel=document.getElementById("ed-lnk-expanded");
-  const chev=document.getElementById("ed-lnk-chevron");
-  if(expPanel){expPanel.style.display="none";}
-  if(chev){chev.style.transform="";}
-  if(miniEl)miniEl.style.display="block";
-  email.linkedApp=email.linkedApp||linked;
-
-  // Remove botões anteriores
-  document.getElementById("ed-open-job-btn")?.remove();
-  document.getElementById("ed-dol-btn")?.remove();
-
-  const btnsWrap=document.createElement("div");
-  btnsWrap.style.cssText="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;";
-
-  // ── Botão 1: Abrir no SeasonalJobs DOL (link direto da vaga) ──
-  const vagaUrl=snap.url||linked.url||linked.jobSnapshot?.url||"";
-  if(vagaUrl){
-    const dolBtn=document.createElement("a");
-    dolBtn.id="ed-dol-btn";
-    dolBtn.href=vagaUrl;
-    dolBtn.target="_blank";
-    dolBtn.rel="noopener noreferrer";
-    dolBtn.style.cssText="display:inline-flex;align-items:center;gap:6px;background:#1a56db;color:#fff;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;text-decoration:none;";
-    dolBtn.innerHTML='<i class="ti ti-external-link" style="font-size:13px"></i> Ver Vaga no SeasonalJobs';
-    btnsWrap.appendChild(dolBtn);
-  }
-
-  // ── Botão 2: Abrir na pesquisa interna ──
-  const pesqQuery=linked.to||snap.company||co||"";
-  if(pesqQuery){
-    const openBtn=document.createElement("button");
-    openBtn.id="ed-open-job-btn";
-    openBtn.style.cssText="display:inline-flex;align-items:center;gap:6px;background:var(--sf2);border:1px solid var(--border);color:var(--t1);border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;";
-    openBtn.innerHTML='<i class="ti ti-search" style="font-size:13px"></i> Pesquisar Empresa';
-    openBtn.onclick=function(){
-      closeEmailDetail();
-      sv("pesquisa");
-      setTimeout(()=>{
-        const inp=document.getElementById("pesq-input");
-        if(inp){inp.value=pesqQuery;inp.dispatchEvent(new Event("input"));}
-      },120);
-    };
-    btnsWrap.appendChild(openBtn);
-  }
-
-  if(btnsWrap.children.length>0){
-    const expandedPanel=document.getElementById("ed-lnk-expanded");
-    if(expandedPanel&&expandedPanel.parentNode){
-      expandedPanel.parentNode.insertAdjacentElement("afterend",btnsWrap);
-    } else if(miniEl){
-      miniEl.appendChild(btnsWrap);
-    }
-  }
-}
-
-function openLinkedJobModalFromCurrent(){
-  const e = g("#email-detail-overlay")?._currentEmail;
-  if(!e) return;
-  // Encontra na lista
-  openLinkedJobModal(e.id);
-}
-
-function openLinkedJobModal(emailId){
-  const email = INBOX_EMAILS.find(e=>e.id===emailId);
-  if(!email) return;
-  const linked = email.linkedApp;
-  if(!linked){ toast("Vaga vinculada indisponível","r"); return; }
-  const snap = linked.jobSnapshot || {};
-  const visa = (snap.visa||"").toUpperCase();
-  const visaClass = visa.includes("H-2A")||visa.includes("H2A")?"h2a":"h2b";
-  const co = snap.company || linked.company || "Empresa";
-  const job = snap.title || linked.job || "Vaga";
-  const loc = [snap.city, snap.state].filter(Boolean).join(", ");
-  const dateLbl = linked.date || (linked.sentAt ? new Date(linked.sentAt).toLocaleString("pt-BR") : "");
-
-  // Cria overlay
-  let ov = document.getElementById("linked-modal-overlay");
-  if(!ov){
-    ov = document.createElement("div");
-    ov.id = "linked-modal-overlay";
-    ov.className = "overlay";
-    ov.onclick = (ev)=>{ if(ev.target===ov) closeLinkedJobModal(); };
-    document.body.appendChild(ov);
-  }
-  ov.innerHTML = `
-    <div class="modal" style="max-width:520px">
-      <div class="mhandle"></div>
-      <div class="mhdr">
-        <div>
-          <div class="mttl"><i class="ti ti-briefcase" style="color:#fbbf24"></i> Vaga vinculada</div>
-          <div class="msub">${esc(_matchTypeLabel(linked.matchType))}</div>
-        </div>
-        <button aria-label="Fechar" title="Fechar" class="mx" onclick="closeLinkedJobModal()"><i class="ti ti-x"></i></button>
-      </div>
-      <div class="mbody">
-        <div style="font-size:18px;font-weight:800;color:#fff;line-height:1.3;margin-bottom:4px">${esc(job)}</div>
-        <div style="font-size:14px;color:rgba(255,255,255,.75);display:flex;align-items:center;gap:6px;margin-bottom:14px"><i class="ti ti-building"></i> ${esc(co)}</div>
-        <div class="linked-app-meta" style="margin-bottom:14px">
-          ${visa?`<span class="linked-app-pill ${visaClass}"><i class="ti ti-id-badge-2"></i> ${esc(visa)}</span>`:""}
-          ${snap.wage?`<span class="linked-app-pill wage"><i class="ti ti-cash"></i> ${esc(snap.wage)}</span>`:""}
-          ${loc?`<span class="linked-app-pill"><i class="ti ti-map-pin"></i> ${esc(loc)}</span>`:""}
-          ${snap.workers?`<span class="linked-app-pill"><i class="ti ti-users"></i> ${snap.workers} vagas</span>`:""}
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
-          <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:9px 12px">
-            <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Início</div>
-            <div style="font-size:13px;font-weight:700;color:#fff">${esc(snap.start||"—")}</div>
-          </div>
-          <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:9px 12px">
-            <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Fim</div>
-            <div style="font-size:13px;font-weight:700;color:#fff">${esc(snap.end||"—")}</div>
-          </div>
-          <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:9px 12px">
-            <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Tipo envio</div>
-            <div style="font-size:13px;font-weight:700;color:#fff">${linked.type==="auto"?'<i class="ti ti-robot" style="color:#a78bfa"></i> Automático':'<i class="ti ti-send" style="color:#60a5fa"></i> Manual'}</div>
-          </div>
-          <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:9px 12px">
-            <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Enviado em</div>
-            <div style="font-size:13px;font-weight:700;color:#fff">${esc(dateLbl||"—")}</div>
-          </div>
-        </div>
-        ${linked.to?`<div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.25);border-radius:10px;padding:10px 12px;margin-bottom:14px">
-          <div style="font-size:10px;font-weight:700;color:#93c5fd;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px"><i class="ti ti-mail" style="font-size:11px"></i> Destinatário do envio</div>
-          <div style="font-size:13px;font-weight:700;color:#fff;word-break:break-all">${esc(linked.to)}</div>
-        </div>`:""}
-        ${snap.desc?`<div>
-          <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Descrição</div>
-          <div style="font-size:13px;color:rgba(255,255,255,.8);line-height:1.6">${esc(snap.desc)}</div>
-        </div>`:""}
-        ${linked.appId?`<div style="font-size:10px;color:rgba(255,255,255,.3);margin-top:14px;text-align:center;font-family:monospace">ID interno: ${esc(linked.appId)}</div>`:""}
-      </div>
-      <div class="mfoot" style="flex-direction:column;gap:8px">
-        <div id="linked-dol-info" style="display:none;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);border-radius:10px;padding:10px 12px;font-size:12px;color:#93c5fd;line-height:1.5"></div>
-        <div style="display:flex;gap:8px;width:100%">
-          <button class="btn btn-secondary" onclick="closeLinkedJobModal()" style="flex:1">Fechar</button>
-          <button class="btn btn-primary" id="linked-dol-btn" style="flex:2;display:flex;align-items:center;justify-content:center;gap:6px" onclick="fetchLinkedJobDOL()"><i class="ti ti-search"></i> Buscar dados completos</button>
-        </div>
-      </div>
-    </div>
-  `;
-  // Store case number for DOL fetch
-  ov._caseNum = snap.caseNum||snap.id||linked.appId||'';
-  ov._linked = linked;
-  ov._snap = snap;
-  ov.classList.remove("gone");
-  ov.style.display="flex";
-}
-async function fetchLinkedJobDOL(){
-  const ov=document.getElementById("linked-modal-overlay");
-  if(!ov) return;
-  const caseNum = ov._caseNum;
-  if(!caseNum){toast("ETA Case Number não disponível para esta vaga","r");return;}
-  const btn=document.getElementById("linked-dol-btn");
-  const info=document.getElementById("linked-dol-info");
-  if(btn){btn.disabled=true;btn.innerHTML='<span class="spin" style="width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block"></span> Buscando...';}
-  try{
-    const r=await fetch(`/api/sheet-detail?case=${encodeURIComponent(caseNum)}`,{credentials:'include'});
-    const d=await r.json();
-    if(d.job){
-      const j=d.job;
-      // Update snapshot data in the modal
-      const mbody=ov.querySelector('.mbody');
-      if(mbody){
-        let extra='';
-        if(j.phone) extra+=`<div style="margin-top:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:9px 12px"><div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Telefone</div><div style="font-size:13px;font-weight:700;color:#fff"><a href="tel:${esc(j.phone)}" style="color:#60a5fa">${esc(j.phone)}</a></div></div>`;
-        if(j.email) extra+=`<div style="margin-top:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:9px 12px"><div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">E-mail da vaga</div><div style="font-size:13px;font-weight:700;color:#60a5fa">${esc(j.email)}</div></div>`;
-        if(j.soc) extra+=`<div style="margin-top:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:9px 12px"><div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Ocupação SOC</div><div style="font-size:13px;font-weight:700;color:#fff">${esc(j.soc)}</div></div>`;
-        if(j.url) extra+=`<a href="https://${j.url.replace(/^https?:\/\//,'')}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;margin-top:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:9px 12px;color:#60a5fa;font-size:13px;font-weight:700;text-decoration:none"><i class="ti ti-external-link"></i> Ver vaga no SeasonalJobs.gov</a>`;
-        if(j.desc) extra+=`<div style="margin-top:8px"><div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Descrição do cargo</div><div style="font-size:12px;color:rgba(255,255,255,.8);line-height:1.6;background:rgba(255,255,255,.03);border-radius:8px;padding:10px;max-height:150px;overflow-y:auto">${esc(j.desc)}</div></div>`;
-        const extraDiv=document.createElement('div');
-        extraDiv.innerHTML=extra;
-        mbody.appendChild(extraDiv);
-      }
-      if(info){info.style.display='';info.innerHTML='<i class="ti ti-check" style="color:#34d399"></i> Dados buscados do DOL em tempo real · Case: '+esc(caseNum);}
-      if(btn){btn.innerHTML='<i class="ti ti-check"></i> Dados carregados';btn.disabled=true;}
-    } else {
-      if(info){info.style.display='';info.innerHTML='<i class="ti ti-alert-triangle" style="color:#fbbf24"></i> Vaga não encontrada na API DOL para o case: '+esc(caseNum);}
-      if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-refresh"></i> Tentar novamente';}
-    }
-  }catch(e){
-    if(info){info.style.display='';info.innerHTML='<i class="ti ti-x" style="color:#f87171"></i> Erro ao buscar: '+esc(e.message);}
-    if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-refresh"></i> Tentar novamente';}
-  }
-}
-function closeLinkedJobModal(){
-  const ov=document.getElementById("linked-modal-overlay");
-  if(ov){ov.style.display="none";ov.classList.add("gone");}
-}
-
-// ══ CHAT HISTORY — armazenamento local persistente ══
-const CHAT_STORE_KEY="h2b-chat-v1";
-function _loadChatStore(){try{return JSON.parse(localStorage.getItem(CHAT_STORE_KEY)||"{}");}catch{return {};}}
-function _saveChatStore(store){try{localStorage.setItem(CHAT_STORE_KEY,JSON.stringify(store));}catch{}}
-function _saveChatMessage(threadId,msg){
-  if(!threadId)return;
-  const store=_loadChatStore();
-  if(!store[threadId])store[threadId]=[];
-  store[threadId].push(msg);
-  // Manter no máximo 200 mensagens por thread
-  if(store[threadId].length>200)store[threadId]=store[threadId].slice(-200);
-  _saveChatStore(store);
-}
-
-function _fmtChatTime(ts){
-  if(!ts)return"";
-  const d=new Date(ts);const now=new Date();
-  const sameDay=d.toDateString()===now.toDateString();
-  if(sameDay)return d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
-  return d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"})+' '+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
-}
-
-function _renderChatHistory(threadId,email){
-  const el=g("#ed-chat-history");if(!el)return;
-  const store=_loadChatStore();
-  const history=store[threadId]||[];
-
-  // Montar lista completa: e-mails da inbox + histórico local enviado
-  const messages=[];
-
-  // Adicionar e-mail recebido atual como primeira mensagem
-  if(email){
-    const fromName=(email.from||"").replace(/<[^>]+>/g,"").replace(/"/g,"").trim()||email.from||"Empresa";
-    messages.push({
-      role:"received",
-      from:fromName,
-      body:cleanEmailBody(email.body||email.snippet||"(conteúdo não disponível)"),
-      timestamp:email.timestamp||0,
-      isOriginal:true
-    });
-  }
-
-  // Adicionar mensagens salvas localmente (respostas enviadas)
-  history.forEach(m=>messages.push(m));
-
-  // Ordenar por timestamp
-  messages.sort((a,b)=>(a.timestamp||0)-(b.timestamp||0));
-
-  if(!messages.length){el.innerHTML='<div style="text-align:center;padding:24px;color:var(--t3);font-size:13px">Nenhuma mensagem</div>';return;}
-
-  let lastDay="";
-  el.innerHTML=messages.map(msg=>{
-    const isSent=msg.role==="sent";
-    const d=msg.timestamp?new Date(msg.timestamp):"";
-    const dayStr=d?d.toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long"}):"";
-    let daySep="";
-    if(dayStr&&dayStr!==lastDay){lastDay=dayStr;daySep=`<div class="chat-msg-date">${dayStr}</div>`;}
-
-    const senderLabel=isSent?(CFG.name||U.name||"Você"):(msg.from||"Empresa");
-    const timeStr=_fmtChatTime(msg.timestamp);
-    const bodyText=esc((msg.body||"").slice(0,2000)+(msg.body?.length>2000?"…":""));
-
-    return`${daySep}<div class="${isSent?"chat-msg-out":"chat-msg-in"}">
-      <div class="chat-msg-sender">${esc(senderLabel)}</div>
-      <div class="chat-msg-body">${bodyText}</div>
-      <div class="chat-msg-time">${timeStr}${isSent?' <i class="ti ti-checks" style="font-size:10px"></i>':""}</div>
-    </div>`;
-  }).join("");
-
-  // Scroll para baixo
-  setTimeout(()=>el.scrollTop=el.scrollHeight,50);
-}
-
-// ── Limpar códigos estranhos do corpo do e-mail ───────────
-function cleanEmailBody(text){
-  if(!text)return"";
-  let t=text;
-  // Remove marcadores de segurança tipo "NkdkJdXPPEBannerStart", "External Sender"
-  t=t.replace(/[A-Za-z0-9]{20,}/g,(m)=>{
-    // Mantém palavras comuns longas, remove strings sem vogal suficiente (hashes/tokens)
-    const vowels=(m.match(/[aeiouAEIOU]/g)||[]).length;
-    return vowels/m.length<0.2?"":m;
-  });
-  // Remove linhas que parecem hashes ou IDs técnicos
-  t=t.replace(/^[A-Za-z0-9+/=_-]{20,}$/gm,"");
-  // Remove cabeçalhos de e-mail raw tipo "From:", "Message-ID:", etc
-  t=t.replace(/^(From|Message-ID|X-[^:]+|MIME-Version|Content-Type|Content-Transfer|Received|Return-Path|Delivered-To):.+$/gmi,"");
-  // Remove strings tipo "#m_-18734..." (IDs de ancoragem do Gmail)
-  t=t.replace(/#m_-?[\d_]+/g,"");
-  // Remove "External Sender - From:" banners
-  t=t.replace(/External Sender\s*[-–]\s*From:.*?\n?/gi,"");
-  // Remove "NkdkJd..." tipo banners de segurança
-  t=t.replace(/[A-Z][a-z][A-Z][a-z][A-Z][a-z]+BannerStart[\s\S]*?BannerEnd/g,"");
-  // Remove múltiplas linhas em branco
-  t=t.replace(/\n{3,}/g,"\n\n");
-  return t.trim();
-}
-
-// ── Tradução via Google Translate (gratuita) ─────────────
-async function translateWithGoogle(text){
-  if(!text||text.length<5)return text;
-  try{
-    // Usa a API gratuita do Google Translate (sem key)
-    const url=`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=pt&dt=t&q=${encodeURIComponent(text.slice(0,4000))}`;
-    const r=await fetch(url);
-    if(!r.ok)throw new Error("http "+r.status);
-    const d=await r.json();
-    // Formato: [[[translated, original, ...],...], ...]
-    const translated=(d[0]||[]).map(s=>s[0]||"").join("");
-    return translated||text;
-  }catch(e){
-    console.warn("[translate]",e);
-    // Fallback: dicionário local
-    return translateInboxEmailLocal(text);
-  }
-}
-
-// Dicionário local como fallback
-function translateInboxEmailLocal(text){
-  if(!text)return"";
-  let t=text;
-  const EN_PT_INBOX=[
-    [/we received your (application|resume)/gi,"recebemos sua candidatura"],
-    [/we (would like|are looking) to (schedule|set up) (an )?interview/gi,"gostaríamos de agendar uma entrevista"],
-    [/please (let us know|confirm) your availability/gi,"por favor confirme sua disponibilidade"],
-    [/we (are|were) impressed (by|with) your/gi,"ficamos impressionados com sua"],
-    [/we are interested in your (profile|candidacy|application)/gi,"temos interesse no seu perfil"],
-    [/we regret to inform you/gi,"lamentamos informar que"],
-    [/we will not be moving forward/gi,"não iremos avançar com sua candidatura"],
-    [/the position has been filled/gi,"a vaga foi preenchida"],
-    [/thank you for your (interest|application|time)/gi,"obrigado pelo seu interesse"],
-    [/dear (applicant|candidate)/gi,"prezado(a) candidato(a)"],
-    [/hiring manager/gi,"responsável pela contratação"],
-    [/we (look forward|are looking forward) to hearing from you/gi,"aguardamos seu retorno"],
-    [/please (feel free|do not hesitate) to (contact|reach) us/gi,"sinta-se à vontade para nos contatar"],
-    [/best regards/gi,"atenciosamente"],
-    [/sincerely/gi,"sinceramente"],
-    [/we are pleased to (offer|extend)/gi,"temos o prazer de oferecer"],
-    [/start date/gi,"data de início"],
-    [/hourly (wage|rate|pay)/gi,"salário por hora"],
-    [/per hour/gi,"por hora"],
-    [/housing (is|will be) provided/gi,"moradia será fornecida"],
-    [/transportation (is|will be) provided/gi,"transporte será fornecido"],
-    [/background check/gi,"verificação de antecedentes"],
-    [/drug test/gi,"teste de drogas"],
-    [/visa (sponsorship|process)/gi,"processo de visto"],
-    [/h-2b visa/gi,"visto H-2B"],
-    [/h-2a visa/gi,"visto H-2A"],
-    [/seasonal position/gi,"vaga temporária"],
-    [/full.?time/gi,"período integral"],
-    [/part.?time/gi,"meio período"],
-    [/congratulations/gi,"parabéns"],
-    [/job offer/gi,"oferta de emprego"],
-    [/salary/gi,"salário"],
-    [/benefits/gi,"benefícios"],
-    [/please (reply|respond)/gi,"por favor responda"],
-    [/as soon as possible/gi,"o mais rápido possível"],
-    [/within (\d+) days?/gi,(m)=>`dentro de ${m.match(/\d+/)?.[0]||""} dia(s)`],
-    [/we would like to welcome you/gi,"gostaríamos de dar as boas-vindas a você"],
-    [/we are happy to inform/gi,"ficamos felizes em informar"],
-    [/your application/gi,"sua candidatura"],
-    [/next steps?/gi,"próximos passos"],
-    [/at your earliest convenience/gi,"o mais breve possível"],
-    [/let me know if you have any questions/gi,"me avise se tiver alguma dúvida"],
-    [/we will be in touch/gi,"entraremos em contato"],
-    [/looking forward to/gi,"aguardamos ansiosamente"],
-    [/great fit for our team/gi,"encaixa bem na nossa equipe"],
-  ];
-  EN_PT_INBOX.forEach(([pat,rep])=>{t=t.replace(pat,typeof rep==="function"?rep:rep);});
-  return t;
-}
-
-async function toggleEmailTranslation(){
-  const btn=g("#ed-translate-btn");
-  if(_edTranslating)return;
-  if(_edTranslationVisible){
-    // Remover bolha de tradução se existir
-    g("#ed-translation-bubble")?.remove();
-    _edTranslationVisible=false;
-    if(btn)btn.innerHTML='<i class="ti ti-language" style="font-size:12px"></i> Traduzir';
-    return;
-  }
-  if(btn)btn.innerHTML='<span class="spin spin-sm"></span> Traduzindo…';
-  _edTranslating=true;
-  try{
-    const email=g("#email-detail-overlay")?._currentEmail;
-    const originalText=cleanEmailBody(email?.body||email?.snippet||"");
-    const translated=await translateWithGoogle(originalText);
-    // Injetar como bolha especial no chat
-    const chat=g("#ed-chat-history");
-    let bubble=g("#ed-translation-bubble");
-    if(!bubble){bubble=document.createElement("div");bubble.id="ed-translation-bubble";chat?.appendChild(bubble);}
-    bubble.className="chat-msg received";
-    bubble.innerHTML=`<div class="chat-sender" style="color:var(--blue)">🇧🇷 Tradução automática</div>
-      <div class="chat-bubble" style="background:var(--greenl);border-color:var(--greenb);white-space:pre-wrap;font-size:12px">${esc(translated||"Tradução não disponível")}</div>
-      <div class="chat-meta"><span style="color:var(--green)">⚠️ Use como guia — pode ter imprecisões</span></div>`;
-    bubble.scrollIntoView({behavior:"smooth",block:"nearest"});
-    if(btn)btn.innerHTML='<i class="ti ti-language" style="font-size:12px"></i> Ocultar';
-    _edTranslationVisible=true;
-  }catch(e){
-    if(btn)btn.innerHTML='<i class="ti ti-language" style="font-size:12px"></i> Traduzir';
-    _edTranslationVisible=false;
-    toast("Erro na tradução. Tente novamente.","r");
-  }finally{_edTranslating=false;}
-}
-
-// ── Copiar resposta ────────────────────────────────────────
-function copyEmailReply(){
-  const subj=g("#ed-reply-subject")?.value||"";
-  const body=g("#ed-reply-body")?.value||"";
-  navigator.clipboard.writeText(`Assunto: ${subj}\n\n${body}`)
-    .then(()=>toast("Texto copiado! ✓","g"))
-    .catch(()=>toast("Selecione e copie manualmente","r"));
-}
-
-// ── Enviar resposta pelo app ────────────────────────────────
-function sendEmailReply(){
-  const email=g("#email-detail-overlay")?._currentEmail;
-  const fromEmail=email?(email.from.match(/<([^>]+)>/)||[])[1]||email.from:"";
-  const to=fromEmail;
-  const subj=g("#ed-reply-subject")?.value?.trim();
-  const body=g("#ed-reply-body")?.value?.trim();
-
-  if(!to){toast("Não foi possível identificar o destinatário","r");return;}
-  if(!body){toast("Escreva sua resposta antes de enviar","r");g("#ed-reply-body")?.focus();return;}
-
-  const btn=g("#ed-send-btn");const status=g("#ed-send-status");
-  if(btn){btn.disabled=true;btn.innerHTML='<span class="spin spin-sm"></span> Enviando...';}
-
-  // Envia como resposta encadeada — passa messageId e threadId para
-  // o servidor montar os cabeçalhos In-Reply-To + References no Gmail
-  fetch("/api/send",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-    to,
-    subject:subj||("Re: "+(email?.subject||"")),
-    message:body,
-    fromName:CFG.name||U.name||"H2BApply",
-    isReply:true,
-    // Threading headers — garantem que a resposta fica no mesmo thread
-    messageId:email?.messageId||null,
-    threadId:email?.threadId||null,
-  })})
-    .then(r=>r.json()).then(d=>{
-      if(!d.ok)throw new Error(d.error||"Erro");
-      // Respostas (isReply) NÃO contam no limite manual — d.countedAsManual = false
-      if(d.countedAsManual){
-        U.todaySentManual=d.todaySent||U.todaySentManual+1;
-        U.manualRemaining=d.remaining||0;updateLimChip();
-      }
-      if(status){status.style.display="block";status.textContent="✅ Resposta enviada para "+to+"!";}
-      // Salvar no histórico local de conversa (localStorage)
-      _saveChatMessage(email?.threadId||email?.id,{
-        role:"sent",
-        from:CFG.name||U.name||"Eu",
-        to,
-        subject:subj||("Re: "+(email?.subject||"")),
-        body,
-        timestamp:Date.now()
-      });
-      if(g("#ed-reply-body"))g("#ed-reply-body").value="";
-      _renderChatHistory(email?.threadId||email?.id,null);
-      toast("✅ Resposta enviada!","g");
-    }).catch(e=>toast("Erro: "+e.message,"r"))
-    .finally(()=>{if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-send"></i> Enviar pelo app';}});
-}
 
 // ── Render Home ───────────────────────────────────────────
 // ── Guia inteligente "Próximo passo" na home (aditivo, falha em silêncio) ──
@@ -6731,130 +5564,6 @@ function renderHome(){
   }
 }
 
-async function _loadHomeFollowups(){
-  try{
-    const r=await fetch('/api/followup/check',{credentials:'include'});
-    const d=await r.json();
-    const sec=g('#home-followup-section');
-    const list=g('#home-followup-list');
-    const cnt=g('#home-followup-count');
-    if(!sec||!list)return;
-    if(!d.ok||!d.total){sec.style.display='none';return;}
-    sec.style.display='';
-    if(cnt)cnt.textContent=d.total+' vaga(s) sem resposta há 7+ dias';
-    list.innerHTML=d.followups.slice(0,5).map(f=>`
-      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer" onclick="sv('hist')">
-        <div style="width:32px;height:32px;border-radius:9px;background:rgba(245,158,11,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ti ti-refresh" style="color:var(--amber);font-size:15px"></i></div>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.company||f.job||'–')}</div>
-          <div style="font-size:11px;color:var(--t3)">Enviado há ${f.daysSince} dias · sem resposta</div>
-        </div>
-        <i class="ti ti-chevron-right" style="font-size:14px;color:var(--t3)"></i>
-      </div>`).join('');
-  }catch{}
-}
-
-function _renderHomeReplies(){
-  const el=g("#home-quick-replies");if(!el)return;
-  // Atualiza badge
-  const unread=INBOX_EMAILS.filter(e=>!e.isRead).length;
-  const rb=g("#home-badge-resp");
-  if(rb){rb.style.display=unread?"":"none";rb.textContent=String(unread);}
-  const replies=INBOX_EMAILS.filter(e=>e.isReply).slice(0,5);
-  if(!replies.length){
-    el.innerHTML=`<div style="padding:28px 14px;text-align:center">
-      <div style="width:64px;height:64px;border-radius:18px;background:rgba(124,58,237,.1);display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 12px">📬</div>
-      <div style="font-size:14px;font-weight:800;color:var(--text)">Nenhuma resposta recebida ainda</div>
-      <div style="font-size:12px;color:var(--t3);margin-top:5px;line-height:1.5">Quando você receber respostas das empresas,<br>elas aparecerão aqui.</div>
-    </div>`;
-    return;
-  }
-  el.innerHTML=replies.map(e=>{
-    const fromName=(e.from||"").replace(/<[^>]+>/g,"").replace(/"/g,"").trim()||e.from||"?";
-    const isUnread=!e.isRead;
-    return`<div class="home-reply-item" onclick="sv('respostas');setTimeout(()=>openEmailDetail('${e.id}'),400)">
-      <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--purple));color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0">${(fromName[0]||"?").toUpperCase()}</div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:${isUnread?800:600};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(fromName.length>28?fromName.slice(0,26)+"…":fromName)}</div>
-        <div style="font-size:11px;color:var(--t3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.subject||"(sem assunto)")}</div>
-      </div>
-      ${isUnread?`<div style="width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0"></div>`:''}
-    </div>`;
-  }).join("")+`<div class="home-reply-item" onclick="sv('respostas')" style="justify-content:center;color:var(--blue);font-size:13px;font-weight:700">Ver todas as respostas →</div>`;
-}
-
-// ── Painel de notificações inline na aba Respostas ────────
-function _renderInboxNotifTabBtn(){
-  const btn=g("#inbox-notif-tab-btn");const icon=g("#inbox-notif-tab-icon");const wrap=g("#inbox-notif-tab-icon-wrap");const label=g("#inbox-notif-tab-label");const dot=g("#inbox-notif-tab-dot");
-  if(!btn)return;
-  if(_notifEnabled){
-    btn.style.color="var(--green)";
-    if(icon){icon.style.color="#fff";icon.className="ti ti-bell-ringing";}
-    if(wrap){wrap.style.background="var(--green)";wrap.style.borderColor="var(--green)";wrap.style.boxShadow="0 2px 8px rgba(5,122,85,.35)";}
-    if(label){label.textContent="Ativo";label.style.color="var(--green)";}
-    if(dot)dot.style.display="none";
-    btn.style.borderBottomColor="var(--green)";
-  }else{
-    btn.style.color="var(--red)";
-    if(icon){icon.style.color="var(--red)";icon.className="ti ti-bell-off";}
-    if(wrap){wrap.style.background="var(--redl)";wrap.style.borderColor="var(--redb)";wrap.style.boxShadow="none";}
-    if(label){label.textContent="Deslig.";label.style.color="var(--red)";}
-    if(dot){dot.style.display="block";dot.style.background="var(--red)";}
-    btn.style.borderBottomColor="transparent";
-  }
-}
-
-function toggleInboxNotifPanel(){
-  const panel=g("#inbox-notif-panel");if(!panel)return;
-  const open=panel.style.display==="none"||!panel.style.display;
-  panel.style.display=open?"block":"none";
-  if(open){
-    _renderInboxNotifToggle();
-    renderInboxSoundSelector();
-  }
-}
-
-function _renderInboxNotifToggle(){
-  const btn=g("#inbox-notif-toggle-btn");const dot=g("#inbox-notif-toggle-dot");const msg=g("#inbox-notif-status-msg");
-  if(!btn)return;
-  btn.style.background=_notifEnabled?"#057a55":"var(--border2)";
-  if(dot)dot.style.transform=_notifEnabled?"translateX(24px)":"translateX(0)";
-  if(msg){
-    if(_notifEnabled){msg.style.color="var(--green)";msg.textContent="🛫 Ativado! Você receberá alertas de novas respostas.";}
-    else{msg.style.color="var(--t3)";msg.textContent="Toque para ativar alertas sonoros de novas respostas.";}
-  }
-  _renderInboxNotifTabBtn();
-}
-
-function renderInboxSoundSelector(){
-  const el=g("#inbox-sound-selector-wrap");if(!el)return;
-  el.innerHTML=`<div style="font-size:11px;font-weight:700;color:var(--t2);margin-bottom:8px">🎵 ${t('snd_title')}</div>
-  <div class="sound-selector">
-    ${Object.entries(SOUNDS).map(([key,s])=>`
-      <button class="sound-option${_selectedSound===key?" selected":""}" onclick="selectSoundInbox('${key}')" id="inbox-sound-opt-${key}">
-        <span class="sound-option-icon">${_sndLabel(key,s).split(" ")[0]}</span>
-        <span class="sound-option-label">${_sndLabel(key,s).split(" ").slice(1).join(" ")}</span>
-      </button>
-    `).join("")}
-  </div>`;
-}
-
-function selectSoundInbox(key){
-  _selectedSound=key;_saveSoundPref(key);
-  document.querySelectorAll("#inbox-sound-selector-wrap .sound-option").forEach(b=>b.classList.remove("selected"));
-  g("#inbox-sound-opt-"+key)?.classList.add("selected");
-  // Sync with profile sound selector
-  document.querySelectorAll("#sound-selector-wrap .sound-option").forEach(b=>b.classList.remove("selected"));
-  g("#sound-opt-"+key)?.classList.add("selected");
-  playNotifSound(key);
-  toast(`${_sndLabel(key,SOUNDS[key])} ${t('snd_sel')}`,"g");
-}
-function startInboxPolling(){
-  if(INBOX_POLL)clearInterval(INBOX_POLL);
-  INBOX_POLL=setInterval(()=>{if(curView==="respostas")loadInbox();},120000);
-}
-startInboxPolling();
-
 // ── Notificações ──────────────────────────────────────────
 let _notifEnabled=false;
 let _lastUnreadCount=-1;
@@ -6862,7 +5571,6 @@ let _lastUnreadCount=-1;
 function _loadNotifState(){
   try{_notifEnabled=localStorage.getItem("h2b-notif")==="1";}catch{}
   _renderNotifToggle();
-  _renderInboxNotifTabBtn();
 }
 
 function _renderNotifToggle(){
@@ -6871,10 +5579,13 @@ function _renderNotifToggle(){
   btn.style.background=_notifEnabled?"#057a55":"var(--border2)";
   if(dot)dot.style.transform=_notifEnabled?"translateX(24px)":"translateX(0)";
   if(msg){
-    if(_notifEnabled){msg.style.color="var(--green)";msg.textContent="🛫 Ativado! Você será avisado de novas respostas, mesmo com o app fechado.";}
-    else{msg.style.color="var(--t3)";msg.textContent="Toque para ativar alertas de novas respostas (mesmo com o app fechado).";}
+    // v-2026: o site é só-envio (GMAIL_SEND_ONLY) e não lê a caixa de entrada
+    // de ninguém — este alerta é só de diamantes/missões/novidades, nunca de
+    // resposta de empregador (isso ficava contraditório com o texto fixo do
+    // card, que já avisa "não avisamos quando a empresa responde").
+    if(_notifEnabled){msg.style.color="var(--green)";msg.textContent="🛫 Ativado! Você será avisado de diamantes, missões e novidades.";}
+    else{msg.style.color="var(--t3)";msg.textContent="Toque para ativar alertas de diamantes, missões e novidades.";}
   }
-  _renderInboxNotifTabBtn();
 }
 
 
@@ -6977,139 +5688,16 @@ function selectSound(key){
   toast(`${_sndLabel(key,SOUNDS[key])} ${t('snd_sel')}`,"g");
 }
 
-// Checa novas mensagens e dispara som + push notification clicável
-async function checkInboxNotif(){
-  if(!U.connected)return;
-  try{
-    const r=await fetch("/api/inbox?limit=200",{credentials:"include"});
-    const d=await r.json();if(!d.ok)return;
-    const emails=d.emails||[];
-    emails.forEach(e=>{if(_READ_IDS.has(e.id))e.isRead=true;});
-    const unread=emails.filter(e=>!e.isRead).length;
-    // FIX: sempre atualiza INBOX_EMAILS para garantir que respostas apareçam
-    const hasNewEmails=emails.length!==INBOX_EMAILS.length||emails.some(e=>!INBOX_EMAILS.find(x=>x.id===e.id));
-    if(hasNewEmails){INBOX_EMAILS=emails;_mergeReadState();_updateInboxStats();_renderHomeReplies();if(curView==="respostas"){renderInbox();}_updateInboxStats();updInboxBadge(unread);}
-    if(_notifEnabled&&_lastUnreadCount>=0&&unread>_lastUnreadCount){
-      const diff=unread-_lastUnreadCount;
-      playNotifSound(_selectedSound);
-      _showClickableToast(`✈️ ${diff} nova${diff>1?"s":""} resposta${diff>1?"s":""}! Toque para abrir.`,"au",()=>sv("respostas"));
-      updInboxBadge(unread);
-      if(Notification.permission==="granted"){
-        try{
-          const notif=new Notification("✈️ H2BApply — Nova resposta!",{
-            body:`Você recebeu ${diff} nova${diff>1?"s":""} resposta${diff>1?"s":""}! Clique para abrir.`,
-            icon:"/icon-192.png",tag:"h2b-inbox",requireInteraction:true
-          });
-          notif.onclick=()=>{window.focus();sv("respostas");notif.close();};
-        }catch{}
-      }
-    }
-    _lastUnreadCount=unread;
-  }catch{}
-}
-
-// Toast clicável com swipe para fechar
-function _showClickableToast(msg,type,onClick){
-  const tw=g("#tw");if(!tw)return;
-  const t=document.createElement("div");
-  t.className="t"+(type?" "+type:"");
-  t.style.cssText+="cursor:pointer;pointer-events:auto;display:flex;align-items:center;gap:8px;";
-  t.innerHTML=`<span style="flex:1">${msg}</span><span style="font-size:18px;opacity:.6;line-height:1;flex-shrink:0">✕</span>`;
-  let startX=0,dismissed=false;
-  t.addEventListener("touchstart",e=>{startX=e.touches[0].clientX;},{passive:true});
-  t.addEventListener("touchmove",e=>{const dx=e.touches[0].clientX-startX;if(Math.abs(dx)>20){t.style.transform=`translateX(${dx}px)`;t.style.opacity=String(Math.max(0,1-Math.abs(dx)/120));}},{passive:true});
-  t.addEventListener("touchend",e=>{const dx=e.changedTouches[0].clientX-startX;if(Math.abs(dx)>70){dismissed=true;t.style.transition="all .2s";t.style.transform=`translateX(${dx>0?200:-200}px)`;t.style.opacity="0";setTimeout(()=>t.remove(),220);}else{t.style.transform="";t.style.opacity="";}});
-  t.querySelector("span:last-child").onclick=(e)=>{e.stopPropagation();dismissed=true;t.classList.remove("show");setTimeout(()=>t.remove(),250);};
-  t.onclick=()=>{if(!dismissed&&onClick){onClick();t.classList.remove("show");setTimeout(()=>t.remove(),250);}};
-  tw.appendChild(t);
-  requestAnimationFrame(()=>requestAnimationFrame(()=>t.classList.add("show")));
-  setTimeout(()=>{if(!dismissed){t.classList.remove("show");setTimeout(()=>t.remove(),300);}},7000);
-}
-setInterval(checkInboxNotif,60000);
-
 // ══════════════════════════════════════════════════════════
-//  WEB PUSH — Subscrição VAPID (notificações reais no Android)
-//  Ativa quando o usuário liga as notificações + app instalado
+//  NOTIFICAÇÕES LOCAIS (Notification API do navegador)
+//  v-2026: não existe backend de Web Push real nesta reconstrução (sem
+//  rotas /api/push/*, sem lib web-push, sem VAPID configurado) — o alerta
+//  funciona só enquanto o app está aberto/conectado (som + Notification()
+//  local de diamantes/missões/novidades). Removido o subsistema de
+//  subscription VAPID que só chamava rotas inexistentes no servidor.
 // ══════════════════════════════════════════════════════════
-let _vapidPublicKey = null;
-let _pushRegistered = false;
 
-// Converte base64url para Uint8Array (necessário para PushManager.subscribe)
-function _urlBase64ToUint8Array(b64) {
-  const pad = "=".repeat((4 - b64.length % 4) % 4);
-  const b64std = (b64 + pad).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(b64std);
-  return new Uint8Array([...raw].map(c => c.charCodeAt(0)));
-}
-
-async function _registerPushSubscription() {
-  if (_pushRegistered) return;
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-  if (Notification.permission !== "granted") return;
-
-  try {
-    // Busca a chave pública VAPID do servidor
-    if (!_vapidPublicKey) {
-      const r = await fetch("/api/push/vapid-public-key", { credentials: "include" });
-      const d = await r.json();
-      if (!d.enabled || !d.publicKey) {
-        console.debug("[push] VAPID não configurado no servidor.");
-        return;
-      }
-      _vapidPublicKey = d.publicKey;
-    }
-
-    const reg = await navigator.serviceWorker.ready;
-    let sub = await reg.pushManager.getSubscription();
-
-    // Cria nova subscription se não existe
-    if (!sub) {
-      sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: _urlBase64ToUint8Array(_vapidPublicKey),
-      });
-    }
-
-    // Registra no servidor
-    const r = await fetch("/api/push/subscribe", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subscription: sub.toJSON() }),
-    });
-    const d = await r.json();
-    if (d.ok) {
-      _pushRegistered = true;
-      console.debug(`[push] ✅ Registrado (${d.devices} device(s))`);
-    }
-  } catch (e) {
-    console.warn("[push] Falha ao registrar subscription:", e.message);
-  }
-}
-
-async function _unregisterPushSubscription() {
-  try {
-    if (!("serviceWorker" in navigator)) return;
-    const reg = await navigator.serviceWorker.ready;
-    const sub = await reg.pushManager.getSubscription();
-    if (sub) {
-      // Notifica o servidor
-      await fetch("/api/push/unsubscribe", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ endpoint: sub.endpoint }),
-      }).catch(() => {});
-      // Remove subscription local
-      await sub.unsubscribe();
-    }
-    _pushRegistered = false;
-  } catch (e) {
-    console.warn("[push] Erro ao desregistrar:", e.message);
-  }
-}
-
-// Hook: quando notificações são ativadas, registra push VAPID
+// Hook: quando notificações são ativadas/desativadas
 async function toggleNotifications() {
   if (!_notifEnabled) {
     if ("Notification" in window && Notification.permission !== "granted") {
@@ -7120,38 +5708,15 @@ async function toggleNotifications() {
     playPlaneSound(); toast("🛫 Notificações ativadas!", "g");
     try { new Notification("✅ H2BApply", { body: "Notificações ativadas! Você será avisado de diamantes, missões e novidades.", icon: "/icon-192.png", tag: "h2b-test" }); } catch {}
     dismissNotifBanner();
-    // Registra Web Push VAPID para notificações com app fechado
-    _registerPushSubscription().catch(() => {});
   } else {
     _notifEnabled = false; try { localStorage.setItem("h2b-notif", "0"); } catch {}
     toast("Notificações desativadas", "r");
-    _unregisterPushSubscription().catch(() => {});
   }
-  _renderNotifToggle();
-}
-
-async function toggleNotificationsInbox() {
-  if (!_notifEnabled) {
-    if ("Notification" in window && Notification.permission !== "granted") {
-      const p = await Notification.requestPermission().catch(() => "denied");
-      if (p !== "granted") { toast("Permissão negada. Ative nas configurações do navegador.", "r"); _renderInboxNotifToggle(); return; }
-    }
-    _notifEnabled = true; try { localStorage.setItem("h2b-notif", "1"); } catch {}
-    playPlaneSound(); toast("🛫 Notificações ativadas!", "g");
-    try { new Notification("✅ H2BApply", { body: "Você será avisado de diamantes, missões e novidades!", icon: "/icon-192.png", tag: "h2b-test" }); } catch {}
-    dismissNotifBanner();
-    _registerPushSubscription().catch(() => {});
-  } else {
-    _notifEnabled = false; try { localStorage.setItem("h2b-notif", "0"); } catch {}
-    toast("Notificações desativadas", "r");
-    _unregisterPushSubscription().catch(() => {});
-  }
-  _renderInboxNotifToggle();
   _renderNotifToggle();
 }
 
 // ══════════════════════════════════════════════════════════
-//  AUTO-REQUEST DE PUSH NO PRIMEIRO LOGIN
+//  AUTO-REQUEST DE NOTIFICAÇÃO NO PRIMEIRO LOGIN
 //  Solicita permissão automaticamente ao entrar pela 1ª vez,
 //  de forma não-intrusiva. Compatível com Android e desktop.
 // ══════════════════════════════════════════════════════════
@@ -7167,20 +5732,13 @@ function _markPushPrompted() {
   try { localStorage.setItem(_pushPromptKey(), "1"); } catch {}
 }
 
-// Solicita permissão de push e registra subscription
+// Solicita permissão de notificação (local — sem backend de push real)
 async function _autoPushSetup() {
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
   if (!("Notification" in window)) return;
   if (!U.connected) return;
 
   // Se já foi solicitado para esta conta, não pergunta de novo
-  if (_hasPushBeenPrompted()) {
-    // Mas se já tinha permissão concedida, garante que a subscription está registrada
-    if (Notification.permission === "granted" && !_pushRegistered) {
-      await _registerPushSubscription().catch(() => {});
-    }
-    return;
-  }
+  if (_hasPushBeenPrompted()) return;
 
   // Aguarda um momento para o app estar completamente carregado
   await new Promise(r => setTimeout(r, 2500));
@@ -7188,12 +5746,11 @@ async function _autoPushSetup() {
 
   _markPushPrompted(); // marca imediatamente para não re-solicitar
 
-  // Se já foi concedido em sessão anterior, apenas registra
+  // Se já foi concedido em sessão anterior, só sincroniza o estado local
   if (Notification.permission === "granted") {
     _notifEnabled = true;
     try { localStorage.setItem("h2b-notif", "1"); } catch {}
     _renderNotifToggle();
-    await _registerPushSubscription().catch(() => {});
     return;
   }
 
@@ -7210,7 +5767,6 @@ async function _autoPushSetup() {
       dismissNotifBanner();
       // Pequena confirmação visual, não intrusiva
       toast("🛫 Notificações ativadas! Você será avisado de diamantes, missões e novidades do plano.", "g");
-      await _registerPushSubscription().catch(() => {});
     } else {
       // Usuário negou — respeita a decisão, não volta a perguntar
       console.debug("[push] Permissão negada pelo usuário.");
@@ -7219,13 +5775,6 @@ async function _autoPushSetup() {
     console.warn("[push] requestPermission error:", err.message);
   }
 }
-
-// Re-registra se já tinha permissão em sessões posteriores
-setTimeout(() => {
-  if (_notifEnabled && Notification.permission === "granted" && U.connected && !_pushRegistered) {
-    _registerPushSubscription().catch(() => {});
-  }
-}, 4000);
 
 // ── Ouve mensagens do Service Worker (ex: navigate do notificationclick) ──
 if ("serviceWorker" in navigator) {
@@ -7269,11 +5818,9 @@ function _showFirstLoginWelcome() {
 }
 
 // ── Inicialização ─────────────────────────────────────────
-_loadInboxLocalState();
 _loadReadState();
 _loadNotifState();
 _loadSoundPref();
-setTimeout(()=>{if(_notifEnabled)checkInboxNotif();},3000);
 // Solicita push no primeiro login (executado após checkStatus carregar U)
 setTimeout(()=>{ if(U.connected) _autoPushSetup().catch(()=>{}); }, 1000);
 
@@ -7753,38 +6300,6 @@ function _showWelcome(){
 ;
 /* ═══ bloco extraído ═══ */
 
-async function showTextStats(){
-  const ov=g("#text-stats-overlay");if(!ov)return;
-  ov.classList.remove("gone");
-  const box=g("#text-stats-body");box.innerHTML='<div style="text-align:center;padding:30px"><span class="spin"></span></div>';
-  try{
-    const d=await fetch("/api/my-text-stats",{credentials:"include"}).then(r=>r.json());
-    if(!d.ok)throw new Error(d.error||"erro");
-    if(!d.stats.length){
-      box.innerHTML='<div style="text-align:center;padding:24px;color:var(--t3);font-size:13px;line-height:1.6">Ainda sem dados suficientes.<br>O sistema passa a medir cada envio do <b>automático</b> a partir de agora — volte aqui depois de algumas remessas e descubra qual dos seus assuntos recebe mais respostas. 📈</div>';
-      return;
-    }
-    const best=d.stats[0];
-    box.innerHTML=
-      '<div style="font-size:12px;color:var(--t3);margin-bottom:12px;line-height:1.5">O robô alterna seus assuntos a cada envio. Aqui você vê <b>qual deles recebe mais resposta</b> — considere usar mais os campeões e trocar os fracos.</div>'+
-      d.stats.map((x,i)=>{
-        const top=i===0&&x.replies>0;
-        return `<div style="border:1.5px solid ${top?"var(--greenb)":"var(--border)"};background:${top?"var(--greenl)":"var(--sf2)"};border-radius:10px;padding:10px 12px;margin-bottom:8px">
-          <div style="font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${top?"🏆 ":""}${esc(x.tpl)}</div>
-          <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
-            <div style="flex:1;height:7px;background:var(--border);border-radius:20px;overflow:hidden"><div style="height:100%;width:${Math.min(100,x.rate*4)}%;background:${top?"var(--green)":"var(--blue)"};border-radius:20px"></div></div>
-            <div style="font-size:12px;font-weight:800;color:${top?"var(--green)":"var(--t2)"};flex-shrink:0">${x.rate}%</div>
-          </div>
-          <div style="font-size:10.5px;color:var(--t3);margin-top:3px">${x.sent.toLocaleString()} envio(s) · ${x.replies.toLocaleString()} resposta(s)</div>
-        </div>`;
-      }).join("")+
-      `<div style="font-size:11px;color:var(--t3);margin-top:4px">${esc(d.note||"")}</div>`;
-  }catch(e){box.innerHTML='<div style="text-align:center;padding:24px;color:var(--red);font-size:13px">Erro ao carregar: '+esc(e.message)+'</div>';}
-}
-
-;
-/* ═══ bloco extraído ═══ */
-
 let _tourIdx=0,_tourN=0;
 function _tourSlides(){return document.querySelectorAll("#tour-track .tour-slide");}
 function _tourRender(){
@@ -8122,57 +6637,6 @@ async function uploadCvFromDocs(input, cvType){
 // reconstrução). Confirmado por grep que nenhum outro lugar do app chamava
 // as duas funções antes de apagar.
 
-// ── Pipeline View ──
-let pipelineStages={};
-
-function renderPipeline(){
-  const cols={responded:[],positive:[],interview:[],offer:[]};
-  INBOX_EMAILS.filter(e=>e.isReply||e.linkedApp).forEach(e=>{
-    const cl=classifyEmail(e);
-    const stageKey=e._pipelineStage||(cl.type==="positive"?"positive":"responded");
-    if(cols[stageKey])cols[stageKey].push(e);
-  });
-  Object.entries(cols).forEach(([key,emails])=>{
-    const cnt=g("#pipe-cnt-"+key);if(cnt)cnt.textContent=emails.length;
-    const cards=g("#pipe-cards-"+key);if(!cards)return;
-    if(!emails.length){cards.innerHTML=`<div style="font-size:12px;color:var(--t3);padding:10px;text-align:center">Vazio</div>`;return;}
-    cards.innerHTML=emails.map(e=>{
-      const co=(e.linkedApp?.company||e.linkedApp?.jobSnapshot?.company||(e.from||"").split("<")[0]).trim().slice(0,30);
-      const dt=e.timestamp?new Date(e.timestamp).toLocaleDateString("pt-BR"):"";
-      return`<div class="pipeline-card" onclick="openEmailDetail('${e.id}')">
-        <div class="pipeline-card-company">${esc(co||"Empresa")}</div>
-        <div style="font-size:11px;color:var(--t2);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((e.subject||"").slice(0,40))}</div>
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div class="pipeline-card-date">${dt}</div>
-          <button onclick="event.stopPropagation();movePipeline('${e.id}','${key}')" style="font-size:9px;background:var(--sf2);border:1px solid var(--border);border-radius:5px;padding:2px 6px;cursor:pointer;color:var(--t2)">mover →</button>
-        </div>
-      </div>`;
-    }).join("");
-  });
-}
-
-function movePipeline(emailId, currentStage){
-  const stages=["responded","positive","interview","offer"];
-  const next=stages[(stages.indexOf(currentStage)+1)%stages.length];
-  const e=INBOX_EMAILS.find(x=>x.id===emailId);if(e){e._pipelineStage=next;renderPipeline();}
-}
-
-// Patch setInboxMainTab to show/hide pipeline
-const _origSetMainTab=window.setInboxMainTab;
-window.setInboxMainTab=function(tab){
-  const pv=g("#pipeline-view");const il=g("#inbox-list");
-  if(tab==="pipeline"){
-    if(pv)pv.style.display="flex";
-    if(il)il.style.display="none";
-    renderPipeline();
-    document.querySelectorAll(".inbox-tab").forEach(b=>b.classList.remove("active"));
-    g("#imtab-pipeline")?.classList.add("active");
-  } else {
-    if(pv)pv.style.display="none";
-    if(il)il.style.display="";
-    if(_origSetMainTab)_origSetMainTab(tab);
-  }
-};
 
 
 // ── Follow-up reminder on home ── (função consolidada abaixo, em BLOCO 4)
@@ -9203,9 +7667,6 @@ console.debug("[v14+] Onboarding, FAQ, Preview Auto, Follow-up, Score carregados
     if(item._src === "seasonal" && item._id){
       actions += `<button class="btn btn-secondary" onclick="_pesqModalViewInJobs()"><i class="ti ti-layout-list"></i> Ver em Vagas</button>`;
     }
-    if(item._src === "hist"){
-      actions += `<button class="btn btn-secondary" onclick="_pesqModalViewInHist()"><i class="ti ti-history"></i> Ver Histórico</button>`;
-    }
     if(!hasEmail && item.caseNum){
       actions += `<button class="btn btn-secondary" onclick="window.open('${dolUrl||'https://seasonaljobs.dol.gov'}','_blank')"><i class="ti ti-external-link"></i> Ver no DOL</button>`;
     }
@@ -9303,14 +7764,9 @@ console.debug("[v14+] Onboarding, FAQ, Preview Auto, Follow-up, Score carregados
     setTimeout(()=>selJob2&&selJob2(id), 400);
   };
 
-  window._pesqModalViewInHist = function(){
-    closePesqJobModal();
-    sv("hist");
-  };
-
-  // ── Integração com aba Respostas: pesquisa de vagas por empresa/e-mail ──
-  // Adiciona botão "🔍 Buscar vaga" nos icard da inbox quando há empresa vinculada
-  // Usa MutationObserver para detectar novos cards renderizados
+  // ── Integração com .icard (legado): nunca mais renderizado nesta
+  // reconstrução (aba Respostas removida) — o MutationObserver abaixo
+  // simplesmente nunca encontra nada, mantido por não custar nada.
   const _obs = new MutationObserver((mutations)=>{
     mutations.forEach(m=>{
       m.addedNodes.forEach(n=>{
@@ -9383,7 +7839,7 @@ const LANG_DICT = {
   pt: {
     "h_faq_gone":"Vagas somem do manual em dois casos: (1) voc\u00ea j\u00e1 enviou candidatura para aquela empresa, ou (2) aquela vaga est\u00e1 na fila do autom\u00e1tico. Isso \u00e9 correto \u2014 evita enviar duas vezes para a mesma empresa.","mi1_d":"Envie sua 1\u00aa candidatura (manual ou rob\u00f4)","mi2_d":"Salve seu perfil de e-mail e suba um curr\u00edculo PDF","mi3_d":"Alcance 100 candidaturas enviadas","mi4_d":"Alcance 1.000 candidaturas enviadas","mi5_d":"Tenha sua avalia\u00e7\u00e3o do H2BApply aprovada e publicada", // 🌐 v137b
     "ns1_t":"Crie seu perfil de candidatura","ns1_s":"\u00c9 o que vai nos e-mails para as empresas. Leva 1 minuto.","ns1_c":"Criar perfil","ns2_t":"Anexe seu curr\u00edculo (PDF)","ns2_s":"Sem curr\u00edculo anexado, suas candidaturas n\u00e3o saem.","ns2_c":"Anexar","ns3_t":"Tudo pronto! Comece a se candidatar","ns3_s":"Seu perfil est\u00e1 completo. Envie sua primeira candidatura de hoje.","ns3_c":"Buscar vagas","ns4_t":"Voc\u00ea atingiu o limite de hoje","ns4_s":"Vire VIP e envie at\u00e9 100 candidaturas por dia.","ns4_c":"Ver planos","ns5_t":"Ative o Envio Autom\u00e1tico","ns5_s":"Deixe o sistema enviar candidaturas enquanto voc\u00ea trabalha.","ns5_c":"Ativar","logs_none":"Nenhum log ainda","logs_none_s":"Os logs aparecem aqui quando voc\u00ea usar o Envio Autom\u00e1tico","notif_none_unread":"Nenhuma notifica\u00e7\u00e3o n\u00e3o lida \ud83c\udf89","notif_none":"Nenhuma notifica\u00e7\u00e3o por enquanto","swap_instant":"Ativa NA HORA \u2014 sem espera, sem aprova\u00e7\u00e3o","mi1":"Primeira candidatura","mi2":"Perfil completo","mi3":"100 candidaturas","mi4":"1.000 candidaturas","mi5":"Avalia\u00e7\u00e3o publicada","snd_plane":"Avi\u00e3o","snd_plane_d":"Som de decolagem","h_paid_t":"\u2705 Planos pagos:","h_paid_d":"O autom\u00e1tico envia mais e-mails por dia. No plano gratuito s\u00e3o 10 por dia; com VIPro s\u00e3o 100 e com DoublePro 200 por dia.","sug_hero":"Sua ideia pode virar uma funcionalidade! Mande sua sugest\u00e3o para a equipe do H2BApply.","sc_vagas":"\ud83d\udcbc Sobre as vagas","pesq_srcs":"Vagas ao Vivo \u00b7 Jan 2026 \u00b7 Jul 2025 \u00b7 Enviadas", // 🌐 v137: dinâmicos da varredura E2E
-    "g_1":"Envio Autom\u00e1tico","g_2":"Configure e deixe o sistema trabalhar por voc\u00ea","g_3":"/m\u00eas","g_4":"Autom\u00e1tico + Manual","g_5":"M\u00e1ximo desempenho","g_6":"Atalhos R\u00e1pidos","g_7":"Curr\u00edculos","g_8":"M\u00eas","g_11":"N\u00fameros","g_12":"\ud83c\udde7\ud83c\uddf7 Portugu\u00eas","g_14":"(at\u00e9 600 caracteres)","g_15":"(at\u00e9 400 caracteres)","g_16":"(at\u00e9 300 caracteres)","g_17":"Ajuda o sistema a encontrar vagas certas pra voc\u00ea","g_18":"J\u00e1 foi aos EUA?","g_19":"\u274c N\u00e3o","g_20":"\ud83d\udde3\ufe0f N\u00edvel de ingl\u00eas","g_21":"\ud83d\udcd6 B\u00e1sico","g_22":"\ud83c\udf1f Avan\u00e7.","g_23":"\ud83c\udf3f \u00c1rea preferida","g_24":"\ud83c\udfd7\ufe0f Constru\u00e7\u00e3o","g_25":"\ud83e\udd9e Frutos do mar","g_26":"\ud83d\udcc5 1 m\u00eas","g_27":"Notifica\u00e7\u00f5es","g_28":"\ud83d\udeeb Alertas do H2BApply","g_29":"Toque no bot\u00e3o para ativar","g_30":"seu curr\u00edculo (PDF)","g_31":"texto do e-mail","g_32":"at\u00e9 2 perfis: um H-2B e um H-2A","g_33":"Anexa seu curr\u00edculo PDF em cada candidatura","g_34":"Define o texto do e-mail em ingl\u00eas","g_35":"Essencial para o Envio Autom\u00e1tico funcionar","g_36":"Curr\u00edculo usado:","g_37":"\ud83d\udcc8 \u00daltimos 7 dias","g_38":"Configura\u00e7\u00f5es exclusivas de administrador","g_39":"Sem expira\u00e7\u00e3o \u00b7 200 manual + 200 auto/dia \u00b7 Prioridade m\u00e1xima","g_40":"segundos entre cada envio","g_41":"3min (padr\u00e3o)","g_42":"Adicione Gmails acima para configurar limites","g_43":"\u00b7 invis\u00edvel para usu\u00e1rios","g_44":"Aten\u00e7\u00e3o:","g_45":"1 Gmail \u00fanico","g_46":"responsabilidade do usu\u00e1rio","g_47":"Os mesmos filtros do Envio Manual \u2014 cargo, local, sal\u00e1rio, grupo e mais","g_48":"Categoria r\u00e1pida (detectada automaticamente)","g_49":"vagas pra voc\u00ea","g_50":"\ud83c\udfaf Seu perfil ser\u00e1 usado em todos os envios:","g_51":"\u25b6 Come\u00e7ar agora","g_52":"Envia sem parar 24/7. Reseta \u00e0 meia-noite e continua at\u00e9 zerar a fila.","g_53":"\ud83d\udd50 Agendar hor\u00e1rio","g_54":"Envia das X \u00e0s Y horas todo dia. Fora do hor\u00e1rio fica pausado.","g_55":"Iniciar \u00e0s","g_56":"Parar \u00e0s","g_57":"doar \ud83d\udc8e para um amigo","g_58":"d\u00e1 o \u2b50 VIP 30d","g_59":"d\u00e1 o \ud83e\udd16 VIPro 30d","g_60":"d\u00e1 o \ud83d\udc8e DoublePro 30d","g_61":"quantos \ud83d\udc8e voc\u00ea quiser","g_62":"Doa\u00e7\u00e3o via PIX","g_63":"*obrigat\u00f3rio","g_64":"Print da confirma\u00e7\u00e3o do Pix da sua doa\u00e7\u00e3o","g_65":"Toque para selecionar o comprovante","g_66":"JPG, PNG, PDF \u2014 m\u00e1x 5MB","g_67":"at\u00e9 24h","g_68":"Para d\u00favidas, entre em contato:","g_69":"1 empresa confirmar = voc\u00ea est\u00e1 nos EUA \u2708\ufe0f","g_72":"Aprenda a usar o sistema do zero, passo a passo","g_73":"\ud83d\udccb O que voc\u00ea vai aprender:","g_74":"Resposta da empresa","g_75":"D\u00favidas Comuns","g_76":"Configurar seu Perfil","g_77":"Fa\u00e7a isso ANTES de enviar qualquer candidatura","g_78":"pa\u00eds","g_79":"Aba \"Perfis de Curr\u00edculo\" \u2014 Configurar curr\u00edculo e modelo","g_80":"upload do seu curr\u00edculo em PDF","g_81":"Sem curr\u00edculo, o perfil n\u00e3o \u00e9 salvo.","g_82":"assuntos e corpos de e-mail","g_83":"M\u00ednimo 3 varia\u00e7\u00f5es de cada.","g_84":"Seu perfil est\u00e1 configurado. Agora voc\u00ea pode enviar candidaturas.","g_85":"Envio Manual de Candidaturas","g_86":"Voc\u00ea escolhe cada vaga e envia uma por uma","g_87":"Escolha a planilha de vagas","g_88":"Mais vagas dispon\u00edveis.","g_89":"Como encontrar vagas para voc\u00ea","g_90":"Clique em uma vaga para ver os detalhes","g_91":"Veja o e-mail da empresa e as informa\u00e7\u00f5es da vaga","g_92":"O e-mail com seu curr\u00edculo \u00e9 enviado automaticamente!","g_93":"somem da lista","g_94":"Envio Autom\u00e1tico 24h","g_95":"O sistema envia enquanto voc\u00ea dorme","g_96":"\ud83e\udd16 O que \u00e9 o Envio Autom\u00e1tico?","g_97":"\"Envio Autom\u00e1tico\"","g_98":"quantidade de vagas","g_99":"\"Iniciar Autom\u00e1tico\"","g_100":"\u26a0\ufe0f Aten\u00e7\u00e3o:","g_101":"somem do envio manual","g_102":"A resposta cai direto no SEU Gmail","g_103":"seu pr\u00f3prio Gmail","g_104":"Abra o e-mail da empresa direto no seu Gmail","g_105":"Digite sua resposta em ingl\u00eas e envie \u2014 \u00e9 um e-mail seu, como qualquer outro","g_106":"\ud83d\udca1 Dica de resposta r\u00e1pida:","g_107":"Envie mais candidaturas por dia","g_108":"Gr\u00e1tis","g_109":"VIP \u00b7 67 \ud83d\udc8e/m\u00eas","g_110":"VIPro \u00b7 100 \ud83d\udc8e/m\u00eas","g_111":"DoublePro R$250/m\u00eas","g_112":"\ud83c\udf81 Como ganhar VIP gr\u00e1tis:","g_113":"1 dia VIP Manual","g_114":"C\u00f3digos promocionais","g_115":"D\u00favidas Frequentes","g_116":"Respostas r\u00e1pidas para perguntas comuns","g_117":"N\u00e3o.","g_118":"Ainda com d\u00favidas?","g_119":"Assista aos v\u00eddeos explicativos no YouTube ou fale pelo Instagram","g_130":"m\u00ednimo 10 caracteres","g_131":"Autom\u00e1tico","g_132":"Vaga n\u00e3o identificada","g_133":"\ud83d\udcc5 Dispon\u00edvel","g_134":"\u2753 D\u00favida","g_135":"Constru\u00e7\u00e3o","g_136":"Dep\u00f3sito","g_137":"\ud83c\udff7\ufe0f Cargo espec\u00edfico","g_138":"\ud83d\udcc2 Categoria r\u00e1pida","g_139":"\ud83c\udf0e Tipo de visto","g_140":"\ud83d\udcf6 Status da vaga","g_141":"Grupo de Randomiza\u00e7\u00e3o","g_142":"\u2014 pode escolher v\u00e1rios estados","g_143":"\ud83d\udcb0 Sal\u00e1rio m\u00ednimo","g_144":"\ud83d\udc65 Qtd. vagas m\u00edn.","g_145":"\u2014 pode marcar v\u00e1rios","g_146":"\ud83c\udfb2 Aleat\u00f3rio (padr\u00e3o)","g_147":"\ud83c\udfaf Melhor pra voc\u00ea primeiro","g_148":"\ud83d\udcb0 Maior sal\u00e1rio primeiro","g_149":"\ud83d\udcc5 Come\u00e7a mais cedo primeiro","g_150":"Este perfil ser\u00e1 usado nos envios manuais e autom\u00e1ticos","g_151":"curr\u00edculo (PDF)","g_152":"\u2460 Informa\u00e7\u00f5es B\u00e1sicas","g_153":"\u00cdcone","g_154":"Escolha um \u00edcone para o perfil:","g_155":"\u2461 Curr\u00edculo &amp; Cover Letter (PDF)","g_156":"\ud83d\udcc4 Curr\u00edculo (PDF)","g_157":"\u2705 Curr\u00edculo vinculado a este perfil","g_158":"\ud83d\udce4 Novo arquivo \u2014 ser\u00e1 enviado ao salvar","g_159":"Clique ou arraste um PDF para fazer upload","g_160":"M\u00e1x. 10MB","g_161":"ou escolha da sua conta","g_162":"Carta de apresenta\u00e7\u00e3o \u2014 n\u00e3o obrigat\u00f3ria, mas aumenta as chances de resposta.","g_163":"apenas nas vagas do tipo de visto deste perfil","g_164":"\u2462 Assuntos do E-mail","g_165":"M\u00ednimo 3","g_166":"Vari\u00e1veis:","g_167":"\u2463 Corpos de E-mail","g_168":"\u2699\ufe0f Vari\u00e1veis \u2014 clique para copiar:","g_169":"3 corpos de e-mail","g_170":"Selecione as categorias para as quais este perfil ser\u00e1 usado automaticamente","g_171":"\u2464 Configura\u00e7\u00e3o","g_172":"Prote\u00e7\u00f5es sempre ativas:","g_173":"n\u00e3o podem ser desativados","g_174":"Not\u00edcias","g_186":"Cada perfil de curr\u00edculo tem o curr\u00edculo vinculado diretamente.","g_187":"O envio autom\u00e1tico sempre usa o PDF do perfil correto \u2014 sem confus\u00e3o.","g_190":"Crie seu primeiro Perfil de Curr\u00edculo para","g_191":"come\u00e7ar a enviar candidaturas","g_204":"S\u00f3 precisa estar logado uma vez.","g_212":". \u00c9 por ela que conferimos a sua doa\u00e7\u00e3o.","g_221":"No topo da tela de Envio Manual voc\u00ea v\u00ea 3 abas:","g_229":"10 autom\u00e1ticos/dia","g_230":"sem autom\u00e1tico","g_231":"100 autom\u00e1ticos/dia","g_233":"Por que minhas vagas sumiram do manual?","g_234":"O autom\u00e1tico parou. O que fa\u00e7o?","g_235":"Recebi um e-mail em ingl\u00eas. O que fa\u00e7o?","g_175":"Toque em qualquer candidatura para ver detalhes,","g_176":". O bot\u00e3o","g_177":"apaga tudo e faz as vagas voltarem para a lista (\u00fatil para recandidatar-se).","g_178":"Usu\u00e1rios pagantes podem conectar um Gmail extra para reduzir risco de spam.","g_179":"\ud83c\udfad Escolha seu avatar","g_180":"\ud83d\udca1 O que voc\u00ea escrever aqui aparece quando algu\u00e9m","g_181":"\ud83d\udc64 Sobre voc\u00ea","g_182":"\ud83d\udcbc Experi\u00eancias de trabalho","g_183":"\ud83d\udcac O que voc\u00ea acha do H2BApply?","g_184":"\ud83d\udcbe Salve com o bot\u00e3o","g_185":"no fim da p\u00e1gina.","g_188":". Voc\u00ea pode ter","g_189":"o perfil que voc\u00ea escolher no Passo 3 do assistente","g_192":"Estat\u00edsticas","g_193":"Gmails de envio","g_194":"10 envios GR\u00c1TIS/dia para todos!","g_195":"Enviar muitos emails com","g_196":"pode gerar bloqueio tempor\u00e1rio pelo Google. Recomendamos adicionar","g_197":"para distribuir os envios. O risco de bloqueio \u00e9 de","g_198":"\ud83d\udcec Pr\u00f3ximas candidaturas","g_199":"\u2014 Ver\u00e3o","g_200":"\u26a0\ufe0f Filtro de categoria ativo:","g_201":"\u2014 isso limita as vagas! Para ver todas, clique em \"Todos\" acima.","g_202":"O envio alterna","g_203":"O autom\u00e1tico zerou a fila? Resetar enviados","g_205":"Hor\u00e1rio (Bras\u00edlia)","g_207":"\ud83e\uddfe Minhas doa\u00e7\u00f5es","g_208":"na sua conta. Com diamantes voc\u00ea","g_209":"quando quiser \u2014 e pode at\u00e9","g_210":"\ud83d\udcf8 Comprovante da doa\u00e7\u00e3o","g_211":"\ud83d\udcc5 Data em que voc\u00ea doou","g_213":"), seus \ud83d\udc8e caem na conta e voc\u00ea troca por plano","g_214":"Preencha seu","g_215":"(escreva \"Brazil\" em ingl\u00eas),","g_216":"com c\u00f3digo do pa\u00eds (+55 85 99999-9999) e","g_217":"D\u00ea um","g_218":"para o perfil. Ex: \"Meu Perfil Principal\" ou \"Landscape\"","g_219":"(obrigat\u00f3rio). Clique na \u00e1rea pontilhada ou arraste o arquivo.","g_220":"no final da tela.","g_222":"\u2014 Vagas de Ver\u00e3o nos EUA (temporada principal H-2B).","g_223":"\u2014 Vagas de Inverno. Menos vagas, mas ainda v\u00e1lidas.","g_224":"Clique no bot\u00e3o verde","g_225":"Vagas j\u00e1 enviadas","g_226":"que quer colocar no autom\u00e1tico","g_227":"As vagas que voc\u00ea coloca no autom\u00e1tico","g_228":"O H2BApply N\u00c3O l\u00ea nem guarda sua caixa de entrada \u2014 cada candidatura sai do","g_232":"ao se cadastrar (autom\u00e1tico)","g_236":"Se pedir documentos, entre em contato com um despachante de vistos.","g_237":"nas vari\u00e1veis de ambiente do servidor para ativar.","g_239":"Configura\u00e7\u00f5es","g_239b":"Sess\u00e3o","g_239c":"Mais","tut_center":"Central de Tutoriais","settings_adv":"Configura\u00e7\u00f5es avan\u00e7adas","g_240":"Enviar sugest\u00e3o ou ideia pros desenvolvedores","g_241":"Zona de perigo","g_242":"Sugest\u00f5es para os Devs","g_243":"Nova Sugest\u00e3o","g_244":"Sua sugest\u00e3o","g_245":"Fique de olho no","g_246":"para novidades!","g_247":"\ud83d\udc8e Grupo de Randomiza\u00e7\u00e3o","g_248":"\u00e9 exclusivo do plano","g_249":"\ud83d\udccd Localiza\u00e7\u00e3o","g_250":"\ud83d\udcc5 M\u00eas de in\u00edcio da vaga","g_251":"Nome do perfil","g_252":"Descri\u00e7\u00e3o","g_253":"para evitar bloqueio por spam.","g_254":"Vers\u00f5es diferentes que o sistema alterna.","g_255":"para evitar spam.","g_256":"Planilhas compat\u00edveis","g_257":"Categorias de vaga", // 🌐 v136: varredura final (auto)
+    "g_1":"Envio Autom\u00e1tico","g_2":"Configure e deixe o sistema trabalhar por voc\u00ea","g_3":"/m\u00eas","g_4":"Autom\u00e1tico + Manual","g_5":"M\u00e1ximo desempenho","g_6":"Atalhos R\u00e1pidos","g_7":"Curr\u00edculos","g_8":"M\u00eas","g_11":"N\u00fameros","g_12":"\ud83c\udde7\ud83c\uddf7 Portugu\u00eas","g_14":"(at\u00e9 600 caracteres)","g_15":"(at\u00e9 400 caracteres)","g_16":"(at\u00e9 300 caracteres)","g_17":"Ajuda o sistema a encontrar vagas certas pra voc\u00ea","g_18":"J\u00e1 foi aos EUA?","g_19":"\u274c N\u00e3o","g_20":"\ud83d\udde3\ufe0f N\u00edvel de ingl\u00eas","g_21":"\ud83d\udcd6 B\u00e1sico","g_22":"\ud83c\udf1f Avan\u00e7.","g_23":"\ud83c\udf3f \u00c1rea preferida","g_24":"\ud83c\udfd7\ufe0f Constru\u00e7\u00e3o","g_25":"\ud83e\udd9e Frutos do mar","g_26":"\ud83d\udcc5 1 m\u00eas","g_27":"Notifica\u00e7\u00f5es","g_28":"\ud83d\udeeb Alertas do H2BApply","g_29":"Toque no bot\u00e3o para ativar","g_30":"seu curr\u00edculo (PDF)","g_31":"texto do e-mail","g_32":"at\u00e9 2 perfis: um H-2B e um H-2A","g_33":"Anexa seu curr\u00edculo PDF em cada candidatura","g_34":"Define o texto do e-mail em ingl\u00eas","g_35":"Essencial para o Envio Autom\u00e1tico funcionar","g_36":"Curr\u00edculo usado:","g_37":"\ud83d\udcc8 \u00daltimos 7 dias","g_38":"Configura\u00e7\u00f5es exclusivas de administrador","g_39":"Sem expira\u00e7\u00e3o \u00b7 200 manual + 200 auto/dia \u00b7 Prioridade m\u00e1xima","g_40":"segundos entre cada envio","g_41":"3min (padr\u00e3o)","g_42":"Adicione Gmails acima para configurar limites","g_43":"\u00b7 invis\u00edvel para usu\u00e1rios","g_44":"Aten\u00e7\u00e3o:","g_45":"1 Gmail \u00fanico","g_46":"responsabilidade do usu\u00e1rio","g_47":"Os mesmos filtros do Envio Manual \u2014 cargo, local, sal\u00e1rio, grupo e mais","g_48":"Categoria r\u00e1pida (detectada automaticamente)","g_49":"vagas pra voc\u00ea","g_50":"\ud83c\udfaf Seu perfil ser\u00e1 usado em todos os envios:","g_51":"\u25b6 Come\u00e7ar agora","g_52":"Envia sem parar 24/7. Reseta \u00e0 meia-noite e continua at\u00e9 zerar a fila.","g_53":"\ud83d\udd50 Agendar hor\u00e1rio","g_54":"Envia das X \u00e0s Y horas todo dia. Fora do hor\u00e1rio fica pausado.","g_55":"Iniciar \u00e0s","g_56":"Parar \u00e0s","g_57":"doar \ud83d\udc8e para um amigo","g_58":"d\u00e1 o \u2b50 VIP 30d","g_59":"d\u00e1 o \ud83e\udd16 VIPro 30d","g_60":"d\u00e1 o \ud83d\udc8e DoublePro 30d","g_61":"quantos \ud83d\udc8e voc\u00ea quiser","g_62":"Doa\u00e7\u00e3o via PIX","g_63":"*obrigat\u00f3rio","g_64":"Print da confirma\u00e7\u00e3o do Pix da sua doa\u00e7\u00e3o","g_65":"Toque para selecionar o comprovante","g_66":"JPG, PNG, PDF \u2014 m\u00e1x 5MB","g_67":"at\u00e9 24h","g_68":"Para d\u00favidas, entre em contato:","g_69":"1 empresa confirmar = voc\u00ea est\u00e1 nos EUA \u2708\ufe0f","g_72":"Aprenda a usar o sistema do zero, passo a passo","g_73":"\ud83d\udccb O que voc\u00ea vai aprender:","g_74":"Resposta da empresa","g_75":"D\u00favidas Comuns","g_76":"Configurar seu Perfil","g_77":"Fa\u00e7a isso ANTES de enviar qualquer candidatura","g_78":"pa\u00eds","g_79":"Aba \"Perfis de Curr\u00edculo\" \u2014 Configurar curr\u00edculo e modelo","g_80":"upload do seu curr\u00edculo em PDF","g_81":"Sem curr\u00edculo, o perfil n\u00e3o \u00e9 salvo.","g_82":"assuntos e corpos de e-mail","g_83":"M\u00ednimo 3 varia\u00e7\u00f5es de cada.","g_84":"Seu perfil est\u00e1 configurado. Agora voc\u00ea pode enviar candidaturas.","g_85":"Envio Manual de Candidaturas","g_86":"Voc\u00ea escolhe cada vaga e envia uma por uma","g_87":"Escolha a planilha de vagas","g_88":"Mais vagas dispon\u00edveis.","g_89":"Como encontrar vagas para voc\u00ea","g_90":"Clique em uma vaga para ver os detalhes","g_91":"Veja o e-mail da empresa e as informa\u00e7\u00f5es da vaga","g_92":"O e-mail com seu curr\u00edculo \u00e9 enviado automaticamente!","g_93":"somem da lista","g_94":"Envio Autom\u00e1tico 24h","g_95":"O sistema envia enquanto voc\u00ea dorme","g_96":"\ud83e\udd16 O que \u00e9 o Envio Autom\u00e1tico?","g_97":"\"Envio Autom\u00e1tico\"","g_98":"quantidade de vagas","g_99":"\"Iniciar Autom\u00e1tico\"","g_100":"\u26a0\ufe0f Aten\u00e7\u00e3o:","g_101":"somem do envio manual","g_102":"A resposta cai direto no SEU Gmail","g_103":"seu pr\u00f3prio Gmail","g_104":"Abra o e-mail da empresa direto no seu Gmail","g_105":"Digite sua resposta em ingl\u00eas e envie \u2014 \u00e9 um e-mail seu, como qualquer outro","g_106":"\ud83d\udca1 Dica de resposta r\u00e1pida:","g_107":"Envie mais candidaturas por dia","g_108":"Gr\u00e1tis","g_109":"VIP \u00b7 67 \ud83d\udc8e/m\u00eas","g_110":"VIPro \u00b7 100 \ud83d\udc8e/m\u00eas","g_111":"DoublePro R$250/m\u00eas","g_112":"\ud83c\udf81 Como ganhar VIP gr\u00e1tis:","g_113":"1 dia VIP Manual","g_114":"C\u00f3digos promocionais","g_115":"D\u00favidas Frequentes","g_116":"Respostas r\u00e1pidas para perguntas comuns","g_117":"N\u00e3o.","g_118":"Ainda com d\u00favidas?","g_119":"Assista aos v\u00eddeos explicativos no YouTube ou fale pelo Instagram","g_128":"desaparecer de qualquer lugar p\u00fablico","g_129":"fazer login novamente com o mesmo e-mail","g_130":"m\u00ednimo 10 caracteres","g_131":"Autom\u00e1tico","g_132":"Vaga n\u00e3o identificada","g_133":"\ud83d\udcc5 Dispon\u00edvel","g_134":"\u2753 D\u00favida","g_135":"Constru\u00e7\u00e3o","g_136":"Dep\u00f3sito","g_137":"\ud83c\udff7\ufe0f Cargo espec\u00edfico","g_138":"\ud83d\udcc2 Categoria r\u00e1pida","g_139":"\ud83c\udf0e Tipo de visto","g_140":"\ud83d\udcf6 Status da vaga","g_141":"Grupo de Randomiza\u00e7\u00e3o","g_142":"\u2014 pode escolher v\u00e1rios estados","g_143":"\ud83d\udcb0 Sal\u00e1rio m\u00ednimo","g_144":"\ud83d\udc65 Qtd. vagas m\u00edn.","g_145":"\u2014 pode marcar v\u00e1rios","g_146":"\ud83c\udfb2 Aleat\u00f3rio (padr\u00e3o)","g_147":"\ud83c\udfaf Melhor pra voc\u00ea primeiro","g_148":"\ud83d\udcb0 Maior sal\u00e1rio primeiro","g_149":"\ud83d\udcc5 Come\u00e7a mais cedo primeiro","g_150":"Este perfil ser\u00e1 usado nos envios manuais e autom\u00e1ticos","g_151":"curr\u00edculo (PDF)","g_152":"\u2460 Informa\u00e7\u00f5es B\u00e1sicas","g_153":"\u00cdcone","g_154":"Escolha um \u00edcone para o perfil:","g_155":"\u2461 Curr\u00edculo &amp; Cover Letter (PDF)","g_156":"\ud83d\udcc4 Curr\u00edculo (PDF)","g_157":"\u2705 Curr\u00edculo vinculado a este perfil","g_158":"\ud83d\udce4 Novo arquivo \u2014 ser\u00e1 enviado ao salvar","g_159":"Clique ou arraste um PDF para fazer upload","g_160":"M\u00e1x. 10MB","g_161":"ou escolha da sua conta","g_162":"Carta de apresenta\u00e7\u00e3o \u2014 n\u00e3o obrigat\u00f3ria, mas aumenta as chances de resposta.","g_163":"apenas nas vagas do tipo de visto deste perfil","g_164":"\u2462 Assuntos do E-mail","g_165":"M\u00ednimo 3","g_166":"Vari\u00e1veis:","g_167":"\u2463 Corpos de E-mail","g_168":"\u2699\ufe0f Vari\u00e1veis \u2014 clique para copiar:","g_169":"3 corpos de e-mail","g_170":"Selecione as categorias para as quais este perfil ser\u00e1 usado automaticamente","g_171":"\u2464 Configura\u00e7\u00e3o","g_172":"Prote\u00e7\u00f5es sempre ativas:","g_173":"n\u00e3o podem ser desativados","g_174":"Not\u00edcias","g_186":"Cada perfil de curr\u00edculo tem o curr\u00edculo vinculado diretamente.","g_187":"O envio autom\u00e1tico sempre usa o PDF do perfil correto \u2014 sem confus\u00e3o.","g_190":"Crie seu primeiro Perfil de Curr\u00edculo para","g_191":"come\u00e7ar a enviar candidaturas","g_204":"S\u00f3 precisa estar logado uma vez.","g_212":". \u00c9 por ela que conferimos a sua doa\u00e7\u00e3o.","g_221":"No topo da tela de Envio Manual voc\u00ea v\u00ea 3 abas:","g_229":"10 autom\u00e1ticos/dia","g_230":"sem autom\u00e1tico","g_231":"100 autom\u00e1ticos/dia","g_233":"Por que minhas vagas sumiram do manual?","g_234":"O autom\u00e1tico parou. O que fa\u00e7o?","g_235":"Recebi um e-mail em ingl\u00eas. O que fa\u00e7o?","g_175":"Toque em qualquer candidatura para ver detalhes,","g_176":". O bot\u00e3o","g_177":"apaga tudo e faz as vagas voltarem para a lista (\u00fatil para recandidatar-se).","g_178":"Usu\u00e1rios pagantes podem conectar um Gmail extra para reduzir risco de spam.","g_179":"\ud83c\udfad Escolha seu avatar","g_180":"\ud83d\udca1 O que voc\u00ea escrever aqui aparece quando algu\u00e9m","g_181":"\ud83d\udc64 Sobre voc\u00ea","g_182":"\ud83d\udcbc Experi\u00eancias de trabalho","g_183":"\ud83d\udcac O que voc\u00ea acha do H2BApply?","g_184":"\ud83d\udcbe Salve com o bot\u00e3o","g_185":"no fim da p\u00e1gina.","g_188":". Voc\u00ea pode ter","g_189":"o perfil que voc\u00ea escolher no Passo 3 do assistente","g_192":"Estat\u00edsticas","g_193":"Gmails de envio","g_194":"10 envios GR\u00c1TIS/dia para todos!","g_195":"Enviar muitos emails com","g_196":"pode gerar bloqueio tempor\u00e1rio pelo Google. Recomendamos adicionar","g_197":"para distribuir os envios. O risco de bloqueio \u00e9 de","g_198":"\ud83d\udcec Pr\u00f3ximas candidaturas","g_199":"\u2014 Ver\u00e3o","g_200":"\u26a0\ufe0f Filtro de categoria ativo:","g_201":"\u2014 isso limita as vagas! Para ver todas, clique em \"Todos\" acima.","g_202":"O envio alterna","g_203":"O autom\u00e1tico zerou a fila? Resetar enviados","g_205":"Hor\u00e1rio (Bras\u00edlia)","g_207":"\ud83e\uddfe Minhas doa\u00e7\u00f5es","g_208":"na sua conta. Com diamantes voc\u00ea","g_209":"quando quiser \u2014 e pode at\u00e9","g_210":"\ud83d\udcf8 Comprovante da doa\u00e7\u00e3o","g_211":"\ud83d\udcc5 Data em que voc\u00ea doou","g_213":"), seus \ud83d\udc8e caem na conta e voc\u00ea troca por plano","g_214":"Preencha seu","g_215":"(escreva \"Brazil\" em ingl\u00eas),","g_216":"com c\u00f3digo do pa\u00eds (+55 85 99999-9999) e","g_217":"D\u00ea um","g_218":"para o perfil. Ex: \"Meu Perfil Principal\" ou \"Landscape\"","g_219":"(obrigat\u00f3rio). Clique na \u00e1rea pontilhada ou arraste o arquivo.","g_220":"no final da tela.","g_222":"\u2014 Vagas de Ver\u00e3o nos EUA (temporada principal H-2B).","g_223":"\u2014 Vagas de Inverno. Menos vagas, mas ainda v\u00e1lidas.","g_224":"Clique no bot\u00e3o verde","g_225":"Vagas j\u00e1 enviadas","g_226":"que quer colocar no autom\u00e1tico","g_227":"As vagas que voc\u00ea coloca no autom\u00e1tico","g_228":"O H2BApply N\u00c3O l\u00ea nem guarda sua caixa de entrada \u2014 cada candidatura sai do","g_232":"ao se cadastrar (autom\u00e1tico)","g_236":"Se pedir documentos, entre em contato com um despachante de vistos.","g_237":"nas vari\u00e1veis de ambiente do servidor para ativar.","g_239":"Configura\u00e7\u00f5es","g_239b":"Sess\u00e3o","g_239c":"Mais","tut_center":"Central de Tutoriais","settings_adv":"Configura\u00e7\u00f5es avan\u00e7adas","g_240":"Enviar sugest\u00e3o ou ideia pros desenvolvedores","g_241":"Zona de perigo","g_242":"Sugest\u00f5es para os Devs","g_243":"Nova Sugest\u00e3o","g_244":"Sua sugest\u00e3o","g_245":"Fique de olho no","g_246":"para novidades!","g_247":"\ud83d\udc8e Grupo de Randomiza\u00e7\u00e3o","g_248":"\u00e9 exclusivo do plano","g_249":"\ud83d\udccd Localiza\u00e7\u00e3o","g_250":"\ud83d\udcc5 M\u00eas de in\u00edcio da vaga","g_251":"Nome do perfil","g_252":"Descri\u00e7\u00e3o","g_253":"para evitar bloqueio por spam.","g_254":"Vers\u00f5es diferentes que o sistema alterna.","g_255":"para evitar spam.","g_256":"Planilhas compat\u00edveis","g_257":"Categorias de vaga", // 🌐 v136: varredura final (auto)
     "gu_t":"Como o H2BApply usa sua conta Google","gu_b":"Pedimos <strong>uma única permissão</strong> do Google: enviar e-mails pelo seu Gmail (<code style=\"background:rgba(255,255,255,.08);padding:1px 6px;border-radius:5px\">gmail.send</code>) — usada exclusivamente para enviar as candidaturas de emprego que <strong>você mesmo escreve e autoriza</strong>. O H2BApply <strong>nunca lê, nunca armazena e nunca acessa sua caixa de entrada</strong>. As respostas dos empregadores chegam direto no seu próprio Gmail. Você pode revogar o acesso a qualquer momento em myaccount.google.com.","gu_l":"Leia nossa Política de Privacidade completa →", // ✅ v145: transparência do uso da conta Google (verificação OAuth)
     "rst_t":"Atualizamos o sistema de login","rst_b":"Seu login foi resetado, mas <strong>NADA foi apagado</strong> — envios, dias de plano, diamantes e currículos estão todos salvos. Entre com o <strong>MESMO e-mail do Google</strong> que você usava antes. ⚠️ <strong>Não crie outra conta</strong> com e-mail diferente: mais de uma conta dá risco de <strong>banimento permanente dos dois e-mails</strong>. As vagas são limitadas — use a conta que você já tem.", // 📢 v144: aviso do reset de login (OAuth novo)
     "pe_draft_confirm":"📝 Achamos um rascunho salvo deste perfil (sua sessão deve ter caído antes de salvar). Restaurar o texto?","pe_draft_restored":"📝 Rascunho restaurado","pe_session_lost":"🔒 Sua sessão caiu (o servidor reiniciou) — seu texto JÁ ESTÁ SALVO aqui no aparelho. Faça login de novo e abra este perfil de novo que ele volta sozinho.", // 📝 v143: rascunho do editor de perfil (caso Keyla)
@@ -9553,7 +8009,7 @@ const LANG_DICT = {
   en: {
     "h_faq_gone":"Jobs disappear from manual in two cases: (1) you already applied to that company, or (2) that job is in the auto queue. That's correct \u2014 it prevents emailing the same company twice.","mi1_d":"Send your 1st application (manual or robot)","mi2_d":"Save your email profile and upload a PDF resume","mi3_d":"Reach 100 applications sent","mi4_d":"Reach 1,000 applications sent","mi5_d":"Get your H2BApply review approved and published", // 🌐 v137b
     "ns1_t":"Create your application profile","ns1_s":"It's what goes in the emails to companies. Takes 1 minute.","ns1_c":"Create profile","ns2_t":"Attach your resume (PDF)","ns2_s":"Without a resume attached, your applications won't go out.","ns2_c":"Attach","ns3_t":"All set! Start applying","ns3_s":"Your profile is complete. Send your first application today.","ns3_c":"Find jobs","ns4_t":"You hit today's limit","ns4_s":"Go VIP and send up to 100 applications a day.","ns4_c":"See plans","ns5_t":"Turn on Auto Send","ns5_s":"Let the system send applications while you work.","ns5_c":"Turn on","logs_none":"No logs yet","logs_none_s":"Logs show up here once you use Auto Send","notif_none_unread":"No unread notifications \ud83c\udf89","notif_none":"No notifications for now","swap_instant":"Activates INSTANTLY \u2014 no wait, no approval","mi1":"First application","mi2":"Complete profile","mi3":"100 applications","mi4":"1,000 applications","mi5":"Published review","snd_plane":"Airplane","snd_plane_d":"Takeoff sound","h_paid_t":"\u2705 Paid plans:","h_paid_d":"Auto sends more emails per day. The free plan gets 10 a day; VIPro gets 100 and DoublePro 200.","sug_hero":"Your idea can become a feature! Send your suggestion to the H2BApply team.","sc_vagas":"\ud83d\udcbc About the jobs","pesq_srcs":"Live Jobs \u00b7 Jan 2026 \u00b7 Jul 2025 \u00b7 Sent", // 🌐 v137: dinâmicos da varredura E2E
-    "g_1":"Auto Send","g_2":"Set it up and let the system work for you","g_3":"/mo","g_4":"Auto + Manual","g_5":"Maximum performance","g_6":"Quick Access","g_7":"Resumes","g_8":"Month","g_11":"Stats","g_12":"\ud83c\udde7\ud83c\uddf7 Portugu\u00eas","g_14":"(up to 600 characters)","g_15":"(up to 400 characters)","g_16":"(up to 300 characters)","g_17":"Helps the system find the right jobs for you","g_18":"Ever been to the USA?","g_19":"\u274c No","g_20":"\ud83d\udde3\ufe0f English level","g_21":"\ud83d\udcd6 Basic","g_22":"\ud83c\udf1f Advanced","g_23":"\ud83c\udf3f Preferred area","g_24":"\ud83c\udfd7\ufe0f Construction","g_25":"\ud83e\udd9e Seafood","g_26":"\ud83d\udcc5 1 month","g_27":"Notifications","g_28":"\ud83d\udeeb H2BApply alerts","g_29":"Tap the button to enable","g_30":"your resume (PDF)","g_31":"the email text","g_32":"up to 2 profiles: one H-2B and one H-2A","g_33":"Attaches your PDF resume to every application","g_34":"Sets the email text in English","g_35":"Essential for Auto Send to work","g_36":"Resume used:","g_37":"\ud83d\udcc8 Last 7 days","g_38":"Admin-only settings","g_39":"No expiration \u00b7 200 manual + 200 auto/day \u00b7 Top priority","g_40":"seconds between each send","g_41":"3min (default)","g_42":"Add Gmails above to set limits","g_43":"\u00b7 invisible to users","g_44":"Warning:","g_45":"1 single Gmail","g_46":"user's responsibility","g_47":"Same filters as Manual Send \u2014 role, location, pay, group and more","g_48":"Quick category (auto-detected)","g_49":"jobs for you","g_50":"\ud83c\udfaf Your profile will be used in every send:","g_51":"\u25b6 Start now","g_52":"Sends non-stop 24/7. Resets at midnight and keeps going until the queue is empty.","g_53":"\ud83d\udd50 Schedule hours","g_54":"Sends from X to Y o'clock every day. Outside that window it pauses.","g_55":"Start at","g_56":"Stop at","g_57":"gift \ud83d\udc8e to a friend","g_58":"gets \u2b50 VIP 30d","g_59":"gets \ud83e\udd16 VIPro 30d","g_60":"gets \ud83d\udc8e DoublePro 30d","g_61":"any amount of \ud83d\udc8e you want","g_62":"Donation via PIX","g_63":"*required","g_64":"Screenshot of your PIX donation confirmation","g_65":"Tap to select the receipt","g_66":"JPG, PNG, PDF \u2014 max 5MB","g_67":"within 24h","g_68":"Questions? Contact us:","g_69":"1 company saying yes = you're in the USA \u2708\ufe0f","g_72":"Learn the system from scratch, step by step","g_73":"\ud83d\udccb What you'll learn:","g_74":"Company reply","g_75":"Common Questions","g_76":"Set Up Your Profile","g_77":"Do this BEFORE sending any application","g_78":"country","g_79":"\"Resume Profiles\" tab \u2014 set up resume and template","g_80":"upload your resume as PDF","g_81":"Without a resume, the profile won't save.","g_82":"email subjects and bodies","g_83":"At least 3 variations of each.","g_84":"Your profile is set. You can now send applications.","g_85":"Manual Application Sending","g_86":"You pick each job and send one by one","g_87":"Choose the job sheet","g_88":"More jobs available.","g_89":"How to find jobs for you","g_90":"Click a job to see the details","g_91":"See the company's email and the job info","g_92":"The email with your resume is sent automatically!","g_93":"disappear from the list","g_94":"24h Auto Send","g_95":"The system sends while you sleep","g_96":"\ud83e\udd16 What is Auto Send?","g_97":"\"Auto Send\"","g_98":"number of jobs","g_99":"\"Start Auto\"","g_100":"\u26a0\ufe0f Warning:","g_101":"disappear from manual sending","g_102":"Replies land straight in YOUR Gmail","g_103":"your own Gmail","g_104":"Open the company's email right in your Gmail","g_105":"Type your reply in English and send \u2014 it's your own email, like any other","g_106":"\ud83d\udca1 Quick reply tip:","g_107":"Send more applications per day","g_108":"Free","g_109":"VIP \u00b7 67 \ud83d\udc8e/mo","g_110":"VIPro \u00b7 100 \ud83d\udc8e/mo","g_111":"DoublePro R$250/mo","g_112":"\ud83c\udf81 How to earn free VIP:","g_113":"1 day of VIP Manual","g_114":"Promo codes","g_115":"FAQ","g_116":"Quick answers to common questions","g_117":"No.","g_118":"Still have questions?","g_119":"Watch the explainer videos on YouTube or reach out on Instagram","g_130":"at least 10 characters","g_131":"Auto","g_132":"Job not identified","g_133":"\ud83d\udcc5 Available","g_134":"\u2753 Question","g_135":"Construction","g_136":"Warehouse","g_137":"\ud83c\udff7\ufe0f Specific role","g_138":"\ud83d\udcc2 Quick category","g_139":"\ud83c\udf0e Visa type","g_140":"\ud83d\udcf6 Job status","g_141":"Randomization Group","g_142":"\u2014 you can pick several states","g_143":"\ud83d\udcb0 Minimum wage","g_144":"\ud83d\udc65 Min. openings","g_145":"\u2014 you can check several","g_146":"\ud83c\udfb2 Random (default)","g_147":"\ud83c\udfaf Best for you first","g_148":"\ud83d\udcb0 Highest pay first","g_149":"\ud83d\udcc5 Earliest start first","g_150":"This profile will be used for manual and automatic sends","g_151":"resume (PDF)","g_152":"\u2460 Basic Info","g_153":"Icon","g_154":"Pick an icon for the profile:","g_155":"\u2461 Resume &amp; Cover Letter (PDF)","g_156":"\ud83d\udcc4 Resume (PDF)","g_157":"\u2705 Resume linked to this profile","g_158":"\ud83d\udce4 New file \u2014 will upload when you save","g_159":"Click or drag a PDF to upload","g_160":"Max 10MB","g_161":"or pick one from your account","g_162":"Cover letter \u2014 optional, but boosts reply chances.","g_163":"only for jobs matching this profile's visa type","g_164":"\u2462 Email Subjects","g_165":"At least 3","g_166":"Variables:","g_167":"\u2463 Email Bodies","g_168":"\u2699\ufe0f Variables \u2014 click to copy:","g_169":"3 email bodies","g_170":"Select the categories this profile will be used for automatically","g_171":"\u2464 Settings","g_172":"Always-on protections:","g_173":"cannot be turned off","g_174":"News","g_175":"Tap any application to see details,","g_176":". The","g_177":"button wipes everything and puts the jobs back on the list (handy to re-apply).","g_178":"Paying users can connect an extra Gmail to lower spam risk.","g_179":"\ud83c\udfad Pick your avatar","g_180":"\ud83d\udca1 Whatever you write here shows up when someone","g_181":"\ud83d\udc64 About you","g_182":"\ud83d\udcbc Work experience","g_183":"\ud83d\udcac What do you think of H2BApply?","g_184":"\ud83d\udcbe Save with the button","g_185":"at the bottom of the page.","g_186":"Each resume profile has its resume linked directly.","g_187":"Auto send always uses the right profile's PDF \u2014 no mix-ups.","g_188":". You can have","g_189":"the profile you pick in Step 3 of the wizard","g_190":"Create your first Resume Profile to","g_191":"start sending applications","g_192":"Statistics","g_193":"Sending Gmails","g_194":"10 FREE sends/day for everyone!","g_195":"Sending many emails with","g_196":"can trigger a temporary block by Google. We recommend adding","g_197":"to spread the sends. The block risk is","g_198":"\ud83d\udcec Upcoming applications","g_199":"\u2014 Summer","g_200":"\u26a0\ufe0f Category filter on:","g_201":"\u2014 that limits the jobs! To see all, click \"All\" above.","g_202":"Sending alternates","g_203":"Auto queue hit zero? Reset sent","g_204":"You only need to be logged in once.","g_205":"Time (Bras\u00edlia)","g_207":"\ud83e\uddfe My donations","g_208":"in your account. With diamonds you","g_209":"whenever you want \u2014 and you can even","g_210":"\ud83d\udcf8 Donation receipt","g_211":"\ud83d\udcc5 Date you donated","g_212":". That's how we verify your donation.","g_213":"), your \ud83d\udc8e land in your account and you swap them for a plan","g_214":"Fill in your","g_215":"(write \"Brazil\" in English),","g_216":"with country code (+55 85 99999-9999) and","g_217":"Give a","g_218":"name to the profile. E.g. \"My Main Profile\" or \"Landscape\"","g_219":"(required). Click the dotted area or drag the file.","g_220":"at the bottom of the screen.","g_221":"At the top of the Manual Send screen you'll see 3 tabs:","g_222":"\u2014 Summer jobs in the USA (main H-2B season).","g_223":"\u2014 Winter jobs. Fewer, but still valid.","g_224":"Click the green button","g_225":"Jobs already sent","g_226":"you want to add to auto","g_227":"The jobs you put on auto","g_228":"H2BApply does NOT read or store your inbox \u2014 every application goes out from your","g_229":"10 auto/day","g_230":"no auto","g_231":"100 auto/day","g_232":"on signup (automatic)","g_233":"Why did my jobs vanish from manual?","g_234":"Auto stopped. What do I do?","g_235":"I got an email in English. What do I do?","g_236":"If they ask for documents, contact a visa agent.","g_237":"in the server's environment variables to enable.","g_239":"Settings","g_239b":"Session","g_239c":"More","tut_center":"Tutorial Center","settings_adv":"Advanced settings","g_240":"Send a suggestion or idea to the devs","g_241":"Danger zone","g_242":"Suggestions for the Devs","g_243":"New Suggestion","g_244":"Your suggestion","g_245":"Keep an eye on","g_246":"for news!","g_247":"\ud83d\udc8e Randomization Group","g_248":"is exclusive to the plan","g_249":"\ud83d\udccd Location","g_250":"\ud83d\udcc5 Job start month","g_251":"Profile name","g_252":"Description","g_253":"to avoid spam blocks.","g_254":"Different versions the system rotates.","g_255":"to avoid spam.","g_256":"Compatible sheets","g_257":"Job categories", // 🌐 v136: varredura final (auto)
+    "g_1":"Auto Send","g_2":"Set it up and let the system work for you","g_3":"/mo","g_4":"Auto + Manual","g_5":"Maximum performance","g_6":"Quick Access","g_7":"Resumes","g_8":"Month","g_11":"Stats","g_12":"\ud83c\udde7\ud83c\uddf7 Portugu\u00eas","g_14":"(up to 600 characters)","g_15":"(up to 400 characters)","g_16":"(up to 300 characters)","g_17":"Helps the system find the right jobs for you","g_18":"Ever been to the USA?","g_19":"\u274c No","g_20":"\ud83d\udde3\ufe0f English level","g_21":"\ud83d\udcd6 Basic","g_22":"\ud83c\udf1f Advanced","g_23":"\ud83c\udf3f Preferred area","g_24":"\ud83c\udfd7\ufe0f Construction","g_25":"\ud83e\udd9e Seafood","g_26":"\ud83d\udcc5 1 month","g_27":"Notifications","g_28":"\ud83d\udeeb H2BApply alerts","g_29":"Tap the button to enable","g_30":"your resume (PDF)","g_31":"the email text","g_32":"up to 2 profiles: one H-2B and one H-2A","g_33":"Attaches your PDF resume to every application","g_34":"Sets the email text in English","g_35":"Essential for Auto Send to work","g_36":"Resume used:","g_37":"\ud83d\udcc8 Last 7 days","g_38":"Admin-only settings","g_39":"No expiration \u00b7 200 manual + 200 auto/day \u00b7 Top priority","g_40":"seconds between each send","g_41":"3min (default)","g_42":"Add Gmails above to set limits","g_43":"\u00b7 invisible to users","g_44":"Warning:","g_45":"1 single Gmail","g_46":"user's responsibility","g_47":"Same filters as Manual Send \u2014 role, location, pay, group and more","g_48":"Quick category (auto-detected)","g_49":"jobs for you","g_50":"\ud83c\udfaf Your profile will be used in every send:","g_51":"\u25b6 Start now","g_52":"Sends non-stop 24/7. Resets at midnight and keeps going until the queue is empty.","g_53":"\ud83d\udd50 Schedule hours","g_54":"Sends from X to Y o'clock every day. Outside that window it pauses.","g_55":"Start at","g_56":"Stop at","g_57":"gift \ud83d\udc8e to a friend","g_58":"gets \u2b50 VIP 30d","g_59":"gets \ud83e\udd16 VIPro 30d","g_60":"gets \ud83d\udc8e DoublePro 30d","g_61":"any amount of \ud83d\udc8e you want","g_62":"Donation via PIX","g_63":"*required","g_64":"Screenshot of your PIX donation confirmation","g_65":"Tap to select the receipt","g_66":"JPG, PNG, PDF \u2014 max 5MB","g_67":"within 24h","g_68":"Questions? Contact us:","g_69":"1 company saying yes = you're in the USA \u2708\ufe0f","g_72":"Learn the system from scratch, step by step","g_73":"\ud83d\udccb What you'll learn:","g_74":"Company reply","g_75":"Common Questions","g_76":"Set Up Your Profile","g_77":"Do this BEFORE sending any application","g_78":"country","g_79":"\"Resume Profiles\" tab \u2014 set up resume and template","g_80":"upload your resume as PDF","g_81":"Without a resume, the profile won't save.","g_82":"email subjects and bodies","g_83":"At least 3 variations of each.","g_84":"Your profile is set. You can now send applications.","g_85":"Manual Application Sending","g_86":"You pick each job and send one by one","g_87":"Choose the job sheet","g_88":"More jobs available.","g_89":"How to find jobs for you","g_90":"Click a job to see the details","g_91":"See the company's email and the job info","g_92":"The email with your resume is sent automatically!","g_93":"disappear from the list","g_94":"24h Auto Send","g_95":"The system sends while you sleep","g_96":"\ud83e\udd16 What is Auto Send?","g_97":"\"Auto Send\"","g_98":"number of jobs","g_99":"\"Start Auto\"","g_100":"\u26a0\ufe0f Warning:","g_101":"disappear from manual sending","g_102":"Replies land straight in YOUR Gmail","g_103":"your own Gmail","g_104":"Open the company's email right in your Gmail","g_105":"Type your reply in English and send \u2014 it's your own email, like any other","g_106":"\ud83d\udca1 Quick reply tip:","g_107":"Send more applications per day","g_108":"Free","g_109":"VIP \u00b7 67 \ud83d\udc8e/mo","g_110":"VIPro \u00b7 100 \ud83d\udc8e/mo","g_111":"DoublePro R$250/mo","g_112":"\ud83c\udf81 How to earn free VIP:","g_113":"1 day of VIP Manual","g_114":"Promo codes","g_115":"FAQ","g_116":"Quick answers to common questions","g_117":"No.","g_118":"Still have questions?","g_119":"Watch the explainer videos on YouTube or reach out on Instagram","g_128":"disappear from anywhere public","g_129":"log in again with the same email","g_130":"at least 10 characters","g_131":"Auto","g_132":"Job not identified","g_133":"\ud83d\udcc5 Available","g_134":"\u2753 Question","g_135":"Construction","g_136":"Warehouse","g_137":"\ud83c\udff7\ufe0f Specific role","g_138":"\ud83d\udcc2 Quick category","g_139":"\ud83c\udf0e Visa type","g_140":"\ud83d\udcf6 Job status","g_141":"Randomization Group","g_142":"\u2014 you can pick several states","g_143":"\ud83d\udcb0 Minimum wage","g_144":"\ud83d\udc65 Min. openings","g_145":"\u2014 you can check several","g_146":"\ud83c\udfb2 Random (default)","g_147":"\ud83c\udfaf Best for you first","g_148":"\ud83d\udcb0 Highest pay first","g_149":"\ud83d\udcc5 Earliest start first","g_150":"This profile will be used for manual and automatic sends","g_151":"resume (PDF)","g_152":"\u2460 Basic Info","g_153":"Icon","g_154":"Pick an icon for the profile:","g_155":"\u2461 Resume &amp; Cover Letter (PDF)","g_156":"\ud83d\udcc4 Resume (PDF)","g_157":"\u2705 Resume linked to this profile","g_158":"\ud83d\udce4 New file \u2014 will upload when you save","g_159":"Click or drag a PDF to upload","g_160":"Max 10MB","g_161":"or pick one from your account","g_162":"Cover letter \u2014 optional, but boosts reply chances.","g_163":"only for jobs matching this profile's visa type","g_164":"\u2462 Email Subjects","g_165":"At least 3","g_166":"Variables:","g_167":"\u2463 Email Bodies","g_168":"\u2699\ufe0f Variables \u2014 click to copy:","g_169":"3 email bodies","g_170":"Select the categories this profile will be used for automatically","g_171":"\u2464 Settings","g_172":"Always-on protections:","g_173":"cannot be turned off","g_174":"News","g_175":"Tap any application to see details,","g_176":". The","g_177":"button wipes everything and puts the jobs back on the list (handy to re-apply).","g_178":"Paying users can connect an extra Gmail to lower spam risk.","g_179":"\ud83c\udfad Pick your avatar","g_180":"\ud83d\udca1 Whatever you write here shows up when someone","g_181":"\ud83d\udc64 About you","g_182":"\ud83d\udcbc Work experience","g_183":"\ud83d\udcac What do you think of H2BApply?","g_184":"\ud83d\udcbe Save with the button","g_185":"at the bottom of the page.","g_186":"Each resume profile has its resume linked directly.","g_187":"Auto send always uses the right profile's PDF \u2014 no mix-ups.","g_188":". You can have","g_189":"the profile you pick in Step 3 of the wizard","g_190":"Create your first Resume Profile to","g_191":"start sending applications","g_192":"Statistics","g_193":"Sending Gmails","g_194":"10 FREE sends/day for everyone!","g_195":"Sending many emails with","g_196":"can trigger a temporary block by Google. We recommend adding","g_197":"to spread the sends. The block risk is","g_198":"\ud83d\udcec Upcoming applications","g_199":"\u2014 Summer","g_200":"\u26a0\ufe0f Category filter on:","g_201":"\u2014 that limits the jobs! To see all, click \"All\" above.","g_202":"Sending alternates","g_203":"Auto queue hit zero? Reset sent","g_204":"You only need to be logged in once.","g_205":"Time (Bras\u00edlia)","g_207":"\ud83e\uddfe My donations","g_208":"in your account. With diamonds you","g_209":"whenever you want \u2014 and you can even","g_210":"\ud83d\udcf8 Donation receipt","g_211":"\ud83d\udcc5 Date you donated","g_212":". That's how we verify your donation.","g_213":"), your \ud83d\udc8e land in your account and you swap them for a plan","g_214":"Fill in your","g_215":"(write \"Brazil\" in English),","g_216":"with country code (+55 85 99999-9999) and","g_217":"Give a","g_218":"name to the profile. E.g. \"My Main Profile\" or \"Landscape\"","g_219":"(required). Click the dotted area or drag the file.","g_220":"at the bottom of the screen.","g_221":"At the top of the Manual Send screen you'll see 3 tabs:","g_222":"\u2014 Summer jobs in the USA (main H-2B season).","g_223":"\u2014 Winter jobs. Fewer, but still valid.","g_224":"Click the green button","g_225":"Jobs already sent","g_226":"you want to add to auto","g_227":"The jobs you put on auto","g_228":"H2BApply does NOT read or store your inbox \u2014 every application goes out from your","g_229":"10 auto/day","g_230":"no auto","g_231":"100 auto/day","g_232":"on signup (automatic)","g_233":"Why did my jobs vanish from manual?","g_234":"Auto stopped. What do I do?","g_235":"I got an email in English. What do I do?","g_236":"If they ask for documents, contact a visa agent.","g_237":"in the server's environment variables to enable.","g_239":"Settings","g_239b":"Session","g_239c":"More","tut_center":"Tutorial Center","settings_adv":"Advanced settings","g_240":"Send a suggestion or idea to the devs","g_241":"Danger zone","g_242":"Suggestions for the Devs","g_243":"New Suggestion","g_244":"Your suggestion","g_245":"Keep an eye on","g_246":"for news!","g_247":"\ud83d\udc8e Randomization Group","g_248":"is exclusive to the plan","g_249":"\ud83d\udccd Location","g_250":"\ud83d\udcc5 Job start month","g_251":"Profile name","g_252":"Description","g_253":"to avoid spam blocks.","g_254":"Different versions the system rotates.","g_255":"to avoid spam.","g_256":"Compatible sheets","g_257":"Job categories", // 🌐 v136: varredura final (auto)
     "gu_t":"How H2BApply uses your Google account","gu_b":"We request <strong>a single permission</strong> from Google: sending e-mails through your Gmail (<code style=\"background:rgba(255,255,255,.08);padding:1px 6px;border-radius:5px\">gmail.send</code>) — used exclusively to send the job application e-mails that <strong>you yourself write and authorize</strong>. H2BApply <strong>never reads, never stores and never accesses your inbox</strong>. Employer replies arrive directly in your own Gmail. You can revoke access at any time at myaccount.google.com.","gu_l":"Read our full Privacy Policy →", // ✅ v145: transparência do uso da conta Google (verificação OAuth)
     "rst_t":"We updated the login system","rst_b":"Your login was reset, but <strong>NOTHING was deleted</strong> — your applications, plan days, diamonds and resumes are all saved. Sign in with the <strong>SAME Google e-mail</strong> you used before. ⚠️ <strong>Do not create another account</strong> with a different e-mail: more than one account risks a <strong>permanent ban of both e-mails</strong>. Spots are limited — use the account you already have.", // 📢 v144: aviso do reset de login (OAuth novo)
     "pe_draft_confirm":"📝 We found a saved draft of this profile (your session must have dropped before saving). Restore the text?","pe_draft_restored":"📝 Draft restored","pe_session_lost":"🔒 Your session dropped (the server restarted) — your text is ALREADY SAVED on this device. Log in again and reopen this profile to get it back.", // 📝 v143: rascunho do editor de perfil (caso Keyla)
@@ -9699,7 +8155,7 @@ const LANG_DICT = {
   es: {
     "h_faq_gone":"Los empleos desaparecen del manual en dos casos: (1) ya te postulaste a esa empresa, o (2) ese empleo est\u00e1 en la cola del autom\u00e1tico. Es correcto \u2014 evita escribir dos veces a la misma empresa.","mi1_d":"Env\u00eda tu 1\u00aa postulaci\u00f3n (manual o robot)","mi2_d":"Guarda tu perfil de correo y sube un curr\u00edculum PDF","mi3_d":"Alcanza 100 postulaciones enviadas","mi4_d":"Alcanza 1.000 postulaciones enviadas","mi5_d":"Logra que tu rese\u00f1a de H2BApply sea aprobada y publicada", // 🌐 v137b
     "ns1_t":"Crea tu perfil de postulaci\u00f3n","ns1_s":"Es lo que va en los correos a las empresas. Toma 1 minuto.","ns1_c":"Crear perfil","ns2_t":"Adjunta tu curr\u00edculum (PDF)","ns2_s":"Sin curr\u00edculum adjunto, tus postulaciones no salen.","ns2_c":"Adjuntar","ns3_t":"\u00a1Todo listo! Empieza a postularte","ns3_s":"Tu perfil est\u00e1 completo. Env\u00eda tu primera postulaci\u00f3n hoy.","ns3_c":"Buscar empleos","ns4_t":"Alcanzaste el l\u00edmite de hoy","ns4_s":"Hazte VIP y env\u00eda hasta 100 postulaciones al d\u00eda.","ns4_c":"Ver planes","ns5_t":"Activa el Env\u00edo Autom\u00e1tico","ns5_s":"Deja que el sistema env\u00ede postulaciones mientras trabajas.","ns5_c":"Activar","logs_none":"Sin registros todav\u00eda","logs_none_s":"Los registros aparecen aqu\u00ed cuando uses el Env\u00edo Autom\u00e1tico","notif_none_unread":"Ninguna notificaci\u00f3n sin leer \ud83c\udf89","notif_none":"Ninguna notificaci\u00f3n por ahora","swap_instant":"Activa AL INSTANTE \u2014 sin espera, sin aprobaci\u00f3n","mi1":"Primera postulaci\u00f3n","mi2":"Perfil completo","mi3":"100 postulaciones","mi4":"1.000 postulaciones","mi5":"Rese\u00f1a publicada","snd_plane":"Avi\u00f3n","snd_plane_d":"Sonido de despegue","h_paid_t":"\u2705 Planes de pago:","h_paid_d":"El autom\u00e1tico env\u00eda m\u00e1s correos por d\u00eda. El plan gratis tiene 10 al d\u00eda; VIPro 100 y DoublePro 200.","sug_hero":"\u00a1Tu idea puede volverse una funci\u00f3n! Env\u00eda tu sugerencia al equipo de H2BApply.","sc_vagas":"\ud83d\udcbc Sobre los empleos","pesq_srcs":"Empleos en Vivo \u00b7 Jan 2026 \u00b7 Jul 2025 \u00b7 Enviadas", // 🌐 v137: dinâmicos da varredura E2E
-    "g_1":"Env\u00edo Autom\u00e1tico","g_2":"Configura y deja que el sistema trabaje por ti","g_3":"/mes","g_4":"Autom\u00e1tico + Manual","g_5":"M\u00e1ximo rendimiento","g_6":"Accesos R\u00e1pidos","g_7":"Curr\u00edculums","g_8":"Mes","g_11":"N\u00fameros","g_12":"\ud83c\udde7\ud83c\uddf7 Portugu\u00eas","g_14":"(hasta 600 caracteres)","g_15":"(hasta 400 caracteres)","g_16":"(hasta 300 caracteres)","g_17":"Ayuda al sistema a encontrar los empleos correctos para ti","g_18":"\u00bfYa fuiste a EE.UU.?","g_19":"\u274c No","g_20":"\ud83d\udde3\ufe0f Nivel de ingl\u00e9s","g_21":"\ud83d\udcd6 B\u00e1sico","g_22":"\ud83c\udf1f Avanzado","g_23":"\ud83c\udf3f \u00c1rea preferida","g_24":"\ud83c\udfd7\ufe0f Construcci\u00f3n","g_25":"\ud83e\udd9e Mariscos","g_26":"\ud83d\udcc5 1 mes","g_27":"Notificaciones","g_28":"\ud83d\udeeb Alertas de H2BApply","g_29":"Toca el bot\u00f3n para activar","g_30":"tu curr\u00edculum (PDF)","g_31":"el texto del correo","g_32":"hasta 2 perfiles: uno H-2B y uno H-2A","g_33":"Adjunta tu curr\u00edculum PDF en cada postulaci\u00f3n","g_34":"Define el texto del correo en ingl\u00e9s","g_35":"Esencial para que el Env\u00edo Autom\u00e1tico funcione","g_36":"Curr\u00edculum usado:","g_37":"\ud83d\udcc8 \u00daltimos 7 d\u00edas","g_38":"Configuraci\u00f3n exclusiva de administrador","g_39":"Sin expiraci\u00f3n \u00b7 200 manual + 200 auto/d\u00eda \u00b7 Prioridad m\u00e1xima","g_40":"segundos entre cada env\u00edo","g_41":"3min (predeterminado)","g_42":"Agrega Gmails arriba para configurar l\u00edmites","g_43":"\u00b7 invisible para los usuarios","g_44":"Atenci\u00f3n:","g_45":"1 solo Gmail","g_46":"responsabilidad del usuario","g_47":"Los mismos filtros del Env\u00edo Manual \u2014 puesto, lugar, salario, grupo y m\u00e1s","g_48":"Categor\u00eda r\u00e1pida (detectada autom\u00e1ticamente)","g_49":"empleos para ti","g_50":"\ud83c\udfaf Tu perfil se usar\u00e1 en todos los env\u00edos:","g_51":"\u25b6 Empezar ahora","g_52":"Env\u00eda sin parar 24/7. Se reinicia a medianoche y sigue hasta vaciar la cola.","g_53":"\ud83d\udd50 Programar horario","g_54":"Env\u00eda de X a Y horas cada d\u00eda. Fuera del horario queda en pausa.","g_55":"Iniciar a las","g_56":"Parar a las","g_57":"regalar \ud83d\udc8e a un amigo","g_58":"da el \u2b50 VIP 30d","g_59":"da el \ud83e\udd16 VIPro 30d","g_60":"da el \ud83d\udc8e DoublePro 30d","g_61":"la cantidad de \ud83d\udc8e que quieras","g_62":"Donaci\u00f3n v\u00eda PIX","g_63":"*obligatorio","g_64":"Captura de la confirmaci\u00f3n del PIX de tu donaci\u00f3n","g_65":"Toca para seleccionar el comprobante","g_66":"JPG, PNG, PDF \u2014 m\u00e1x 5MB","g_67":"hasta 24h","g_68":"\u00bfDudas? Cont\u00e1ctanos:","g_69":"1 empresa que confirme = est\u00e1s en EE.UU. \u2708\ufe0f","g_72":"Aprende el sistema desde cero, paso a paso","g_73":"\ud83d\udccb Lo que vas a aprender:","g_74":"Respuesta de la empresa","g_75":"Preguntas Comunes","g_76":"Configurar tu Perfil","g_77":"Haz esto ANTES de enviar cualquier postulaci\u00f3n","g_78":"pa\u00eds","g_79":"Pesta\u00f1a \"Perfiles de Curr\u00edculum\" \u2014 configurar curr\u00edculum y plantilla","g_80":"sube tu curr\u00edculum en PDF","g_81":"Sin curr\u00edculum, el perfil no se guarda.","g_82":"asuntos y cuerpos de correo","g_83":"M\u00ednimo 3 variaciones de cada uno.","g_84":"Tu perfil est\u00e1 listo. Ya puedes enviar postulaciones.","g_85":"Env\u00edo Manual de Postulaciones","g_86":"Eliges cada empleo y env\u00edas uno por uno","g_87":"Elige la planilla de empleos","g_88":"M\u00e1s empleos disponibles.","g_89":"C\u00f3mo encontrar empleos para ti","g_90":"Haz clic en un empleo para ver los detalles","g_91":"Ve el correo de la empresa y la informaci\u00f3n del empleo","g_92":"\u00a1El correo con tu curr\u00edculum se env\u00eda autom\u00e1ticamente!","g_93":"desaparecen de la lista","g_94":"Env\u00edo Autom\u00e1tico 24h","g_95":"El sistema env\u00eda mientras duermes","g_96":"\ud83e\udd16 \u00bfQu\u00e9 es el Env\u00edo Autom\u00e1tico?","g_97":"\"Env\u00edo Autom\u00e1tico\"","g_98":"cantidad de empleos","g_99":"\"Iniciar Autom\u00e1tico\"","g_100":"\u26a0\ufe0f Atenci\u00f3n:","g_101":"desaparecen del env\u00edo manual","g_102":"La respuesta cae directo en TU Gmail","g_103":"tu propio Gmail","g_104":"Abre el correo de la empresa directo en tu Gmail","g_105":"Escribe tu respuesta en ingl\u00e9s y env\u00eda \u2014 es un correo tuyo, como cualquier otro","g_106":"\ud83d\udca1 Tip de respuesta r\u00e1pida:","g_107":"Env\u00eda m\u00e1s postulaciones por d\u00eda","g_108":"Gratis","g_109":"VIP \u00b7 67 \ud83d\udc8e/mes","g_110":"VIPro \u00b7 100 \ud83d\udc8e/mes","g_111":"DoublePro R$250/mes","g_112":"\ud83c\udf81 C\u00f3mo ganar VIP gratis:","g_113":"1 d\u00eda de VIP Manual","g_114":"C\u00f3digos promocionales","g_115":"Preguntas Frecuentes","g_116":"Respuestas r\u00e1pidas a preguntas comunes","g_117":"No.","g_118":"\u00bfTodav\u00eda con dudas?","g_119":"Mira los videos explicativos en YouTube o escr\u00edbenos por Instagram","g_130":"m\u00ednimo 10 caracteres","g_131":"Autom\u00e1tico","g_132":"Empleo no identificado","g_133":"\ud83d\udcc5 Disponible","g_134":"\u2753 Duda","g_135":"Construcci\u00f3n","g_136":"Dep\u00f3sito","g_137":"\ud83c\udff7\ufe0f Puesto espec\u00edfico","g_138":"\ud83d\udcc2 Categor\u00eda r\u00e1pida","g_139":"\ud83c\udf0e Tipo de visa","g_140":"\ud83d\udcf6 Estado del empleo","g_141":"Grupo de Randomizaci\u00f3n","g_142":"\u2014 puedes elegir varios estados","g_143":"\ud83d\udcb0 Salario m\u00ednimo","g_144":"\ud83d\udc65 M\u00edn. de puestos","g_145":"\u2014 puedes marcar varios","g_146":"\ud83c\udfb2 Aleatorio (predeterminado)","g_147":"\ud83c\udfaf Mejor para ti primero","g_148":"\ud83d\udcb0 Mayor salario primero","g_149":"\ud83d\udcc5 Empieza antes primero","g_150":"Este perfil se usar\u00e1 en los env\u00edos manuales y autom\u00e1ticos","g_151":"curr\u00edculum (PDF)","g_152":"\u2460 Informaci\u00f3n B\u00e1sica","g_153":"\u00cdcono","g_154":"Elige un \u00edcono para el perfil:","g_155":"\u2461 Curr\u00edculum &amp; Cover Letter (PDF)","g_156":"\ud83d\udcc4 Curr\u00edculum (PDF)","g_157":"\u2705 Curr\u00edculum vinculado a este perfil","g_158":"\ud83d\udce4 Archivo nuevo \u2014 se subir\u00e1 al guardar","g_159":"Haz clic o arrastra un PDF para subirlo","g_160":"M\u00e1x. 10MB","g_161":"o elige uno de tu cuenta","g_162":"Carta de presentaci\u00f3n \u2014 opcional, pero aumenta las respuestas.","g_163":"solo en empleos del tipo de visa de este perfil","g_164":"\u2462 Asuntos del Correo","g_165":"M\u00ednimo 3","g_166":"Variables:","g_167":"\u2463 Cuerpos de Correo","g_168":"\u2699\ufe0f Variables \u2014 clic para copiar:","g_169":"3 cuerpos de correo","g_170":"Selecciona las categor\u00edas para las que este perfil se usar\u00e1 autom\u00e1ticamente","g_171":"\u2464 Configuraci\u00f3n","g_172":"Protecciones siempre activas:","g_173":"no se pueden desactivar","g_174":"Noticias","g_175":"Toca cualquier postulaci\u00f3n para ver detalles,","g_176":". El bot\u00f3n","g_177":"borra todo y devuelve los empleos a la lista (\u00fatil para volver a postularte).","g_178":"Los usuarios de pago pueden conectar un Gmail extra para reducir el riesgo de spam.","g_179":"\ud83c\udfad Elige tu avatar","g_180":"\ud83d\udca1 Lo que escribas aqu\u00ed aparece cuando alguien","g_181":"\ud83d\udc64 Sobre ti","g_182":"\ud83d\udcbc Experiencia laboral","g_183":"\ud83d\udcac \u00bfQu\u00e9 opinas de H2BApply?","g_184":"\ud83d\udcbe Guarda con el bot\u00f3n","g_185":"al final de la p\u00e1gina.","g_186":"Cada perfil tiene su curr\u00edculum vinculado directamente.","g_187":"El autom\u00e1tico siempre usa el PDF del perfil correcto \u2014 sin confusiones.","g_188":". Puedes tener","g_189":"el perfil que elijas en el Paso 3 del asistente","g_190":"Crea tu primer Perfil de Curr\u00edculum para","g_191":"empezar a enviar postulaciones","g_192":"Estad\u00edsticas","g_193":"Gmails de env\u00edo","g_194":"\u00a110 env\u00edos GRATIS/d\u00eda para todos!","g_195":"Enviar muchos correos con","g_196":"puede generar un bloqueo temporal de Google. Recomendamos agregar","g_197":"para distribuir los env\u00edos. El riesgo de bloqueo es de","g_198":"\ud83d\udcec Pr\u00f3ximas postulaciones","g_199":"\u2014 Verano","g_200":"\u26a0\ufe0f Filtro de categor\u00eda activo:","g_201":"\u2014 \u00a1eso limita los empleos! Para ver todos, haz clic en \"Todos\" arriba.","g_202":"El env\u00edo alterna","g_203":"\u00bfEl autom\u00e1tico vaci\u00f3 la cola? Restablecer enviados","g_204":"Solo necesitas iniciar sesi\u00f3n una vez.","g_205":"Horario (Bras\u00edlia)","g_207":"\ud83e\uddfe Mis donaciones","g_208":"en tu cuenta. Con diamantes t\u00fa","g_209":"cuando quieras \u2014 y hasta puedes","g_210":"\ud83d\udcf8 Comprobante de la donaci\u00f3n","g_211":"\ud83d\udcc5 Fecha en que donaste","g_212":". Con ella verificamos tu donaci\u00f3n.","g_213":"), tus \ud83d\udc8e caen en tu cuenta y los cambias por un plan","g_214":"Completa tu","g_215":"(escribe \"Brazil\" en ingl\u00e9s),","g_216":"con c\u00f3digo de pa\u00eds (+55 85 99999-9999) y","g_217":"Dale un","g_218":"nombre al perfil. Ej: \"Mi Perfil Principal\" o \"Landscape\"","g_219":"(obligatorio). Haz clic en el \u00e1rea punteada o arrastra el archivo.","g_220":"al final de la pantalla.","g_221":"En la parte superior del Env\u00edo Manual ver\u00e1s 3 pesta\u00f1as:","g_222":"\u2014 Empleos de verano en EE.UU. (temporada principal H-2B).","g_223":"\u2014 Empleos de invierno. Menos, pero a\u00fan v\u00e1lidos.","g_224":"Haz clic en el bot\u00f3n verde","g_225":"Empleos ya enviados","g_226":"que quieras poner en autom\u00e1tico","g_227":"Los empleos que pones en autom\u00e1tico","g_228":"H2BApply NO lee ni guarda tu bandeja de entrada \u2014 cada postulaci\u00f3n sale de tu","g_229":"10 autom\u00e1ticos/d\u00eda","g_230":"sin autom\u00e1tico","g_231":"100 autom\u00e1ticos/d\u00eda","g_232":"al registrarte (autom\u00e1tico)","g_233":"\u00bfPor qu\u00e9 mis empleos desaparecieron del manual?","g_234":"El autom\u00e1tico par\u00f3. \u00bfQu\u00e9 hago?","g_235":"Recib\u00ed un correo en ingl\u00e9s. \u00bfQu\u00e9 hago?","g_236":"Si piden documentos, contacta a un gestor de visas.","g_237":"en las variables de entorno del servidor para activar.","g_239":"Configuraci\u00f3n","g_239b":"Sesi\u00f3n","g_239c":"M\u00e1s","tut_center":"Centro de Tutoriales","settings_adv":"Configuraci\u00f3n avanzada","g_240":"Enviar una sugerencia o idea a los devs","g_241":"Zona de peligro","g_242":"Sugerencias para los Devs","g_243":"Nueva Sugerencia","g_244":"Tu sugerencia","g_245":"Mantente atento a","g_246":"\u00a1para novedades!","g_247":"\ud83d\udc8e Grupo de Randomizaci\u00f3n","g_248":"es exclusivo del plan","g_249":"\ud83d\udccd Ubicaci\u00f3n","g_250":"\ud83d\udcc5 Mes de inicio del empleo","g_251":"Nombre del perfil","g_252":"Descripci\u00f3n","g_253":"para evitar bloqueos por spam.","g_254":"Versiones distintas que el sistema alterna.","g_255":"para evitar spam.","g_256":"Planillas compatibles","g_257":"Categor\u00edas de empleo", // 🌐 v136: varredura final (auto)
+    "g_1":"Env\u00edo Autom\u00e1tico","g_2":"Configura y deja que el sistema trabaje por ti","g_3":"/mes","g_4":"Autom\u00e1tico + Manual","g_5":"M\u00e1ximo rendimiento","g_6":"Accesos R\u00e1pidos","g_7":"Curr\u00edculums","g_8":"Mes","g_11":"N\u00fameros","g_12":"\ud83c\udde7\ud83c\uddf7 Portugu\u00eas","g_14":"(hasta 600 caracteres)","g_15":"(hasta 400 caracteres)","g_16":"(hasta 300 caracteres)","g_17":"Ayuda al sistema a encontrar los empleos correctos para ti","g_18":"\u00bfYa fuiste a EE.UU.?","g_19":"\u274c No","g_20":"\ud83d\udde3\ufe0f Nivel de ingl\u00e9s","g_21":"\ud83d\udcd6 B\u00e1sico","g_22":"\ud83c\udf1f Avanzado","g_23":"\ud83c\udf3f \u00c1rea preferida","g_24":"\ud83c\udfd7\ufe0f Construcci\u00f3n","g_25":"\ud83e\udd9e Mariscos","g_26":"\ud83d\udcc5 1 mes","g_27":"Notificaciones","g_28":"\ud83d\udeeb Alertas de H2BApply","g_29":"Toca el bot\u00f3n para activar","g_30":"tu curr\u00edculum (PDF)","g_31":"el texto del correo","g_32":"hasta 2 perfiles: uno H-2B y uno H-2A","g_33":"Adjunta tu curr\u00edculum PDF en cada postulaci\u00f3n","g_34":"Define el texto del correo en ingl\u00e9s","g_35":"Esencial para que el Env\u00edo Autom\u00e1tico funcione","g_36":"Curr\u00edculum usado:","g_37":"\ud83d\udcc8 \u00daltimos 7 d\u00edas","g_38":"Configuraci\u00f3n exclusiva de administrador","g_39":"Sin expiraci\u00f3n \u00b7 200 manual + 200 auto/d\u00eda \u00b7 Prioridad m\u00e1xima","g_40":"segundos entre cada env\u00edo","g_41":"3min (predeterminado)","g_42":"Agrega Gmails arriba para configurar l\u00edmites","g_43":"\u00b7 invisible para los usuarios","g_44":"Atenci\u00f3n:","g_45":"1 solo Gmail","g_46":"responsabilidad del usuario","g_47":"Los mismos filtros del Env\u00edo Manual \u2014 puesto, lugar, salario, grupo y m\u00e1s","g_48":"Categor\u00eda r\u00e1pida (detectada autom\u00e1ticamente)","g_49":"empleos para ti","g_50":"\ud83c\udfaf Tu perfil se usar\u00e1 en todos los env\u00edos:","g_51":"\u25b6 Empezar ahora","g_52":"Env\u00eda sin parar 24/7. Se reinicia a medianoche y sigue hasta vaciar la cola.","g_53":"\ud83d\udd50 Programar horario","g_54":"Env\u00eda de X a Y horas cada d\u00eda. Fuera del horario queda en pausa.","g_55":"Iniciar a las","g_56":"Parar a las","g_57":"regalar \ud83d\udc8e a un amigo","g_58":"da el \u2b50 VIP 30d","g_59":"da el \ud83e\udd16 VIPro 30d","g_60":"da el \ud83d\udc8e DoublePro 30d","g_61":"la cantidad de \ud83d\udc8e que quieras","g_62":"Donaci\u00f3n v\u00eda PIX","g_63":"*obligatorio","g_64":"Captura de la confirmaci\u00f3n del PIX de tu donaci\u00f3n","g_65":"Toca para seleccionar el comprobante","g_66":"JPG, PNG, PDF \u2014 m\u00e1x 5MB","g_67":"hasta 24h","g_68":"\u00bfDudas? Cont\u00e1ctanos:","g_69":"1 empresa que confirme = est\u00e1s en EE.UU. \u2708\ufe0f","g_72":"Aprende el sistema desde cero, paso a paso","g_73":"\ud83d\udccb Lo que vas a aprender:","g_74":"Respuesta de la empresa","g_75":"Preguntas Comunes","g_76":"Configurar tu Perfil","g_77":"Haz esto ANTES de enviar cualquier postulaci\u00f3n","g_78":"pa\u00eds","g_79":"Pesta\u00f1a \"Perfiles de Curr\u00edculum\" \u2014 configurar curr\u00edculum y plantilla","g_80":"sube tu curr\u00edculum en PDF","g_81":"Sin curr\u00edculum, el perfil no se guarda.","g_82":"asuntos y cuerpos de correo","g_83":"M\u00ednimo 3 variaciones de cada uno.","g_84":"Tu perfil est\u00e1 listo. Ya puedes enviar postulaciones.","g_85":"Env\u00edo Manual de Postulaciones","g_86":"Eliges cada empleo y env\u00edas uno por uno","g_87":"Elige la planilla de empleos","g_88":"M\u00e1s empleos disponibles.","g_89":"C\u00f3mo encontrar empleos para ti","g_90":"Haz clic en un empleo para ver los detalles","g_91":"Ve el correo de la empresa y la informaci\u00f3n del empleo","g_92":"\u00a1El correo con tu curr\u00edculum se env\u00eda autom\u00e1ticamente!","g_93":"desaparecen de la lista","g_94":"Env\u00edo Autom\u00e1tico 24h","g_95":"El sistema env\u00eda mientras duermes","g_96":"\ud83e\udd16 \u00bfQu\u00e9 es el Env\u00edo Autom\u00e1tico?","g_97":"\"Env\u00edo Autom\u00e1tico\"","g_98":"cantidad de empleos","g_99":"\"Iniciar Autom\u00e1tico\"","g_100":"\u26a0\ufe0f Atenci\u00f3n:","g_101":"desaparecen del env\u00edo manual","g_102":"La respuesta cae directo en TU Gmail","g_103":"tu propio Gmail","g_104":"Abre el correo de la empresa directo en tu Gmail","g_105":"Escribe tu respuesta en ingl\u00e9s y env\u00eda \u2014 es un correo tuyo, como cualquier otro","g_106":"\ud83d\udca1 Tip de respuesta r\u00e1pida:","g_107":"Env\u00eda m\u00e1s postulaciones por d\u00eda","g_108":"Gratis","g_109":"VIP \u00b7 67 \ud83d\udc8e/mes","g_110":"VIPro \u00b7 100 \ud83d\udc8e/mes","g_111":"DoublePro R$250/mes","g_112":"\ud83c\udf81 C\u00f3mo ganar VIP gratis:","g_113":"1 d\u00eda de VIP Manual","g_114":"C\u00f3digos promocionales","g_115":"Preguntas Frecuentes","g_116":"Respuestas r\u00e1pidas a preguntas comunes","g_117":"No.","g_118":"\u00bfTodav\u00eda con dudas?","g_119":"Mira los videos explicativos en YouTube o escr\u00edbenos por Instagram","g_128":"desaparecer de cualquier lugar p\u00fablico","g_129":"iniciar sesi\u00f3n de nuevo con el mismo correo","g_130":"m\u00ednimo 10 caracteres","g_131":"Autom\u00e1tico","g_132":"Empleo no identificado","g_133":"\ud83d\udcc5 Disponible","g_134":"\u2753 Duda","g_135":"Construcci\u00f3n","g_136":"Dep\u00f3sito","g_137":"\ud83c\udff7\ufe0f Puesto espec\u00edfico","g_138":"\ud83d\udcc2 Categor\u00eda r\u00e1pida","g_139":"\ud83c\udf0e Tipo de visa","g_140":"\ud83d\udcf6 Estado del empleo","g_141":"Grupo de Randomizaci\u00f3n","g_142":"\u2014 puedes elegir varios estados","g_143":"\ud83d\udcb0 Salario m\u00ednimo","g_144":"\ud83d\udc65 M\u00edn. de puestos","g_145":"\u2014 puedes marcar varios","g_146":"\ud83c\udfb2 Aleatorio (predeterminado)","g_147":"\ud83c\udfaf Mejor para ti primero","g_148":"\ud83d\udcb0 Mayor salario primero","g_149":"\ud83d\udcc5 Empieza antes primero","g_150":"Este perfil se usar\u00e1 en los env\u00edos manuales y autom\u00e1ticos","g_151":"curr\u00edculum (PDF)","g_152":"\u2460 Informaci\u00f3n B\u00e1sica","g_153":"\u00cdcono","g_154":"Elige un \u00edcono para el perfil:","g_155":"\u2461 Curr\u00edculum &amp; Cover Letter (PDF)","g_156":"\ud83d\udcc4 Curr\u00edculum (PDF)","g_157":"\u2705 Curr\u00edculum vinculado a este perfil","g_158":"\ud83d\udce4 Archivo nuevo \u2014 se subir\u00e1 al guardar","g_159":"Haz clic o arrastra un PDF para subirlo","g_160":"M\u00e1x. 10MB","g_161":"o elige uno de tu cuenta","g_162":"Carta de presentaci\u00f3n \u2014 opcional, pero aumenta las respuestas.","g_163":"solo en empleos del tipo de visa de este perfil","g_164":"\u2462 Asuntos del Correo","g_165":"M\u00ednimo 3","g_166":"Variables:","g_167":"\u2463 Cuerpos de Correo","g_168":"\u2699\ufe0f Variables \u2014 clic para copiar:","g_169":"3 cuerpos de correo","g_170":"Selecciona las categor\u00edas para las que este perfil se usar\u00e1 autom\u00e1ticamente","g_171":"\u2464 Configuraci\u00f3n","g_172":"Protecciones siempre activas:","g_173":"no se pueden desactivar","g_174":"Noticias","g_175":"Toca cualquier postulaci\u00f3n para ver detalles,","g_176":". El bot\u00f3n","g_177":"borra todo y devuelve los empleos a la lista (\u00fatil para volver a postularte).","g_178":"Los usuarios de pago pueden conectar un Gmail extra para reducir el riesgo de spam.","g_179":"\ud83c\udfad Elige tu avatar","g_180":"\ud83d\udca1 Lo que escribas aqu\u00ed aparece cuando alguien","g_181":"\ud83d\udc64 Sobre ti","g_182":"\ud83d\udcbc Experiencia laboral","g_183":"\ud83d\udcac \u00bfQu\u00e9 opinas de H2BApply?","g_184":"\ud83d\udcbe Guarda con el bot\u00f3n","g_185":"al final de la p\u00e1gina.","g_186":"Cada perfil tiene su curr\u00edculum vinculado directamente.","g_187":"El autom\u00e1tico siempre usa el PDF del perfil correcto \u2014 sin confusiones.","g_188":". Puedes tener","g_189":"el perfil que elijas en el Paso 3 del asistente","g_190":"Crea tu primer Perfil de Curr\u00edculum para","g_191":"empezar a enviar postulaciones","g_192":"Estad\u00edsticas","g_193":"Gmails de env\u00edo","g_194":"\u00a110 env\u00edos GRATIS/d\u00eda para todos!","g_195":"Enviar muchos correos con","g_196":"puede generar un bloqueo temporal de Google. Recomendamos agregar","g_197":"para distribuir los env\u00edos. El riesgo de bloqueo es de","g_198":"\ud83d\udcec Pr\u00f3ximas postulaciones","g_199":"\u2014 Verano","g_200":"\u26a0\ufe0f Filtro de categor\u00eda activo:","g_201":"\u2014 \u00a1eso limita los empleos! Para ver todos, haz clic en \"Todos\" arriba.","g_202":"El env\u00edo alterna","g_203":"\u00bfEl autom\u00e1tico vaci\u00f3 la cola? Restablecer enviados","g_204":"Solo necesitas iniciar sesi\u00f3n una vez.","g_205":"Horario (Bras\u00edlia)","g_207":"\ud83e\uddfe Mis donaciones","g_208":"en tu cuenta. Con diamantes t\u00fa","g_209":"cuando quieras \u2014 y hasta puedes","g_210":"\ud83d\udcf8 Comprobante de la donaci\u00f3n","g_211":"\ud83d\udcc5 Fecha en que donaste","g_212":". Con ella verificamos tu donaci\u00f3n.","g_213":"), tus \ud83d\udc8e caen en tu cuenta y los cambias por un plan","g_214":"Completa tu","g_215":"(escribe \"Brazil\" en ingl\u00e9s),","g_216":"con c\u00f3digo de pa\u00eds (+55 85 99999-9999) y","g_217":"Dale un","g_218":"nombre al perfil. Ej: \"Mi Perfil Principal\" o \"Landscape\"","g_219":"(obligatorio). Haz clic en el \u00e1rea punteada o arrastra el archivo.","g_220":"al final de la pantalla.","g_221":"En la parte superior del Env\u00edo Manual ver\u00e1s 3 pesta\u00f1as:","g_222":"\u2014 Empleos de verano en EE.UU. (temporada principal H-2B).","g_223":"\u2014 Empleos de invierno. Menos, pero a\u00fan v\u00e1lidos.","g_224":"Haz clic en el bot\u00f3n verde","g_225":"Empleos ya enviados","g_226":"que quieras poner en autom\u00e1tico","g_227":"Los empleos que pones en autom\u00e1tico","g_228":"H2BApply NO lee ni guarda tu bandeja de entrada \u2014 cada postulaci\u00f3n sale de tu","g_229":"10 autom\u00e1ticos/d\u00eda","g_230":"sin autom\u00e1tico","g_231":"100 autom\u00e1ticos/d\u00eda","g_232":"al registrarte (autom\u00e1tico)","g_233":"\u00bfPor qu\u00e9 mis empleos desaparecieron del manual?","g_234":"El autom\u00e1tico par\u00f3. \u00bfQu\u00e9 hago?","g_235":"Recib\u00ed un correo en ingl\u00e9s. \u00bfQu\u00e9 hago?","g_236":"Si piden documentos, contacta a un gestor de visas.","g_237":"en las variables de entorno del servidor para activar.","g_239":"Configuraci\u00f3n","g_239b":"Sesi\u00f3n","g_239c":"M\u00e1s","tut_center":"Centro de Tutoriales","settings_adv":"Configuraci\u00f3n avanzada","g_240":"Enviar una sugerencia o idea a los devs","g_241":"Zona de peligro","g_242":"Sugerencias para los Devs","g_243":"Nueva Sugerencia","g_244":"Tu sugerencia","g_245":"Mantente atento a","g_246":"\u00a1para novedades!","g_247":"\ud83d\udc8e Grupo de Randomizaci\u00f3n","g_248":"es exclusivo del plan","g_249":"\ud83d\udccd Ubicaci\u00f3n","g_250":"\ud83d\udcc5 Mes de inicio del empleo","g_251":"Nombre del perfil","g_252":"Descripci\u00f3n","g_253":"para evitar bloqueos por spam.","g_254":"Versiones distintas que el sistema alterna.","g_255":"para evitar spam.","g_256":"Planillas compatibles","g_257":"Categor\u00edas de empleo", // 🌐 v136: varredura final (auto)
     "gu_t":"Cómo H2BApply usa tu cuenta de Google","gu_b":"Pedimos <strong>un único permiso</strong> de Google: enviar correos por tu Gmail (<code style=\"background:rgba(255,255,255,.08);padding:1px 6px;border-radius:5px\">gmail.send</code>) — usado exclusivamente para enviar las postulaciones de empleo que <strong>tú mismo escribes y autorizas</strong>. H2BApply <strong>nunca lee, nunca almacena y nunca accede a tu bandeja de entrada</strong>. Las respuestas de los empleadores llegan directo a tu propio Gmail. Puedes revocar el acceso en cualquier momento en myaccount.google.com.","gu_l":"Lee nuestra Política de Privacidad completa →", // ✅ v145: transparência do uso da conta Google (verificação OAuth)
     "rst_t":"Actualizamos el sistema de inicio de sesión","rst_b":"Tu inicio de sesión fue reiniciado, pero <strong>NADA fue borrado</strong> — tus postulaciones, días de plan, diamantes y currículums están guardados. Entra con el <strong>MISMO correo de Google</strong> que usabas antes. ⚠️ <strong>No crees otra cuenta</strong> con un correo diferente: más de una cuenta arriesga un <strong>baneo permanente de ambos correos</strong>. Los cupos son limitados — usa la cuenta que ya tienes.", // 📢 v144: aviso do reset de login (OAuth novo)
     "pe_draft_confirm":"📝 Encontramos un borrador guardado de este perfil (tu sesión debió caerse antes de guardar). ¿Restaurar el texto?","pe_draft_restored":"📝 Borrador restaurado","pe_session_lost":"🔒 Tu sesión se cayó (el servidor se reinició) — tu texto YA ESTÁ GUARDADO en este dispositivo. Inicia sesión de nuevo y vuelve a abrir este perfil para recuperarlo.", // 📝 v143: rascunho do editor de perfil (caso Keyla)

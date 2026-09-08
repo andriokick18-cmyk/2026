@@ -2528,6 +2528,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       <!-- MAIS -->
       <div class="sb-sec">
         <div class="sb-lbl">Mais</div>
+        <button class="sb-item" id="si-pesquisa" onclick="sv('pesquisa')"><i class="ti ti-search"></i>Buscar Vagas</button>
         <!-- v110: aba fixa de instalar o app (substitui o botão flutuante) -->
         <button class="sb-item" id="si-app" onclick="installAppClick()"><i class="ti ti-device-mobile-down"></i>Baixar App</button>
       </div>
@@ -2914,14 +2915,6 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
                     </div>
                   </div>
                 </div>
-                <div class="field">
-                  <label data-i18n="language_lbl">Idioma</label>
-                  <select class="input" id="cfg-lang">
-                    <option value="pt-BR" data-i18n="g_12">🇧🇷 Português</option>
-                    <option value="en-US">🇺🇸 English</option>
-                    <option value="es">🇲🇽 Español</option>
-                  </select>
-                </div>
                 <button class="btn btn-primary w100" onclick="saveProfile()" style="margin-top:4px">
                   <i class="ti ti-check"></i> Salvar dados
                 </button>
@@ -3190,6 +3183,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
                 <span style="font-size:12px;font-weight:800;color:var(--text)" data-i18n="g_239c">Mais</span>
               </div>
               <div style="padding:8px;display:flex;flex-direction:column;gap:2px">
+                <button class="btn btn-secondary w100" style="justify-content:flex-start;border:none;background:none" onclick="sv('pesquisa')"><i class="ti ti-search"></i> Buscar Vagas</button>
                 <button class="btn btn-secondary w100" style="justify-content:flex-start;border:none;background:none" onclick="sv('tutorial')"><i class="ti ti-book"></i> <span data-i18n="tut_center">Central de Tutoriais</span></button>
                 <button class="btn btn-secondary w100" style="justify-content:flex-start;border:none;background:none" onclick="sv('settings')"><i class="ti ti-settings"></i> <span data-i18n="settings_adv">Configurações avançadas</span></button>
               </div>
@@ -3839,85 +3833,6 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       <span>Planos</span>
     </button>
   </nav>
-</div>
-
-<!-- ══ MODAL DETALHE DO E-MAIL ══ -->
-<div class="resp-modal-overlay gone" id="email-detail-overlay" onclick="if(event.target===this)closeEmailDetail()">
-  <div style="background:var(--surface);width:100%;max-width:640px;height:100dvh;display:flex;flex-direction:column;border-radius:0;box-shadow:0 -8px 40px rgba(0,0,0,.25);overflow:hidden;animation:slideUp .2s ease" class="resp-modal-inner">
-
-    <!-- HEADER ULTRA-COMPACTO: só o essencial -->
-    <div style="padding:10px 12px 8px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--surface)">
-      <div style="display:flex;align-items:center;gap:8px">
-        <!-- Avatar pequeno -->
-        <div id="ed-avatar" style="width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:#fff;flex-shrink:0">?</div>
-        <!-- Nome + assunto numa coluna -->
-        <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="ed-from-name">–</div>
-          <div style="font-size:11px;color:var(--t3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="ed-subject">–</div>
-        </div>
-        <!-- Data + fechar -->
-        <div style="display:flex;align-items:center;gap:5px;flex-shrink:0">
-          <span style="font-size:10px;color:var(--t4)" id="ed-date">–</span>
-          <button aria-label="Fechar" title="Fechar" onclick="closeEmailDetail()" style="width:28px;height:28px;border-radius:50%;background:var(--sf3);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--t2)"><i class="ti ti-x" style="font-size:14px"></i></button>
-        </div>
-      </div>
-      <!-- e-mail remetente pequeno + botão traduzir na mesma linha -->
-      <div style="display:flex;align-items:center;gap:6px;margin-top:2px;padding-left:42px">
-        <div style="font-size:10px;color:var(--t4);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="ed-from-email">–</div>
-        <button onclick="toggleEmailTranslation()" id="ed-translate-btn" style="flex-shrink:0;display:inline-flex;align-items:center;gap:4px;background:var(--sf2);border:1px solid var(--border);border-radius:20px;padding:3px 9px;font-size:11px;font-weight:700;color:var(--t2);cursor:pointer;white-space:nowrap;font-family:inherit" title="Traduzir"><i class="ti ti-language" style="font-size:12px"></i> Traduzir</button>
-      </div>
-
-      <!-- Badge classificação (só aparece se positivo/negativo) -->
-      <div id="ed-classification-badge" style="display:none;margin-top:6px"></div>
-
-      <!-- VAGA VINCULADA — colapsável, fechada por padrão no mobile -->
-      <div id="ed-linked-mini" style="display:none;margin-top:7px">
-        <!-- Linha resumida (sempre visível quando há vaga) -->
-        <div onclick="toggleLinkedExpand()" style="display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,#eff6ff,#f5f3ff);border:1.5px solid rgba(99,102,241,.2);border-radius:8px;padding:7px 10px;cursor:pointer">
-          <i class="ti ti-briefcase" style="font-size:13px;color:var(--blue);flex-shrink:0"></i>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:12px;font-weight:800;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="ed-lnk-job">–</div>
-            <div style="font-size:10px;color:var(--t2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="ed-lnk-co">–</div>
-          </div>
-          <i class="ti ti-chevron-down" id="ed-lnk-chevron" style="font-size:13px;color:var(--t3);flex-shrink:0;transition:transform .2s"></i>
-        </div>
-        <!-- Detalhes expandidos (ocultos por padrão) -->
-        <div id="ed-lnk-expanded" style="display:none;background:linear-gradient(135deg,#eff6ff,#f5f3ff);border:1.5px solid rgba(99,102,241,.2);border-top:none;border-radius:0 0 8px 8px;padding:8px 10px">
-          <div id="ed-lnk-meta" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:5px"></div>
-          <div id="ed-lnk-extra" style="display:flex;gap:4px;flex-wrap:wrap"></div>
-          <div id="ed-lnk-match-type" style="font-size:9px;color:var(--t4);margin-top:4px"></div>
-        </div>
-      </div>
-      <!-- Sem vaga vinculada -->
-      <div id="ed-no-linked" style="display:none;margin-top:6px;background:var(--sf2);border:1px dashed var(--border2);border-radius:8px;padding:6px 10px;display:flex;align-items:center;gap:7px">
-        <i class="ti ti-briefcase" style="font-size:13px;color:var(--t4)"></i>
-        <span style="font-size:11px;color:var(--t3);flex:1" data-i18n="g_132">Vaga não identificada</span>
-        <button onclick="openChangeLinkedJobModal()" style="font-size:11px;color:var(--blue);background:none;border:none;cursor:pointer;font-weight:700;font-family:inherit">Vincular →</button>
-      </div>
-    </div>
-
-    <!-- CHAT — ocupa todo o espaço restante -->
-    <div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;background:#e5ddd5;display:flex;flex-direction:column;gap:8px;padding:10px 12px" id="ed-chat-history"></div>
-
-    <!-- FOOTER RESPOSTA — compacto -->
-    <div style="border-top:1px solid var(--border);padding:6px 10px 8px;background:#f0f2f5;flex-shrink:0">
-      <!-- Chips rápidos -->
-      <div style="display:flex;gap:4px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none">
-        <button style="flex-shrink:0;background:var(--greenl);border:1px solid var(--greenb);color:var(--green);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap" onclick="quickReply('interest')">✅ Interesse</button>
-        <button style="flex-shrink:0;background:var(--bluel);border:1px solid var(--blueb);color:var(--blue);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap" onclick="quickReply('available')" data-i18n="g_133">📅 Disponível</button>
-        <button style="flex-shrink:0;background:var(--purplel);border:1px solid var(--purpleb);color:var(--purple);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap" onclick="quickReply('confirm')">✔ Confirmo</button>
-        <button style="flex-shrink:0;background:var(--sf2);border:1px solid var(--border2);color:var(--t2);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap" onclick="quickReply('question')" data-i18n="g_134">❓ Dúvida</button>
-        <button style="flex-shrink:0;background:var(--purplel);border:1px solid var(--purpleb);color:var(--purple);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap" onclick="openQuickReplyModal(_currentEmailId)"><i class="ti ti-bolt" style="font-size:11px"></i> Modelo</button>
-      </div>
-      <input class="input gone" id="ed-reply-subject" type="text" style="margin-bottom:5px;font-size:12px;height:32px" placeholder="Assunto da resposta">
-      <div style="display:flex;gap:6px;align-items:flex-end">
-        <textarea class="input" id="ed-reply-body" rows="2" style="min-height:40px;max-height:100px;font-size:13px;resize:none;flex:1;border-radius:20px;padding:9px 14px;background:#fff;border-color:var(--border);line-height:1.5" placeholder="Escreva sua resposta em inglês..."></textarea>
-        <button aria-label="Enviar resposta" title="Enviar resposta" style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(37,99,235,.3)" onclick="sendEmailReply()" id="ed-send-btn"><i class="ti ti-send" style="font-size:15px"></i></button>
-        <button style="width:38px;height:38px;border-radius:50%;background:#fff;color:var(--t2);border:1.5px solid var(--border2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0" onclick="copyEmailReply()" title="Copiar"><i class="ti ti-copy" style="font-size:14px"></i></button>
-      </div>
-      <div id="ed-send-status" style="display:none;margin-top:5px;font-size:12px;color:var(--green);font-weight:700;text-align:center;padding:5px;background:var(--greenl);border-radius:8px;border:1px solid var(--greenb)"></div>
-    </div>
-  </div>
 </div>
 
 <!-- ══ TEMPLATE PICKER ══ -->
@@ -5673,7 +5588,7 @@ html, body, #app, .bottom-nav, .sidebar, .drawer{
         </div>
         <div class="field">
           <label style="font-size:11px;font-weight:700;color:var(--t2)">🎂 Idade *</label>
-          <input class="input" id="ob-age" type="number" min="18" max="70" placeholder="Ex: 25" inputmode="numeric">
+          <input class="input" id="ob-age" type="number" min="18" max="80" placeholder="Ex: 25" inputmode="numeric">
         </div>
       </div>
 
@@ -5682,7 +5597,7 @@ html, body, #app, .bottom-nav, .sidebar, .drawer{
         <input class="input" id="ob-phone" type="tel" inputmode="tel" placeholder="+55 11 99999-9999">
         <div style="font-size:11px;color:var(--t3);margin-top:4px;line-height:1.5;display:flex;gap:5px;align-items:flex-start">
           <i class="ti ti-bell" style="font-size:12px;color:var(--blue);flex-shrink:0;margin-top:1px"></i>
-          <span>Avisamos você aqui assim que uma empresa responder sua candidatura.</span>
+          <span>Usamos só para contato — as respostas das empresas chegam direto no seu Gmail, o site não lê seu e-mail.</span>
         </div>
       </div>
 
@@ -6055,17 +5970,6 @@ html, body, #app, .bottom-nav, .sidebar, .drawer{
 
 
 
-<!-- ══ 📊 DESEMPENHO DOS MEUS TEXTOS (v23) ══ -->
-<div class="overlay gone" id="text-stats-overlay" onclick="if(event.target===this)g('#text-stats-overlay').classList.add('gone')">
-  <div class="modal" style="max-width:460px;max-height:85dvh;display:flex;flex-direction:column;overflow:hidden">
-    <div class="mhandle"></div>
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 2px 10px">
-      <div style="font-size:16px;font-weight:800">📊 Qual texto seu funciona melhor?</div>
-      <button onclick="g('#text-stats-overlay').classList.add('gone')" style="background:none;border:none;cursor:pointer;color:var(--t3);font-size:17px">✕</button>
-    </div>
-    <div id="text-stats-body" style="overflow-y:auto;flex:1"><div style="text-align:center;padding:30px"><span class="spin"></span></div></div>
-  </div>
-</div>
 
 <!-- ══ 🎓 TOUR DESLIZÁVEL (v22, pedido do dono): passo a passo em slides ══
      Usuário novo estava perdido ("muita informação, não sabe por onde
@@ -6090,10 +5994,10 @@ html, body, #app, .bottom-nav, .sidebar, .drawer{
       <div class="tour-slide"><div class="tour-emoji">👤</div><div class="tour-title">Passo 1 — Crie seu perfil</div><div class="tour-text">Vá em <b>Perfil</b> (menu de baixo) e monte seu perfil de candidatura:<br><br>1️⃣ Anexe seu <b>currículo em PDF</b><br>2️⃣ Escreva <b>3 assuntos</b> de e-mail diferentes<br>3️⃣ Escreva <b>3 textos</b> de e-mail diferentes<br><br>⚠️ Os textos são <b>seus</b> — o sistema alterna entre eles a cada envio, então sua candidatura nunca sai igual à de outra pessoa (isso protege seu Gmail de virar spam).</div></div>
       <div class="tour-slide"><div class="tour-emoji">✉️</div><div class="tour-title">Passo 2 — Envio manual</div><div class="tour-text">Na aba <b>Vagas</b>:<br><br>1️⃣ Escolha uma planilha de vagas no topo<br>2️⃣ Toque numa vaga que gostou<br>3️⃣ Confira o e-mail já montado com seu perfil<br>4️⃣ Toque em <b>Enviar</b> — pronto, foi do seu Gmail!<br><br>💡 Vagas pra onde você já enviou <b>somem da lista sozinhas</b> — impossível enviar duas vezes.</div></div>
       <div class="tour-slide"><div class="tour-emoji">🔍</div><div class="tour-title">Filtre do seu jeito</div><div class="tour-text">Toque no botão <b>Filtros</b> pra achar exatamente o que quer:<br><br>🏷️ <b>Cargo</b> (Cook, Landscaper...)<br>📍 <b>Vários estados</b> ao mesmo tempo<br>💰 <b>Salário mínimo</b> por hora<br>📅 <b>Mês que a vaga começa</b><br>↕️ <b>Ordenar</b> por maior salário<br><br>Os filtros ativos viram <b>etiquetas</b> — toque no ✕ de qualquer uma pra remover.</div></div>
-      <div class="tour-slide"><div class="tour-emoji">🤖</div><div class="tour-title">Passo 3 — Envio automático</div><div class="tour-text">Na aba <b>Automático</b> (planos VIP), o robô envia por você <b>24 horas por dia</b>:<br><br>1️⃣ Escolha a fonte de vagas<br>2️⃣ Ajuste os filtros (os mesmos do manual)<br>3️⃣ Escolha seu perfil<br>4️⃣ Toque em <b>Iniciar</b><br><br>🛡️ O robô envia em <b>ritmo humano</b> (um a cada 5-6 min) pra proteger seu Gmail, e você acompanha tudo em tempo real.</div></div>
-      <div class="tour-slide"><div class="tour-emoji">💎</div><div class="tour-title">Diamantes, planos e recompensas</div><div class="tour-text">Aqui <b>não existe compra</b>: você <b>doa via PIX</b>, recebe <b>💎 diamantes</b> e <b>troca por planos</b> quando quiser — a troca ativa <b>na hora</b>.<br><br>🎁 E dá pra ganhar 💎 <b>de graça</b> nas <b>Recompensas</b> (aba Planos): primeira candidatura, perfil completo, marcos de envios…<br><br>Diamante de doação pode até ser <b>doado a um amigo</b>. Seu saldo fica sempre à vista no ☰ Menu.</div></div>
-      <div class="tour-slide"><div class="tour-emoji">📬</div><div class="tour-title">Quando a empresa responder…</div><div class="tour-text">A resposta chega <b>direto na caixa de entrada do SEU Gmail</b> — a conversa é sua com a empresa, do seu próprio e-mail. O H2BApply nunca lê nem guarda sua caixa de entrada.<br><br>💡 Fique de olho no Gmail (e na pasta de spam, às vezes cai lá).<br><br>📊 Em <b>Enviadas</b> você vê o histórico completo de todas as candidaturas.</div></div>
-      <div class="tour-slide"><div class="tour-emoji">🚀</div><div class="tour-title">Pronto pra começar!</div><div class="tour-text">Ordem que funciona:<br><br>1️⃣ <b>Criar perfil</b> (currículo + seus textos) <span style="color:#d97706;font-weight:700">+3 💎</span><br>2️⃣ <b>Testar um envio manual</b> <span style="color:#d97706;font-weight:700">+2 💎</span><br>3️⃣ <b>Ligar o automático</b> e deixar trabalhar<br><br>Este guia fica pra sempre no <b>☰ Menu → Como usar o app</b> (e no atalho 📖 Como Usar da tela inicial) · <span style="color:var(--blue);cursor:pointer;font-weight:700" onclick="window.open('/como-usar','_blank')">ver o guia completo com fotos →</span></div>
+      <div class="tour-slide"><div class="tour-emoji">🤖</div><div class="tour-title">Passo 3 — Envio automático</div><div class="tour-text">No card <b>Envio Automático</b> da tela Início (planos VIP), o robô envia por você <b>24 horas por dia</b>:<br><br>1️⃣ Escolha a fonte de vagas<br>2️⃣ Ajuste os filtros (os mesmos do manual)<br>3️⃣ Escolha seu perfil<br>4️⃣ Toque em <b>Iniciar</b><br><br>🛡️ O robô envia em <b>ritmo humano</b> (um a cada 5-6 min) pra proteger seu Gmail, e você acompanha tudo em tempo real.</div></div>
+      <div class="tour-slide"><div class="tour-emoji">💎</div><div class="tour-title">Diamantes, planos e recompensas</div><div class="tour-text">Aqui <b>não existe compra</b>: você <b>doa via PIX</b>, recebe <b>💎 diamantes</b> e <b>troca por planos</b> quando quiser — a troca ativa <b>na hora</b>.<br><br>🎁 E dá pra ganhar 💎 <b>de graça</b> nas <b>Recompensas</b> (aba Planos): primeira candidatura, perfil completo, marcos de envios…<br><br>Diamante de doação pode até ser <b>doado a um amigo</b>. Seu saldo fica sempre à vista na aba <b>Planos</b>.</div></div>
+      <div class="tour-slide"><div class="tour-emoji">📬</div><div class="tour-title">Quando a empresa responder…</div><div class="tour-text">A resposta chega <b>direto na caixa de entrada do SEU Gmail</b> — a conversa é sua com a empresa, do seu próprio e-mail. O H2BApply nunca lê nem guarda sua caixa de entrada.<br><br>💡 Fique de olho no Gmail (e na pasta de spam, às vezes cai lá) — é lá que a conversa continua.</div></div>
+      <div class="tour-slide"><div class="tour-emoji">🚀</div><div class="tour-title">Pronto pra começar!</div><div class="tour-text">Ordem que funciona:<br><br>1️⃣ <b>Criar perfil</b> (currículo + seus textos) <span style="color:#d97706;font-weight:700">+3 💎</span><br>2️⃣ <b>Testar um envio manual</b> <span style="color:#d97706;font-weight:700">+2 💎</span><br>3️⃣ <b>Ligar o automático</b> e deixar trabalhar<br><br>Este guia fica pra sempre em <b>Perfil → Central de Tutoriais</b> · <span style="color:var(--blue);cursor:pointer;font-weight:700" onclick="window.open('/como-usar','_blank')">ver o guia completo com fotos →</span></div>
         <div style="display:flex;gap:8px;margin-top:14px"><button class="btn btn-primary" style="flex:1" onclick="closeTour();sv('profile');setTimeout(function(){if(typeof switchProfileTab==='function')switchProfileTab('profiles')},150)">👤 Criar meu perfil</button><button class="btn btn-secondary" style="flex:1" onclick="closeTour();sv('jobs')">🔎 Ver vagas</button></div>
       </div>
     </div>

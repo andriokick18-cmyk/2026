@@ -697,7 +697,7 @@ function renderLinhasUsuarios(lista){
       +'<td><span class="badge blue">'+esc(u.plano||"free")+'</span></td>'
       +'<td>'+esc(dias)+'</td>'
       +'<td>'+esc(creditados)+' dia'+((creditados===1)?"":"s")+'</td>'
-      +'<td>'+(u.suspeita?('<button class="warn-flag" title="Ver motivo da suspeita" onclick="abrirDivergencia(\''+encodeURIComponent(u.email||"")+'\')"><i class="ti ti-alert-triangle"></i></button>'):'')+'</td>'
+      +'<td>'+(u.suspeita?('<button class="warn-flag" data-email="'+esc(u.email||"")+'" title="Ver motivo da suspeita" onclick="abrirDivergencia(this.dataset.email)"><i class="ti ti-alert-triangle"></i></button>'):'')+'</td>'
       +'</tr>';
   }
   tbody.innerHTML=html;
@@ -718,8 +718,7 @@ function filtrarUsuarios(){
 // pra chamar a rota quando o admin clicar "Concordo, está OK").
 var _divAtual=null;
 
-function abrirDivergencia(emailEnc){
-  var email=decodeURIComponent(emailEnc);
+function abrirDivergencia(email){
   var lista=(STATE.dash&&STATE.dash.usuarios)||[];
   var u=lista.find(function(x){return x.email===email;});
   if(!u){toast("Usuário não encontrado — atualize a lista e tente de novo.","err");return;}

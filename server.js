@@ -11050,6 +11050,19 @@ ${pedido.criadoPor&&pedido.criadoPor!==pedido.userEmail?`\n🛠️ Registrado re
       }
 
       if(d.status==="cancelado"){
+        // GUARD DUPLO CANCELAMENTO (mesma classe de bug da guarda de dupla
+        // ativação acima): sem isso, clicar cancelar 2x no mesmo pedido —
+        // ou dois admins cancelando quase junto — estornava diamantes e dias
+        // de VIP DUAS VEZES (pd.diamantesCreditados/diasTotal nunca zeram),
+        // descontando dinheiro/dias do usuário que não têm relação com este
+        // pedido. _anularNoCaixa já era idempotente (filtra !anuladoPor);
+        // faltava a mesma trava pros estornos de 💎 e dias.
+        if(pd.canceladoEm){
+          const quemC=pd.canceladoPor||"o outro editor";
+          const quandoC=new Date(pd.canceladoEm).toLocaleString("pt-BR");
+          console.log(`[pedido] ⛔ duplo cancelamento barrado: ${pd.id} (já cancelado por ${quemC})`);
+          return json(res,409,{error:`⛔ Este pedido JÁ FOI CANCELADO por ${quemC} em ${quandoC}. Não dá pra cancelar de novo (evita estornar diamantes/dias duas vezes).`,jaCancelado:true,canceladoPor:quemC,canceladoEm:pd.canceladoEm});
+        }
         pd.canceladoPor=s.user_email;pd.canceladoEm=Date.now();
         // 💼 MC5-P2 item 1: a notícia RUIM também avisa — era o ÚNICO evento
         // de dinheiro 100% mudo (aprovação/troca/missão/transferência têm
@@ -12462,28 +12475,10 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
     return json(res,200,{job:j?{active:j.active,status:j.status,queueSize:j.queue?.length||0,originalCount:j.originalCount,filteredCount:j.filteredCount,startedAt:j.startedAt,lastSentAt:j.lastSentAt,nextSendAt:j.nextSendAt,currentJob:j.currentJob,source:j.source,category:j.category,}:null,todayAuto:countAutoToday(h),autoLimit:getAutoLimit(p),stats,recentLogs:logs,logStats,todayStats,autoQueueIds:autoQueueIds,queuePreview,queueCategories,intervalSecs:_ivSecs});}
 
   // ── INBOX: Respostas recebidas no Gmail ───────────────────
-  // ── v23-STATS: qual dos MEUS textos recebe mais resposta? ─────────────────
-  // Cruza os envios do automático (log.subjectTpl = assunto CRU do perfil,
-  // registrado a partir da v23) com os empregadores que responderam
-  // (user.repliedFrom, alimentado pelo /api/inbox). Nenhum app do mercado dá
-  // isso: vira consultoria de candidatura com os dados do próprio usuário.
-  if(pathname==="/api/my-text-stats"&&req.method==="GET"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    const p2=getUser(s.user_email)||{};
-    const replied=p2.repliedFrom||{};
-    const logs=(DB_LOGS[s.user_email]||[]).filter(l=>l.status==="enviado"&&l.subjectTpl);
-    const by=new Map();
-    for(const l of logs){
-      const k=l.subjectTpl;
-      if(!by.has(k))by.set(k,{tpl:k,sent:0,replies:0});
-      const e2=by.get(k);e2.sent++;
-      if(replied[String(l.to||"").toLowerCase()])e2.replies++;
-    }
-    const stats=[...by.values()].map(x=>({...x,rate:x.sent?Math.round((x.replies/x.sent)*1000)/10:0}))
-      .sort((a,b)=>b.rate-a.rate||b.sent-a.sent);
-    return json(res,200,{ok:true,stats,tracked:logs.length,
-      note:"Contabiliza envios do automático a partir desta versão — os números crescem conforme o robô trabalha."});
-  }
+  // (v-2026: /api/my-text-stats foi removida junto com a aba Respostas e o
+  // modal "Desempenho dos meus textos" — dependia de user.repliedFrom, que só
+  // era alimentado pela leitura de inbox abaixo, sempre desligada por
+  // GMAIL_SEND_ONLY; sem front chamando, a rota era pura estatística morta.)
   if(pathname==="/api/inbox"&&req.method==="GET"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
     // v55: modo só-envio — este servidor não lê caixa de entrada de ninguém.
@@ -12522,23 +12517,6 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
         const base = { ...em, isRead };
         return match ? { ...base, linkedApp: { appId: match.app.appId, jobSnapshot: match.app.jobSnapshot || null, job: match.app.job, company: match.app.company, to: match.app.to, sentAt: match.app.sentAt || match.app.date, type: match.app.type, matchType: match.matchType } } : base;
       });
-      // v23-STATS: grava DURÁVEL quais empregadores responderam (from de cada
-      // e-mail casado com uma candidatura) — alimenta a estatística "qual dos
-      // meus textos recebe mais resposta". Cap 2000 empregadores por usuário.
-      try{
-        const _repl={...(dbUser.repliedFrom||{})};
-        let _newRepl=0;
-        for(const em of enriched){
-          if(!em.linkedApp)continue;
-          const fr=String(em.linkedApp.to||"").toLowerCase().trim();
-          if(fr&&!_repl[fr]){_repl[fr]=Date.now();_newRepl++;}
-        }
-        if(_newRepl>0){
-          const keys=Object.keys(_repl);
-          if(keys.length>2000){keys.sort((a,b)=>_repl[a]-_repl[b]);for(const k of keys.slice(0,keys.length-2000))delete _repl[k];}
-          setUser(s.user_email,{repliedFrom:_repl});
-        }
-      }catch{}
       // Cache result
       global._inboxCache[cKey]={emails:enriched,ts:Date.now()};
       return json(res,200,{ok:true,emails:enriched,total:enriched.length,unread:enriched.filter(e=>!e.isRead).length});
@@ -13034,7 +13012,17 @@ if(pathname==="/api/admin/contabilidade"&&req.method==="GET"){
       // a assinatura carrega os NÚMEROS exatos da divergência atual — o
       // cálculo roda sempre do zero (nunca cacheia o resultado), só a
       // DECISÃO do admin sobre ESSES números específicos é que persiste.
-      const assinatura=rawSuspeita?_divergenciaAssinatura(regraId,u.email,[daysLeft,diasCreditadosPagos]):null;
+      // v167 (bug real: "Concordo, está OK" nunca ficava confirmado por mais
+      // de ~24h): a assinatura usava `daysLeft`, que é Math.ceil((nextExp-
+      // Date.now())/86400000) — recalculado a cada request, ele DIMINUI 1
+      // por dia só pelo tempo passar, mesmo sem NADA mudar na conta. No dia
+      // seguinte a assinatura já era outra e o ⚠️ voltava sozinho pro mesmo
+      // caso já revisado. `nextExp` é a data de expiração em si (timestamp
+      // fixo — só muda quando o admin de fato mexe no VIP), então usá-la no
+      // lugar de `daysLeft` mantém a confirmação válida enquanto a situação
+      // real não mudar, e ainda assim invalida a assinatura se a expiração
+      // ou os dias creditados mudarem de verdade.
+      const assinatura=rawSuspeita?_divergenciaAssinatura(regraId,u.email,[nextExp,diasCreditadosPagos]):null;
       const jaConfirmadaOk=!!(assinatura&&DB_DIVERGENCIAS_OK[assinatura]);
       const suspeita=rawSuspeita&&!jaConfirmadaOk;
       usuarios.push({
