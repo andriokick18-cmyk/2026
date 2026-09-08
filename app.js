@@ -1940,10 +1940,18 @@ function applyModalProfileById(pid,updateSlots){
   const bodyEl=g("#m-body");if(bodyEl)bodyEl.value=fill(b,curJob);
   // 🔧 FIX (cliente 03/07): usar != null (idx 0 é válido) e, se o perfil tem currículo,
   // garantir que ele esteja em DOCS para o modal conseguir anexar.
+  // v167 (bug real, auditoria 08/09/2026): faltava o "else{activeResIdx=null;}"
+  // que a cover já tinha (comentário v20 abaixo, corrigido por uma reclamação
+  // real idêntica com carta). Perfil escolhido de propósito como "sem
+  // currículo, só carta" (resumeIdx:null — configuração válida) deixava
+  // activeResIdx GRUDADO no currículo do ÚLTIMO perfil usado na sessão (às
+  // vezes do OUTRO tipo de visto) — a vaga saía com o currículo errado.
   if(p.resumeIdx!=null){
     activeResIdx=p.resumeIdx;
     // Se o CV do perfil não está na lista DOCS (cache dessincronizado), injeta a partir do perfil
     if(!DOCS.some(c=>c.idx===p.resumeIdx)&&p.pdfName){DOCS.push({idx:p.resumeIdx,name:p.pdfName,size:p.pdfSize||0,cvType:"resume"});}
+  } else {
+    activeResIdx=null;
   }
   // v20 (reclamação real, 07/2026): a cover do perfil manda SEMPRE — inclusive
   // quando é "Nenhuma" (coverIdx null). Antes o null deixava o activeCovIdx
@@ -2506,9 +2514,17 @@ let UTPL=[],UPROFILES=[],tplCurId=null,tplCurBuiltin=false,
     tplCatFilter="all",pickerCatFilter="all",
     tplPickerTarget="manual",editingProfileId=null;
 
+// v167 (bug real, auditoria 08/09/2026): {categoria} era oferecida como botão
+// clicável no editor de perfil (index.html, "① Assuntos"/"④ Corpos") mas
+// NENHUM dos dois motores de envio (este fill() no manual, fillTpl() no
+// servidor pro automático) sabia essa chave — quem usava mandava o texto
+// LITERAL "{categoria}" pro empregador de verdade. getOccupationCategoryByKey
+// é a MESMA fonte que o chip de filtro/card de vaga já usa (window._catLabels,
+// via /api/category-groups) — nunca um rótulo divergente.
 const fill=(tpl,j)=>(tpl||"")
   .replace(/{vaga}/g,    j?.title||j?.job||"")
   .replace(/{empresa}/g, j?.company||"")
+  .replace(/{categoria}/g,getOccupationCategoryByKey(j?.category,j?.title||j?.job)?.name||"")
   .replace(/{nome}/g,    CFG.name||U?.name||"")
   .replace(/{pais}/g,    CFG.country||"Brazil")
   .replace(/{telefone}/g,CFG.phone||"")
@@ -3083,7 +3099,13 @@ let editingVisaType="h2b";
 // que o TEXTO nunca se perde: autosave local a cada digitação, restaurado
 // sozinho na próxima vez que a pessoa abrir o mesmo perfil (mesmo depois
 // de relogar). Guardado só no aparelho (localStorage), nunca no servidor.
-function _peDraftKey(vt){return "h2b_pe_draft_"+(vt==="h2a"?"h2a":"h2b");}
+// v167 (bug real, auditoria 08/09/2026): a chave não tinha e-mail nenhum —
+// num aparelho compartilhado (comum: pai/filho, LAN house, etc.), o rascunho
+// digitado pela conta A aparecia PRÉ-PREENCHIDO no editor da conta B ao
+// trocar de login (o confirm() de restauração só comparava editingProfileId,
+// nunca o dono do dado). Escopado por e-mail agora — cada conta só vê o
+// próprio rascunho.
+function _peDraftKey(vt){return "h2b_pe_draft_"+(vt==="h2a"?"h2a":"h2b")+"_"+(U?.email||"anon");}
 let _peDraftTimer=null;
 function _peCollectDraft(){
   return{
@@ -3337,13 +3359,23 @@ async function deleteCvFromAccount(idx, cvType){
 
 // v143: mensagem clara quando a sessão caiu (servidor reiniciou) em vez do
 // erro cru — e garante o rascunho salvo NA HORA, não espera o debounce.
+// v167 (auditoria 08/09/2026): "Não autenticado." é a mensagem 401 padrão de
+// 100+ rotas do servidor (só 9 rotas, como /api/cv/upload, mandam a frase
+// "Sessão expirada" com sessionExpired:true) — /api/profiles/save é uma das
+// que NÃO manda, então reabrir um perfil já existente e clicar Salvar depois
+// da sessão cair (o caminho mais comum: sem PDF novo, cai direto nessa rota)
+// mostrava o toast cru "Erro: Não autenticado." em vez do aviso amigável.
+// Detecção ampliada aqui, no cliente, cobre as duas frases de uma vez — sem
+// precisar caçar e alinhar a mensagem em cada rota do servidor.
+function _sessionDroppedMsg(e){
+  return /sess[aã]o expirada|n[aã]o autenticado/i.test(String(e?.message||e||""));
+}
 function _peSessionMsg(prefix,e){
-  const msg=String(e?.message||e||"");
-  if(/sess[aã]o expirada/i.test(msg)){
+  if(_sessionDroppedMsg(e)){
     _peSaveDraftNow();
     return t('pe_session_lost');
   }
-  return prefix+": "+msg;
+  return prefix+": "+String(e?.message||e||"");
 }
 async function saveProfileFromEditor(){
   _peSaveDraftNow(); // v143: snapshot garantido no instante do clique em Salvar
@@ -3416,6 +3448,14 @@ async function saveProfileFromEditor(){
     categories,sheets,resumeIdx,coverIdx,
   };
 
+  // v167 (bug real, auditoria 08/09/2026): o botão só desabilitava DEPOIS dos
+  // uploads de PDF/cover (que têm await) — um duplo-clique real disparava 2
+  // execuções concorrentes completas da função (2 uploads + 2 saves). Agora
+  // desabilita ANTES de qualquer await, assim que as validações síncronas
+  // passam — igual ao caminho sem upload novo, que já estava protegido.
+  const saveBtn=g("#pe-save-btn");if(saveBtn){saveBtn.disabled=true;saveBtn.innerHTML='<span class="spin spin-sm"></span> Salvando...';}
+  const _peResetSaveBtn=()=>{if(saveBtn){saveBtn.disabled=false;saveBtn.innerHTML='<i class="ti ti-check"></i> Salvar Perfil';}};
+
   // Upload PDF se novo
   if(profilePdfBase64&&profilePdfBase64!=="__existing__"){
     try{
@@ -3424,7 +3464,7 @@ async function saveProfileFromEditor(){
       const d=await jsonSafe(r);
       if(d.ok){prf.resumeIdx=d.cv.idx;prf.pdfName=d.cv.name;prf.pdfSize=d.cv.size;}
       else throw new Error(d.error);
-    }catch(e){toast(_peSessionMsg("Erro upload PDF",e),"r");return;}
+    }catch(e){_peResetSaveBtn();toast(_peSessionMsg("Erro upload PDF",e),"r");return;}
   }else if(profilePdfBase64==="__existing__"&&editingProfileId){
     const existing=UPROFILES.find(x=>x.id===editingProfileId);
     if(existing?.pdfName){prf.pdfName=existing.pdfName;prf.pdfSize=existing.pdfSize||0;}
@@ -3438,13 +3478,11 @@ async function saveProfileFromEditor(){
       const d=await jsonSafe(r);
       if(d.ok){prf.coverIdx=d.cv.idx;prf.coverName=d.cv.name;prf.coverSize=d.cv.size;}
       else throw new Error(d.error);
-    }catch(e){toast(_peSessionMsg("Erro upload Cover Letter",e),"r");return;}
+    }catch(e){_peResetSaveBtn();toast(_peSessionMsg("Erro upload Cover Letter",e),"r");return;}
   }else if(profileCoverBase64==="__existing__"&&editingProfileId){
     const existing=UPROFILES.find(x=>x.id===editingProfileId);
     if(existing?.coverName){prf.coverName=existing.coverName;prf.coverSize=existing.coverSize||0;}
   }
-
-  const saveBtn=g("#pe-save-btn");if(saveBtn){saveBtn.disabled=true;saveBtn.innerHTML='<span class="spin spin-sm"></span> Salvando...';}
   try{
     const r=await fetch("/api/profiles/save",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(prf)});
     const d=await jsonSafe(r);if(!d.ok)throw new Error(d.error);
@@ -3505,36 +3543,12 @@ const _origPickTemplate=typeof pickTemplate==="function"?pickTemplate:null;
 // existe mais no HTML (sobra do wizard de automático pré-redesign) e caía no
 // boilerplate DEFAULT_BODY como fallback.
 
-function openModalFromHist(jobJSON,tituloModal){ // v126: título opcional (Vagas Salvas reusa o modal com "Candidatar")
-  try{
-    const j=typeof jobJSON==="string"?JSON.parse(jobJSON):jobJSON;
-    // Tenta achar nos JOBS carregados; senão usa o objeto do histórico
-    const found=JOBS.find(x=>x.id===j.id)||sCache[j.id]||j;
-    selJob=found;
-    if(!found.hasEmail&&!(found.email)){toast("Sem e-mail para reenvio","r");return;}
-    if(U.manualRemaining<=0){sv("plans");toast("Limite atingido! Faça upgrade.","r");return;}
-    curJob=found;_currentModalJob=found;
-    g("#m-title").textContent=tituloModal||"Reenviar Candidatura";g("#m-sub").textContent=found.company||"";
-    const to=found.email||found.to||"";
-    const _ti2=g("#m-job-title");if(_ti2)_ti2.textContent=found.job||found.title||found.company||"–";
-    const _di2=g("#m-job-details");
-    if(_di2){const _pts=[]; if(found.company)_pts.push(`<span>${esc(found.company)}</span>`);if(found.state)_pts.push(`<span><i class="ti ti-map-pin" style="font-size:10px;opacity:.6"></i>${esc(found.state)}</span>`);_di2.innerHTML=_pts.join("");}
-    const _toEl=g("#m-to");if(_toEl)_toEl.value=to;
-    // 2026-07: puxa do perfil real (com rotação), nunca de texto padrão fixo
-    const _rsProfile=(UPROFILES&&UPROFILES[0])||null;
-    g("#m-subj").value=fill(_pickVariant(_rsProfile?.subjects)||CFG.subject||"",found);
-    g("#m-body").value=fill(_pickVariant(_rsProfile?.emailBodies)||CFG.body||"",found);
-    g("#m-warn").innerHTML="";
-    const pct=Math.min(100,Math.round((U.todaySentManual/U.manualLimit)*100));
-    const col=pct>=80?"var(--red)":pct>=60?"var(--amber)":"var(--green)";
-    g("#m-lim-lbl").textContent=t('manual_today');g("#m-lim-num").textContent=`${U.todaySentManual}/${U.manualLimit}`;
-    g("#m-lbar").style.cssText=`width:${pct}%;background:${col}`;
-    buildCvSlots();
-    /* v22: ai-btn removido */
-    g("#m-sending").style.display="none";g("#m-send").disabled=false;
-    g("#modal").classList.remove("gone");setTimeout(()=>g("#m-to").focus(),300);
-  }catch(e){toast("Erro ao abrir reenvio","r");console.error(e);}
-}
+// v167 (auditoria 08/09/2026): openModalFromHist() removida — código morto,
+// zero callers no repo inteiro (o botão real de "Candidatar-se" usa
+// openModal(jobId), que já escolhe o perfil certo por tipo de visto via
+// applyModalProfileById). Além de morta, tinha um bug congelado (usava
+// sempre UPROFILES[0], sem checar o tipo de visto da vaga) que teria
+// reintroduzido a classe de bug "perfil errado" se algum dia fosse religada.
 
 function updHistBadge(){const n=HIST.length;const b=g("#sib-hist");if(b){b.style.display=n?"":"none";b.textContent=String(n);}const bd=g("#bnd-hist");if(bd)bd.style.display=n?"block":"none";}
 
@@ -4993,7 +5007,14 @@ async function loadPublicReviews(){
     }catch(e){/* falha silenciosa — nunca deixa o schema quebrar a página */}
   }catch(e){/* falha silenciosa — seção some se algo der errado */}
 }
-async function doLogout(){await fetch("/api/disconnect",{credentials:"include"});U={connected:false};clearInterval(autoInterval);showLanding();}
+async function doLogout(){
+  // v167 (bug real, auditoria 08/09/2026): rascunhos locais (editor de perfil
+  // + onboarding) são escopados por e-mail, mas em aparelho compartilhado é
+  // mais seguro limpar os desta conta ao sair — nunca sobra resquício pro
+  // próximo login usar por engano. Roda ANTES de zerar U (precisa do e-mail).
+  try{["h2b","h2a"].forEach(vt=>{try{localStorage.removeItem(_peDraftKey(vt));localStorage.removeItem(_obDraftKey(vt));}catch(e){}});}catch(e){}
+  await fetch("/api/disconnect",{credentials:"include"});U={connected:false};clearInterval(autoInterval);showLanding();
+}
 // v167: achado E2E CRÍTICO — depois da reestruturação v166 (nav reduzida a
 // 3 destinos) nenhum botão da interface chamava mais doLogout(); usuário
 // não tinha como sair da conta / trocar de Gmail no mesmo aparelho. Botão
@@ -6373,6 +6394,17 @@ setTimeout(function(){
     if(ob&&ob.style.display==="flex")return; // onboarding na frente — o tour fica pra próxima visita
     const to=document.getElementById("terms-overlay");
     if(to&&to.style.display==="flex")return;
+    // v167 (bug real, auditoria 08/09/2026): #tour-overlay tem z-index:998,
+    // MUITO acima do z-index:200 genérico de TODOS os outros modais (.overlay
+    // — inclui #profile-editor-overlay, #modal de vaga, etc). Sem esta checagem,
+    // o tour abria em cima do editor de perfil (ex.: usuário editando no
+    // celular quando os 3.5s batem) e cobria a tela inteira, deixando o botão
+    // "Salvar Perfil" fisicamente inclicável até o usuário achar o X do tour —
+    // sem perder o texto, mas travando o salvamento sem explicação nenhuma.
+    const outroModalAberto=[...document.querySelectorAll(".overlay")].some(el=>el.id!=="tour-overlay"&&!el.classList.contains("gone"));
+    // Como openTour() só marca h2b_tour_v1 quando roda de verdade, pular aqui
+    // não perde o tour pra sempre — ele volta a tentar na próxima visita.
+    if(outroModalAberto)return;
     openTour();
   }catch(e){}
 },3500);
@@ -6695,6 +6727,7 @@ function showOnboarding(){
   const cityEl=g("#ob-city");if(cityEl&&!cityEl.value)cityEl.value=CFG.city||"";
   obRenderVtSubjects("h2b");obRenderVtBodies("h2b");
   obRenderVtSubjects("h2a");obRenderVtBodies("h2a");
+  _obRestoreDraft("h2b");_obRestoreDraft("h2a"); // v167: rascunho de sessão caída
   ov.style.display="flex";
   _goObStep(1);
 }
@@ -6800,6 +6833,54 @@ const _obPrf={
   h2b:{subjects:["","",""],bodies:["","",""],res:null,cov:null},
   h2a:{subjects:["","",""],bodies:["","",""],res:null,cov:null},
 };
+
+// ══ v167: RASCUNHO DO ONBOARDING (bug real achado em auditoria, 08/09/2026)
+// ══ — mesma proteção que o editor de perfil completo (_peSaveDraftNow, regra
+// 13t do CLAUDE.md) já tem contra sessão caindo no meio da digitação (KB-078:
+// todo restart/deploy derruba o login de propósito), mas que faltava aqui —
+// e este é justamente o PRIMEIRO formulário que todo usuário novo preenche
+// (gate obrigatório: onboarding não termina com 0 perfis). Sem isso, cair a
+// sessão no meio dos 3+ assuntos/corpos apagava tudo, e o próprio erro
+// genérico (jsonSafe) mentia "nada foi perdido". Escopado por e-mail (mesmo
+// bug de vazamento entre contas que existia no editor completo) — nunca
+// guarda o PDF em base64 (só o nome, pra avisar; o arquivo é pequeno reanexar).
+function _obDraftKey(vt){return "h2b_ob_draft_"+vt+"_"+(U?.email||"anon");}
+let _obDraftTimer=null;
+function _obSaveDraftNow(vt){
+  try{
+    const d=_obPrf[vt];if(!d)return;
+    const temAlgo=d.subjects.some(Boolean)||d.bodies.some(Boolean)||d.res||d.cov;
+    if(!temAlgo){localStorage.removeItem(_obDraftKey(vt));return;}
+    localStorage.setItem(_obDraftKey(vt),JSON.stringify({subjects:d.subjects,bodies:d.bodies,resName:d.res?.name||null,covName:d.cov?.name||null,savedAt:Date.now()}));
+  }catch(e){}
+}
+function _obScheduleDraft(vt){clearTimeout(_obDraftTimer);_obDraftTimer=setTimeout(()=>_obSaveDraftNow(vt),500);}
+function _obClearDraft(vt){try{localStorage.removeItem(_obDraftKey(vt));}catch(e){}}
+function _obLoadDraft(vt){
+  try{
+    const raw=localStorage.getItem(_obDraftKey(vt));if(!raw)return null;
+    const d=JSON.parse(raw);
+    if(!d||Date.now()-(d.savedAt||0)>7*86400_000){localStorage.removeItem(_obDraftKey(vt));return null;} // rascunho não fica eterno
+    return d;
+  }catch(e){return null;}
+}
+// Restaura silenciosamente (sem confirm — ao contrário do editor completo,
+// aqui nunca existe perfil já salvo pra sobrescrever: onboarding só roda
+// pra quem ainda não tem perfil daquele tipo, então não há o que perder).
+function _obRestoreDraft(vt){
+  const d=_obLoadDraft(vt);
+  if(!d)return;
+  const temTexto=(d.subjects||[]).some(Boolean)||(d.bodies||[]).some(Boolean);
+  if(!temTexto&&!d.resName&&!d.covName)return;
+  if(Array.isArray(d.subjects)&&d.subjects.length>=3)_obPrf[vt].subjects=d.subjects.slice(0,10);
+  if(Array.isArray(d.bodies)&&d.bodies.length>=3)_obPrf[vt].bodies=d.bodies.slice(0,10);
+  obRenderVtSubjects(vt);obRenderVtBodies(vt);
+  if(d.resName||d.covName){
+    toast("📝 Recuperamos o texto que você tinha digitado — reanexe o PDF ("+(d.resName||d.covName)+") pra concluir","g");
+  }else{
+    toast("📝 Recuperamos o texto que você tinha digitado antes da sessão cair","g");
+  }
+}
 const _OB_SUBJ_PLACEHOLDERS=[
   "Ex: Application for {vaga} position – {nome}",
   "Ex: Interested in the {vaga} opening at {empresa}",
@@ -6814,7 +6895,7 @@ function obRenderVtSubjects(vt){
   const c=g("#ob-"+vt+"-subjects-list");if(!c)return;
   const arr=_obPrf[vt].subjects;
   c.innerHTML=arr.map((v,i)=>`<div style="display:flex;gap:6px;align-items:center">
-    <input class="input" type="text" value="${(v||"").replace(/"/g,"&quot;")}" placeholder="${_OB_SUBJ_PLACEHOLDERS[i%_OB_SUBJ_PLACEHOLDERS.length]}" oninput="_obPrf['${vt}'].subjects[${i}]=this.value" style="flex:1">
+    <input class="input" type="text" value="${(v||"").replace(/"/g,"&quot;")}" placeholder="${_OB_SUBJ_PLACEHOLDERS[i%_OB_SUBJ_PLACEHOLDERS.length]}" oninput="_obPrf['${vt}'].subjects[${i}]=this.value;_obScheduleDraft('${vt}')" style="flex:1">
     ${arr.length>3?`<button type="button" onclick="obRemoveVtSubject('${vt}',${i})" title="Remover" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:20px;line-height:1;padding:2px 6px">×</button>`:""}
   </div>`).join("");
 }
@@ -6828,7 +6909,7 @@ function obRenderVtBodies(vt){
       <span style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase">Versão ${i+1}</span>
       ${arr.length>3?`<button type="button" onclick="obRemoveVtBody('${vt}',${i})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:11px;font-weight:700;font-family:inherit">Remover</button>`:""}
     </div>
-    <textarea class="input" style="min-height:70px;font-size:12px" placeholder="${_OB_BODY_HINTS[i%_OB_BODY_HINTS.length]}" oninput="_obPrf['${vt}'].bodies[${i}]=this.value">${v||""}</textarea>
+    <textarea class="input" style="min-height:70px;font-size:12px" placeholder="${_OB_BODY_HINTS[i%_OB_BODY_HINTS.length]}" oninput="_obPrf['${vt}'].bodies[${i}]=this.value;_obScheduleDraft('${vt}')">${v||""}</textarea>
   </div>`).join("");
 }
 function obAddVtBody(vt){if(_obPrf[vt].bodies.length>=10){toast("Máximo 10 corpos de email","r");return;}_obPrf[vt].bodies.push("");obRenderVtBodies(vt);}
@@ -6849,13 +6930,21 @@ async function obPickDoc(vt,kind,input){
   if(badge)badge.style.display="flex";
   if(nameEl)nameEl.textContent="✓ "+file.name;
   input.value="";
+  _obSaveDraftNow(vt); // v167: nome do arquivo entra no rascunho na hora (nunca o base64)
 }
 
 async function obSaveVisaProfile(vt){
-  const subjects=_obPrf[vt].subjects.map(s=>(s||"").trim()).filter(Boolean);
-  const emailBodies=_obPrf[vt].bodies.map(b=>(b||"").trim()).filter(Boolean);
-  if(subjects.length<3){toast("Preencha pelo menos 3 assuntos diferentes","r");return;}
-  if(emailBodies.length<3){toast("Preencha pelo menos 3 corpos de email diferentes","r");return;}
+  _obSaveDraftNow(vt); // v167: snapshot garantido no instante do clique em Salvar
+  // v167 (bug real, auditoria 08/09/2026): a validação daqui era só .filter(Boolean),
+  // SEM deduplicar — 3 assuntos IDÊNTICOS passavam aqui mas o servidor deduplica
+  // com Set antes de contar (server.js /api/profiles/save) e rejeitava com 400
+  // DEPOIS de já ter gasto 1 upload de currículo (rate-limitado a 10/hora). Agora
+  // deduplica igual ao editor de perfil completo (saveProfileFromEditor) e ao
+  // servidor — as 3 validações sempre concordam.
+  const subjects=[...new Set(_obPrf[vt].subjects.map(s=>(s||"").trim()).filter(Boolean))];
+  const emailBodies=[...new Set(_obPrf[vt].bodies.map(b=>(b||"").trim()).filter(Boolean))];
+  if(subjects.length<3){toast("Preencha pelo menos 3 assuntos DIFERENTES entre si","r");return;}
+  if(emailBodies.length<3){toast("Preencha pelo menos 3 corpos de e-mail DIFERENTES entre si","r");return;}
   if(!_obPrf[vt].res&&!_obPrf[vt].cov){
     toast("Anexe pelo menos um currículo ou uma carta de apresentação a este perfil","r");
     return;
@@ -6883,6 +6972,7 @@ async function obSaveVisaProfile(vt){
     UPROFILES=[...UPROFILES.filter(p=>(p.visaType||"h2b")!==vt),d2.profile];
     U.profiles=UPROFILES;
     _updateProfileTabCount?.();
+    _obClearDraft(vt); // v167: salvou de verdade, rascunho não serve mais
     toast("Perfil "+(vt==="h2a"?"H-2A":"H-2B")+" salvo ✓","g");
     if(btn){btn.disabled=false;btn.innerHTML=label;}
     if(vt==="h2b"){
@@ -6894,7 +6984,11 @@ async function obSaveVisaProfile(vt){
     }else await obAdvanceFromH2a();
   }catch(e){
     if(btn){btn.disabled=false;btn.innerHTML=label;}
-    toast("Erro: "+e.message,"r");
+    // v167: sessão caiu (deploy/restart, KB-078) — o rascunho JÁ estava salvo
+    // (chamada incondicional no topo da função), mas sem isso o usuário via só
+    // "Erro: Não autenticado." sem entender o que fazer nem saber que o texto
+    // não sumiu.
+    toast(_sessionDroppedMsg(e)?t('pe_session_lost'):("Erro: "+e.message),"r");
   }
 }
 

@@ -5801,6 +5801,10 @@ async function _doAutoSendInner(email) {
 
     // ── Anexos: leitura fresca do disco a cada tentativa ──
     const attachments = [];
+    // v167 (bug real, auditoria 08/09/2026): rastreado à parte de
+    // attachments.length — currículo E carta somam no mesmo array, então
+    // "tem 1 anexo" não dizia se era o currículo ou só a carta.
+    let resumeAttached = false;
 
     if (effectiveResumeIdx != null) {
       const ridx = parseInt(effectiveResumeIdx, 10);
@@ -5813,6 +5817,7 @@ async function _doAutoSendInner(email) {
         const buf = Buffer.from(cvData, "base64");
         if (buf.length > 100) {
           attachments.push({ data: cvData, name: String(cvMeta.name || "resume.pdf") });
+          resumeAttached = true;
           logEntry.resumeName = cvMeta.name || "resume.pdf";
         } else {
           console.warn(`[auto] PDF muito pequeno (${buf.length}b) idx=${ridx} — pode estar corrompido`);
@@ -5840,8 +5845,13 @@ async function _doAutoSendInner(email) {
       }
     }
 
-    // Validação: se resumeIdx foi configurado mas arquivo não carregou, tenta qualquer CV disponível
-    if (effectiveResumeIdx != null && attachments.length === 0) {
+    // Validação: se resumeIdx foi configurado mas arquivo não carregou, tenta qualquer CV disponível.
+    // v167 (bug real, auditoria 08/09/2026): a condição antiga era
+    // "attachments.length === 0" — com uma carta válida já empurrada acima,
+    // o total nunca zerava e este bloco (e o gate final abaixo) NUNCA
+    // rodavam: a vaga saía só com a carta, sem currículo, sem aviso nenhum.
+    // Agora checa resumeAttached especificamente.
+    if (effectiveResumeIdx != null && !resumeAttached) {
       // Tenta qualquer CV do usuário como último recurso
       const fallbackCV = (p.cvs || []).find(c => {
         const data = loadCv(email, c.idx);
@@ -5850,6 +5860,7 @@ async function _doAutoSendInner(email) {
       if (fallbackCV) {
         const data = loadCv(email, fallbackCV.idx);
         attachments.push({ data, name: fallbackCV.name });
+        resumeAttached = true;
         logEntry.resumeName = fallbackCV.name;
         console.warn(`[auto] ⚠️ CV idx=${effectiveResumeIdx} não encontrado — usando fallback: ${fallbackCV.name}`);
       } else {
@@ -5899,6 +5910,12 @@ async function _doAutoSendInner(email) {
       email:      String(email),                        // email do usuário/candidato
       cidade:     String(target.city    || p.city || ""),
       estado:     String(target.state   || ""),
+      // v167 (bug real, auditoria 08/09/2026): {categoria} era um botão
+      // clicável no editor de perfil, mas nem fillTpl (aqui) nem o fill()
+      // do cliente (manual) sabiam essa chave — saía o texto LITERAL
+      // "{categoria}" no e-mail de verdade. Mesma fonte que /api/category-
+      // groups expõe pro front (window._catLabels), pra nunca divergir.
+      categoria:  String(CATEGORY_LABELS[target.category]?.label || target.category || ""),
       wage:       String(target.wage    || ""),
       salario:    String(target.wage    || ""),
       inicio:     String(target.start   || ""),
@@ -5922,7 +5939,10 @@ async function _doAutoSendInner(email) {
       break;
     }
     // v16-FIX: bloqueia envio sem PDF — email vazio pro empregador não pode acontecer
-    if (attachments.length === 0) {
+    // v167: também bloqueia quando o perfil tinha currículo configurado mas ele
+    // não entrou nos anexos (arquivo órfão) — antes uma carta válida sozinha
+    // enganava esta checagem (attachments.length>0 só por causa dela).
+    if (attachments.length === 0 || (effectiveResumeIdx != null && !resumeAttached)) {
       addLog(email, { ...logEntry, status:"pulado", error:"Nenhum currículo (PDF) encontrado. Acesse a aba Perfil, suba seu currículo e configure o perfil de envio." });
       console.warn(`[auto] ⛔ BLOQUEADO sem anexo: ${email} → ${target.to}`);
       break;
@@ -6213,6 +6233,7 @@ async function _doAutoSendInner(email) {
 const fillTpl=(tpl,v)=>(tpl||"")
   .replace(/{vaga}/g,       v.vaga||"")
   .replace(/{empresa}/g,    v.empresa||"")
+  .replace(/{categoria}/g,  v.categoria||"")
   .replace(/{url_vaga}/g,   v.url_vaga||"")
   .replace(/{case_number}/g,v.case_number||"")
   .replace(/{eta_case}/g,   v.eta_case||"")
@@ -11411,7 +11432,16 @@ ${pedido.criadoPor&&pedido.criadoPor!==pedido.userEmail?`\n🛠️ Registrado re
       return json(res,200,{ok:true});
     }catch(e){return json(res,500,{error:e.message});}
   }
-  if(pathname==="/api/cv/upload"&&req.method==="POST"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Sessão expirada. Faça login novamente.",sessionExpired:true,code:"SESSION_EXPIRED"});if(rateLimit(s.user_email+"_cv",10,3600_000))return json(res,429,{error:"Muitos uploads. Tente novamente em 1 hora."});try{const d=JSON.parse(await readBody(req));if(!d.base64||!d.name)return json(res,400,{error:"base64 e name obrigatórios."});// Tamanho: base64 representa ~75% dos bytes reais
+  if(pathname==="/api/cv/upload"&&req.method==="POST"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Sessão expirada. Faça login novamente.",sessionExpired:true,code:"SESSION_EXPIRED"});
+    // v167 (bug real, auditoria 08/09/2026): antes SÓ /api/auto/start recusava
+    // rodar em disco volátil (/tmp, sem volume persistente montado) — este
+    // upload e o /api/profiles/save abaixo respondiam 200 "salvo com sucesso"
+    // normalmente, mas o PDF (e o perfil inteiro) SOMEM no próximo restart/
+    // deploy do processo Node. Isso produz exatamente o padrão relatado:
+    // "salvei, funcionou na hora, mas depois sumiu". Mesmo aviso claro de
+    // /api/auto/start, agora nas duas rotas mais usadas do fluxo de perfil.
+    if(DATA_DIR==="/tmp")return json(res,503,{error:"⚠️ Servidor sem volume persistente (/tmp). O upload funcionaria agora, mas o arquivo SOME no próximo reinício. Configure DATA_DIR=/data com volume persistente antes de continuar.",diskVolatile:true});
+    if(rateLimit(s.user_email+"_cv",10,3600_000))return json(res,429,{error:"Muitos uploads. Tente novamente em 1 hora."});try{const d=JSON.parse(await readBody(req));if(!d.base64||!d.name)return json(res,400,{error:"base64 e name obrigatórios."});// Tamanho: base64 representa ~75% dos bytes reais
 const estimatedBytes=Math.round(d.base64.length*0.75);
 // Limite por tipo (ordem do dono): currículo até 5MB, carta até 3MB — base64
 // inflaciona ~33% sobre o binário real, então o corte é em base64.length.
@@ -11536,14 +11566,20 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
 
       const attachments=[];const getAtt=async idx=>{if(idx==null)return null;const m=p.cvs?.find(c=>c.idx===parseInt(idx,10));return m&&loadCv(s.user_email,m.idx)?{data:loadCv(s.user_email,m.idx),name:m.name}:null;};
       if(!isReply){// Anexos só em candidaturas originais
-        if(d.resumeIdx!=null){const a=await getAtt(d.resumeIdx);if(a)attachments.push(a);}else if(d.pdfBase64){attachments.push({data:d.pdfBase64,name:d.pdfName||"resume.pdf"});}
+        let resumeAttached=false;
+        if(d.resumeIdx!=null){const a=await getAtt(d.resumeIdx);if(a){attachments.push(a);resumeAttached=true;}}else if(d.pdfBase64){attachments.push({data:d.pdfBase64,name:d.pdfName||"resume.pdf"});resumeAttached=true;}
         if(d.coverIdx!=null){const a=await getAtt(d.coverIdx);if(a)attachments.push(a);}
         // v21: MESMA regra do automático (v16-FIX) — candidatura sem currículo
         // anexado não pode chegar no empregador (queima o usuário e a
         // reputação do app). Se o resumeIdx apontava pra PDF apagado/corrompido
         // e nada foi anexado, tenta o primeiro currículo válido da conta; se
         // não existir NENHUM, bloqueia com erro claro em vez de enviar vazio.
-        if(!attachments.length){
+        // v167 (bug real, auditoria 08/09/2026): a checagem era !attachments.length
+        // (TOTAL de anexos) — com coverIdx válido e resumeIdx órfão, o total dava
+        // 1 (só a carta) e este bloco nunca rodava: a candidatura saía SEM
+        // CURRÍCULO, 200 de sucesso, sem aviso nenhum. Checagem agora é só sobre
+        // o currículo, nunca conta a carta como substituta dele.
+        if(!resumeAttached){
           const _fb=(p.cvs||[]).find(c=>(c.cvType||"resume")==="resume"&&loadCv(s.user_email,c.idx));
           if(_fb){attachments.push({data:loadCv(s.user_email,_fb.idx),name:_fb.name||"resume.pdf"});console.warn(`[send] ⚠️ ${s.user_email}: resumeIdx=${d.resumeIdx} sem arquivo — usando fallback "${_fb.name}"`);}
           else return json(res,400,{error:"Seu currículo (PDF) não foi encontrado no servidor. Vá em Perfil → Documentos e envie o PDF de novo antes de se candidatar.",pdfMissing:true});
@@ -12031,7 +12067,11 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
 
   // ── PROFILES ──────────────────────────────────────────
   if(pathname==="/api/profiles"&&req.method==="GET"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});const p=getUser(s.user_email)||{};return json(res,200,{profiles:p.profiles||[]});}
-  if(pathname==="/api/profiles/save"&&req.method==="POST"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});try{const d=JSON.parse(await readBody(req));if(!d.name)return json(res,400,{error:"name obrigatório"});const p=getUser(s.user_email)||{};let prfs=p.profiles||[];
+  if(pathname==="/api/profiles/save"&&req.method==="POST"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
+    // v167: mesmo aviso do /api/cv/upload acima — perfil "salvo" em disco
+    // volátil (/tmp) some no próximo restart, sem erro nenhum na hora.
+    if(DATA_DIR==="/tmp")return json(res,503,{error:"⚠️ Servidor sem volume persistente (/tmp). O perfil seria salvo agora, mas some no próximo reinício. Configure DATA_DIR=/data com volume persistente antes de continuar.",diskVolatile:true});
+    try{const d=JSON.parse(await readBody(req));if(!d.name)return json(res,400,{error:"name obrigatório"});const p=getUser(s.user_email)||{};let prfs=p.profiles||[];
     // Validate and normalize subjects (up to 10, no duplicates, no empty)
     const rawSubjs=Array.isArray(d.subjects)?d.subjects:[];
     const subjects=[...new Set(rawSubjs.map(s=>String(s).trim()).filter(Boolean))].slice(0,10);

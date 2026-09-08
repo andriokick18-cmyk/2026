@@ -42,7 +42,7 @@
 //    completa (6 temporadas, vagas com e-mail) + reestruturação visual
 //    das abas (seção recolhível "Temporadas Anteriores", Manual+Automático).
 //
-const CACHE_NAME = "h2bapply-2026-v4"; // v4: fotos reais de marca integradas em todo o site (Home, sidebar, landing hero, vitrine, CTA final, Enviadas) via rota /img/ nova em server.js
+const CACHE_NAME = "h2bapply-2026-v5"; // v5: bug real "não dá pra salvar currículo/assuntos/corpos" — rascunho do onboarding (0 proteção antes), tour mobile cobrindo o editor de perfil, mensagem de sessão caída, e correções no sistema de envio (currículo sumindo quando só a carta anexava, {categoria} nunca substituída, corrida de duplo-clique)
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).
