@@ -124,12 +124,6 @@ setInterval(()=>{ $$("a[target='_blank']:not([rel])").forEach(a=>a.rel="noopener
 function applyFont(){ const f=LS("fontScale")||100; document.documentElement.style.fontSize=f+"%"; }
 applyFont();
 
-/* ═══ MELHORIA 10: Contador de sessões + tempo de uso (estatísticas locais) ═══ */
-(function(){ const st=LS("stats")||{sessions:0,minutes:0,views:{}};
-  st.sessions++; LS("stats",st);
-  setInterval(()=>{ const s=LS("stats");s.minutes++; const v=(typeof curView!=="undefined"&&curView)||"?"; s.views[v]=(s.views[v]||0)+1; LS("stats",s); },60000);
-})();
-
 /* ═══════════ PAINEL EXTRAS (hub das novas funcionalidades) ═══════════ */
 const fab=document.createElement("button");
 fab.id="hx-fab"; fab.innerHTML="✨<span class='hx-badge' id='hx-fab-badge'></span>"; fab.title="Extras H2BApply (atalho: X)";
@@ -147,7 +141,6 @@ panel.innerHTML=`<div id="hx-sheet">
   <button class="hx-tool" data-sub="remind"><span class="ic">⏰</span>Lembretes<br>Follow-up</button>
   <button class="hx-tool" data-sub="clock"><span class="ic">🇺🇸</span>Horário EUA</button>
   <button class="hx-tool" data-sub="calc"><span class="ic">💵</span>Salário USD→BRL</button>
-  <button class="hx-tool" data-sub="stats"><span class="ic">📊</span>Minhas Estatísticas</button>
   <button class="hx-tool" data-sub="backup"><span class="ic">💾</span>Backup / Restaurar</button>
   <button class="hx-tool" id="hx-t-theme"><span class="ic">🌙</span>Tema Claro/Escuro</button>
   <button class="hx-tool" id="hx-t-focus"><span class="ic">🎯</span>Modo Foco</button>
@@ -185,11 +178,6 @@ panel.innerHTML=`<div id="hx-sheet">
   <div id="hx-c-out" style="margin-top:10px;font-size:13px;font-weight:700"></div>
  </div>
 
- <div class="hx-sub" id="hx-sub-stats">
-  <h4>📊 Minhas Estatísticas de Uso</h4>
-  <div id="hx-stats-out" style="font-size:13px;line-height:1.7"></div>
- </div>
-
  <div class="hx-sub" id="hx-sub-backup">
   <h4>💾 Backup dos seus dados locais</h4>
   <p style="font-size:12px;opacity:.75;margin:4px 0 10px">Baixa notas, lembretes, rascunhos e preferências salvos neste aparelho. Útil ao trocar de celular.</p>
@@ -209,7 +197,7 @@ panel.innerHTML=`<div id="hx-sheet">
 document.body.appendChild(panel);
 panel.addEventListener("click",e=>{ if(e.target===panel)closePanel(); });
 
-function openPanel(){ panel.classList.add("open"); renderReminders(); renderClocks(); renderStats(); const n=$("#hx-notes"); n.value=LS("notes")||""; }
+function openPanel(){ panel.classList.add("open"); renderReminders(); renderClocks(); const n=$("#hx-notes"); n.value=LS("notes")||""; }
 function closePanel(){ panel.classList.remove("open"); }
 window.hxClose=closePanel;
 
@@ -268,13 +256,6 @@ $("#hx-c-go").onclick=()=>{
   LS("calcRate",r);
 };
 const savedRate=LS("calcRate"); if(savedRate)setTimeout(()=>{$("#hx-c-rate").value=savedRate;},500);
-
-/* ═══ NOVA 5: Estatísticas de uso ═══ */
-function renderStats(){
-  const s=LS("stats")||{sessions:0,minutes:0,views:{}};
-  const fav=Object.entries(s.views).sort((a,b)=>b[1]-a[1])[0];
-  $("#hx-stats-out").innerHTML=`Sessões abertas: <b>${s.sessions}</b><br>Tempo total no app: <b>${Math.floor(s.minutes/60)}h ${s.minutes%60}min</b><br>Aba mais usada: <b>${fav?fav[0]:"—"}</b><br>Lembretes ativos: <b>${(LS("reminders")||[]).length}</b>`;
-}
 
 /* ═══ NOVA 6: Backup/restauração de dados locais ═══ */
 $("#hx-b-down").onclick=()=>{

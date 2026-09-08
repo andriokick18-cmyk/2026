@@ -3518,10 +3518,8 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
 
         <!-- Status do plano atual -->
         <div id="plan-status-card" style="display:none;margin-bottom:14px"></div>
-        <!-- v29: Resgatar código saiu do menu (limpeza) e mora aqui, na jornada de plano.
-             v32: Meus pagamentos idem — histórico do cliente mora DENTRO de Planos. -->
+        <!-- v32: Meus pagamentos — histórico do cliente mora DENTRO de Planos. -->
         <div style="display:flex;gap:8px;margin-bottom:12px">
-          <button class="btn btn-secondary btn-sm" style="flex:1;justify-content:center" onclick="sv('redeem')"><i class="ti ti-ticket" style="color:#7c3aed"></i> <span data-i18n="g_206">🎟️ Tenho código</span></button>
           <button class="btn btn-secondary btn-sm" style="flex:1;justify-content:center" onclick="toggleMeusPagamentos()"><i class="ti ti-receipt" style="color:#10b981"></i> <span data-i18n="g_207">🧾 Minhas doações</span></button>
         </div>
         <div id="meus-pagamentos" style="display:none;margin-bottom:14px"></div>
@@ -3739,28 +3737,6 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <div style="font-size:11px;color:#166534;margin-top:8px;text-align:center" data-i18n="g_69">1 empresa confirmar = você está nos EUA ✈️</div>
         </div>
 
-      </div></div>
-
-      <div class="view gone" id="v-redeem"><div class="view-scroll" style="padding:0 0 80px">
-        <div style="background:linear-gradient(135deg,#4c1d95,#7c3aed);color:#fff;padding:24px 20px;text-align:center">
-          <div style="font-size:28px;margin-bottom:14px">🎟️</div>
-          <div style="font-family:'Sora',sans-serif;font-size:20px;font-weight:800;margin-bottom:6px" data-i18n="g_70">Resgatar Código</div>
-          <div style="font-size:13px;opacity:.85" data-i18n="g_71">Recebeu um código? Resgate aqui e ganhe dias VIP!</div>
-        </div>
-        <div style="padding:20px;display:flex;flex-direction:column;gap:16px">
-          <div style="background:#fff;border:2px solid rgba(139,92,246,.2);border-radius:16px;padding:20px">
-            <div style="display:flex;gap:10px;align-items:stretch">
-              <input class="input" id="redeem-code-inp" type="text" maxlength="8" placeholder="Ex: A1B2C3D4"
-                style="text-transform:uppercase;letter-spacing:3px;font-weight:800;font-size:18px;flex:1;font-family:monospace;text-align:center;padding:14px"
-                oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')"
-                onkeydown="if(event.key==='Enter')doRedeemCode()">
-              <button class="btn btn-auto" onclick="doRedeemCode()" id="redeem-btn" style="padding:14px 18px;flex-shrink:0;font-size:14px;font-weight:800;border-radius:10px">
-                <i class="ti ti-ticket"></i> Resgatar
-              </button>
-            </div>
-            <div id="redeem-msg" style="margin-top:12px;display:none"></div>
-          </div>
-        </div>
       </div></div>
 
 
