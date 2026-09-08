@@ -42,7 +42,7 @@
 //    completa (6 temporadas, vagas com e-mail) + reestruturação visual
 //    das abas (seção recolhível "Temporadas Anteriores", Manual+Automático).
 //
-const CACHE_NAME = "h2bapply-2026-v2"; // v2: remoção do subsistema órfão de Respostas/Inbox e do push VAPID quebrado, textos corrigidos, botão Extras restaurado
+const CACHE_NAME = "h2bapply-2026-v3"; // v3: removidos hub Extras/Buscar Vagas/FalaFina, Perfil H2B e Notificações; Home redesenhada (hero farol+bandeira, stats, atividade); Enviadas restaurada; sidebar navy com Enviadas promovida
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).

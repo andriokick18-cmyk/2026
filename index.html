@@ -867,7 +867,7 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 .suc-icon{font-size:52px;margin-bottom:10px;animation:bounce .5s ease}
 @keyframes bounce{0%{transform:scale(.3)}60%{transform:scale(1.1)}100%{transform:scale(1)}}
 
-/* ══ RATE-LIMIT WARNING + FALAFINA MODALS (V-ratelimit) ══ */
+/* ══ AVISO DE ENVIO RÁPIDO DEMAIS (V-ratelimit) ══ */
 .h2b-ov{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:400;padding:20px;backdrop-filter:blur(6px)}
 .h2b-ov.show{display:flex}
 .h2b-ov-box{background:var(--surface);border-radius:var(--rxl);padding:26px 22px;max-width:380px;width:100%;text-align:center;box-shadow:var(--shadowl);animation:fadeScale .25s ease}
@@ -878,13 +878,6 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 .h2b-btn-red:hover{background:linear-gradient(135deg,#dc2626,#b91c1c)}
 .h2b-btn-green{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:var(--r);padding:12px 16px;font-size:13.5px;font-weight:800;cursor:pointer;font-family:inherit;box-shadow:0 3px 10px rgba(16,185,129,.3)}
 .h2b-btn-green:hover{background:linear-gradient(135deg,#059669,#047857)}
-.sb-falafina-btn{display:flex;align-items:center;gap:10px;width:100%;background:linear-gradient(135deg,#059669,#10b981);border:none;border-radius:var(--r);padding:12px 14px;cursor:pointer;font-family:inherit;color:#fff;box-shadow:0 3px 12px rgba(16,185,129,.35);margin-bottom:2px}
-.sb-falafina-btn:hover{background:linear-gradient(135deg,#047857,#059669)}
-.sb-falafina-emoji{font-size:24px;line-height:1;flex-shrink:0}
-.sb-falafina-txt{flex:1;text-align:left}
-.sb-falafina-title{font-size:14.5px;font-weight:900;line-height:1.15}
-.sb-falafina-sub{font-size:10px;font-weight:700;opacity:.92}
-.d-item-falafina{background:linear-gradient(135deg,rgba(16,185,129,.14),rgba(5,150,105,.08))!important;border:1.5px solid rgba(16,185,129,.3)!important}
 
 /* ══ INBOX ══ */
 .icard{background:var(--surface);border-bottom:1px solid var(--border);padding:11px 14px;cursor:pointer;transition:background .1s;display:flex;gap:10px;align-items:flex-start;position:relative}
@@ -1718,7 +1711,6 @@ textarea.input,input.input,select.input{background:#f5f7ff;color:#1e1b4b}
 .sug-done{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;}
 .sug-rejected{background:#fee2e2;color:#991b1b;border:1px solid #fecaca;}
 
-.pesq-src-chip{display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border-radius:20px;border:1.5px solid var(--border2);background:var(--sf2);color:var(--t2);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .14s;white-space:nowrap}
 /* v51 (dono, 25/07): a planilha H-2B mais NOVA fica à esquerda e DESTACADA em
    todos os seletores (chips do Manual, botões do Automático, abas). Quando a
    próxima lista (janeiro) sair, o destaque migra sozinho — vem da API. */
@@ -1727,22 +1719,6 @@ textarea.input,input.input,select.input{background:#f5f7ff;color:#1e1b4b}
 /* v94: planilha nova que AINDA não tem contatos (Pending Processing) não é
    recomendada — selo honesto "EM BREVE" no lugar de "MAIS NOVA" */
 .sheet-soon::after{content:"⏳ EM BREVE";position:absolute;top:-9px;left:8px;font-size:8.5px;font-weight:900;letter-spacing:.4px;background:linear-gradient(135deg,#64748b,#475569);color:#fff;padding:2px 7px;border-radius:6px;line-height:1.3;pointer-events:none;z-index:2}
-.pesq-src-chip.active{background:linear-gradient(135deg,rgba(59,130,246,.12),rgba(99,102,241,.1));border-color:rgba(59,130,246,.35);color:var(--blue);font-weight:700}
-.pesq-src-chip:hover{background:var(--sf3);color:var(--text)}
-.pesq-result-card{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--rl);padding:12px 14px;margin:0 12px 8px;cursor:pointer;transition:all .14s;position:relative;overflow:hidden}
-.pesq-result-card:hover{border-color:var(--blue);background:rgba(59,130,246,.03);transform:translateY(-1px);box-shadow:0 4px 16px rgba(59,130,246,.1)}
-.pesq-result-card:active{transform:translateY(0)}
-.pesq-result-title{font-size:14px;font-weight:800;color:var(--text);margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pesq-result-co{font-size:13px;font-weight:700;color:var(--blue);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pesq-result-meta{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
-.pesq-result-pill{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;border:1px solid transparent}
-.pesq-src-badge{position:absolute;top:10px;right:10px;font-size:9px;font-weight:800;padding:2px 7px;border-radius:20px;text-transform:uppercase;letter-spacing:.04em}
-.pesq-src-seasonal{background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.2);color:#4f46e5}
-.pesq-src-jan2026{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25);color:#d97706}
-.pesq-src-jul2025{background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);color:#1d4ed8}
-.pesq-src-hist{background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25);color:#059669}
-.pesq-no-results{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 24px;gap:12px;text-align:center}
-.pesq-highlight{background:rgba(250,204,21,.35);border-radius:3px;font-weight:700}
 
 /* ══ FIX TRADUÇÃO RESPOSTAS ══ */
 #ed-translate-btn{display:inline-flex!important;align-items:center;gap:4px;border-radius:20px!important;font-size:11px!important;font-weight:700;white-space:nowrap;transition:background .14s,color .14s}
@@ -2499,14 +2475,17 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
            itens neutros e uniformes, ativo = pílula lavanda com texto roxo.
            O Automático deixou de ser um botão gigante e virou item normal de
            navegação (o destaque dele agora são os 2 cards de CTA na Home). -->
-      <!-- v166: navegação reduzida a 3 destinos (dono — "3 destinos principais:
-           Início/Perfil/Planos"). Envio Manual, Envio Automático e Currículos
-           deixaram de ser itens de topo (continuam 100% acessíveis: automático
-           pelo modal de sempre, manual e currículos pelos botões grandes da
-           Home / dentro da própria tela de Perfil). -->
+      <!-- v-print: navegação de volta a destinos completos (pedido do dono,
+           print de referência) — v166 tinha reduzido a 3 itens; Automático
+           continua abrindo o MODAL de sempre (nunca teve view própria),
+           Manual/Currículos/Enviadas voltaram a ser itens de topo. -->
       <div class="sb-sec" style="margin-top:6px">
-        <button class="sb-item active" id="si-home" onclick="sv('home')"><i class="ti ti-home-2"></i>Início</button>
+        <button class="sb-item active" id="si-home" onclick="sv('home')"><i class="ti ti-home-2"></i><span data-i18n="inicio">Início</span></button>
         <button class="sb-item" id="si-profile" onclick="sv('profile')"><i class="ti ti-user"></i>Meu Perfil</button>
+        <button class="sb-item" id="si-cvs" onclick="sv('profile');setTimeout(()=>{if(typeof switchProfileTab==='function')switchProfileTab('profiles')},120)"><i class="ti ti-file-cv"></i>Currículos</button>
+        <button class="sb-item" id="sb-auto-btn" onclick="openAutoModal()"><i class="ti ti-robot"></i>Envio Automático</button>
+        <button class="sb-item" id="si-jobs" onclick="sv('jobs')"><i class="ti ti-send"></i>Envio Manual</button>
+        <button class="sb-item" id="si-hist" onclick="sv('hist')"><i class="ti ti-history"></i><span data-i18n="sent_tab">Enviadas</span><span class="sb-badge sb-badge-g" id="sib-hist" style="display:none"></span></button>
         <button class="sb-item" id="si-plans" onclick="sv('plans')"><i class="ti ti-diamond"></i>Planos</button>
       </div>
 
@@ -2516,21 +2495,39 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
         <button class="sb-item" onclick="location.href='/admin'"><i class="ti ti-shield"></i>Painel Admin</button>
       </div>
 
-      <!-- TREINE INGLÊS — card claro com CTA verde (FalaFina) -->
-      <div class="sb-sec">
-        <div class="sb-lbl">Treine Inglês</div>
-        <div id="si-falafina" style="background:var(--sf2);border:1.5px solid var(--border);border-radius:14px;padding:12px">
-          <div style="font-size:12px;font-weight:700;color:var(--text);line-height:1.4;margin-bottom:9px">Pratique com<br>entrevistas H-2B/H-2A</div>
-          <button onclick="openFalaFinaIntro()" style="display:inline-flex;align-items:center;gap:6px;background:#10b981;color:#fff;border:none;border-radius:9px;padding:8px 13px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;box-shadow:0 4px 12px rgba(16,185,129,.3);transition:all .15s" onmouseenter="this.style.background='#059669'" onmouseleave="this.style.background='#10b981'">Treinar agora →</button>
-        </div>
-      </div>
 
       <!-- MAIS -->
       <div class="sb-sec">
         <div class="sb-lbl">Mais</div>
-        <button class="sb-item" id="si-pesquisa" onclick="sv('pesquisa')"><i class="ti ti-search"></i>Buscar Vagas</button>
         <!-- v110: aba fixa de instalar o app (substitui o botão flutuante) -->
         <button class="sb-item" id="si-app" onclick="installAppClick()"><i class="ti ti-device-mobile-down"></i>Baixar App</button>
+      </div>
+
+      <!-- "Seja VIP" — upsell no rodapé, só aparece pra quem é free (renderSidebar toggla) -->
+      <div id="sb-vip-card" style="display:none">
+        <div class="sbv-title">👑 Seja VIP</div>
+        <div class="sbv-item"><i class="ti ti-check"></i>Mais vagas</div>
+        <div class="sbv-item"><i class="ti ti-check"></i>Envios ilimitados</div>
+        <div class="sbv-item"><i class="ti ti-check"></i>Suporte prioritário</div>
+        <button onclick="sv('plans')">Ver Planos</button>
+      </div>
+
+      <!-- Painel decorativo — Estátua da Liberdade em SVG -->
+      <div id="sb-liberty" aria-hidden="true">
+        <svg viewBox="0 0 160 150" preserveAspectRatio="xMidYMax slice" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="80" cy="112" r="46" fill="#fde68a" opacity=".55"/>
+          <g fill="#1c1917" opacity=".85">
+            <rect x="76" y="55" width="8" height="60" rx="1"/>
+            <rect x="60" y="112" width="40" height="7" rx="1.5"/>
+            <path d="M80 20 L86 34 L94 34 L88 43 L91 55 L80 48 L69 55 L72 43 L66 34 L74 34 Z"/>
+            <circle cx="80" cy="40" r="10"/>
+            <path d="M84 30 L100 8 L102 12 L88 34 Z"/>
+            <path d="M97 4 L107 -1 L104 8 L110 10 L100 15 L97 4 Z" opacity=".9"/>
+            <path d="M70 46 Q56 60 58 90 L64 90 Q63 62 74 50 Z"/>
+            <path d="M90 46 Q104 60 102 90 L96 90 Q97 62 86 50 Z"/>
+          </g>
+        </svg>
+        <div class="sbl-txt">Grandes sonhos.<br>Oportunidades maiores.</div>
       </div>
 
       <!-- RODAPÉ: modo escuro + cartão do usuário (layout do print) -->
@@ -2562,72 +2559,101 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       <div class="view gone" id="v-home">
         <div class="home-view">
 
-          <!-- ══ HERO — card arredondado (layout do print 15/07/2026) ══ -->
+          <!-- ══ HERO — banner fotográfico (farol + bandeira dos EUA em SVG, já
+               que o sandbox de IA não tem saída de rede pra baixar foto real de
+               banco de imagens — mesma paleta navy→índigo de sempre) ══ -->
           <div style="padding:16px 14px 0">
-            <div class="home-header" style="background:linear-gradient(150deg,#0f172a 0%,#1e1b4b 55%,#4338ca 100%);border-radius:22px;padding:24px 22px 26px;position:relative;overflow:hidden;box-shadow:0 16px 40px rgba(15,23,42,.28)">
+            <div class="home-header" style="background:linear-gradient(150deg,#0f172a 0%,#1e1b4b 45%,#4338ca 100%);border-radius:22px;padding:24px 22px 26px;position:relative;overflow:hidden;box-shadow:0 16px 40px rgba(15,23,42,.28);min-height:190px">
               <!-- Stars decoration -->
               <div style="position:absolute;inset:0;pointer-events:none;background:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='120'%3E%3Cg fill='rgba(255,255,255,0.08)'%3E%3Ccircle cx='20' cy='20' r='1.5'/%3E%3Ccircle cx='80' cy='35' r='1'/%3E%3Ccircle cx='150' cy='15' r='1.5'/%3E%3Ccircle cx='190' cy='55' r='1'/%3E%3Ccircle cx='60' cy='80' r='1'/%3E%3Ccircle cx='130' cy='90' r='1.5'/%3E%3Ccircle cx='170' cy='75' r='1'/%3E%3C/g%3E%3C/svg%3E\") repeat"></div>
-              <!-- Foguete decorativo (canto direito, como no print) -->
-              <div aria-hidden="true" style="position:absolute;right:18px;top:50%;transform:translateY(-50%) rotate(-8deg);font-size:88px;line-height:1;filter:drop-shadow(0 10px 24px rgba(124,58,237,.55));opacity:.95;pointer-events:none" class="home-hero-rocket">🚀</div>
-              <div style="position:relative;z-index:1;max-width:calc(100% - 110px)">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-                  <div id="home-avatar" style="width:40px;height:40px;border-radius:50%;overflow:hidden;border:2px solid rgba(255,255,255,.35);background:linear-gradient(135deg,rgba(99,102,241,.4),rgba(124,58,237,.3));display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:#fff;flex-shrink:0">?</div>
-                  <div class="home-greeting" id="home-greeting" style="font-size:13px;color:rgba(255,255,255,.75);font-weight:600">Bom dia,</div>
+              <!-- Cena litorânea decorativa (farol + bandeira + ondas), canto direito -->
+              <svg aria-hidden="true" viewBox="0 0 220 170" style="position:absolute;right:-10px;bottom:-6px;width:190px;height:150px;opacity:.9;pointer-events:none" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="hhWave" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#60a5fa" stop-opacity=".35"/>
+                    <stop offset="1" stop-color="#1d4ed8" stop-opacity=".55"/>
+                  </linearGradient>
+                </defs>
+                <path d="M0 150 Q20 140 40 150 T80 150 T120 150 T160 150 T200 150 T240 150 V170 H0 Z" fill="url(#hhWave)"/>
+                <path d="M0 160 Q20 152 40 160 T80 160 T120 160 T160 160 T200 160 T240 160 V170 H0 Z" fill="#1e3a8a" fill-opacity=".5"/>
+                <ellipse cx="70" cy="152" rx="34" ry="10" fill="rgba(255,255,255,.10)"/>
+                <g transform="translate(52,40)">
+                  <polygon points="12,110 24,110 20,20 16,20" fill="#f1f5f9"/>
+                  <polygon points="13,55 23,55 21,44 15,44" fill="#ef4444"/>
+                  <polygon points="14,32 22,32 21,20 15,20" fill="#f1f5f9"/>
+                  <rect x="10" y="8" width="16" height="13" rx="2" fill="#0f172a" stroke="#f1f5f9" stroke-width="1.5"/>
+                  <polygon points="8,8 28,8 18,0" fill="#ef4444"/>
+                  <path d="M26 14 L70 -6 L70 6 L26 20 Z" fill="#fef3c7" opacity=".35"/>
+                  <rect x="6" y="108" width="24" height="7" rx="1.5" fill="#e2e8f0"/>
+                </g>
+                <g transform="translate(150,52)">
+                  <rect x="0" y="0" width="2.4" height="72" fill="#e2e8f0"/>
+                  <path d="M2.4 4 H34 L29 12 L34 20 H2.4 Z" fill="#dc2626"/>
+                  <path d="M2.4 4 H14 V13 H2.4 Z" fill="#1e3a8a"/>
+                </g>
+              </svg>
+              <div style="position:relative;z-index:1;max-width:calc(100% - 92px)">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div id="home-avatar" style="width:36px;height:36px;border-radius:50%;overflow:hidden;border:2px solid rgba(255,255,255,.35);background:linear-gradient(135deg,rgba(99,102,241,.4),rgba(124,58,237,.3));display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#fff;flex-shrink:0">?</div>
+                  <div style="min-width:0">
+                    <span class="home-greeting" id="home-greeting" style="font-size:12px;color:rgba(255,255,255,.7);font-weight:600">Bom dia,</span>
+                    <span class="home-name" id="home-name" style="font-size:13px;font-weight:800;color:#fff;margin-left:4px">–</span>
+                  </div>
                 </div>
-                <div class="home-name" id="home-name" style="font-size:24px;font-weight:900;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:9px">–</div>
-                <div class="home-plan-row" id="home-plan-row" style="margin-bottom:11px"></div>
-                <div id="home-hero-status" data-i18n="home_welcome" style="font-size:12.5px;color:rgba(255,255,255,.78);line-height:1.5">Bem-vindo(a) de volta! Pronto para enviar muitas candidaturas hoje?</div>
+                <div style="display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);border-radius:99px;padding:3px 11px 3px 8px;font-size:10.5px;font-weight:800;color:#fff;margin-bottom:10px;backdrop-filter:blur(3px)">🇺🇸 <span data-i18n="home_hero_badge">Vagas sazonais em todo os EUA</span></div>
+                <div class="home-hero-headline" style="font-size:23px;font-weight:900;color:#fff;line-height:1.18;margin-bottom:8px;text-shadow:0 2px 10px rgba(0,0,0,.25)"><span data-i18n="home_hero_h1a">Trabalhe nos EUA</span><br><span style="background:linear-gradient(90deg,#93c5fd,#c4b5fd);-webkit-background-clip:text;background-clip:text;color:transparent" data-i18n="home_hero_h1b">com mais oportunidades</span></div>
+                <div class="home-plan-row" id="home-plan-row" style="margin-bottom:8px"></div>
+                <div id="home-hero-status" data-i18n="home_welcome" style="font-size:12px;color:rgba(255,255,255,.78);line-height:1.5">Bem-vindo(a) de volta! Pronto para enviar muitas candidaturas hoje?</div>
               </div>
             </div>
           </div>
 
-          <!-- ══ v168: CTAs redesenhados — dono pediu "cards grandes de
-               verdade" (eram 3 clones do mesmo template só com a cor
-               trocada). Padrão comum em apps de referência (Duolingo,
-               apps bancários): 1 CTA primário em banner cheio + 2 CTAs
-               secundários lado a lado — dá identidade própria pro
-               Automático (é a ação nº1 da casa) sem os 3 virarem réguas
-               idênticas. Cada card ganhou um ícone-marca-d'água gigante
-               de fundo (mesma técnica do foguete decorativo do hero). ══ -->
-          <!-- CTA PRIMÁRIO — Envio Automático (mesmos ids de sempre: renderHome atualiza o status ao vivo) -->
+          <!-- ══ CTA PRIMÁRIO — Envio Automático (mesmos ids de sempre: renderHome atualiza o status ao vivo) ══ -->
           <div style="padding:14px 14px 0">
-            <div class="home-auto-card inactive" id="home-auto-card" onclick="openAutoModal()" role="button" tabindex="0" style="cursor:pointer;margin:0;border-radius:24px;padding:26px 24px;position:relative;overflow:hidden;transition:transform .15s,box-shadow .15s" onmouseenter="this.style.transform='translateY(-2px)'" onmouseleave="this.style.transform=''">
+            <div class="home-auto-card inactive" id="home-auto-card" onclick="openAutoModal()" role="button" tabindex="0" style="cursor:pointer;margin:0;border-radius:24px;padding:22px 22px;position:relative;overflow:hidden;transition:transform .15s,box-shadow .15s" onmouseenter="this.style.transform='translateY(-2px)'" onmouseleave="this.style.transform=''">
               <div aria-hidden="true" style="position:absolute;right:-12px;bottom:-20px;font-size:112px;line-height:1;opacity:.14;transform:rotate(-10deg);pointer-events:none">🤖</div>
-              <div style="display:flex;align-items:center;gap:16px;position:relative;z-index:1">
-                <div style="width:64px;height:64px;border-radius:18px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:32px" id="home-auto-icon">🤖</div>
+              <div style="display:flex;align-items:center;gap:16px;position:relative;z-index:1;margin-bottom:14px">
+                <div style="width:60px;height:60px;border-radius:18px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:30px" id="home-auto-icon">🤖</div>
                 <div style="flex:1;min-width:0">
-                  <div style="font-size:19px;font-weight:900;color:#fff;line-height:1.2" id="home-auto-title" data-i18n="g_1">Envio Automático</div>
-                  <div style="font-size:12.5px;color:rgba(255,255,255,.85);margin-top:4px;line-height:1.45" id="home-auto-sub" data-i18n="g_2">Configure e deixe o sistema trabalhar por você</div>
+                  <div style="font-size:18px;font-weight:900;color:#fff;line-height:1.2" id="home-auto-title" data-i18n="g_1">Envio Automático</div>
+                  <div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:4px;line-height:1.45" id="home-auto-sub" data-i18n="g_2">Configure e deixe o sistema trabalhar por você</div>
                 </div>
-                <div style="width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                  <i class="ti ti-arrow-right" style="font-size:20px;color:#fff"></i>
-                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;position:relative;z-index:1">
+                <div style="font-size:11.5px;color:rgba(255,255,255,.92);display:flex;align-items:center;gap:7px"><i class="ti ti-circle-check-filled" style="font-size:14px;flex-shrink:0"></i><span data-i18n="home_auto_b1">Envia pra várias vagas por dia</span></div>
+                <div style="font-size:11.5px;color:rgba(255,255,255,.92);display:flex;align-items:center;gap:7px"><i class="ti ti-circle-check-filled" style="font-size:14px;flex-shrink:0"></i><span data-i18n="home_auto_b3">Nunca repete uma candidatura</span></div>
+                <div style="font-size:11.5px;color:rgba(255,255,255,.92);display:flex;align-items:center;gap:7px"><i class="ti ti-circle-check-filled" style="font-size:14px;flex-shrink:0"></i><span data-i18n="home_auto_b4">Funciona 24h — você não precisa ficar online</span></div>
+              </div>
+              <div style="position:relative;z-index:1;display:flex;align-items:center;justify-content:center;gap:7px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.26);border-radius:99px;padding:11px;font-size:12.5px;font-weight:800;color:#fff">
+                <i class="ti ti-player-play-filled" style="font-size:13px"></i><span data-i18n="home_auto_cta">Iniciar Envio Automático</span><i class="ti ti-arrow-right" style="font-size:15px"></i>
               </div>
             </div>
           </div>
-          <!-- CTAs SECUNDÁRIOS — Manual + Planos (tiles verticais, formato
-               diferente do banner primário de propósito) -->
+
+          <!-- ══ CTAs SECUNDÁRIOS — Manual + Planos ══ -->
           <div style="padding:12px 14px 0">
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">
-              <div onclick="sv('jobs')" role="button" tabindex="0" style="cursor:pointer;background:linear-gradient(135deg,#2563eb,#3b82f6);border-radius:20px;padding:22px 20px;box-shadow:0 10px 30px rgba(37,99,235,.32);position:relative;overflow:hidden;transition:transform .15s" onmouseenter="this.style.transform='translateY(-2px)'" onmouseleave="this.style.transform=''">
+              <div onclick="sv('jobs')" role="button" tabindex="0" style="cursor:pointer;background:linear-gradient(135deg,#2563eb,#3b82f6);border-radius:20px;padding:20px 18px;box-shadow:0 10px 30px rgba(37,99,235,.32);position:relative;overflow:hidden;transition:transform .15s" onmouseenter="this.style.transform='translateY(-2px)'" onmouseleave="this.style.transform=''">
                 <div aria-hidden="true" style="position:absolute;right:-14px;bottom:-16px;font-size:80px;line-height:1;opacity:.16;transform:rotate(-6deg);pointer-events:none">📤</div>
                 <div style="position:relative;z-index:1">
-                  <div style="width:56px;height:56px;border-radius:16px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;font-size:28px;margin-bottom:14px">📤</div>
-                  <div style="font-size:17px;font-weight:900;color:#fff" data-i18n="manual_send_title">Envio Manual</div>
-                  <div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:4px;line-height:1.4" data-i18n="manual_send_sub">Busque vagas e envie candidaturas agora</div>
-                  <div style="width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;margin-top:14px">
-                    <i class="ti ti-arrow-right" style="font-size:18px;color:#fff"></i>
+                  <div style="width:52px;height:52px;border-radius:16px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:12px">📤</div>
+                  <div style="font-size:16px;font-weight:900;color:#fff" data-i18n="manual_send_title">Envio Manual</div>
+                  <div style="font-size:11.5px;color:rgba(255,255,255,.85);margin-top:4px;line-height:1.4;margin-bottom:10px" data-i18n="manual_send_sub">Busque vagas e envie candidaturas agora</div>
+                  <div style="font-size:10.5px;color:rgba(255,255,255,.88);display:flex;align-items:center;gap:6px;margin-bottom:3px"><i class="ti ti-circle-check-filled" style="font-size:12px;flex-shrink:0"></i><span data-i18n="home_man_b1">Pesquise e filtre as vagas</span></div>
+                  <div style="font-size:10.5px;color:rgba(255,255,255,.88);display:flex;align-items:center;gap:6px"><i class="ti ti-circle-check-filled" style="font-size:12px;flex-shrink:0"></i><span data-i18n="home_man_b4">Envie quando estiver pronto</span></div>
+                  <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;margin-top:12px">
+                    <i class="ti ti-arrow-right" style="font-size:17px;color:#fff"></i>
                   </div>
                 </div>
               </div>
-              <div onclick="sv('plans')" role="button" tabindex="0" style="cursor:pointer;background:linear-gradient(135deg,#7c3aed,#a855f7);border-radius:20px;padding:22px 20px;box-shadow:0 10px 30px rgba(124,58,237,.32);position:relative;overflow:hidden;transition:transform .15s" onmouseenter="this.style.transform='translateY(-2px)'" onmouseleave="this.style.transform=''">
+              <div onclick="sv('plans')" role="button" tabindex="0" style="cursor:pointer;background:linear-gradient(135deg,#7c3aed,#a855f7);border-radius:20px;padding:20px 18px;box-shadow:0 10px 30px rgba(124,58,237,.32);position:relative;overflow:hidden;transition:transform .15s" onmouseenter="this.style.transform='translateY(-2px)'" onmouseleave="this.style.transform=''">
                 <div aria-hidden="true" style="position:absolute;right:-14px;bottom:-16px;font-size:80px;line-height:1;opacity:.16;transform:rotate(8deg);pointer-events:none">💎</div>
                 <div style="position:relative;z-index:1">
-                  <div style="width:56px;height:56px;border-radius:16px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;font-size:28px;margin-bottom:14px">💎</div>
-                  <div style="font-size:17px;font-weight:900;color:#fff" data-i18n="plans_send_title">Planos</div>
-                  <div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:4px;line-height:1.4" data-i18n="plans_send_sub">Turbine seus envios com diamantes</div>
-                  <div style="width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;margin-top:14px">
-                    <i class="ti ti-arrow-right" style="font-size:18px;color:#fff"></i>
+                  <div style="width:52px;height:52px;border-radius:16px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:12px">💎</div>
+                  <div style="font-size:16px;font-weight:900;color:#fff" data-i18n="plans_send_title">Planos</div>
+                  <div style="font-size:11.5px;color:rgba(255,255,255,.85);margin-top:4px;line-height:1.4" data-i18n="plans_send_sub">Turbine seus envios com diamantes</div>
+                  <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;margin-top:14px">
+                    <i class="ti ti-arrow-right" style="font-size:17px;color:#fff"></i>
                   </div>
                 </div>
               </div>
@@ -2637,11 +2663,6 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <!-- ══ PRÓXIMO PASSO — guia inteligente (preenchido por renderNextStep) ══ -->
           <div id="home-next-step" style="display:none;padding:12px 14px 0"></div>
 
-          <!-- ══ v166: Home drasticamente simplificada — dono pediu 3 CTAs +
-               dica discreta de currículo. Removidos: card "Turbine suas
-               candidaturas" (comparação de preço redundante com o CTA de
-               Planos acima), os 3 stat cards, o grid "Atalhos Rápidos"
-               inteiro e a prateleira "Vagas pra você" (#home-pravoce). ══ -->
           <div style="padding:14px 14px 0">
             <div style="text-align:center;font-size:11.5px;color:var(--t3);line-height:1.5">
               💡 <span data-i18n="home_cv_tip">Mantenha seu currículo sempre atualizado.</span>
@@ -2652,8 +2673,92 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <!-- ══ PEDIDO EM ANÁLISE — pagamento aguardando aprovação (renderPendingOrderCard) ══ -->
           <div id="home-pending-order" style="display:none;padding:12px 14px 0"></div>
 
+          <!-- ══ STATS — 4 cards honestos (nunca inventa "respostas recebidas": app não lê inbox) ══ -->
+          <div style="padding:16px 14px 0">
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px">
+              <div class="home-stat-card" onclick="sv('jobs')" style="cursor:pointer;border-radius:16px;padding:16px 4px 13px;text-align:center;background:var(--surface);border:1.5px solid var(--border);box-shadow:0 4px 14px rgba(15,23,42,.05)">
+                <div style="font-size:20px;line-height:1;margin-bottom:7px">💼</div>
+                <div style="color:var(--blue);font-size:20px;font-weight:900" id="home-stat-jobs">–</div>
+                <div style="font-size:8.5px;color:var(--t3);font-weight:800;text-transform:uppercase;letter-spacing:.03em;margin-top:4px" data-i18n="home_stat_jobs">Vagas Disponíveis</div>
+              </div>
+              <div class="home-stat-card" onclick="sv('hist')" style="cursor:pointer;border-radius:16px;padding:16px 4px 13px;text-align:center;background:var(--surface);border:1.5px solid var(--border);box-shadow:0 4px 14px rgba(15,23,42,.05)">
+                <div style="font-size:20px;line-height:1;margin-bottom:7px">✈️</div>
+                <div style="color:var(--green);font-size:20px;font-weight:900" id="home-stat-total">–</div>
+                <div style="font-size:8.5px;color:var(--t3);font-weight:800;text-transform:uppercase;letter-spacing:.03em;margin-top:4px" data-i18n="home_stat_emails">E-mails Enviados</div>
+              </div>
+              <div class="home-stat-card" onclick="sv('hist')" style="cursor:pointer;border-radius:16px;padding:16px 4px 13px;text-align:center;background:var(--surface);border:1.5px solid var(--border);box-shadow:0 4px 14px rgba(15,23,42,.05)">
+                <div style="font-size:20px;line-height:1;margin-bottom:7px">🏢</div>
+                <div style="color:#ef4444;font-size:20px;font-weight:900" id="home-stat-companies">–</div>
+                <div style="font-size:8.5px;color:var(--t3);font-weight:800;text-transform:uppercase;letter-spacing:.03em;margin-top:4px" data-i18n="home_stat_companies">Empresas Contatadas</div>
+              </div>
+              <div class="home-stat-card" onclick="openAutoModal()" style="cursor:pointer;border-radius:16px;padding:16px 4px 13px;text-align:center;background:var(--surface);border:1.5px solid var(--border);box-shadow:0 4px 14px rgba(15,23,42,.05)">
+                <div style="font-size:20px;line-height:1;margin-bottom:7px">🤖</div>
+                <div style="color:var(--purple);font-size:20px;font-weight:900" id="home-stat-auto">–</div>
+                <div style="font-size:8.5px;color:var(--t3);font-weight:800;text-transform:uppercase;letter-spacing:.03em;margin-top:4px" data-i18n="auto_send">Envio Automático</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ══ ATIVIDADE RECENTE + DICAS ══ -->
+          <div style="padding:16px 14px 0">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">
+              <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:20px;padding:16px;box-shadow:0 4px 18px rgba(15,23,42,.06)">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                  <div style="font-size:12px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.06em">⚡ <span data-i18n="home_activity_title">Atividade Recente</span></div>
+                  <button onclick="sv('hist')" style="background:none;border:none;font-size:11px;color:var(--purple,#7c3aed);font-weight:800;cursor:pointer;font-family:inherit;padding:2px 4px" data-i18n="hist_short">Ver todas →</button>
+                </div>
+                <div id="home-activity-list" style="display:flex;flex-direction:column;gap:2px"></div>
+              </div>
+              <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:20px;padding:16px;box-shadow:0 4px 18px rgba(15,23,42,.06)">
+                <div style="font-size:12px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">⭐ <span data-i18n="home_tips_title">Dicas para mais respostas</span></div>
+                <div style="display:flex;flex-direction:column;gap:9px;font-size:12px;color:var(--text);line-height:1.4">
+                  <div style="display:flex;gap:8px;align-items:flex-start"><i class="ti ti-file-text" style="font-size:14px;color:var(--purple,#7c3aed);flex-shrink:0;margin-top:1px"></i><span data-i18n="home_tip1">Use um currículo em inglês claro e objetivo.</span></div>
+                  <div style="display:flex;gap:8px;align-items:flex-start"><i class="ti ti-send" style="font-size:14px;color:var(--purple,#7c3aed);flex-shrink:0;margin-top:1px"></i><span data-i18n="home_tip2">Envie para muitas vagas — o volume aumenta suas chances.</span></div>
+                  <div style="display:flex;gap:8px;align-items:flex-start"><i class="ti ti-pencil" style="font-size:14px;color:var(--purple,#7c3aed);flex-shrink:0;margin-top:1px"></i><span data-i18n="home_tip3">Personalize a carta de apresentação.</span></div>
+                  <div style="display:flex;gap:8px;align-items:flex-start"><i class="ti ti-user-check" style="font-size:14px;color:var(--purple,#7c3aed);flex-shrink:0;margin-top:1px"></i><span data-i18n="home_tip4">Mantenha seu perfil sempre atualizado.</span></div>
+                  <div style="display:flex;gap:8px;align-items:flex-start"><i class="ti ti-mail-search" style="font-size:14px;color:var(--purple,#7c3aed);flex-shrink:0;margin-top:1px"></i><span data-i18n="home_tip5">Verifique sua caixa de spam.</span></div>
+                </div>
+                <div style="margin-top:13px;background:var(--sf2);border-radius:12px;padding:11px 13px;font-size:11.5px;font-style:italic;color:var(--t2);text-align:center" data-i18n="home_tip_quote">"Disciplina hoje, oportunidades amanhã."</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ══ FAIXA DE MARCA — rodapé da Home ══ -->
+          <div style="padding:20px 14px 26px;text-align:center">
+            <div style="font-family:'Sora',sans-serif;font-size:17px;font-weight:800;color:var(--t2);margin-bottom:4px">H2B<span style="color:var(--purple,#7c3aed)">Apply</span></div>
+            <div style="font-size:11.5px;color:var(--t3);margin-bottom:10px" data-i18n="home_footer_tag">Mais que um sistema. É o seu próximo passo.</div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:8px;font-size:18px">🇺🇸</div>
+          </div>
+
       </div>
       </div><!-- /v-home (v42-FIX: fechamento que faltava — sem ele, TODAS as views seguintes (jobs, plans, notificacoes, noticias, hist, ranking, respostas...) ficavam ANINHADAS dentro de #v-home e desapareciam junto quando .gone escondia a Home. Bug real de produção, 23/07/2026: "nenhuma aba funcionando" — reproduzido com Playwright, corrigido na raiz. -->
+
+      <!-- ══ ENVIADAS — reconstruída (pedido do dono): lista + Reset (as vagas
+           voltam pra lista pra recandidatar-se). O backend nunca saiu de servir
+           isso (GET /api/history, POST /api/history/clear) — só a TELA tinha
+           sido removida numa reconstrução anterior. ══ -->
+      <div class="view gone" id="v-hist"><div class="view-scroll">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <div style="font-size:18px;font-weight:800" data-i18n="hist_title">Candidaturas Enviadas</div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <button class="fbtn on" id="ht-all" onclick="setHistTab('all')"><span data-i18n="all">Todas</span></button>
+            <button class="fbtn" id="ht-manual" onclick="setHistTab('manual')"><span data-i18n="manual">Manual</span></button>
+            <button class="fbtn" id="ht-auto" onclick="setHistTab('auto')">🤖 <span data-i18n="auto_lbl">Automático</span></button>
+            <button class="btn btn-secondary btn-sm" onclick="confirmClearHist()" title="Resetar — vagas voltam para a lista" style="padding:5px 11px;font-size:12px;border-color:var(--amber);color:var(--amber)"><i class="ti ti-refresh"></i> Reset</button>
+          </div>
+        </div>
+        <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12px;color:#1e3a8a;line-height:1.6;display:flex;align-items:flex-start;gap:8px">
+          <i class="ti ti-info-circle" style="font-size:15px;flex-shrink:0;margin-top:1px"></i>
+          <span data-i18n="hist_info">O botão Reset apaga tudo e faz as vagas voltarem para a lista (útil para recandidatar-se).</span>
+        </div>
+        <div style="position:relative;margin-bottom:12px">
+          <i class="ti ti-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--t3);font-size:15px;pointer-events:none"></i>
+          <input class="input" id="hist-search" type="text" data-i18n-ph="hist_search_ph" placeholder="Buscar empresa, cargo ou e-mail..." oninput="renderHist();document.getElementById('hist-search-clear').style.display=this.value?'flex':'none'" style="padding-left:33px;padding-right:32px;font-size:13px">
+          <button id="hist-search-clear" onclick="document.getElementById('hist-search').value='';renderHist();this.style.display='none'" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--t3);font-size:16px;width:24px;height:24px;align-items:center;justify-content:center;border-radius:50%">×</button>
+        </div>
+        <div id="hist-summary" style="font-size:12px;color:var(--t3);margin-bottom:10px"></div>
+        <div id="hist-list"></div>
+      </div></div>
 
       <!-- ══ JOBS ══ -->
       <div class="view" id="v-jobs">
@@ -2715,64 +2820,8 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
         <div id="mob-detail-content" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch"></div>
       </div>
 
-      <!-- ══ PESQUISAR VAGAS ══ -->
-      <div class="view gone" id="v-pesquisa">
-        <!-- Header -->
-        <div style="background:linear-gradient(135deg,#0c1a40,#1a3a6b);color:#fff;padding:12px 16px 10px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:10px">
-          <div>
-            <div style="font-size:16px;font-weight:800;display:flex;align-items:center;gap:7px">
-              <i class="ti ti-search" style="font-size:18px"></i> Buscar Vagas
-            </div>
-            <div style="font-size:11px;opacity:.7;margin-top:2px"><span data-i18n="pesq_srcs">Vagas ao Vivo · Jan 2026 · Jul 2025</span></div>
-          </div>
-          <button id="pesq-clear-btn" onclick="clearPesquisa()" style="background:rgba(255,255,255,.15);color:#fff;border:1.5px solid rgba(255,255,255,.25);padding:6px 10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:none"><i class="ti ti-x"></i> Limpar</button>
-        </div>
-
-        <!-- Barra de busca principal -->
-        <div style="background:var(--surface);border-bottom:1px solid var(--border);padding:12px 14px;flex-shrink:0">
-          <div style="position:relative;margin-bottom:10px">
-            <i class="ti ti-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--blue);font-size:16px;pointer-events:none"></i>
-            <input class="input" id="pesq-input" type="text" placeholder="Empresa, e-mail, ETA case number, cargo, estado..." style="padding-left:38px;font-size:14px;height:46px;border-color:var(--blue);border-width:2px;box-shadow:0 0 0 3px rgba(59,130,246,.1)" oninput="doPesquisa()" autocomplete="off" inputmode="search">
-            <button onclick="doPesquisaBtn()" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:linear-gradient(135deg,var(--blue),var(--purple));color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit" data-i18n="search_btn">Buscar</button>
-          </div>
-          <!-- Chips de fonte -->
-          <div style="display:flex;gap:5px;flex-wrap:wrap">
-            <button class="pesq-src-chip active" data-src="all" onclick="setPesqSrc('all')" data-i18n="all_sources">🌐 Todas as fontes</button>
-            <button class="pesq-src-chip" data-src="seasonal" onclick="setPesqSrc('seasonal')"><i class="ti ti-globe" style="font-size:11px"></i> Seasonal</button>
-            <button class="pesq-src-chip" data-src="jan2026" onclick="setPesqSrc('jan2026')">☀️ Jan 2026</button>
-            <button class="pesq-src-chip" data-src="jul2025" onclick="setPesqSrc('jul2025')">❄️ Jul 2025</button>
-          </div>
-        </div>
-
-        <!-- Stats da busca -->
-        <div id="pesq-stats" style="background:var(--sf2);border-bottom:1px solid var(--border);padding:7px 14px;font-size:12px;color:var(--t2);flex-shrink:0;display:none;align-items:center;gap:8px">
-          <i class="ti ti-info-circle" style="color:var(--blue);font-size:14px;flex-shrink:0"></i>
-          <span id="pesq-stats-text"></span>
-        </div>
-
-        <!-- Lista de resultados -->
-        <div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch" id="pesq-list">
-          <!-- Estado inicial -->
-          <div id="pesq-empty-state" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 24px;gap:16px;text-align:center">
-            <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,rgba(59,130,246,.12),rgba(139,92,246,.1));display:flex;align-items:center;justify-content:center;border:2px solid rgba(99,102,241,.15)">
-              <i class="ti ti-search" style="font-size:28px;color:var(--blue)"></i>
-            </div>
-            <div>
-              <div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:6px">Pesquise qualquer coisa</div>
-              <div style="font-size:13px;color:var(--t3);line-height:1.6;max-width:300px" data-i18n="g_259">Digite o nome da empresa, um e-mail recebido, o ETA case number, o cargo ou o estado para encontrar todas as vagas correspondentes</div>
-            </div>
-            <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:320px">
-              <button onclick="setPesqExample('cerminara')" style="background:var(--sf3);border:1px solid var(--border2);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--t2);cursor:pointer;font-family:inherit">cerminara</button>
-              <button onclick="setPesqExample('H-400-26001')" style="background:var(--sf3);border:1px solid var(--border2);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--t2);cursor:pointer;font-family:inherit">H-400-26001</button>
-              <button onclick="setPesqExample('landscaping@')" style="background:var(--sf3);border:1px solid var(--border2);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--t2);cursor:pointer;font-family:inherit">landscaping@...</button>
-              <button onclick="setPesqExample('FLORIDA')" style="background:var(--sf3);border:1px solid var(--border2);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--t2);cursor:pointer;font-family:inherit">FLORIDA</button>
-              <button onclick="setPesqExample('landscape')" style="background:var(--sf3);border:1px solid var(--border2);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--t2);cursor:pointer;font-family:inherit">landscape</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- v72: aba Respostas REMOVIDA (ordem do dono, 26/07) — o app só ENVIA e-mails, nunca lê caixa de entrada de ninguém. -->
+      <!-- v-2026: aba Buscar Vagas REMOVIDA por inteiro (ordem do dono) — motor unificado de busca (doPesquisa/setPesqSrc/etc) saiu junto de app.js. -->
 
 
       <!-- LOGS -->
@@ -2941,113 +2990,6 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
               <div style="font-size:12px;color:var(--t2)"><span data-i18n="g_178">Usuários pagantes podem conectar um Gmail extra para reduzir risco de spam.</span> <strong style="color:var(--amber)" data-i18n="upgrade_to_enable">Faça upgrade para ativar.</strong></div>
             </div>
 
-            <!-- CARD: Perfil H2B -->
-            <div style="background:var(--surface);border:1.5px solid rgba(37,99,235,.2);border-radius:16px;overflow:hidden">
-              <div style="padding:12px 16px;border-bottom:1px solid rgba(37,99,235,.1);display:flex;align-items:center;gap:8px">
-                <span style="font-size:14px">🇺🇸</span>
-                <span style="font-size:12px;font-weight:800;color:var(--text)">Perfil H2B</span>
-                <span style="font-size:10px;color:var(--t3);font-weight:400" data-i18n="g_17">Ajuda o sistema a encontrar vagas certas pra você</span>
-              </div>
-              <div style="padding:14px 16px;display:flex;flex-direction:column;gap:14px">
-
-                <!-- Linha 1: EUA + H2B -->
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-                  <div style="background:var(--sf2);border:1px solid var(--border);border-radius:12px;padding:12px">
-                    <div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px" data-i18n="g_18">Já foi aos EUA?</div>
-                    <div style="display:flex;gap:6px">
-                      <button class="btn btn-secondary ob-toggle cfg-toggle" id="cfg-usa-yes" onclick="cfgToggle('usa','yes')" style="flex:1;justify-content:center;font-size:12px">✅ Sim</button>
-                      <button class="btn btn-secondary ob-toggle cfg-toggle on" id="cfg-usa-no" onclick="cfgToggle('usa','no')" style="flex:1;justify-content:center;font-size:12px" data-i18n="g_19">❌ Não</button>
-                    </div>
-                  </div>
-                  <div style="background:var(--sf2);border:1px solid var(--border);border-radius:12px;padding:12px">
-                    <div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Trabalhou H2B/H2A?</div>
-                    <div style="display:flex;gap:6px">
-                      <button class="btn btn-secondary ob-toggle cfg-toggle" id="cfg-h2b-yes" onclick="cfgToggle('h2b','yes')" style="flex:1;justify-content:center;font-size:12px">✅ Sim</button>
-                      <button class="btn btn-secondary ob-toggle cfg-toggle on" id="cfg-h2b-no" onclick="cfgToggle('h2b','no')" style="flex:1;justify-content:center;font-size:12px" data-i18n="g_19">❌ Não</button>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Linha 2: Inglês -->
-                <div style="background:var(--sf2);border:1px solid var(--border);border-radius:12px;padding:12px">
-                  <div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px" data-i18n="g_20">🗣️ Nível de inglês</div>
-                  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px">
-                    <button class="btn btn-secondary ob-toggle-eng" id="cfg-eng-none" onclick="cfgEng('none')" style="font-size:11px;padding:7px 4px;justify-content:center">🚫 Nenhum</button>
-                    <button class="btn btn-secondary ob-toggle-eng" id="cfg-eng-basic" onclick="cfgEng('basic')" style="font-size:11px;padding:7px 4px;justify-content:center" data-i18n="g_21">📖 Básico</button>
-                    <button class="btn btn-secondary ob-toggle-eng" id="cfg-eng-intermediate" onclick="cfgEng('intermediate')" style="font-size:11px;padding:7px 4px;justify-content:center">💬 Inter.</button>
-                    <button class="btn btn-secondary ob-toggle-eng" id="cfg-eng-advanced" onclick="cfgEng('advanced')" style="font-size:11px;padding:7px 4px;justify-content:center" data-i18n="g_22">🌟 Avanç.</button>
-                  </div>
-                </div>
-
-                <!-- Linha 3: Área + Disponibilidade -->
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-                  <div style="background:var(--sf2);border:1px solid var(--border);border-radius:12px;padding:12px">
-                    <div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px" data-i18n="g_23">🌿 Área preferida</div>
-                    <select class="input" id="cfg-h2b-area" style="font-size:12px;background:var(--sf);border-color:var(--border)">
-                      <option value="landscape">🌿 Paisagismo</option>
-                      <option value="hotel">🏨 Hotel</option>
-                      <option value="food">🍽️ Restaurante</option>
-                      <option value="farm">🌾 Fazenda</option>
-                      <option value="construction" data-i18n="g_24">🏗️ Construção</option>
-                      <option value="cleaning">🧹 Limpeza</option>
-                      <option value="seafood" data-i18n="g_25">🦞 Frutos do mar</option>
-                      <option value="golf">⛳ Golf Resort</option>
-                      <option value="ski">⛷️ Ski Resort</option>
-                      <option value="other">📋 Outra</option>
-                    </select>
-                  </div>
-                  <div style="background:var(--sf2);border:1px solid var(--border);border-radius:12px;padding:12px">
-                    <div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">📅 Disponibilidade</div>
-                    <select class="input" id="cfg-h2b-avail" style="font-size:12px;background:var(--sf);border-color:var(--border)">
-                      <option value="immediate">⚡ Imediato</option>
-                      <option value="1month" data-i18n="g_26">📅 1 mês</option>
-                      <option value="3months">🗓️ 3+ meses</option>
-                    </select>
-                  </div>
-                </div>
-
-                <!-- Linha 4: CNH + Temporadas -->
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-                  <div style="background:var(--sf2);border:1px solid var(--border);border-radius:12px;padding:12px">
-                    <div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">🚗 Tem CNH?</div>
-                    <div style="display:flex;gap:6px">
-                      <button class="btn btn-secondary ob-toggle cfg-toggle" id="cfg-cnh-yes" onclick="cfgToggle('cnh','yes')" style="flex:1;justify-content:center;font-size:12px">✅ Sim</button>
-                      <button class="btn btn-secondary ob-toggle cfg-toggle on" id="cfg-cnh-no" onclick="cfgToggle('cnh','no')" style="flex:1;justify-content:center;font-size:12px" data-i18n="g_19">❌ Não</button>
-                    </div>
-                  </div>
-                  <div style="background:var(--sf2);border:1px solid var(--border);border-radius:12px;padding:12px">
-                    <div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">📊 Temporadas H2B</div>
-                    <input class="input" id="cfg-h2b-seasons" type="number" inputmode="decimal" min="0" max="20" value="0" style="font-size:14px;font-weight:700;text-align:center">
-                  </div>
-                </div>
-
-                <button class="btn btn-primary w100" onclick="saveH2BProfile()" style="margin-top:2px">
-                  <i class="ti ti-check"></i> Salvar Perfil H2B
-                </button>
-              </div>
-            </div>
-
-            <!-- CARD: Notificações -->
-            <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:16px;overflow:hidden">
-              <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
-                <i class="ti ti-bell" style="font-size:15px;color:var(--amber)"></i>
-                <span style="font-size:12px;font-weight:800;color:var(--text)" data-i18n="g_27">Notificações</span>
-              </div>
-              <div style="padding:14px 16px">
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
-                  <div>
-                    <div style="font-size:13px;font-weight:700;margin-bottom:2px" data-i18n="g_28">🛫 Alertas do H2BApply</div>
-                    <div style="font-size:11px;color:var(--t2);line-height:1.5">Som + aviso de diamantes, missões e novidades (o site não lê e-mail — não avisamos quando a empresa responde)</div>
-                  </div>
-                  <button id="notif-toggle-btn" onclick="toggleNotifications()" style="flex-shrink:0;width:52px;height:28px;border-radius:14px;border:none;cursor:pointer;position:relative;transition:background .2s;background:var(--border2)">
-                    <div id="notif-toggle-dot" style="width:22px;height:22px;border-radius:50%;background:#fff;position:absolute;top:3px;left:3px;transition:transform .2s;box-shadow:0 1px 4px rgba(0,0,0,.2)"></div>
-                  </button>
-                </div>
-                <div id="notif-status-msg" style="font-size:11px;margin-bottom:10px;color:var(--t3)" data-i18n="g_29">Toque no botão para ativar</div>
-                <div id="sound-selector-wrap" style="border-top:1px solid var(--border);padding-top:12px"></div>
-              </div>
-            </div>
-
             </div><!-- fim padding container -->
           </div><!-- /pf-sec-me -->
 
@@ -3183,7 +3125,6 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
                 <span style="font-size:12px;font-weight:800;color:var(--text)" data-i18n="g_239c">Mais</span>
               </div>
               <div style="padding:8px;display:flex;flex-direction:column;gap:2px">
-                <button class="btn btn-secondary w100" style="justify-content:flex-start;border:none;background:none" onclick="sv('pesquisa')"><i class="ti ti-search"></i> Buscar Vagas</button>
                 <button class="btn btn-secondary w100" style="justify-content:flex-start;border:none;background:none" onclick="sv('tutorial')"><i class="ti ti-book"></i> <span data-i18n="tut_center">Central de Tutoriais</span></button>
                 <button class="btn btn-secondary w100" style="justify-content:flex-start;border:none;background:none" onclick="sv('settings')"><i class="ti ti-settings"></i> <span data-i18n="settings_adv">Configurações avançadas</span></button>
               </div>
@@ -3820,7 +3761,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
     <!-- 1: Início -->
     <button class="bn" id="bn-home" onclick="sv('home')">
       <i class="ti ti-home-2"></i>
-      <span>Início</span>
+      <span data-i18n="inicio">Início</span>
     </button>
     <!-- 2: Meu Perfil -->
     <button class="bn" id="bn-profile" onclick="sv('profile')">
@@ -4450,28 +4391,6 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
     <div class="h2b-ov-txt">Detectamos <b id="rl-warn-count">50</b> envios manuais em menos de 10 minutos. Enviar e-mails em alta velocidade pode fazer o Gmail bloquear temporariamente sua conta de envio ou marcar suas mensagens como <b>spam</b>.</div>
     <button class="h2b-btn-red" onclick="rlContinueAnyway()"><i class="ti ti-alert-triangle"></i> Entendo o risco, vou continuar</button>
     <button class="h2b-btn-green" onclick="rlChooseWait()"><i class="ti ti-clock-pause"></i> Vou esperar alguns minutos para enviar novamente</button>
-  </div>
-</div>
-
-<!-- ══ MODAL: Sugestão de treino de inglês (FalaFina) enquanto espera ══ -->
-<div class="h2b-ov" id="rl-falafina-ov">
-  <div class="h2b-ov-box">
-    <div class="h2b-ov-icon">🦜</div>
-    <div class="h2b-ov-title">Não perca tempo à toa!</div>
-    <div class="h2b-ov-txt">Enquanto o tempo de segurança passa e seus envios voltam ao normal, aproveite para treinar seu inglês com entrevistas focadas em vagas H-2B e H-2A no <b>FalaFina</b>. Você escolhe qual vaga quer treinar e pratica exatamente o inglês que vai precisar no trabalho.</div>
-    <button class="h2b-btn-green" onclick="rlGoToFalaFina()"><i class="ti ti-external-link"></i> Treinar inglês no FalaFina</button>
-    <button class="btn btn-secondary w100" style="margin-top:10px" onclick="g('#rl-falafina-ov').classList.remove('show')">Fechar</button>
-  </div>
-</div>
-
-<!-- ══ MODAL: Redirecionamento para o FalaFina (botão da barra lateral) ══ -->
-<div class="h2b-ov" id="falafina-intro-ov">
-  <div class="h2b-ov-box">
-    <div class="h2b-ov-icon">🦜</div>
-    <div class="h2b-ov-title">Você está saindo do H2BApply</div>
-    <div class="h2b-ov-txt">O <b>FalaFina</b> é um app de treino de inglês criado pela mesma equipe do H2BApply, feito para quem está indo trabalhar nos EUA com visto H-2B ou H-2A. Lá você escolhe a vaga que quer treinar, pratica entrevistas de emprego em inglês e aprende o vocabulário do dia a dia de trabalho — tudo pensado pra sua realidade. Você será redirecionado para outro site (falafina.onrender.com), dos mesmos criadores do H2BApply.</div>
-    <button class="h2b-btn-green" onclick="falafinaGoFromIntro()"><i class="ti ti-external-link"></i> Continuar para o FalaFina</button>
-    <button class="btn btn-secondary w100" style="margin-top:10px" onclick="g('#falafina-intro-ov').classList.remove('show')">Voltar para o H2B</button>
   </div>
 </div>
 
@@ -5985,6 +5904,39 @@ html, body, #app, .bottom-nav, .sidebar, .drawer{
 .tour-text b{color:var(--text)}
 .tour-dot{width:8px;height:8px;border-radius:50%;background:var(--border2);transition:all .2s}
 .tour-dot.on{background:var(--blue);width:22px;border-radius:20px}
+</style>
+
+<!-- ══ SIDEBAR NAVY — visual escuro fixo (pedido do dono, print de referência),
+     independente do tema claro/escuro do CONTEÚDO do app. Colocado de
+     propósito como o ÚLTIMO <style> do documento: as regras de sidebar mais
+     antigas usam a mesma força de !important — em empate de especificidade,
+     quem vem DEPOIS no HTML vence a cascata. ══ -->
+<style id="sidebar-navy-skin">
+.sidebar{background:linear-gradient(180deg,#0f172a 0%,#161b33 100%)!important;border-right:1px solid rgba(255,255,255,.06)!important}
+.sb-lbl{color:rgba(255,255,255,.35)!important}
+.sb-item{color:rgba(255,255,255,.8)!important}
+.sb-item:hover{background:rgba(255,255,255,.08)!important;color:#fff!important}
+.sb-item.active{background:linear-gradient(135deg,#4f46e5,#7c3aed)!important;color:#fff!important;box-shadow:0 4px 14px rgba(79,70,229,.4)}
+.sb-item.active i{color:#fff!important}
+.sb-auto-btn.is-active{color:#6ee7b7!important}
+.sb-auto-btn.is-active i{color:#6ee7b7!important}
+.sb-profile{background:rgba(255,255,255,.06)!important;border-color:rgba(255,255,255,.12)!important}
+.sb-profile button{background:transparent!important}
+.sb-profile button:hover{background:rgba(255,255,255,.05)!important}
+#sb-name{color:#fff!important}
+#theme-toggle-btn-sidebar{background:rgba(255,255,255,.07)!important;color:#fff!important}
+#sb-admin-sec .sb-lbl{color:#fca5a5!important}
+/* "Seja VIP" — upsell no rodapé (só pra free, via JS em renderSidebar) */
+#sb-vip-card{margin:6px 3px 4px;background:linear-gradient(135deg,rgba(245,158,11,.16),rgba(217,119,6,.1));border:1.5px solid rgba(245,158,11,.35);border-radius:14px;padding:12px}
+#sb-vip-card .sbv-title{font-size:12.5px;font-weight:900;color:#fbbf24;display:flex;align-items:center;gap:6px;margin-bottom:8px}
+#sb-vip-card .sbv-item{font-size:10.5px;color:rgba(255,255,255,.75);display:flex;align-items:center;gap:6px;margin-bottom:4px}
+#sb-vip-card .sbv-item i{color:#4ade80;font-size:12px}
+#sb-vip-card button{width:100%;margin-top:7px;background:linear-gradient(135deg,#f59e0b,#d97706);border:none;border-radius:9px;padding:8px;font-size:12px;font-weight:800;color:#1c1917;cursor:pointer;font-family:inherit}
+/* Painel decorativo — Estátua da Liberdade em SVG, silhueta pôr do sol (sem
+   saída de rede pro sandbox de IA baixar foto real de banco de imagens) */
+#sb-liberty{margin:4px 3px 2px;border-radius:14px;overflow:hidden;position:relative;min-height:140px}
+#sb-liberty svg{position:absolute;inset:0;width:100%;height:100%}
+#sb-liberty .sbl-txt{position:absolute;left:11px;bottom:11px;right:11px;color:#fff7ed;font-family:'Sora',sans-serif;font-weight:800;font-size:12.5px;line-height:1.25;text-shadow:0 2px 8px rgba(0,0,0,.4)}
 </style>
 <div class="overlay gone" id="tour-overlay" style="z-index:998" onclick="if(event.target===this)closeTour()">
   <div class="modal" style="max-width:430px;padding:0;overflow:hidden;display:flex;flex-direction:column">

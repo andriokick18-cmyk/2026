@@ -604,6 +604,8 @@ function renderSidebar(){
   const sba=g("#sb-av");if(sba){if(U.picture)sba.innerHTML=`<img alt="" referrerpolicy="no-referrer" src="${esc(U.picture)}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`;else sba.textContent=(U.name||"?")[0].toUpperCase();}
   if(g("#sb-name"))g("#sb-name").textContent=U.name;if(g("#sb-email"))g("#sb-email").textContent=U.email;
   const spb=g("#sb-plan-badge");if(spb)spb.innerHTML=planBadgeHTML();
+  // Card "Seja VIP" no rodapé da sidebar — só pra quem ainda é free (layout do print)
+  const vipCard=g("#sb-vip-card");if(vipCard)vipCard.style.display=(U.plan==="free"||!U.plan)?"block":"none";
 }
 function toggleTheme(){
   var root = document.documentElement;
@@ -648,7 +650,7 @@ document.addEventListener('DOMContentLoaded', function(){updateThemeUI();});
 // ═══════════════════════════════════════════
 //  NAVIGATION
 // ═══════════════════════════════════════════
-const VIEWS=["home","jobs","logs","profile","auto","plans","pesquisa","tutorial","settings"];
+const VIEWS=["home","jobs","logs","profile","auto","plans","tutorial","settings","hist"];
 function sv(v,...args){
   // ── "auto" abre modal em vez da view ──
   if(v==="auto"){if(typeof openAutoModal==="function"){openAutoModal();return;}}
@@ -666,7 +668,7 @@ function sv(v,...args){
   if(v==="logs"){logSkip=0;logTotal=0;logDone=false;loadLogs();}
   if(v==="plans")renderPlanStatusCard();
   if(v==="home")renderHome();
-  if(v==="pesquisa"){initPesquisaView();}
+  if(v==="hist"){renderHist();}
   if(v==="tutorial"){loadTutorial();}
   if(v==="settings"){_populateSettingsView();}
   if(v!=="jobs")closeMobDetail();
@@ -2153,20 +2155,6 @@ function rlContinueAnyway(){
 function rlChooseWait(){
   g("#rl-warn-ov").classList.remove("show");
   try{localStorage.setItem(_rlSnoozeKey(),String(Date.now()+RL_SNOOZE_MS));}catch(e){}
-  g("#rl-falafina-ov").classList.add("show");
-}
-function rlGoToFalaFina(){
-  window.open("https://falafina.onrender.com","_blank","noopener,noreferrer");
-  g("#rl-falafina-ov").classList.remove("show");
-}
-
-// ═══════════════════════════════════════════
-//  FALAFINA — botão de destaque na barra lateral/menu
-// ═══════════════════════════════════════════
-function openFalaFinaIntro(){ g("#falafina-intro-ov").classList.add("show"); }
-function falafinaGoFromIntro(){
-  window.open("https://falafina.onrender.com","_blank","noopener,noreferrer");
-  g("#falafina-intro-ov").classList.remove("show");
 }
 
 // ═══════════════════════════════════════════
@@ -2377,17 +2365,6 @@ function loadProfile(){
   const wEl=g("#cfg-whatsapp");if(wEl)wEl.value=U.whatsapp||"";
   // ── Gmail Extra: mostrar seção conforme plano ──
   _renderProfileSenderSection();
-  // H2B Profile
-  const hb=U.h2bProfile||{};
-  const h2bArea=g("#cfg-h2b-area");if(h2bArea&&hb.preferredArea)h2bArea.value=hb.preferredArea;
-  const h2bAvail=g("#cfg-h2b-avail");if(h2bAvail&&hb.availability)h2bAvail.value=hb.availability;
-  if(hb.englishLevel){["none","basic","intermediate","advanced"].forEach(l=>{const b=g("#cfg-eng-"+l);if(b)b.classList.toggle("on",l===hb.englishLevel);});}
-  const cuhY=g("#cfg-usa-yes"),cuhN=g("#cfg-usa-no");
-  if(cuhY&&cuhN){cuhY.classList.toggle("on",!!hb.usaTrips);cuhN.classList.toggle("on",!hb.usaTrips);}
-  const ch2Y=g("#cfg-h2b-yes"),ch2N=g("#cfg-h2b-no");
-  if(ch2Y&&ch2N){ch2Y.classList.toggle("on",!!hb.experiencedH2B);ch2N.classList.toggle("on",!hb.experiencedH2B);}
-  const cchY=g("#cfg-cnh-yes"),cchN=g("#cfg-cnh-no");
-  if(cchY&&cchN){cchY.classList.toggle("on",!!hb.hasDriverLicense);cchN.classList.toggle("on",!hb.hasDriverLicense);}
   g("#p-name")&&(g("#p-name").textContent=U.name);g("#p-email")&&(g("#p-email").textContent=U.email);
   // Novos IDs do hero do perfil redesenhado
   const _pnl=g("#prof-name-lbl");if(_pnl)_pnl.textContent=U.name||"–";
@@ -2513,31 +2490,6 @@ async function saveProfile(){
   }
 }
 
-// ── Auxiliares da aba Perfil H2B ────────────────────────
-function cfgToggle(group,val){
-  const on=val==="yes";
-  const y=g("#cfg-"+group+"-yes"),n=g("#cfg-"+group+"-no");
-  if(y)y.classList.toggle("on",on);if(n)n.classList.toggle("on",!on);
-}
-function cfgEng(level){
-  ["none","basic","intermediate","advanced"].forEach(l=>{const b=g("#cfg-eng-"+l);if(b)b.classList.toggle("on",l===level);});
-}
-async function saveH2BProfile(){
-  const hb={
-    usaTrips:!!(g("#cfg-usa-yes")?.classList.contains("on")),
-    experiencedH2B:!!(g("#cfg-h2b-yes")?.classList.contains("on")),
-    h2bSeasons:parseInt(g("#cfg-h2b-seasons")?.value||1),
-    englishLevel:["none","basic","intermediate","advanced"].find(l=>g("#cfg-eng-"+l)?.classList.contains("on"))||"basic",
-    preferredArea:g("#cfg-h2b-area")?.value||"landscape",
-    hasDriverLicense:!!(g("#cfg-cnh-yes")?.classList.contains("on")),
-    availability:g("#cfg-h2b-avail")?.value||"immediate",
-  };
-  try{
-    const r=await fetch("/api/settings",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({h2bProfile:hb})});
-    const d=await r.json();
-    if(d.ok){toast("Perfil H2B salvo ✓","g");U.h2bProfile=hb;}else throw new Error(d.error);
-  }catch(e){toast("Erro: "+e.message,"r");}
-}
 // ═══════════════════════════════════════════
 //  SISTEMA DE TEMPLATES & PERFIS
 // ═══════════════════════════════════════════
@@ -3648,6 +3600,61 @@ async function doResetAuto(ovEl){
 }
 
 // ═══════════════════════════════════════════
+//  ENVIADAS — lista + Reset (mesmo endpoint/motor do reset acima:
+//  /api/history/clear via doClearHist, nunca uma 2ª lógica)
+// ═══════════════════════════════════════════
+let _histTab="all";
+function setHistTab(tab){
+  _histTab=tab;
+  ["all","manual","auto"].forEach(t=>{const b=g("#ht-"+t);if(b)b.classList.toggle("on",t===tab);});
+  renderHist();
+}
+function confirmClearHist(){
+  const n=HIST.length;
+  const ov=document.createElement("div");
+  ov.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)";
+  ov.innerHTML=`<div style="background:#fff;border-radius:18px;padding:24px;max-width:360px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25);animation:fadeScale .18s ease">
+    <div style="font-size:32px;text-align:center;margin-bottom:8px">🔄</div>
+    <div style="font-size:17px;font-weight:800;text-align:center;margin-bottom:6px;color:#0f172a">Resetar candidaturas enviadas?</div>
+    <div style="font-size:13px;color:#475569;text-align:center;margin-bottom:10px;line-height:1.6">${n?`Apaga <strong>${n} candidatura${n!==1?"s":""}</strong> do seu histórico e`:`Apaga o histórico e`} libera <strong>todas as vagas</strong> pra você se candidatar de novo.</div>
+    <div style="background:#fef9c3;border:1.5px solid #fde047;border-radius:10px;padding:10px 12px;font-size:12px;color:#713f12;margin-bottom:16px;display:flex;align-items:flex-start;gap:7px"><i class="ti ti-alert-triangle" style="flex-shrink:0;margin-top:1px"></i><span>Use quando quiser recomeçar do zero (ex.: nova temporada). Não dá pra desfazer.</span></div>
+    <div style="display:flex;gap:8px">
+      <button onclick="this.closest('div[style]').remove()" class="btn btn-secondary" style="flex:1">Cancelar</button>
+      <button onclick="doClearHist(this.closest('div[style]')).then(()=>renderHist())" class="btn btn-danger" style="flex:2"><i class="ti ti-refresh"></i> Sim, resetar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener("click",e=>{if(e.target===ov)ov.remove();});
+}
+function renderHist(){
+  const box=g("#hist-list");if(!box)return;
+  const q=(g("#hist-search")?.value||"").trim().toLowerCase();
+  let items=HIST.filter(h=>_histTab==="all"||h.type===_histTab);
+  if(q)items=items.filter(h=>(h.company||"").toLowerCase().includes(q)||(h.job||"").toLowerCase().includes(q)||(h.to||"").toLowerCase().includes(q));
+  const sum=g("#hist-summary");
+  if(sum)sum.textContent=items.length?`${items.length} candidatura${items.length!==1?"s":""}`+(q||_histTab!=="all"?" encontrada"+(items.length!==1?"s":""):"")+".":"";
+  if(!items.length){
+    box.innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 24px;gap:12px;text-align:center;color:var(--t3)">
+      <i class="ti ti-send" style="font-size:40px;opacity:.35"></i>
+      <div style="font-size:14px;font-weight:700;color:var(--text)">Nenhuma candidatura ainda</div>
+      <div style="font-size:12.5px;line-height:1.5">Suas candidaturas enviadas (manuais e automáticas) aparecem aqui.</div>
+    </div>`;
+    return;
+  }
+  box.innerHTML=items.map(h=>{
+    const isAuto=h.type==="auto";
+    return `<div style="display:flex;align-items:center;gap:11px;padding:11px 4px;border-bottom:1px solid var(--border)">
+      <div style="width:36px;height:36px;border-radius:10px;background:${isAuto?"var(--purplel,#ede9fe)":"var(--bluel,#dbeafe)"};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${isAuto?"🤖":"✈️"}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(h.job||"–")}</div>
+        <div style="font-size:11.5px;color:var(--t3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(h.company||"")}${h.to?" · "+esc(h.to):""}</div>
+      </div>
+      <div style="font-size:10.5px;color:var(--t3);white-space:nowrap;flex-shrink:0">${esc(h.date||"")}</div>
+    </div>`;
+  }).join("");
+}
+
+// ═══════════════════════════════════════════
 //  STATS
 // ═══════════════════════════════════════════
 async function loadStats(){
@@ -3886,8 +3893,8 @@ function buildAutoDocSlots(){
 
 // ── Planilhas DINÂMICAS: injeta as extras publicadas (ex.: H-2A, Julho) nos
 // seletores Manual e Automático, mantendo as fixas. Faz QUALQUER planilha nova
-// aparecer sozinha — basta publicar/upar. selectSource/setPesqSrc já funcionam
-// genéricos com qualquer chave.
+// aparecer sozinha — basta publicar/upar. selectSource já funciona
+// genérico com qualquer chave.
 // v90 (reestruturação parte 3): mapa chave→nome/emoji de TODAS as planilhas
 // (alimentado pelo /api/sheets-list) — o contador de vagas usa isso pra
 // mostrar o nome CERTO da planilha ativa (antes era um ternário fixo que
@@ -3904,6 +3911,10 @@ async function loadDynamicSheets(){
     const d=await r.json();
     if(!d.ok||!Array.isArray(d.sheets))return;
     d.sheets.forEach(s=>{_sheetNameMap[s.key]={name:s.name,emoji:s.emoji};});
+    // v-home: total de vagas disponíveis pro card de stats (soma de todas as planilhas)
+    window._sheetsTotalCount=d.sheets.reduce((a,s)=>a+(s.count||0),0);
+    const sjEl=document.getElementById('home-stat-jobs');
+    if(sjEl)sjEl.textContent=window._sheetsTotalCount.toLocaleString('pt-BR');
     // Contagem PESSOAL nos botões fixos do Automático (jan/jul/h2a):
     // mostra o que AINDA dá pra enviar (desconta o que o usuário já enviou),
     // em vez do total bruto da planilha que confundia ("já enviei 2.200, por
@@ -3944,18 +3955,6 @@ async function loadDynamicSheets(){
         sb.appendChild(btn);
       });
     }
-    // MANUAL — chips (insere após a chip Jul 2025)
-    const julChip=document.querySelector('.pesq-src-chip[data-src="jul2025"]');
-    if(julChip){
-      extras.slice().reverse().forEach(s=>{
-        if(document.querySelector(`.pesq-src-chip[data-src="${s.key}"]`))return;
-        const chip=document.createElement('button');
-        chip.className='pesq-src-chip'; chip.dataset.src=s.key;
-        chip.setAttribute('onclick',`setPesqSrc('${s.key}')`);
-        chip.innerHTML=`${s.emoji||'📋'} ${s.name} <span style="font-size:9px;opacity:.85;font-weight:800">${s.visa}</span>`;
-        julChip.insertAdjacentElement('afterend',chip);
-      });
-    }
     // MANUAL — aba principal (.stabs, onde o usuário navega vagas de verdade).
     const stabsRow=document.getElementById('stabs-row');
     if(stabsRow){
@@ -3987,8 +3986,6 @@ async function loadDynamicSheets(){
       const _mkFirst=(el)=>{if(!prontaPraUso)return;if(el&&el.parentElement&&el.parentElement.firstElementChild!==el)el.parentElement.insertBefore(el,el.parentElement.firstElementChild);};
       const bAuto=document.querySelector(`#source-btns [data-src="${latest.key}"]`);
       if(bAuto){bAuto.classList.add(selo);_mkFirst(bAuto);}
-      const chip=document.querySelector(`.pesq-src-chip[data-src="${latest.key}"]`);
-      if(chip){chip.classList.add(selo);_mkFirst(chip);}
       const stab=document.getElementById('stab-'+latest.key)||document.querySelector(`#stabs-row [data-src="${latest.key}"]`);
       if(stab){stab.classList.add(selo);stab.style.marginTop='10px';_mkFirst(stab);}
     }
@@ -5498,11 +5495,36 @@ async function renderPendingOrderCard(){
     </div>
   </div>`;
 }
+// ══ ATIVIDADE RECENTE — últimos envios reais do HIST (nunca inventa: sem histórico, mostra o vazio honesto) ══
+function renderHomeActivity(){
+  const box=g("#home-activity-list");if(!box)return;
+  const items=(HIST||[]).slice(0,5);
+  if(!items.length){box.innerHTML=`<div style="font-size:12px;color:var(--t3);padding:10px 2px">Suas próximas candidaturas e novidades aparecem aqui.</div>`;return;}
+  box.innerHTML=items.map((h,i)=>{
+    const isAuto=h.type==="auto";
+    const bb=i===items.length-1?"":"border-bottom:1px solid var(--border)";
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 2px;${bb}">
+      <div style="width:32px;height:32px;border-radius:9px;background:${isAuto?"var(--purplel,#ede9fe)":"var(--greenl,#dcfce7)"};display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">${isAuto?"🤖":"✈️"}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(h.job||"–")}${h.company?" · "+esc(h.company):""}</div>
+        <div style="font-size:10.5px;color:var(--t3);margin-top:1px">${esc(h.date||"")}</div>
+      </div>
+    </div>`;
+  }).join("");
+}
 function renderHome(){
   _showWelcome();
   try{renderHeroStatus();}catch(e){}
+  try{renderHomeActivity();}catch(e){}
   try{renderNextStep();}catch(e){}
   try{renderPendingOrderCard();}catch(e){}
+  // Stats — Vagas Disponíveis (cache de loadDynamicSheets) + Empresas Contatadas (HIST únicas)
+  const sj=g("#home-stat-jobs");
+  if(sj)sj.textContent=typeof window._sheetsTotalCount==="number"?window._sheetsTotalCount.toLocaleString("pt-BR"):"–";
+  const sc=g("#home-stat-companies");
+  if(sc){const uniq=new Set(HIST.map(h=>(h.company||"").trim().toLowerCase()).filter(Boolean));sc.textContent=uniq.size.toLocaleString("pt-BR");}
+  const st2=g("#home-stat-total");if(st2)st2.textContent=(U.totalSent||HIST.length||0).toLocaleString("pt-BR");
+  const sa2=g("#home-stat-auto");if(sa2)sa2.textContent=String(U.todaySentAuto??0);
 
   // ── Banner VIP expirando — DESATIVADO a pedido do Andrio (28/06/2026) ──
   // Estava fixo no topo (position:fixed) cobrindo o header → "atrapalhando".
@@ -5698,23 +5720,6 @@ function selectSound(key){
 // ══════════════════════════════════════════════════════════
 
 // Hook: quando notificações são ativadas/desativadas
-async function toggleNotifications() {
-  if (!_notifEnabled) {
-    if ("Notification" in window && Notification.permission !== "granted") {
-      const p = await Notification.requestPermission().catch(() => "denied");
-      if (p !== "granted") { toast("Permissão negada. Ative nas configurações do navegador.", "r"); _renderNotifToggle(); return; }
-    }
-    _notifEnabled = true; try { localStorage.setItem("h2b-notif", "1"); } catch {}
-    playPlaneSound(); toast("🛫 Notificações ativadas!", "g");
-    try { new Notification("✅ H2BApply", { body: "Notificações ativadas! Você será avisado de diamantes, missões e novidades.", icon: "/icon-192.png", tag: "h2b-test" }); } catch {}
-    dismissNotifBanner();
-  } else {
-    _notifEnabled = false; try { localStorage.setItem("h2b-notif", "0"); } catch {}
-    toast("Notificações desativadas", "r");
-  }
-  _renderNotifToggle();
-}
-
 // ══════════════════════════════════════════════════════════
 //  AUTO-REQUEST DE NOTIFICAÇÃO NO PRIMEIRO LOGIN
 //  Solicita permissão automaticamente ao entrar pela 1ª vez,
@@ -7261,584 +7266,13 @@ console.debug("[v14+] Onboarding, FAQ, Preview Auto, Follow-up, Score carregados
   console.debug("[v15] Social + Send Validator carregados");
 })();
 
-// ═══════════════════════════════════════════════════════════
-// PESQUISAR VAGAS — Motor de busca unificado
-// Fontes: Seasonal (JOBS+API), Jan2026 (compact.json), Jul2025 (compact.json), Hist (HIST)
-// ═══════════════════════════════════════════════════════════
-(function(){
-  "use strict";
-
-  // ── Estado interno ──────────────────────────────────────
-  let _pesqSrc = "all";          // filtro de fonte ativo
-  let _pesqQuery = "";            // última query
-  let _pesqTimer = null;          // debounce timer
-  let _pesqInited = false;        // flag de init
-  let _jan2026 = null;            // cache do JSON
-  let _jul2025 = null;            // cache do JSON
-  let _pesqLoading = false;
-
-  // ── Helpers ──────────────────────────────────────────────
-  function _esc2(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
-
-  function _highlight(text, query){
-    if(!query||!text) return _esc2(text);
-    const safe = _esc2(text);
-    try {
-      const rx = new RegExp("("+query.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+")","gi");
-      return safe.replace(rx,'<mark class="pesq-highlight">$1</mark>');
-    } catch { return safe; }
-  }
-
-  // ── Carregamento dos JSONs compactos ──────────────────────
-  async function _loadJan2026(){
-    if(_jan2026) return _jan2026;
-    try {
-      const r = await fetch("/jan2026_compact.json");
-      if(r.ok) _jan2026 = await r.json();
-    } catch(e){ console.warn("[pesq] jan2026 load error",e); _jan2026 = []; }
-    return _jan2026 || [];
-  }
-
-  async function _loadJul2025(){
-    if(_jul2025) return _jul2025;
-    try {
-      const r = await fetch("/jul2025_compact.json");
-      if(r.ok) _jul2025 = await r.json();
-    } catch(e){ console.warn("[pesq] jul2025 load error",e); _jul2025 = []; }
-    return _jul2025 || [];
-  }
-
-  // Busca na API seasonal com query — retorna até 80 resultados
-  async function _searchSeasonal(q){
-    try {
-      const p = new URLSearchParams({skip:0,top:80,q});
-      const r = await fetch("/api/jobs?"+p,{credentials:"include"});
-      if(!r.ok) return [];
-      const d = await r.json();
-      return (d.jobs||[]).map(j=>({
-        _src:"seasonal",
-        _id: j.id,
-        company: j.company||"",
-        title: j.title||"",
-        state: j.state||"",
-        city: j.city||"",
-        email: j.email||"",
-        visa: j.visa||"",
-        wage: j.wage||"",
-        start: j.start||"",
-        end: j.end||"",
-        workers: j.workers||0,
-        caseNum: j.caseNumber||j.id||"",
-        desc: j.desc||"",
-        _jobRef: j,
-      }));
-    } catch(e){ console.warn("[pesq] seasonal API error",e); return []; }
-  }
-
-  // Busca nos JSONs compactos (jan2026 e jul2025)
-  // Campos disponíveis: c (case), n (company), s (state), d (date), st (status)
-  function _searchCompact(items, q, srcName){
-    const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
-    return items.filter(item=>{
-      const hay = [item.c,item.n,item.s,item.d,item.st].join(" ").toLowerCase();
-      return terms.every(t=>hay.includes(t));
-    }).map(item=>({
-      _src: srcName,
-      _id: item.c,
-      company: item.n||"",
-      title: "",
-      state: item.s||"",
-      city: "",
-      email: "",
-      visa: "H-2B",
-      wage: "",
-      start: item.d||"",
-      end: "",
-      workers: 0,
-      caseNum: item.c||"",
-      desc: item.st||"",
-      _raw: item,
-    }));
-  }
-
-  // Busca no histórico de candidaturas (HIST)
-  function _searchHist(q){
-    if(typeof HIST === "undefined" || !HIST.length) return [];
-    const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
-    return HIST.filter(h=>{
-      const snap = h.jobSnapshot||{};
-      const hay = [h.job,h.company,h.to,snap.company,snap.title,snap.state,snap.city,snap.visa,snap.sourceEmail,h.appId].join(" ").toLowerCase();
-      return terms.every(t=>hay.includes(t));
-    }).map(h=>({
-      _src:"hist",
-      _id: h.appId||h.jobId||"",
-      company: h.company||(h.jobSnapshot?.company)||"",
-      title: h.job||(h.jobSnapshot?.title)||"",
-      state: h.jobSnapshot?.state||"",
-      city: h.jobSnapshot?.city||"",
-      email: h.to||h.jobSnapshot?.sourceEmail||"",
-      visa: h.jobSnapshot?.visa||"",
-      wage: h.jobSnapshot?.wage||"",
-      start: h.jobSnapshot?.start||"",
-      end: h.jobSnapshot?.end||"",
-      workers: 0,
-      caseNum: "",
-      desc: "Enviado: "+h.date,
-      _histRef: h,
-    }));
-  }
-
-  // ── Renderização de cards ─────────────────────────────────
-  const SRC_LABELS = {
-    seasonal: { label:"Seasonal", cls:"pesq-src-seasonal" },
-    jan2026:  { label:"Jan 2026", cls:"pesq-src-jan2026"  },
-    jul2025:  { label:"Jul 2025", cls:"pesq-src-jul2025"  },
-    hist:     { label:"Enviado",  cls:"pesq-src-hist"     },
-  };
-
-  function _mkCard(item, q){
-    const sl = SRC_LABELS[item._src]||{label:item._src,cls:""};
-    // v27: a vaga se identifica sozinha — mesmo empregador já contatado/na fila
-    const _es = (typeof empregadorStatus==="function") ? empregadorStatus(item.email) : null;
-    const _esBadge = _es==="sent" ? '<span class="pesq-src-badge" style="background:var(--greenl);color:var(--green);border:1px solid var(--greenb)">✅ Já enviada</span>'
-                   : _es==="queued" ? '<span class="pesq-src-badge" style="background:rgba(124,58,237,.1);color:#7c3aed;border:1px solid rgba(124,58,237,.3)">🤖 Na fila do robô</span>' : "";
-    const badgeHtml = `<span class="pesq-src-badge ${sl.cls}">${sl.label}</span>${_esBadge}`;
-
-    const pills = [];
-    if(item.visa) pills.push(`<span class="pesq-result-pill" style="background:${item.visa.includes("H-2A")?"var(--amberl)":"var(--bluel)"};border-color:${item.visa.includes("H-2A")?"var(--amberb)":"var(--blueb)"};color:${item.visa.includes("H-2A")?"var(--amber)":"var(--blue)"}">${_esc2(item.visa)}</span>`);
-    if(item.state) pills.push(`<span class="pesq-result-pill" style="background:var(--sf2);border-color:var(--border);color:var(--t2)"><i class="ti ti-map-pin" style="font-size:9px"></i>${_esc2(item.state)}</span>`);
-    if(item.wage) pills.push(`<span class="pesq-result-pill" style="background:var(--greenl);border-color:var(--greenb);color:var(--green)">${_esc2(item.wage)}</span>`);
-    if(item.start) pills.push(`<span class="pesq-result-pill" style="background:var(--sf2);border-color:var(--border);color:var(--t3)">📅 ${_esc2(item.start)}</span>`);
-    if(item.caseNum) pills.push(`<span class="pesq-result-pill" style="background:var(--sf2);border-color:var(--border);color:var(--t3);font-size:9px">${_esc2(item.caseNum)}</span>`);
-    if(item.email) pills.push(`<span class="pesq-result-pill" style="background:var(--bluel);border-color:var(--blueb);color:var(--blue);font-size:9px;word-break:break-all">✉ ${_esc2(item.email)}</span>`);
-    if(item.desc) pills.push(`<span class="pesq-result-pill" style="background:var(--sf2);border-color:var(--border);color:var(--t3)">${_esc2(item.desc.slice(0,40))}</span>`);
-
-    const coDisplay = item.company || "—";
-    const titleDisplay = item.title || (item.caseNum ? item.caseNum : "—");
-
-    // ══ v16: clique sempre abre modal de detalhe completo ══
-    // Usa registry global para evitar escaping de JSON em atributos HTML
-    if(!window._pesqItemRegistry) window._pesqItemRegistry = [];
-    const regIdx = window._pesqItemRegistry.length;
-    window._pesqItemRegistry.push(item);
-
-    return `<div class="pesq-result-card" onclick="openPesqJobModalByIdx(${regIdx})" title="${_esc2(coDisplay)} — clique para ver detalhes completos">
-      ${badgeHtml}
-      <div class="pesq-result-title">${_highlight(titleDisplay||coDisplay,q)}</div>
-      <div class="pesq-result-co">${_highlight(coDisplay,q)}</div>
-      <div class="pesq-result-meta">${pills.join("")}</div>
-      <div style="margin-top:8px;font-size:11px;color:var(--blue);font-weight:700;display:flex;align-items:center;gap:4px"><i class="ti ti-eye" style="font-size:12px"></i> Ver detalhes completos</div>
-    </div>`;
-  }
-
-  // ── Executa busca e renderiza ─────────────────────────────
-  async function _runSearch(q){
-    if(!q||q.length<2){
-      _showEmptyState();
-      return;
-    }
-
-    _pesqLoading = true;
-    const list = document.getElementById("pesq-list");
-    const stats = document.getElementById("pesq-stats");
-    const statsText = document.getElementById("pesq-stats-text");
-    const clearBtn = document.getElementById("pesq-clear-btn");
-
-    // Loading skeleton
-    if(list) list.innerHTML = '<div style="padding:32px;text-align:center"><span class="spin"></span><div style="margin-top:10px;font-size:13px;color:var(--t3)">Buscando em todas as fontes…</div></div>';
-    if(stats) stats.style.display="none";
-    if(clearBtn) clearBtn.style.display="flex";
-
-    // Prepara promises conforme filtro de fonte
-    let results = [];
-    const promises = [];
-
-    if(_pesqSrc==="all"||_pesqSrc==="seasonal") promises.push(_searchSeasonal(q).then(r=>results.push(...r)));
-    if(_pesqSrc==="all"||_pesqSrc==="jan2026") promises.push(_loadJan2026().then(d=>{ results.push(..._searchCompact(d,q,"jan2026")); }));
-    if(_pesqSrc==="all"||_pesqSrc==="jul2025") promises.push(_loadJul2025().then(d=>{ results.push(..._searchCompact(d,q,"jul2025")); }));
-    if(_pesqSrc==="all"||_pesqSrc==="hist")   results.push(..._searchHist(q)); // síncrono
-
-    await Promise.allSettled(promises);
-
-    // Deduplica por _id+_src
-    const seen = new Set();
-    results = results.filter(r=>{ const k=r._src+":"+r._id; if(seen.has(k))return false; seen.add(k); return true; });
-
-    // Ordena: seasonal primeiro, depois jan2026, jul2025, hist
-    const order = {seasonal:0,jan2026:1,jul2025:2,hist:3};
-    results.sort((a,b)=>(order[a._src]||9)-(order[b._src]||9));
-
-    _pesqLoading = false;
-
-    if(!list) return;
-
-    if(!results.length){
-      list.innerHTML = `<div class="pesq-no-results">
-        <div style="font-size:40px">🔍</div>
-        <div style="font-size:15px;font-weight:800;color:var(--text)">Nenhum resultado encontrado</div>
-        <div style="font-size:13px;color:var(--t3);max-width:280px;line-height:1.6">Tente buscar por empresa, e-mail, ETA case number ou estado em inglês.</div>
-      </div>`;
-      if(stats) stats.style.display="none";
-      return;
-    }
-
-    // Renderiza
-    list.innerHTML = results.map(r=>_mkCard(r,q)).join("");
-
-    // Stats
-    if(stats && statsText){
-      const counts = {};
-      results.forEach(r=>{ counts[r._src]=(counts[r._src]||0)+1; });
-      const parts = [];
-      if(counts.seasonal) parts.push(`${counts.seasonal} Seasonal`);
-      if(counts.jan2026) parts.push(`${counts.jan2026} Jan 2026`);
-      if(counts.jul2025) parts.push(`${counts.jul2025} Jul 2025`);
-      if(counts.hist) parts.push(`${counts.hist} Enviadas`);
-      statsText.textContent = `${results.length} resultado${results.length!==1?"s":""} encontrado${results.length!==1?"s":""} — ${parts.join(" · ")}`;
-      stats.style.display="flex";
-    }
-  }
-
-  function _showEmptyState(){
-    const list = document.getElementById("pesq-list");
-    const stats = document.getElementById("pesq-stats");
-    const clearBtn = document.getElementById("pesq-clear-btn");
-    const emptyState = document.getElementById("pesq-empty-state");
-    if(stats) stats.style.display="none";
-    if(clearBtn) clearBtn.style.display="none";
-    if(list){
-      // Recoloca o empty state original ou um novo
-      list.innerHTML = "";
-      if(emptyState){
-        emptyState.style.display="flex";
-        list.appendChild(emptyState);
-      } else {
-        list.innerHTML = `<div id="pesq-empty-state" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 24px;gap:16px;text-align:center">
-          <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,rgba(59,130,246,.12),rgba(139,92,246,.1));display:flex;align-items:center;justify-content:center;border:2px solid rgba(99,102,241,.15)">
-            <i class="ti ti-search" style="font-size:28px;color:var(--blue)"></i>
-          </div>
-          <div>
-            <div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:6px">Pesquise qualquer coisa</div>
-            <div style="font-size:13px;color:var(--t3);line-height:1.6;max-width:300px">Digite o nome da empresa, um e-mail recebido, o ETA case number, o cargo ou o estado para encontrar todas as vagas correspondentes</div>
-          </div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:320px">
-            <button onclick="setPesqExample('cerminara')" style="background:var(--sf3);border:1px solid var(--border2);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--t2);cursor:pointer;font-family:inherit">cerminara</button>
-            <button onclick="setPesqExample('H-400-26001')" style="background:var(--sf3);border:1px solid var(--border2);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--t2);cursor:pointer;font-family:inherit">H-400-26001</button>
-            <button onclick="setPesqExample('FLORIDA')" style="background:var(--sf3);border:1px solid var(--border2);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--t2);cursor:pointer;font-family:inherit">FLORIDA</button>
-            <button onclick="setPesqExample('landscape')" style="background:var(--sf3);border:1px solid var(--border2);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--t2);cursor:pointer;font-family:inherit">landscape</button>
-          </div>
-        </div>`;
-      }
-    }
-  }
-
-  // ── API pública (global) ──────────────────────────────────
-  window.initPesquisaView = function(){
-    if(!_pesqInited){
-      _pesqInited = true;
-      // Pré-carrega JSONs em background para buscas rápidas
-      _loadJan2026();
-      _loadJul2025();
-    }
-    // Foca no input
-    setTimeout(()=>{
-      const inp = document.getElementById("pesq-input");
-      if(inp) inp.focus();
-      // Se havia query pendente, executa
-      const q = inp ? inp.value.trim() : "";
-      if(q.length>=2) _runSearch(q);
-    }, 80);
-  };
-
-  window.doPesquisa = function(){
-    clearTimeout(_pesqTimer);
-    const inp = document.getElementById("pesq-input");
-    const q = (inp ? inp.value : "").trim();
-    _pesqQuery = q;
-    if(q.length<2){ _showEmptyState(); return; }
-    _pesqTimer = setTimeout(()=>_runSearch(q), 280);
-  };
-
-  window.doPesquisaBtn = function(){
-    clearTimeout(_pesqTimer);
-    const inp = document.getElementById("pesq-input");
-    const q = (inp ? inp.value : "").trim();
-    _pesqQuery = q;
-    if(q.length<2){ _showEmptyState(); return; }
-    _runSearch(q);
-  };
-
-  window.setPesqSrc = function(src){
-    _pesqSrc = src;
-    // Atualiza chips visuais
-    document.querySelectorAll(".pesq-src-chip").forEach(btn=>{
-      btn.classList.toggle("active", btn.dataset.src===src);
-    });
-    // Re-executa busca se há query
-    const inp = document.getElementById("pesq-input");
-    const q = (inp ? inp.value : "").trim();
-    if(q.length>=2) _runSearch(q);
-  };
-
-  window.clearPesquisa = function(){
-    const inp = document.getElementById("pesq-input");
-    if(inp){ inp.value=""; inp.focus(); }
-    _pesqQuery = "";
-    _pesqSrc = "all";
-    document.querySelectorAll(".pesq-src-chip").forEach(btn=>{
-      btn.classList.toggle("active", btn.dataset.src==="all");
-    });
-    _showEmptyState();
-    const clearBtn = document.getElementById("pesq-clear-btn");
-    if(clearBtn) clearBtn.style.display="none";
-  };
-
-  window.setPesqExample = function(term){
-    const inp = document.getElementById("pesq-input");
-    if(inp){ inp.value=term; inp.focus(); }
-    _pesqQuery = term;
-    _runSearch(term);
-  };
-
-  // ── Função para abrir pesquisa de uma resposta ────────────
-  // Chamada quando usuário clica "Abrir Vaga" dentro de uma resposta
-  window.openPesquisaWith = function(query){
-    sv("pesquisa");
-    setTimeout(()=>{
-      const inp = document.getElementById("pesq-input");
-      if(inp){ inp.value=query; inp.dispatchEvent(new Event("input")); }
-    }, 120);
-  };
-
-  console.debug("[pesquisa] Motor de busca carregado");
-})();
-
-// ══════════════════════════════════════════════════════════
-//  v16: MODAL DE DETALHE COMPLETO DA VAGA (Pesquisa)
-//  Abre ao clicar em qualquer card de resultado de busca
-//  Funciona para todas as fontes: seasonal, jan2026, jul2025, hist
-// ══════════════════════════════════════════════════════════
-(function(){
-  "use strict";
-
-  function _e(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
-
-  function _infoRow(label, val, opts){
-    if(!val && val!==0) return "";
-    const style = opts?.mono ? "font-family:monospace;font-size:12px" : "";
-    const fullRow = opts?.full ? "grid-column:1/-1" : "";
-    return `<div class="info-box" style="${fullRow}"><div class="info-lbl">${label}</div><div class="info-val" style="${style}">${_e(val)}</div></div>`;
-  }
-
-  function _buildModalHTML(item){
-    const SRC_META = {
-      seasonal: { label:"Vagas ao Vivo (API)", icon:"ti-world", color:"var(--blue)" },
-      jan2026:  { label:"Janeiro 2026 (H-2B)", icon:"ti-sun", color:"#d97706" },
-      jul2025:  { label:"Julho 2025 (H-2B)",   icon:"ti-snowflake", color:"#0891b2" },
-      hist:     { label:"Candidatura Enviada",  icon:"ti-send", color:"var(--green)" },
-    };
-    const meta = SRC_META[item._src] || { label: item._src, icon:"ti-search", color:"var(--blue)" };
-    const visa = item.visa||"";
-    const visaClass = visa.includes("H-2A") ? "ta" : "tb";
-    const visaLabel = visa.includes("H-2A") ? "🌾 H-2A Agrícola" : visa ? "🔧 H-2B Não-Agrícola" : "";
-    const isActive = item.active !== false;
-    const dolUrl = item.url || (item.caseNum && item.caseNum.startsWith("H-") ? `https://seasonaljobs.dol.gov/jobs/${item.caseNum}` : null);
-
-    // ── Card completo — igual ao Manual ──────────────────────────────
-    const infoGrid = `
-      ${item.wage && item.wage!=="–" ? `<div class="info-box"><div class="info-lbl">💰 Salário</div><div class="info-val" style="color:var(--green);font-weight:800">${_e(item.wage)}</div></div>` : ""}
-      ${(item.city||item.state) ? `<div class="info-box"><div class="info-lbl">📍 Local</div><div class="info-val">${_e([item.city,item.state].filter(Boolean).join(", "))}</div></div>` : ""}
-      ${item.workers ? `<div class="info-box"><div class="info-lbl">👥 Vagas</div><div class="info-val">${_e(String(item.workers))} posição(ões)</div></div>` : ""}
-      ${(item.start || item.end) && (item.start!=="–" || item.end!=="–") ? `<div class="info-box"><div class="info-lbl">📅 Período</div><div class="info-val" style="font-size:12px">${_e(item.start||"?")} → ${_e(item.end||"?")}</div></div>` : ""}
-      ${item.phone ? `<div class="info-box"><div class="info-lbl">📞 Telefone</div><div class="info-val"><a href="tel:${_e(item.phone)}" style="color:var(--blue);font-weight:700">${_e(item.phone)}</a></div></div>` : ""}
-      ${item.email ? `<div class="info-box" style="grid-column:1/-1"><div class="info-lbl">📧 E-mail da vaga</div><div class="info-val" style="font-size:11px;word-break:break-all"><a href="mailto:${_e(item.email)}" style="color:var(--green);font-weight:700">${_e(item.email)}</a></div></div>` : ""}
-      ${item.soc||item.socTitle ? `<div class="info-box"><div class="info-lbl">🏷️ Classificação SOC</div><div class="info-val" style="font-size:11px">${_e((item.soc||"")+" "+(item.socTitle||"")).trim()}</div></div>` : ""}
-      ${item.caseNum ? `<div class="info-box"><div class="info-lbl">🔑 ETA Case #</div><div class="info-val" style="font-size:11px;font-family:monospace">${_e(item.caseNum)}</div></div>` : ""}
-      ${dolUrl ? `<div class="info-box" style="grid-column:1/-1"><div class="info-lbl">🔗 Vaga oficial DOL</div><div class="info-val"><a href="${_e(dolUrl)}" target="_blank" rel="noopener noreferrer" style="color:#818cf8;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px"><i class="ti ti-external-link" style="font-size:12px"></i>${_e(dolUrl.replace("https://",""))}</a></div></div>` : ""}
-      ${item.desc && !item.desc.includes("Status DOL") ? `<div class="info-box" style="grid-column:1/-1"><div class="info-lbl">📋 Funções da vaga</div><div class="info-val" style="font-size:11px;line-height:1.6;white-space:pre-wrap;background:rgba(0,0,0,.04);border-radius:8px;padding:8px;margin-top:4px">${_e(item.desc)}</div></div>` : ""}
-    `;
-
-    // Botões de ação
-    const hasEmail = !!(item.email);
-    let actions = "";
-    if(hasEmail){
-      actions += `<button class="btn btn-primary" style="flex:2" onclick="_pesqModalApply()"><i class="ti ti-send"></i> Candidatar-se</button>`;
-    }
-    if(item._src === "seasonal" && item._id){
-      actions += `<button class="btn btn-secondary" onclick="_pesqModalViewInJobs()"><i class="ti ti-layout-list"></i> Ver em Vagas</button>`;
-    }
-    if(!hasEmail && item.caseNum){
-      actions += `<button class="btn btn-secondary" onclick="window.open('${dolUrl||'https://seasonaljobs.dol.gov'}','_blank')"><i class="ti ti-external-link"></i> Ver no DOL</button>`;
-    }
-
-    return `
-      <!-- Cabeçalho da fonte + badges -->
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-        <span style="display:inline-flex;align-items:center;gap:5px;background:rgba(0,0,0,.05);border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;color:${meta.color}">
-          <i class="ti ${meta.icon}" style="font-size:11px"></i>${_e(meta.label)}
-        </span>
-        <span class="tag ${visaClass}" style="font-size:10px">${visaLabel||visa}</span>
-        <span class="tag ${isActive?"tg":"tr"}" style="font-size:10px">${isActive?"✅ Ativa":"❌ Inativa"}</span>
-        ${item._isSent ? '<span class="tag tp" style="font-size:10px">✓ Enviada</span>' : ""}
-      </div>
-      <!-- Título + empresa -->
-      <div style="font-size:20px;font-weight:900;color:var(--text);line-height:1.2;margin-bottom:4px">${_e(item.title||item.company||item.caseNum||"—")}</div>
-      ${item.company ? `<div style="font-size:13px;color:var(--t2);margin-bottom:12px;display:flex;align-items:center;gap:5px"><i class="ti ti-building" style="font-size:12px;color:var(--t3)"></i>${_e(item.company)}</div>` : '<div style="margin-bottom:12px"></div>'}
-      <!-- Grid de informações completo -->
-      <div class="info-grid">${infoGrid}</div>
-      <!-- Ações -->
-      ${actions ? `<div class="jd-acts" style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px">${actions}</div>` : ""}
-    `;
-  }
-
-  // ── Modal singleton ──
-  function _getModal(){
-    let ov = document.getElementById("pesq-job-modal-ov");
-    if(!ov){
-      ov = document.createElement("div");
-      ov.id = "pesq-job-modal-ov";
-      ov.className = "overlay";
-      ov.style.zIndex = "350";
-      ov.onclick = (ev)=>{ if(ev.target===ov) closePesqJobModal(); };
-      ov.innerHTML = `
-        <div class="modal" id="pesq-job-modal" style="max-width:540px;position:relative">
-          <div class="mhandle"></div>
-          <div class="mhdr" style="padding-bottom:10px">
-            <div style="flex:1"></div>
-            <button aria-label="Fechar" title="Fechar" class="mx" onclick="closePesqJobModal()"><i class="ti ti-x"></i></button>
-          </div>
-          <div class="mbody" id="pesq-job-modal-body" style="padding-top:0"></div>
-        </div>`;
-      document.body.appendChild(ov);
-    }
-    return ov;
-  }
-
-  // Referência ao item atual (para ações)
-  let _currentPesqItem = null;
-
-  window.openPesqJobModalByIdx = function(idx){
-    _currentPesqItem = (window._pesqItemRegistry||[])[idx];
-    if(!_currentPesqItem){ console.warn("[pesq-modal] item not found idx=",idx); return; }
-    openPesqJobModal(_currentPesqItem);
-  };
-
-  window.openPesqJobModal = function(item){
-    if(typeof item === "number"){ openPesqJobModalByIdx(item); return; }
-    _currentPesqItem = item;
-
-    const ov = _getModal();
-    const body = document.getElementById("pesq-job-modal-body");
-    if(body) body.innerHTML = _buildModalHTML(_currentPesqItem);
-    ov.style.display = "flex";
-    requestAnimationFrame(()=>{ ov.classList.add("show"); });
-  };
-
-  window.closePesqJobModal = function(){
-    const ov = document.getElementById("pesq-job-modal-ov");
-    if(ov){ ov.classList.remove("show"); setTimeout(()=>{ ov.style.display="none"; }, 200); }
-  };
-
-  // Ações dos botões dentro do modal
-  window._pesqModalApply = function(){
-    if(!_currentPesqItem) return;
-    const item = _currentPesqItem;
-    closePesqJobModal();
-    // Se for seasonal com jobRef, abre modal de candidatura direto
-    if(item._src==="seasonal" && item._id){
-      const j = (typeof JOBS!=="undefined" ? JOBS : []).find(x=>x.id===item._id);
-      if(j){ setTimeout(()=>openModal(j.id), 200); return; }
-    }
-    // Fallback: vai para a aba jobs e seleciona
-    if(item._src==="seasonal" && item._id){
-      sv("jobs");
-      setTimeout(()=>{ selJob2&&selJob2(item._id); setTimeout(()=>openModal(item._id),300); }, 400);
-    }
-  };
-
-  window._pesqModalViewInJobs = function(){
-    if(!_currentPesqItem) return;
-    const id = _currentPesqItem._id;
-    closePesqJobModal();
-    sv("jobs");
-    setTimeout(()=>selJob2&&selJob2(id), 400);
-  };
-
-  // ── Integração com .icard (legado): nunca mais renderizado nesta
-  // reconstrução (aba Respostas removida) — o MutationObserver abaixo
-  // simplesmente nunca encontra nada, mantido por não custar nada.
-  const _obs = new MutationObserver((mutations)=>{
-    mutations.forEach(m=>{
-      m.addedNodes.forEach(n=>{
-        if(n.nodeType!==1) return;
-        // cards de inbox
-        const cards = n.classList?.contains("icard") ? [n] : [...(n.querySelectorAll?.(".icard")||[])];
-        cards.forEach(card=>{
-          if(card.dataset.pesqBtnAdded) return;
-          card.dataset.pesqBtnAdded = "1";
-          // Encontra e-mail vinculado
-          const emailId = card.id?.replace("icard-","");
-          if(!emailId) return;
-          const email = (typeof INBOX_EMAILS!=="undefined" ? INBOX_EMAILS : []).find(e=>e.id===emailId);
-          if(!email) return;
-          const linked = email.linkedApp;
-          const company = linked?.company||linked?.jobSnapshot?.company||"";
-          const emailAddr = linked?.to||linked?.jobSnapshot?.sourceEmail||email.from||"";
-          const query = emailAddr || company;
-          if(!query) return;
-          // Botão de busca de vaga
-          const btn = document.createElement("button");
-          btn.className = "icard-linked-btn";
-          btn.style.cssText = "background:linear-gradient(135deg,var(--bluel),rgba(124,58,237,.08));border-color:var(--blueb);color:var(--blue);margin-top:4px;font-size:10px";
-          btn.title = "Abrir detalhes completos da vaga";
-          btn.innerHTML = '<i class="ti ti-telescope" style="font-size:11px"></i> Detalhes da Vaga';
-          btn.onclick = (ev)=>{
-            ev.stopPropagation();
-            sv("pesquisa");
-            setTimeout(()=>{
-              const inp = document.getElementById("pesq-input");
-              if(inp){ inp.value=query; inp.dispatchEvent(new Event("input")); }
-            }, 120);
-          };
-          // Insere junto com o botão de linked existente
-          const existingLinked = card.querySelector(".icard-linked-btn");
-          if(existingLinked && existingLinked.parentNode){
-            existingLinked.parentNode.insertBefore(btn, existingLinked.nextSibling);
-          } else {
-            const meta = card.querySelector(".icard-meta");
-            if(meta) meta.appendChild(btn);
-          }
-        });
-      });
-    });
-  });
-
-  // Observa a lista de inbox quando disponível
-  document.addEventListener("DOMContentLoaded",()=>{
-    const inboxList = document.getElementById("inbox-list");
-    if(inboxList) _obs.observe(inboxList, { childList:true, subtree:true });
-  });
-  // Também observa quando o DOM já está pronto
-  const inboxList = document.getElementById("inbox-list");
-  if(inboxList) _obs.observe(inboxList, { childList:true, subtree:true });
-
-  // Inicia observer assim que o elemento existir (fallback)
-  const _waitInbox = setInterval(()=>{
-    const il = document.getElementById("inbox-list");
-    if(il){ _obs.observe(il, { childList:true, subtree:true }); clearInterval(_waitInbox); }
-  }, 500);
-
-  console.debug("[v16] Modal de detalhe de vaga + integração Respostas carregado");
-})();
-
-
 // ══════════════════════════════════════════════════════════
 //  SISTEMA DE IDIOMA (PT / EN / ES) — v19
 // ══════════════════════════════════════════════════════════
 const LANG_DICT = {
   pt: {
     "h_faq_gone":"Vagas somem do manual em dois casos: (1) voc\u00ea j\u00e1 enviou candidatura para aquela empresa, ou (2) aquela vaga est\u00e1 na fila do autom\u00e1tico. Isso \u00e9 correto \u2014 evita enviar duas vezes para a mesma empresa.","mi1_d":"Envie sua 1\u00aa candidatura (manual ou rob\u00f4)","mi2_d":"Salve seu perfil de e-mail e suba um curr\u00edculo PDF","mi3_d":"Alcance 100 candidaturas enviadas","mi4_d":"Alcance 1.000 candidaturas enviadas","mi5_d":"Tenha sua avalia\u00e7\u00e3o do H2BApply aprovada e publicada", // 🌐 v137b
-    "ns1_t":"Crie seu perfil de candidatura","ns1_s":"\u00c9 o que vai nos e-mails para as empresas. Leva 1 minuto.","ns1_c":"Criar perfil","ns2_t":"Anexe seu curr\u00edculo (PDF)","ns2_s":"Sem curr\u00edculo anexado, suas candidaturas n\u00e3o saem.","ns2_c":"Anexar","ns3_t":"Tudo pronto! Comece a se candidatar","ns3_s":"Seu perfil est\u00e1 completo. Envie sua primeira candidatura de hoje.","ns3_c":"Buscar vagas","ns4_t":"Voc\u00ea atingiu o limite de hoje","ns4_s":"Vire VIP e envie at\u00e9 100 candidaturas por dia.","ns4_c":"Ver planos","ns5_t":"Ative o Envio Autom\u00e1tico","ns5_s":"Deixe o sistema enviar candidaturas enquanto voc\u00ea trabalha.","ns5_c":"Ativar","logs_none":"Nenhum log ainda","logs_none_s":"Os logs aparecem aqui quando voc\u00ea usar o Envio Autom\u00e1tico","notif_none_unread":"Nenhuma notifica\u00e7\u00e3o n\u00e3o lida \ud83c\udf89","notif_none":"Nenhuma notifica\u00e7\u00e3o por enquanto","swap_instant":"Ativa NA HORA \u2014 sem espera, sem aprova\u00e7\u00e3o","mi1":"Primeira candidatura","mi2":"Perfil completo","mi3":"100 candidaturas","mi4":"1.000 candidaturas","mi5":"Avalia\u00e7\u00e3o publicada","snd_plane":"Avi\u00e3o","snd_plane_d":"Som de decolagem","h_paid_t":"\u2705 Planos pagos:","h_paid_d":"O autom\u00e1tico envia mais e-mails por dia. No plano gratuito s\u00e3o 10 por dia; com VIPro s\u00e3o 100 e com DoublePro 200 por dia.","sug_hero":"Sua ideia pode virar uma funcionalidade! Mande sua sugest\u00e3o para a equipe do H2BApply.","sc_vagas":"\ud83d\udcbc Sobre as vagas","pesq_srcs":"Vagas ao Vivo \u00b7 Jan 2026 \u00b7 Jul 2025 \u00b7 Enviadas", // 🌐 v137: dinâmicos da varredura E2E
+    "ns1_t":"Crie seu perfil de candidatura","ns1_s":"\u00c9 o que vai nos e-mails para as empresas. Leva 1 minuto.","ns1_c":"Criar perfil","ns2_t":"Anexe seu curr\u00edculo (PDF)","ns2_s":"Sem curr\u00edculo anexado, suas candidaturas n\u00e3o saem.","ns2_c":"Anexar","ns3_t":"Tudo pronto! Comece a se candidatar","ns3_s":"Seu perfil est\u00e1 completo. Envie sua primeira candidatura de hoje.","ns3_c":"Buscar vagas","ns4_t":"Voc\u00ea atingiu o limite de hoje","ns4_s":"Vire VIP e envie at\u00e9 100 candidaturas por dia.","ns4_c":"Ver planos","ns5_t":"Ative o Envio Autom\u00e1tico","ns5_s":"Deixe o sistema enviar candidaturas enquanto voc\u00ea trabalha.","ns5_c":"Ativar","logs_none":"Nenhum log ainda","logs_none_s":"Os logs aparecem aqui quando voc\u00ea usar o Envio Autom\u00e1tico","notif_none_unread":"Nenhuma notifica\u00e7\u00e3o n\u00e3o lida \ud83c\udf89","notif_none":"Nenhuma notifica\u00e7\u00e3o por enquanto","swap_instant":"Ativa NA HORA \u2014 sem espera, sem aprova\u00e7\u00e3o","mi1":"Primeira candidatura","mi2":"Perfil completo","mi3":"100 candidaturas","mi4":"1.000 candidaturas","mi5":"Avalia\u00e7\u00e3o publicada","snd_plane":"Avi\u00e3o","snd_plane_d":"Som de decolagem","h_paid_t":"\u2705 Planos pagos:","h_paid_d":"O autom\u00e1tico envia mais e-mails por dia. No plano gratuito s\u00e3o 10 por dia; com VIPro s\u00e3o 100 e com DoublePro 200 por dia.","sug_hero":"Sua ideia pode virar uma funcionalidade! Mande sua sugest\u00e3o para a equipe do H2BApply.","sc_vagas":"\ud83d\udcbc Sobre as vagas", // 🌐 v137: dinâmicos da varredura E2E
     "g_1":"Envio Autom\u00e1tico","g_2":"Configure e deixe o sistema trabalhar por voc\u00ea","g_3":"/m\u00eas","g_4":"Autom\u00e1tico + Manual","g_5":"M\u00e1ximo desempenho","g_6":"Atalhos R\u00e1pidos","g_7":"Curr\u00edculos","g_8":"M\u00eas","g_11":"N\u00fameros","g_12":"\ud83c\udde7\ud83c\uddf7 Portugu\u00eas","g_14":"(at\u00e9 600 caracteres)","g_15":"(at\u00e9 400 caracteres)","g_16":"(at\u00e9 300 caracteres)","g_17":"Ajuda o sistema a encontrar vagas certas pra voc\u00ea","g_18":"J\u00e1 foi aos EUA?","g_19":"\u274c N\u00e3o","g_20":"\ud83d\udde3\ufe0f N\u00edvel de ingl\u00eas","g_21":"\ud83d\udcd6 B\u00e1sico","g_22":"\ud83c\udf1f Avan\u00e7.","g_23":"\ud83c\udf3f \u00c1rea preferida","g_24":"\ud83c\udfd7\ufe0f Constru\u00e7\u00e3o","g_25":"\ud83e\udd9e Frutos do mar","g_26":"\ud83d\udcc5 1 m\u00eas","g_27":"Notifica\u00e7\u00f5es","g_28":"\ud83d\udeeb Alertas do H2BApply","g_29":"Toque no bot\u00e3o para ativar","g_30":"seu curr\u00edculo (PDF)","g_31":"texto do e-mail","g_32":"at\u00e9 2 perfis: um H-2B e um H-2A","g_33":"Anexa seu curr\u00edculo PDF em cada candidatura","g_34":"Define o texto do e-mail em ingl\u00eas","g_35":"Essencial para o Envio Autom\u00e1tico funcionar","g_36":"Curr\u00edculo usado:","g_37":"\ud83d\udcc8 \u00daltimos 7 dias","g_38":"Configura\u00e7\u00f5es exclusivas de administrador","g_39":"Sem expira\u00e7\u00e3o \u00b7 200 manual + 200 auto/dia \u00b7 Prioridade m\u00e1xima","g_40":"segundos entre cada envio","g_41":"3min (padr\u00e3o)","g_42":"Adicione Gmails acima para configurar limites","g_43":"\u00b7 invis\u00edvel para usu\u00e1rios","g_44":"Aten\u00e7\u00e3o:","g_45":"1 Gmail \u00fanico","g_46":"responsabilidade do usu\u00e1rio","g_47":"Os mesmos filtros do Envio Manual \u2014 cargo, local, sal\u00e1rio, grupo e mais","g_48":"Categoria r\u00e1pida (detectada automaticamente)","g_49":"vagas pra voc\u00ea","g_50":"\ud83c\udfaf Seu perfil ser\u00e1 usado em todos os envios:","g_51":"\u25b6 Come\u00e7ar agora","g_52":"Envia sem parar 24/7. Reseta \u00e0 meia-noite e continua at\u00e9 zerar a fila.","g_53":"\ud83d\udd50 Agendar hor\u00e1rio","g_54":"Envia das X \u00e0s Y horas todo dia. Fora do hor\u00e1rio fica pausado.","g_55":"Iniciar \u00e0s","g_56":"Parar \u00e0s","g_57":"doar \ud83d\udc8e para um amigo","g_58":"d\u00e1 o \u2b50 VIP 30d","g_59":"d\u00e1 o \ud83e\udd16 VIPro 30d","g_60":"d\u00e1 o \ud83d\udc8e DoublePro 30d","g_61":"quantos \ud83d\udc8e voc\u00ea quiser","g_62":"Doa\u00e7\u00e3o via PIX","g_63":"*obrigat\u00f3rio","g_64":"Print da confirma\u00e7\u00e3o do Pix da sua doa\u00e7\u00e3o","g_65":"Toque para selecionar o comprovante","g_66":"JPG, PNG, PDF \u2014 m\u00e1x 5MB","g_67":"at\u00e9 24h","g_68":"Para d\u00favidas, entre em contato:","g_69":"1 empresa confirmar = voc\u00ea est\u00e1 nos EUA \u2708\ufe0f","g_72":"Aprenda a usar o sistema do zero, passo a passo","g_73":"\ud83d\udccb O que voc\u00ea vai aprender:","g_74":"Resposta da empresa","g_75":"D\u00favidas Comuns","g_76":"Configurar seu Perfil","g_77":"Fa\u00e7a isso ANTES de enviar qualquer candidatura","g_78":"pa\u00eds","g_79":"Aba \"Perfis de Curr\u00edculo\" \u2014 Configurar curr\u00edculo e modelo","g_80":"upload do seu curr\u00edculo em PDF","g_81":"Sem curr\u00edculo, o perfil n\u00e3o \u00e9 salvo.","g_82":"assuntos e corpos de e-mail","g_83":"M\u00ednimo 3 varia\u00e7\u00f5es de cada.","g_84":"Seu perfil est\u00e1 configurado. Agora voc\u00ea pode enviar candidaturas.","g_85":"Envio Manual de Candidaturas","g_86":"Voc\u00ea escolhe cada vaga e envia uma por uma","g_87":"Escolha a planilha de vagas","g_88":"Mais vagas dispon\u00edveis.","g_89":"Como encontrar vagas para voc\u00ea","g_90":"Clique em uma vaga para ver os detalhes","g_91":"Veja o e-mail da empresa e as informa\u00e7\u00f5es da vaga","g_92":"O e-mail com seu curr\u00edculo \u00e9 enviado automaticamente!","g_93":"somem da lista","g_94":"Envio Autom\u00e1tico 24h","g_95":"O sistema envia enquanto voc\u00ea dorme","g_96":"\ud83e\udd16 O que \u00e9 o Envio Autom\u00e1tico?","g_97":"\"Envio Autom\u00e1tico\"","g_98":"quantidade de vagas","g_99":"\"Iniciar Autom\u00e1tico\"","g_100":"\u26a0\ufe0f Aten\u00e7\u00e3o:","g_101":"somem do envio manual","g_102":"A resposta cai direto no SEU Gmail","g_103":"seu pr\u00f3prio Gmail","g_104":"Abra o e-mail da empresa direto no seu Gmail","g_105":"Digite sua resposta em ingl\u00eas e envie \u2014 \u00e9 um e-mail seu, como qualquer outro","g_106":"\ud83d\udca1 Dica de resposta r\u00e1pida:","g_107":"Envie mais candidaturas por dia","g_108":"Gr\u00e1tis","g_109":"VIP \u00b7 67 \ud83d\udc8e/m\u00eas","g_110":"VIPro \u00b7 100 \ud83d\udc8e/m\u00eas","g_111":"DoublePro R$250/m\u00eas","g_112":"\ud83c\udf81 Como ganhar VIP gr\u00e1tis:","g_113":"1 dia VIP Manual","g_114":"C\u00f3digos promocionais","g_115":"D\u00favidas Frequentes","g_116":"Respostas r\u00e1pidas para perguntas comuns","g_117":"N\u00e3o.","g_118":"Ainda com d\u00favidas?","g_119":"Assista aos v\u00eddeos explicativos no YouTube ou fale pelo Instagram","g_128":"desaparecer de qualquer lugar p\u00fablico","g_129":"fazer login novamente com o mesmo e-mail","g_130":"m\u00ednimo 10 caracteres","g_131":"Autom\u00e1tico","g_132":"Vaga n\u00e3o identificada","g_133":"\ud83d\udcc5 Dispon\u00edvel","g_134":"\u2753 D\u00favida","g_135":"Constru\u00e7\u00e3o","g_136":"Dep\u00f3sito","g_137":"\ud83c\udff7\ufe0f Cargo espec\u00edfico","g_138":"\ud83d\udcc2 Categoria r\u00e1pida","g_139":"\ud83c\udf0e Tipo de visto","g_140":"\ud83d\udcf6 Status da vaga","g_141":"Grupo de Randomiza\u00e7\u00e3o","g_142":"\u2014 pode escolher v\u00e1rios estados","g_143":"\ud83d\udcb0 Sal\u00e1rio m\u00ednimo","g_144":"\ud83d\udc65 Qtd. vagas m\u00edn.","g_145":"\u2014 pode marcar v\u00e1rios","g_146":"\ud83c\udfb2 Aleat\u00f3rio (padr\u00e3o)","g_147":"\ud83c\udfaf Melhor pra voc\u00ea primeiro","g_148":"\ud83d\udcb0 Maior sal\u00e1rio primeiro","g_149":"\ud83d\udcc5 Come\u00e7a mais cedo primeiro","g_150":"Este perfil ser\u00e1 usado nos envios manuais e autom\u00e1ticos","g_151":"curr\u00edculo (PDF)","g_152":"\u2460 Informa\u00e7\u00f5es B\u00e1sicas","g_153":"\u00cdcone","g_154":"Escolha um \u00edcone para o perfil:","g_155":"\u2461 Curr\u00edculo &amp; Cover Letter (PDF)","g_156":"\ud83d\udcc4 Curr\u00edculo (PDF)","g_157":"\u2705 Curr\u00edculo vinculado a este perfil","g_158":"\ud83d\udce4 Novo arquivo \u2014 ser\u00e1 enviado ao salvar","g_159":"Clique ou arraste um PDF para fazer upload","g_160":"M\u00e1x. 10MB","g_161":"ou escolha da sua conta","g_162":"Carta de apresenta\u00e7\u00e3o \u2014 n\u00e3o obrigat\u00f3ria, mas aumenta as chances de resposta.","g_163":"apenas nas vagas do tipo de visto deste perfil","g_164":"\u2462 Assuntos do E-mail","g_165":"M\u00ednimo 3","g_166":"Vari\u00e1veis:","g_167":"\u2463 Corpos de E-mail","g_168":"\u2699\ufe0f Vari\u00e1veis \u2014 clique para copiar:","g_169":"3 corpos de e-mail","g_170":"Selecione as categorias para as quais este perfil ser\u00e1 usado automaticamente","g_171":"\u2464 Configura\u00e7\u00e3o","g_172":"Prote\u00e7\u00f5es sempre ativas:","g_173":"n\u00e3o podem ser desativados","g_174":"Not\u00edcias","g_186":"Cada perfil de curr\u00edculo tem o curr\u00edculo vinculado diretamente.","g_187":"O envio autom\u00e1tico sempre usa o PDF do perfil correto \u2014 sem confus\u00e3o.","g_190":"Crie seu primeiro Perfil de Curr\u00edculo para","g_191":"come\u00e7ar a enviar candidaturas","g_204":"S\u00f3 precisa estar logado uma vez.","g_212":". \u00c9 por ela que conferimos a sua doa\u00e7\u00e3o.","g_221":"No topo da tela de Envio Manual voc\u00ea v\u00ea 3 abas:","g_229":"10 autom\u00e1ticos/dia","g_230":"sem autom\u00e1tico","g_231":"100 autom\u00e1ticos/dia","g_233":"Por que minhas vagas sumiram do manual?","g_234":"O autom\u00e1tico parou. O que fa\u00e7o?","g_235":"Recebi um e-mail em ingl\u00eas. O que fa\u00e7o?","g_175":"Toque em qualquer candidatura para ver detalhes,","g_176":". O bot\u00e3o","g_177":"apaga tudo e faz as vagas voltarem para a lista (\u00fatil para recandidatar-se).","g_178":"Usu\u00e1rios pagantes podem conectar um Gmail extra para reduzir risco de spam.","g_179":"\ud83c\udfad Escolha seu avatar","g_180":"\ud83d\udca1 O que voc\u00ea escrever aqui aparece quando algu\u00e9m","g_181":"\ud83d\udc64 Sobre voc\u00ea","g_182":"\ud83d\udcbc Experi\u00eancias de trabalho","g_183":"\ud83d\udcac O que voc\u00ea acha do H2BApply?","g_184":"\ud83d\udcbe Salve com o bot\u00e3o","g_185":"no fim da p\u00e1gina.","g_188":". Voc\u00ea pode ter","g_189":"o perfil que voc\u00ea escolher no Passo 3 do assistente","g_192":"Estat\u00edsticas","g_193":"Gmails de envio","g_194":"10 envios GR\u00c1TIS/dia para todos!","g_195":"Enviar muitos emails com","g_196":"pode gerar bloqueio tempor\u00e1rio pelo Google. Recomendamos adicionar","g_197":"para distribuir os envios. O risco de bloqueio \u00e9 de","g_198":"\ud83d\udcec Pr\u00f3ximas candidaturas","g_199":"\u2014 Ver\u00e3o","g_200":"\u26a0\ufe0f Filtro de categoria ativo:","g_201":"\u2014 isso limita as vagas! Para ver todas, clique em \"Todos\" acima.","g_202":"O envio alterna","g_203":"O autom\u00e1tico zerou a fila? Resetar enviados","g_205":"Hor\u00e1rio (Bras\u00edlia)","g_207":"\ud83e\uddfe Minhas doa\u00e7\u00f5es","g_208":"na sua conta. Com diamantes voc\u00ea","g_209":"quando quiser \u2014 e pode at\u00e9","g_210":"\ud83d\udcf8 Comprovante da doa\u00e7\u00e3o","g_211":"\ud83d\udcc5 Data em que voc\u00ea doou","g_213":"), seus \ud83d\udc8e caem na conta e voc\u00ea troca por plano","g_214":"Preencha seu","g_215":"(escreva \"Brazil\" em ingl\u00eas),","g_216":"com c\u00f3digo do pa\u00eds (+55 85 99999-9999) e","g_217":"D\u00ea um","g_218":"para o perfil. Ex: \"Meu Perfil Principal\" ou \"Landscape\"","g_219":"(obrigat\u00f3rio). Clique na \u00e1rea pontilhada ou arraste o arquivo.","g_220":"no final da tela.","g_222":"\u2014 Vagas de Ver\u00e3o nos EUA (temporada principal H-2B).","g_223":"\u2014 Vagas de Inverno. Menos vagas, mas ainda v\u00e1lidas.","g_224":"Clique no bot\u00e3o verde","g_225":"Vagas j\u00e1 enviadas","g_226":"que quer colocar no autom\u00e1tico","g_227":"As vagas que voc\u00ea coloca no autom\u00e1tico","g_228":"O H2BApply N\u00c3O l\u00ea nem guarda sua caixa de entrada \u2014 cada candidatura sai do","g_232":"ao se cadastrar (autom\u00e1tico)","g_236":"Se pedir documentos, entre em contato com um despachante de vistos.","g_237":"nas vari\u00e1veis de ambiente do servidor para ativar.","g_239":"Configura\u00e7\u00f5es","g_239b":"Sess\u00e3o","g_239c":"Mais","tut_center":"Central de Tutoriais","settings_adv":"Configura\u00e7\u00f5es avan\u00e7adas","g_240":"Enviar sugest\u00e3o ou ideia pros desenvolvedores","g_241":"Zona de perigo","g_242":"Sugest\u00f5es para os Devs","g_243":"Nova Sugest\u00e3o","g_244":"Sua sugest\u00e3o","g_245":"Fique de olho no","g_246":"para novidades!","g_247":"\ud83d\udc8e Grupo de Randomiza\u00e7\u00e3o","g_248":"\u00e9 exclusivo do plano","g_249":"\ud83d\udccd Localiza\u00e7\u00e3o","g_250":"\ud83d\udcc5 M\u00eas de in\u00edcio da vaga","g_251":"Nome do perfil","g_252":"Descri\u00e7\u00e3o","g_253":"para evitar bloqueio por spam.","g_254":"Vers\u00f5es diferentes que o sistema alterna.","g_255":"para evitar spam.","g_256":"Planilhas compat\u00edveis","g_257":"Categorias de vaga", // 🌐 v136: varredura final (auto)
     "gu_t":"Como o H2BApply usa sua conta Google","gu_b":"Pedimos <strong>uma única permissão</strong> do Google: enviar e-mails pelo seu Gmail (<code style=\"background:rgba(255,255,255,.08);padding:1px 6px;border-radius:5px\">gmail.send</code>) — usada exclusivamente para enviar as candidaturas de emprego que <strong>você mesmo escreve e autoriza</strong>. O H2BApply <strong>nunca lê, nunca armazena e nunca acessa sua caixa de entrada</strong>. As respostas dos empregadores chegam direto no seu próprio Gmail. Você pode revogar o acesso a qualquer momento em myaccount.google.com.","gu_l":"Leia nossa Política de Privacidade completa →", // ✅ v145: transparência do uso da conta Google (verificação OAuth)
     "rst_t":"Atualizamos o sistema de login","rst_b":"Seu login foi resetado, mas <strong>NADA foi apagado</strong> — envios, dias de plano, diamantes e currículos estão todos salvos. Entre com o <strong>MESMO e-mail do Google</strong> que você usava antes. ⚠️ <strong>Não crie outra conta</strong> com e-mail diferente: mais de uma conta dá risco de <strong>banimento permanente dos dois e-mails</strong>. As vagas são limitadas — use a conta que você já tem.", // 📢 v144: aviso do reset de login (OAuth novo)
@@ -7923,6 +7357,14 @@ const LANG_DICT = {
     "logs_auto_title":"📋 Logs do Envio Automático","logs_auto_sub":"Histórico completo de todos os envios automáticos",
     // 🌐 Etapa 1 do i18n profissional (12/08)
     "home_welcome":"Bem-vindo(a) de volta! Pronto para enviar muitas candidaturas hoje?",
+    "home_hero_badge":"Vagas sazonais em todo os EUA","home_hero_h1a":"Trabalhe nos EUA","home_hero_h1b":"com mais oportunidades",
+    "home_stat_jobs":"Vagas Disponíveis","home_stat_companies":"Empresas Contatadas","home_stat_emails":"E-mails Enviados",
+    "home_activity_title":"Atividade Recente","home_tips_title":"Dicas para mais respostas",
+    "home_tip1":"Use um currículo em inglês claro e objetivo.","home_tip2":"Envie para muitas vagas — o volume aumenta suas chances.",
+    "home_tip3":"Personalize a carta de apresentação.","home_tip4":"Mantenha seu perfil sempre atualizado.","home_tip5":"Verifique sua caixa de spam.",
+    "home_tip_quote":"Disciplina hoje, oportunidades amanhã.",
+    "home_auto_b1":"Envia pra várias vagas por dia","home_auto_b3":"Nunca repete uma candidatura","home_auto_b4":"Funciona 24h — você não precisa ficar online","home_auto_cta":"Iniciar Envio Automático",
+    "home_man_b1":"Pesquise e filtre as vagas","home_man_b4":"Envie quando estiver pronto",
     "manual_send_title":"Envio Manual","manual_send_sub":"Busque vagas e envie candidaturas agora",
     "plans_send_title":"Planos","plans_send_sub":"Turbine seus envios com diamantes", // 🌐 v166: 3º CTA da Home
     "home_cv_tip":"Mantenha seu currículo sempre atualizado.","home_cv_tip_link":"Editar currículo →", // 🌐 v166: dica discreta da Home
@@ -7948,7 +7390,7 @@ const LANG_DICT = {
     "back_jobs":"Voltar às vagas","job_search_ph":"Cargo, empresa, estado...",
     // History
     "hist_title":"Candidaturas Enviadas","hist_search_ph":"Buscar empresa, cargo ou e-mail...",
-    "hist_info":"Toque em qualquer candidatura para ver detalhes, reenviar ou excluir individualmente. O botão Reset apaga tudo e faz as vagas voltarem para a lista.",
+    "hist_info":"O botão Reset apaga tudo e faz as vagas voltarem para a lista (útil para recandidatar-se).","home_footer_tag":"Mais que um sistema. É o seu próximo passo.",
     // Search
     "search_jobs":"Buscar Vagas","search_sub":"Busca em todas as fontes: Seasonal, Jan 2026, Jul 2025",
     "search_ph":"Empresa, e-mail, ETA case number, cargo, estado...","clear":"Limpar",
@@ -8008,7 +7450,7 @@ const LANG_DICT = {
   },
   en: {
     "h_faq_gone":"Jobs disappear from manual in two cases: (1) you already applied to that company, or (2) that job is in the auto queue. That's correct \u2014 it prevents emailing the same company twice.","mi1_d":"Send your 1st application (manual or robot)","mi2_d":"Save your email profile and upload a PDF resume","mi3_d":"Reach 100 applications sent","mi4_d":"Reach 1,000 applications sent","mi5_d":"Get your H2BApply review approved and published", // 🌐 v137b
-    "ns1_t":"Create your application profile","ns1_s":"It's what goes in the emails to companies. Takes 1 minute.","ns1_c":"Create profile","ns2_t":"Attach your resume (PDF)","ns2_s":"Without a resume attached, your applications won't go out.","ns2_c":"Attach","ns3_t":"All set! Start applying","ns3_s":"Your profile is complete. Send your first application today.","ns3_c":"Find jobs","ns4_t":"You hit today's limit","ns4_s":"Go VIP and send up to 100 applications a day.","ns4_c":"See plans","ns5_t":"Turn on Auto Send","ns5_s":"Let the system send applications while you work.","ns5_c":"Turn on","logs_none":"No logs yet","logs_none_s":"Logs show up here once you use Auto Send","notif_none_unread":"No unread notifications \ud83c\udf89","notif_none":"No notifications for now","swap_instant":"Activates INSTANTLY \u2014 no wait, no approval","mi1":"First application","mi2":"Complete profile","mi3":"100 applications","mi4":"1,000 applications","mi5":"Published review","snd_plane":"Airplane","snd_plane_d":"Takeoff sound","h_paid_t":"\u2705 Paid plans:","h_paid_d":"Auto sends more emails per day. The free plan gets 10 a day; VIPro gets 100 and DoublePro 200.","sug_hero":"Your idea can become a feature! Send your suggestion to the H2BApply team.","sc_vagas":"\ud83d\udcbc About the jobs","pesq_srcs":"Live Jobs \u00b7 Jan 2026 \u00b7 Jul 2025 \u00b7 Sent", // 🌐 v137: dinâmicos da varredura E2E
+    "ns1_t":"Create your application profile","ns1_s":"It's what goes in the emails to companies. Takes 1 minute.","ns1_c":"Create profile","ns2_t":"Attach your resume (PDF)","ns2_s":"Without a resume attached, your applications won't go out.","ns2_c":"Attach","ns3_t":"All set! Start applying","ns3_s":"Your profile is complete. Send your first application today.","ns3_c":"Find jobs","ns4_t":"You hit today's limit","ns4_s":"Go VIP and send up to 100 applications a day.","ns4_c":"See plans","ns5_t":"Turn on Auto Send","ns5_s":"Let the system send applications while you work.","ns5_c":"Turn on","logs_none":"No logs yet","logs_none_s":"Logs show up here once you use Auto Send","notif_none_unread":"No unread notifications \ud83c\udf89","notif_none":"No notifications for now","swap_instant":"Activates INSTANTLY \u2014 no wait, no approval","mi1":"First application","mi2":"Complete profile","mi3":"100 applications","mi4":"1,000 applications","mi5":"Published review","snd_plane":"Airplane","snd_plane_d":"Takeoff sound","h_paid_t":"\u2705 Paid plans:","h_paid_d":"Auto sends more emails per day. The free plan gets 10 a day; VIPro gets 100 and DoublePro 200.","sug_hero":"Your idea can become a feature! Send your suggestion to the H2BApply team.","sc_vagas":"\ud83d\udcbc About the jobs", // 🌐 v137: dinâmicos da varredura E2E
     "g_1":"Auto Send","g_2":"Set it up and let the system work for you","g_3":"/mo","g_4":"Auto + Manual","g_5":"Maximum performance","g_6":"Quick Access","g_7":"Resumes","g_8":"Month","g_11":"Stats","g_12":"\ud83c\udde7\ud83c\uddf7 Portugu\u00eas","g_14":"(up to 600 characters)","g_15":"(up to 400 characters)","g_16":"(up to 300 characters)","g_17":"Helps the system find the right jobs for you","g_18":"Ever been to the USA?","g_19":"\u274c No","g_20":"\ud83d\udde3\ufe0f English level","g_21":"\ud83d\udcd6 Basic","g_22":"\ud83c\udf1f Advanced","g_23":"\ud83c\udf3f Preferred area","g_24":"\ud83c\udfd7\ufe0f Construction","g_25":"\ud83e\udd9e Seafood","g_26":"\ud83d\udcc5 1 month","g_27":"Notifications","g_28":"\ud83d\udeeb H2BApply alerts","g_29":"Tap the button to enable","g_30":"your resume (PDF)","g_31":"the email text","g_32":"up to 2 profiles: one H-2B and one H-2A","g_33":"Attaches your PDF resume to every application","g_34":"Sets the email text in English","g_35":"Essential for Auto Send to work","g_36":"Resume used:","g_37":"\ud83d\udcc8 Last 7 days","g_38":"Admin-only settings","g_39":"No expiration \u00b7 200 manual + 200 auto/day \u00b7 Top priority","g_40":"seconds between each send","g_41":"3min (default)","g_42":"Add Gmails above to set limits","g_43":"\u00b7 invisible to users","g_44":"Warning:","g_45":"1 single Gmail","g_46":"user's responsibility","g_47":"Same filters as Manual Send \u2014 role, location, pay, group and more","g_48":"Quick category (auto-detected)","g_49":"jobs for you","g_50":"\ud83c\udfaf Your profile will be used in every send:","g_51":"\u25b6 Start now","g_52":"Sends non-stop 24/7. Resets at midnight and keeps going until the queue is empty.","g_53":"\ud83d\udd50 Schedule hours","g_54":"Sends from X to Y o'clock every day. Outside that window it pauses.","g_55":"Start at","g_56":"Stop at","g_57":"gift \ud83d\udc8e to a friend","g_58":"gets \u2b50 VIP 30d","g_59":"gets \ud83e\udd16 VIPro 30d","g_60":"gets \ud83d\udc8e DoublePro 30d","g_61":"any amount of \ud83d\udc8e you want","g_62":"Donation via PIX","g_63":"*required","g_64":"Screenshot of your PIX donation confirmation","g_65":"Tap to select the receipt","g_66":"JPG, PNG, PDF \u2014 max 5MB","g_67":"within 24h","g_68":"Questions? Contact us:","g_69":"1 company saying yes = you're in the USA \u2708\ufe0f","g_72":"Learn the system from scratch, step by step","g_73":"\ud83d\udccb What you'll learn:","g_74":"Company reply","g_75":"Common Questions","g_76":"Set Up Your Profile","g_77":"Do this BEFORE sending any application","g_78":"country","g_79":"\"Resume Profiles\" tab \u2014 set up resume and template","g_80":"upload your resume as PDF","g_81":"Without a resume, the profile won't save.","g_82":"email subjects and bodies","g_83":"At least 3 variations of each.","g_84":"Your profile is set. You can now send applications.","g_85":"Manual Application Sending","g_86":"You pick each job and send one by one","g_87":"Choose the job sheet","g_88":"More jobs available.","g_89":"How to find jobs for you","g_90":"Click a job to see the details","g_91":"See the company's email and the job info","g_92":"The email with your resume is sent automatically!","g_93":"disappear from the list","g_94":"24h Auto Send","g_95":"The system sends while you sleep","g_96":"\ud83e\udd16 What is Auto Send?","g_97":"\"Auto Send\"","g_98":"number of jobs","g_99":"\"Start Auto\"","g_100":"\u26a0\ufe0f Warning:","g_101":"disappear from manual sending","g_102":"Replies land straight in YOUR Gmail","g_103":"your own Gmail","g_104":"Open the company's email right in your Gmail","g_105":"Type your reply in English and send \u2014 it's your own email, like any other","g_106":"\ud83d\udca1 Quick reply tip:","g_107":"Send more applications per day","g_108":"Free","g_109":"VIP \u00b7 67 \ud83d\udc8e/mo","g_110":"VIPro \u00b7 100 \ud83d\udc8e/mo","g_111":"DoublePro R$250/mo","g_112":"\ud83c\udf81 How to earn free VIP:","g_113":"1 day of VIP Manual","g_114":"Promo codes","g_115":"FAQ","g_116":"Quick answers to common questions","g_117":"No.","g_118":"Still have questions?","g_119":"Watch the explainer videos on YouTube or reach out on Instagram","g_128":"disappear from anywhere public","g_129":"log in again with the same email","g_130":"at least 10 characters","g_131":"Auto","g_132":"Job not identified","g_133":"\ud83d\udcc5 Available","g_134":"\u2753 Question","g_135":"Construction","g_136":"Warehouse","g_137":"\ud83c\udff7\ufe0f Specific role","g_138":"\ud83d\udcc2 Quick category","g_139":"\ud83c\udf0e Visa type","g_140":"\ud83d\udcf6 Job status","g_141":"Randomization Group","g_142":"\u2014 you can pick several states","g_143":"\ud83d\udcb0 Minimum wage","g_144":"\ud83d\udc65 Min. openings","g_145":"\u2014 you can check several","g_146":"\ud83c\udfb2 Random (default)","g_147":"\ud83c\udfaf Best for you first","g_148":"\ud83d\udcb0 Highest pay first","g_149":"\ud83d\udcc5 Earliest start first","g_150":"This profile will be used for manual and automatic sends","g_151":"resume (PDF)","g_152":"\u2460 Basic Info","g_153":"Icon","g_154":"Pick an icon for the profile:","g_155":"\u2461 Resume &amp; Cover Letter (PDF)","g_156":"\ud83d\udcc4 Resume (PDF)","g_157":"\u2705 Resume linked to this profile","g_158":"\ud83d\udce4 New file \u2014 will upload when you save","g_159":"Click or drag a PDF to upload","g_160":"Max 10MB","g_161":"or pick one from your account","g_162":"Cover letter \u2014 optional, but boosts reply chances.","g_163":"only for jobs matching this profile's visa type","g_164":"\u2462 Email Subjects","g_165":"At least 3","g_166":"Variables:","g_167":"\u2463 Email Bodies","g_168":"\u2699\ufe0f Variables \u2014 click to copy:","g_169":"3 email bodies","g_170":"Select the categories this profile will be used for automatically","g_171":"\u2464 Settings","g_172":"Always-on protections:","g_173":"cannot be turned off","g_174":"News","g_175":"Tap any application to see details,","g_176":". The","g_177":"button wipes everything and puts the jobs back on the list (handy to re-apply).","g_178":"Paying users can connect an extra Gmail to lower spam risk.","g_179":"\ud83c\udfad Pick your avatar","g_180":"\ud83d\udca1 Whatever you write here shows up when someone","g_181":"\ud83d\udc64 About you","g_182":"\ud83d\udcbc Work experience","g_183":"\ud83d\udcac What do you think of H2BApply?","g_184":"\ud83d\udcbe Save with the button","g_185":"at the bottom of the page.","g_186":"Each resume profile has its resume linked directly.","g_187":"Auto send always uses the right profile's PDF \u2014 no mix-ups.","g_188":". You can have","g_189":"the profile you pick in Step 3 of the wizard","g_190":"Create your first Resume Profile to","g_191":"start sending applications","g_192":"Statistics","g_193":"Sending Gmails","g_194":"10 FREE sends/day for everyone!","g_195":"Sending many emails with","g_196":"can trigger a temporary block by Google. We recommend adding","g_197":"to spread the sends. The block risk is","g_198":"\ud83d\udcec Upcoming applications","g_199":"\u2014 Summer","g_200":"\u26a0\ufe0f Category filter on:","g_201":"\u2014 that limits the jobs! To see all, click \"All\" above.","g_202":"Sending alternates","g_203":"Auto queue hit zero? Reset sent","g_204":"You only need to be logged in once.","g_205":"Time (Bras\u00edlia)","g_207":"\ud83e\uddfe My donations","g_208":"in your account. With diamonds you","g_209":"whenever you want \u2014 and you can even","g_210":"\ud83d\udcf8 Donation receipt","g_211":"\ud83d\udcc5 Date you donated","g_212":". That's how we verify your donation.","g_213":"), your \ud83d\udc8e land in your account and you swap them for a plan","g_214":"Fill in your","g_215":"(write \"Brazil\" in English),","g_216":"with country code (+55 85 99999-9999) and","g_217":"Give a","g_218":"name to the profile. E.g. \"My Main Profile\" or \"Landscape\"","g_219":"(required). Click the dotted area or drag the file.","g_220":"at the bottom of the screen.","g_221":"At the top of the Manual Send screen you'll see 3 tabs:","g_222":"\u2014 Summer jobs in the USA (main H-2B season).","g_223":"\u2014 Winter jobs. Fewer, but still valid.","g_224":"Click the green button","g_225":"Jobs already sent","g_226":"you want to add to auto","g_227":"The jobs you put on auto","g_228":"H2BApply does NOT read or store your inbox \u2014 every application goes out from your","g_229":"10 auto/day","g_230":"no auto","g_231":"100 auto/day","g_232":"on signup (automatic)","g_233":"Why did my jobs vanish from manual?","g_234":"Auto stopped. What do I do?","g_235":"I got an email in English. What do I do?","g_236":"If they ask for documents, contact a visa agent.","g_237":"in the server's environment variables to enable.","g_239":"Settings","g_239b":"Session","g_239c":"More","tut_center":"Tutorial Center","settings_adv":"Advanced settings","g_240":"Send a suggestion or idea to the devs","g_241":"Danger zone","g_242":"Suggestions for the Devs","g_243":"New Suggestion","g_244":"Your suggestion","g_245":"Keep an eye on","g_246":"for news!","g_247":"\ud83d\udc8e Randomization Group","g_248":"is exclusive to the plan","g_249":"\ud83d\udccd Location","g_250":"\ud83d\udcc5 Job start month","g_251":"Profile name","g_252":"Description","g_253":"to avoid spam blocks.","g_254":"Different versions the system rotates.","g_255":"to avoid spam.","g_256":"Compatible sheets","g_257":"Job categories", // 🌐 v136: varredura final (auto)
     "gu_t":"How H2BApply uses your Google account","gu_b":"We request <strong>a single permission</strong> from Google: sending e-mails through your Gmail (<code style=\"background:rgba(255,255,255,.08);padding:1px 6px;border-radius:5px\">gmail.send</code>) — used exclusively to send the job application e-mails that <strong>you yourself write and authorize</strong>. H2BApply <strong>never reads, never stores and never accesses your inbox</strong>. Employer replies arrive directly in your own Gmail. You can revoke access at any time at myaccount.google.com.","gu_l":"Read our full Privacy Policy →", // ✅ v145: transparência do uso da conta Google (verificação OAuth)
     "rst_t":"We updated the login system","rst_b":"Your login was reset, but <strong>NOTHING was deleted</strong> — your applications, plan days, diamonds and resumes are all saved. Sign in with the <strong>SAME Google e-mail</strong> you used before. ⚠️ <strong>Do not create another account</strong> with a different e-mail: more than one account risks a <strong>permanent ban of both e-mails</strong>. Spots are limited — use the account you already have.", // 📢 v144: aviso do reset de login (OAuth novo)
@@ -8083,6 +7525,14 @@ const LANG_DICT = {
     "cancel":"Cancel","send_btn":"Send","sending":"Sending...","optional_lbl":"(optional)","add_new":"+ Add",
     "logs_auto_title":"📋 Auto Send Logs","logs_auto_sub":"Full history of every automatic send",
     "home_welcome":"Welcome back! Ready to send lots of applications today?",
+    "home_hero_badge":"Seasonal jobs across the USA","home_hero_h1a":"Work in the USA","home_hero_h1b":"with more opportunities",
+    "home_stat_jobs":"Jobs Available","home_stat_companies":"Companies Contacted","home_stat_emails":"Emails Sent",
+    "home_activity_title":"Recent Activity","home_tips_title":"Tips for more replies",
+    "home_tip1":"Use a clear, objective English resume.","home_tip2":"Apply to many jobs — volume raises your chances.",
+    "home_tip3":"Personalize your cover letter.","home_tip4":"Keep your profile always up to date.","home_tip5":"Check your spam folder.",
+    "home_tip_quote":"Discipline today, opportunities tomorrow.",
+    "home_auto_b1":"Applies to several jobs a day","home_auto_b3":"Never repeats an application","home_auto_b4":"Works 24h — you don't need to stay online","home_auto_cta":"Start Auto Send",
+    "home_man_b1":"Search and filter jobs","home_man_b4":"Send when you're ready",
     "manual_send_title":"Manual Send","manual_send_sub":"Find jobs and apply right now",
     "plans_send_title":"Plans","plans_send_sub":"Power up your applications with diamonds", // 🌐 v166: Home 3rd CTA
     "home_cv_tip":"Keep your resume up to date.","home_cv_tip_link":"Edit resume →", // 🌐 v166: Home subtle tip
@@ -8105,7 +7555,7 @@ const LANG_DICT = {
     "select_job":"Select a job","select_job_sub":"Click to see details and apply",
     "back_jobs":"Back to jobs","job_search_ph":"Position, company, state...",
     "hist_title":"Applications Sent","hist_search_ph":"Search company, position or email...",
-    "hist_info":"Tap any application to see details, resend or delete individually. The Reset button clears everything and returns jobs to the list.",
+    "hist_info":"The Reset button clears everything and returns jobs to the list (useful to reapply).","home_footer_tag":"More than a system. It's your next step.",
     "search_jobs":"Search Jobs","search_sub":"Search across all sources: Seasonal, Jan 2026, Jul 2025",
     "search_ph":"Company, email, ETA case number, position, state...","clear":"Clear",
     "all_sources":"All sources","sent":"Sent",
@@ -8154,7 +7604,7 @@ const LANG_DICT = {
   },
   es: {
     "h_faq_gone":"Los empleos desaparecen del manual en dos casos: (1) ya te postulaste a esa empresa, o (2) ese empleo est\u00e1 en la cola del autom\u00e1tico. Es correcto \u2014 evita escribir dos veces a la misma empresa.","mi1_d":"Env\u00eda tu 1\u00aa postulaci\u00f3n (manual o robot)","mi2_d":"Guarda tu perfil de correo y sube un curr\u00edculum PDF","mi3_d":"Alcanza 100 postulaciones enviadas","mi4_d":"Alcanza 1.000 postulaciones enviadas","mi5_d":"Logra que tu rese\u00f1a de H2BApply sea aprobada y publicada", // 🌐 v137b
-    "ns1_t":"Crea tu perfil de postulaci\u00f3n","ns1_s":"Es lo que va en los correos a las empresas. Toma 1 minuto.","ns1_c":"Crear perfil","ns2_t":"Adjunta tu curr\u00edculum (PDF)","ns2_s":"Sin curr\u00edculum adjunto, tus postulaciones no salen.","ns2_c":"Adjuntar","ns3_t":"\u00a1Todo listo! Empieza a postularte","ns3_s":"Tu perfil est\u00e1 completo. Env\u00eda tu primera postulaci\u00f3n hoy.","ns3_c":"Buscar empleos","ns4_t":"Alcanzaste el l\u00edmite de hoy","ns4_s":"Hazte VIP y env\u00eda hasta 100 postulaciones al d\u00eda.","ns4_c":"Ver planes","ns5_t":"Activa el Env\u00edo Autom\u00e1tico","ns5_s":"Deja que el sistema env\u00ede postulaciones mientras trabajas.","ns5_c":"Activar","logs_none":"Sin registros todav\u00eda","logs_none_s":"Los registros aparecen aqu\u00ed cuando uses el Env\u00edo Autom\u00e1tico","notif_none_unread":"Ninguna notificaci\u00f3n sin leer \ud83c\udf89","notif_none":"Ninguna notificaci\u00f3n por ahora","swap_instant":"Activa AL INSTANTE \u2014 sin espera, sin aprobaci\u00f3n","mi1":"Primera postulaci\u00f3n","mi2":"Perfil completo","mi3":"100 postulaciones","mi4":"1.000 postulaciones","mi5":"Rese\u00f1a publicada","snd_plane":"Avi\u00f3n","snd_plane_d":"Sonido de despegue","h_paid_t":"\u2705 Planes de pago:","h_paid_d":"El autom\u00e1tico env\u00eda m\u00e1s correos por d\u00eda. El plan gratis tiene 10 al d\u00eda; VIPro 100 y DoublePro 200.","sug_hero":"\u00a1Tu idea puede volverse una funci\u00f3n! Env\u00eda tu sugerencia al equipo de H2BApply.","sc_vagas":"\ud83d\udcbc Sobre los empleos","pesq_srcs":"Empleos en Vivo \u00b7 Jan 2026 \u00b7 Jul 2025 \u00b7 Enviadas", // 🌐 v137: dinâmicos da varredura E2E
+    "ns1_t":"Crea tu perfil de postulaci\u00f3n","ns1_s":"Es lo que va en los correos a las empresas. Toma 1 minuto.","ns1_c":"Crear perfil","ns2_t":"Adjunta tu curr\u00edculum (PDF)","ns2_s":"Sin curr\u00edculum adjunto, tus postulaciones no salen.","ns2_c":"Adjuntar","ns3_t":"\u00a1Todo listo! Empieza a postularte","ns3_s":"Tu perfil est\u00e1 completo. Env\u00eda tu primera postulaci\u00f3n hoy.","ns3_c":"Buscar empleos","ns4_t":"Alcanzaste el l\u00edmite de hoy","ns4_s":"Hazte VIP y env\u00eda hasta 100 postulaciones al d\u00eda.","ns4_c":"Ver planes","ns5_t":"Activa el Env\u00edo Autom\u00e1tico","ns5_s":"Deja que el sistema env\u00ede postulaciones mientras trabajas.","ns5_c":"Activar","logs_none":"Sin registros todav\u00eda","logs_none_s":"Los registros aparecen aqu\u00ed cuando uses el Env\u00edo Autom\u00e1tico","notif_none_unread":"Ninguna notificaci\u00f3n sin leer \ud83c\udf89","notif_none":"Ninguna notificaci\u00f3n por ahora","swap_instant":"Activa AL INSTANTE \u2014 sin espera, sin aprobaci\u00f3n","mi1":"Primera postulaci\u00f3n","mi2":"Perfil completo","mi3":"100 postulaciones","mi4":"1.000 postulaciones","mi5":"Rese\u00f1a publicada","snd_plane":"Avi\u00f3n","snd_plane_d":"Sonido de despegue","h_paid_t":"\u2705 Planes de pago:","h_paid_d":"El autom\u00e1tico env\u00eda m\u00e1s correos por d\u00eda. El plan gratis tiene 10 al d\u00eda; VIPro 100 y DoublePro 200.","sug_hero":"\u00a1Tu idea puede volverse una funci\u00f3n! Env\u00eda tu sugerencia al equipo de H2BApply.","sc_vagas":"\ud83d\udcbc Sobre los empleos", // 🌐 v137: dinâmicos da varredura E2E
     "g_1":"Env\u00edo Autom\u00e1tico","g_2":"Configura y deja que el sistema trabaje por ti","g_3":"/mes","g_4":"Autom\u00e1tico + Manual","g_5":"M\u00e1ximo rendimiento","g_6":"Accesos R\u00e1pidos","g_7":"Curr\u00edculums","g_8":"Mes","g_11":"N\u00fameros","g_12":"\ud83c\udde7\ud83c\uddf7 Portugu\u00eas","g_14":"(hasta 600 caracteres)","g_15":"(hasta 400 caracteres)","g_16":"(hasta 300 caracteres)","g_17":"Ayuda al sistema a encontrar los empleos correctos para ti","g_18":"\u00bfYa fuiste a EE.UU.?","g_19":"\u274c No","g_20":"\ud83d\udde3\ufe0f Nivel de ingl\u00e9s","g_21":"\ud83d\udcd6 B\u00e1sico","g_22":"\ud83c\udf1f Avanzado","g_23":"\ud83c\udf3f \u00c1rea preferida","g_24":"\ud83c\udfd7\ufe0f Construcci\u00f3n","g_25":"\ud83e\udd9e Mariscos","g_26":"\ud83d\udcc5 1 mes","g_27":"Notificaciones","g_28":"\ud83d\udeeb Alertas de H2BApply","g_29":"Toca el bot\u00f3n para activar","g_30":"tu curr\u00edculum (PDF)","g_31":"el texto del correo","g_32":"hasta 2 perfiles: uno H-2B y uno H-2A","g_33":"Adjunta tu curr\u00edculum PDF en cada postulaci\u00f3n","g_34":"Define el texto del correo en ingl\u00e9s","g_35":"Esencial para que el Env\u00edo Autom\u00e1tico funcione","g_36":"Curr\u00edculum usado:","g_37":"\ud83d\udcc8 \u00daltimos 7 d\u00edas","g_38":"Configuraci\u00f3n exclusiva de administrador","g_39":"Sin expiraci\u00f3n \u00b7 200 manual + 200 auto/d\u00eda \u00b7 Prioridad m\u00e1xima","g_40":"segundos entre cada env\u00edo","g_41":"3min (predeterminado)","g_42":"Agrega Gmails arriba para configurar l\u00edmites","g_43":"\u00b7 invisible para los usuarios","g_44":"Atenci\u00f3n:","g_45":"1 solo Gmail","g_46":"responsabilidad del usuario","g_47":"Los mismos filtros del Env\u00edo Manual \u2014 puesto, lugar, salario, grupo y m\u00e1s","g_48":"Categor\u00eda r\u00e1pida (detectada autom\u00e1ticamente)","g_49":"empleos para ti","g_50":"\ud83c\udfaf Tu perfil se usar\u00e1 en todos los env\u00edos:","g_51":"\u25b6 Empezar ahora","g_52":"Env\u00eda sin parar 24/7. Se reinicia a medianoche y sigue hasta vaciar la cola.","g_53":"\ud83d\udd50 Programar horario","g_54":"Env\u00eda de X a Y horas cada d\u00eda. Fuera del horario queda en pausa.","g_55":"Iniciar a las","g_56":"Parar a las","g_57":"regalar \ud83d\udc8e a un amigo","g_58":"da el \u2b50 VIP 30d","g_59":"da el \ud83e\udd16 VIPro 30d","g_60":"da el \ud83d\udc8e DoublePro 30d","g_61":"la cantidad de \ud83d\udc8e que quieras","g_62":"Donaci\u00f3n v\u00eda PIX","g_63":"*obligatorio","g_64":"Captura de la confirmaci\u00f3n del PIX de tu donaci\u00f3n","g_65":"Toca para seleccionar el comprobante","g_66":"JPG, PNG, PDF \u2014 m\u00e1x 5MB","g_67":"hasta 24h","g_68":"\u00bfDudas? Cont\u00e1ctanos:","g_69":"1 empresa que confirme = est\u00e1s en EE.UU. \u2708\ufe0f","g_72":"Aprende el sistema desde cero, paso a paso","g_73":"\ud83d\udccb Lo que vas a aprender:","g_74":"Respuesta de la empresa","g_75":"Preguntas Comunes","g_76":"Configurar tu Perfil","g_77":"Haz esto ANTES de enviar cualquier postulaci\u00f3n","g_78":"pa\u00eds","g_79":"Pesta\u00f1a \"Perfiles de Curr\u00edculum\" \u2014 configurar curr\u00edculum y plantilla","g_80":"sube tu curr\u00edculum en PDF","g_81":"Sin curr\u00edculum, el perfil no se guarda.","g_82":"asuntos y cuerpos de correo","g_83":"M\u00ednimo 3 variaciones de cada uno.","g_84":"Tu perfil est\u00e1 listo. Ya puedes enviar postulaciones.","g_85":"Env\u00edo Manual de Postulaciones","g_86":"Eliges cada empleo y env\u00edas uno por uno","g_87":"Elige la planilla de empleos","g_88":"M\u00e1s empleos disponibles.","g_89":"C\u00f3mo encontrar empleos para ti","g_90":"Haz clic en un empleo para ver los detalles","g_91":"Ve el correo de la empresa y la informaci\u00f3n del empleo","g_92":"\u00a1El correo con tu curr\u00edculum se env\u00eda autom\u00e1ticamente!","g_93":"desaparecen de la lista","g_94":"Env\u00edo Autom\u00e1tico 24h","g_95":"El sistema env\u00eda mientras duermes","g_96":"\ud83e\udd16 \u00bfQu\u00e9 es el Env\u00edo Autom\u00e1tico?","g_97":"\"Env\u00edo Autom\u00e1tico\"","g_98":"cantidad de empleos","g_99":"\"Iniciar Autom\u00e1tico\"","g_100":"\u26a0\ufe0f Atenci\u00f3n:","g_101":"desaparecen del env\u00edo manual","g_102":"La respuesta cae directo en TU Gmail","g_103":"tu propio Gmail","g_104":"Abre el correo de la empresa directo en tu Gmail","g_105":"Escribe tu respuesta en ingl\u00e9s y env\u00eda \u2014 es un correo tuyo, como cualquier otro","g_106":"\ud83d\udca1 Tip de respuesta r\u00e1pida:","g_107":"Env\u00eda m\u00e1s postulaciones por d\u00eda","g_108":"Gratis","g_109":"VIP \u00b7 67 \ud83d\udc8e/mes","g_110":"VIPro \u00b7 100 \ud83d\udc8e/mes","g_111":"DoublePro R$250/mes","g_112":"\ud83c\udf81 C\u00f3mo ganar VIP gratis:","g_113":"1 d\u00eda de VIP Manual","g_114":"C\u00f3digos promocionales","g_115":"Preguntas Frecuentes","g_116":"Respuestas r\u00e1pidas a preguntas comunes","g_117":"No.","g_118":"\u00bfTodav\u00eda con dudas?","g_119":"Mira los videos explicativos en YouTube o escr\u00edbenos por Instagram","g_128":"desaparecer de cualquier lugar p\u00fablico","g_129":"iniciar sesi\u00f3n de nuevo con el mismo correo","g_130":"m\u00ednimo 10 caracteres","g_131":"Autom\u00e1tico","g_132":"Empleo no identificado","g_133":"\ud83d\udcc5 Disponible","g_134":"\u2753 Duda","g_135":"Construcci\u00f3n","g_136":"Dep\u00f3sito","g_137":"\ud83c\udff7\ufe0f Puesto espec\u00edfico","g_138":"\ud83d\udcc2 Categor\u00eda r\u00e1pida","g_139":"\ud83c\udf0e Tipo de visa","g_140":"\ud83d\udcf6 Estado del empleo","g_141":"Grupo de Randomizaci\u00f3n","g_142":"\u2014 puedes elegir varios estados","g_143":"\ud83d\udcb0 Salario m\u00ednimo","g_144":"\ud83d\udc65 M\u00edn. de puestos","g_145":"\u2014 puedes marcar varios","g_146":"\ud83c\udfb2 Aleatorio (predeterminado)","g_147":"\ud83c\udfaf Mejor para ti primero","g_148":"\ud83d\udcb0 Mayor salario primero","g_149":"\ud83d\udcc5 Empieza antes primero","g_150":"Este perfil se usar\u00e1 en los env\u00edos manuales y autom\u00e1ticos","g_151":"curr\u00edculum (PDF)","g_152":"\u2460 Informaci\u00f3n B\u00e1sica","g_153":"\u00cdcono","g_154":"Elige un \u00edcono para el perfil:","g_155":"\u2461 Curr\u00edculum &amp; Cover Letter (PDF)","g_156":"\ud83d\udcc4 Curr\u00edculum (PDF)","g_157":"\u2705 Curr\u00edculum vinculado a este perfil","g_158":"\ud83d\udce4 Archivo nuevo \u2014 se subir\u00e1 al guardar","g_159":"Haz clic o arrastra un PDF para subirlo","g_160":"M\u00e1x. 10MB","g_161":"o elige uno de tu cuenta","g_162":"Carta de presentaci\u00f3n \u2014 opcional, pero aumenta las respuestas.","g_163":"solo en empleos del tipo de visa de este perfil","g_164":"\u2462 Asuntos del Correo","g_165":"M\u00ednimo 3","g_166":"Variables:","g_167":"\u2463 Cuerpos de Correo","g_168":"\u2699\ufe0f Variables \u2014 clic para copiar:","g_169":"3 cuerpos de correo","g_170":"Selecciona las categor\u00edas para las que este perfil se usar\u00e1 autom\u00e1ticamente","g_171":"\u2464 Configuraci\u00f3n","g_172":"Protecciones siempre activas:","g_173":"no se pueden desactivar","g_174":"Noticias","g_175":"Toca cualquier postulaci\u00f3n para ver detalles,","g_176":". El bot\u00f3n","g_177":"borra todo y devuelve los empleos a la lista (\u00fatil para volver a postularte).","g_178":"Los usuarios de pago pueden conectar un Gmail extra para reducir el riesgo de spam.","g_179":"\ud83c\udfad Elige tu avatar","g_180":"\ud83d\udca1 Lo que escribas aqu\u00ed aparece cuando alguien","g_181":"\ud83d\udc64 Sobre ti","g_182":"\ud83d\udcbc Experiencia laboral","g_183":"\ud83d\udcac \u00bfQu\u00e9 opinas de H2BApply?","g_184":"\ud83d\udcbe Guarda con el bot\u00f3n","g_185":"al final de la p\u00e1gina.","g_186":"Cada perfil tiene su curr\u00edculum vinculado directamente.","g_187":"El autom\u00e1tico siempre usa el PDF del perfil correcto \u2014 sin confusiones.","g_188":". Puedes tener","g_189":"el perfil que elijas en el Paso 3 del asistente","g_190":"Crea tu primer Perfil de Curr\u00edculum para","g_191":"empezar a enviar postulaciones","g_192":"Estad\u00edsticas","g_193":"Gmails de env\u00edo","g_194":"\u00a110 env\u00edos GRATIS/d\u00eda para todos!","g_195":"Enviar muchos correos con","g_196":"puede generar un bloqueo temporal de Google. Recomendamos agregar","g_197":"para distribuir los env\u00edos. El riesgo de bloqueo es de","g_198":"\ud83d\udcec Pr\u00f3ximas postulaciones","g_199":"\u2014 Verano","g_200":"\u26a0\ufe0f Filtro de categor\u00eda activo:","g_201":"\u2014 \u00a1eso limita los empleos! Para ver todos, haz clic en \"Todos\" arriba.","g_202":"El env\u00edo alterna","g_203":"\u00bfEl autom\u00e1tico vaci\u00f3 la cola? Restablecer enviados","g_204":"Solo necesitas iniciar sesi\u00f3n una vez.","g_205":"Horario (Bras\u00edlia)","g_207":"\ud83e\uddfe Mis donaciones","g_208":"en tu cuenta. Con diamantes t\u00fa","g_209":"cuando quieras \u2014 y hasta puedes","g_210":"\ud83d\udcf8 Comprobante de la donaci\u00f3n","g_211":"\ud83d\udcc5 Fecha en que donaste","g_212":". Con ella verificamos tu donaci\u00f3n.","g_213":"), tus \ud83d\udc8e caen en tu cuenta y los cambias por un plan","g_214":"Completa tu","g_215":"(escribe \"Brazil\" en ingl\u00e9s),","g_216":"con c\u00f3digo de pa\u00eds (+55 85 99999-9999) y","g_217":"Dale un","g_218":"nombre al perfil. Ej: \"Mi Perfil Principal\" o \"Landscape\"","g_219":"(obligatorio). Haz clic en el \u00e1rea punteada o arrastra el archivo.","g_220":"al final de la pantalla.","g_221":"En la parte superior del Env\u00edo Manual ver\u00e1s 3 pesta\u00f1as:","g_222":"\u2014 Empleos de verano en EE.UU. (temporada principal H-2B).","g_223":"\u2014 Empleos de invierno. Menos, pero a\u00fan v\u00e1lidos.","g_224":"Haz clic en el bot\u00f3n verde","g_225":"Empleos ya enviados","g_226":"que quieras poner en autom\u00e1tico","g_227":"Los empleos que pones en autom\u00e1tico","g_228":"H2BApply NO lee ni guarda tu bandeja de entrada \u2014 cada postulaci\u00f3n sale de tu","g_229":"10 autom\u00e1ticos/d\u00eda","g_230":"sin autom\u00e1tico","g_231":"100 autom\u00e1ticos/d\u00eda","g_232":"al registrarte (autom\u00e1tico)","g_233":"\u00bfPor qu\u00e9 mis empleos desaparecieron del manual?","g_234":"El autom\u00e1tico par\u00f3. \u00bfQu\u00e9 hago?","g_235":"Recib\u00ed un correo en ingl\u00e9s. \u00bfQu\u00e9 hago?","g_236":"Si piden documentos, contacta a un gestor de visas.","g_237":"en las variables de entorno del servidor para activar.","g_239":"Configuraci\u00f3n","g_239b":"Sesi\u00f3n","g_239c":"M\u00e1s","tut_center":"Centro de Tutoriales","settings_adv":"Configuraci\u00f3n avanzada","g_240":"Enviar una sugerencia o idea a los devs","g_241":"Zona de peligro","g_242":"Sugerencias para los Devs","g_243":"Nueva Sugerencia","g_244":"Tu sugerencia","g_245":"Mantente atento a","g_246":"\u00a1para novedades!","g_247":"\ud83d\udc8e Grupo de Randomizaci\u00f3n","g_248":"es exclusivo del plan","g_249":"\ud83d\udccd Ubicaci\u00f3n","g_250":"\ud83d\udcc5 Mes de inicio del empleo","g_251":"Nombre del perfil","g_252":"Descripci\u00f3n","g_253":"para evitar bloqueos por spam.","g_254":"Versiones distintas que el sistema alterna.","g_255":"para evitar spam.","g_256":"Planillas compatibles","g_257":"Categor\u00edas de empleo", // 🌐 v136: varredura final (auto)
     "gu_t":"Cómo H2BApply usa tu cuenta de Google","gu_b":"Pedimos <strong>un único permiso</strong> de Google: enviar correos por tu Gmail (<code style=\"background:rgba(255,255,255,.08);padding:1px 6px;border-radius:5px\">gmail.send</code>) — usado exclusivamente para enviar las postulaciones de empleo que <strong>tú mismo escribes y autorizas</strong>. H2BApply <strong>nunca lee, nunca almacena y nunca accede a tu bandeja de entrada</strong>. Las respuestas de los empleadores llegan directo a tu propio Gmail. Puedes revocar el acceso en cualquier momento en myaccount.google.com.","gu_l":"Lee nuestra Política de Privacidad completa →", // ✅ v145: transparência do uso da conta Google (verificação OAuth)
     "rst_t":"Actualizamos el sistema de inicio de sesión","rst_b":"Tu inicio de sesión fue reiniciado, pero <strong>NADA fue borrado</strong> — tus postulaciones, días de plan, diamantes y currículums están guardados. Entra con el <strong>MISMO correo de Google</strong> que usabas antes. ⚠️ <strong>No crees otra cuenta</strong> con un correo diferente: más de una cuenta arriesga un <strong>baneo permanente de ambos correos</strong>. Los cupos son limitados — usa la cuenta que ya tienes.", // 📢 v144: aviso do reset de login (OAuth novo)
@@ -8227,6 +7677,14 @@ const LANG_DICT = {
     "cancel":"Cancelar","send_btn":"Enviar","sending":"Enviando...","optional_lbl":"(opcional)","add_new":"+ Añadir",
     "logs_auto_title":"📋 Registros del Envío Automático","logs_auto_sub":"Historial completo de todos los envíos automáticos",
     "home_welcome":"¡Bienvenido(a) de nuevo! ¿Listo para enviar muchas postulaciones hoy?",
+    "home_hero_badge":"Empleos de temporada en todo EE. UU.","home_hero_h1a":"Trabaja en EE. UU.","home_hero_h1b":"con más oportunidades",
+    "home_stat_jobs":"Vacantes Disponibles","home_stat_companies":"Empresas Contactadas","home_stat_emails":"Correos Enviados",
+    "home_activity_title":"Actividad Reciente","home_tips_title":"Consejos para más respuestas",
+    "home_tip1":"Usa un currículum en inglés claro y objetivo.","home_tip2":"Postúlate a muchas vacantes — el volumen aumenta tus chances.",
+    "home_tip3":"Personaliza tu carta de presentación.","home_tip4":"Mantén tu perfil siempre actualizado.","home_tip5":"Revisa tu carpeta de spam.",
+    "home_tip_quote":"Disciplina hoy, oportunidades mañana.",
+    "home_auto_b1":"Envía a varias vacantes por día","home_auto_b3":"Nunca repite una postulación","home_auto_b4":"Funciona 24h — no necesitas estar en línea","home_auto_cta":"Iniciar Envío Automático",
+    "home_man_b1":"Busca y filtra las vacantes","home_man_b4":"Envía cuando estés listo",
     "manual_send_title":"Envío Manual","manual_send_sub":"Busca empleos y postúlate ahora",
     "plans_send_title":"Planes","plans_send_sub":"Potencia tus postulaciones con diamantes", // 🌐 v166: 3er CTA de Home
     "home_cv_tip":"Mantén tu currículum siempre actualizado.","home_cv_tip_link":"Editar currículum →", // 🌐 v166: aviso discreto de Home
@@ -8249,7 +7707,7 @@ const LANG_DICT = {
     "select_job":"Selecciona un empleo","select_job_sub":"Toca para ver detalles y postularte",
     "back_jobs":"Volver a empleos","job_search_ph":"Cargo, empresa, estado...",
     "hist_title":"Postulaciones Enviadas","hist_search_ph":"Buscar empresa, cargo o email...",
-    "hist_info":"Toca cualquier postulación para ver detalles, reenviar o eliminar individualmente. El botón Reset borra todo y devuelve los empleos a la lista.",
+    "hist_info":"El botón Reset borra todo y devuelve los empleos a la lista (útil para volver a postularte).","home_footer_tag":"Más que un sistema. Es tu próximo paso.",
     "search_jobs":"Buscar Empleos","search_sub":"Busca en todas las fuentes: Seasonal, Jan 2026, Jul 2025",
     "search_ph":"Empresa, email, ETA case number, cargo, estado...","clear":"Limpiar",
     "all_sources":"Todas las fuentes","sent":"Enviadas",
@@ -8353,9 +7811,9 @@ function applyLang(){
   _sSection('.home-section-title','Hoje','Today','Hoy',t('today'));
   _sSection('.home-section-title','Conta','Account','Cuenta',t('account'));
   _sSection('.home-section-title','Últimas Respostas','Latest Replies','Últimas Respuestas',t('latest_replies'));
-  // Home shortcut labels — ordem: Manual, Pesquisar, Respostas, Automático, Ranking, Perfil, Guia Visto
+  // Home shortcut labels — ordem: Manual, Respostas, Automático, Perfil
   const sc=document.querySelectorAll('.home-shortcut .home-shortcut-label');
-  const scT=[t('manual'),t('search'),t('responses'),t('auto_lbl'),t('profile')];
+  const scT=[t('manual'),t('responses'),t('auto_lbl'),t('profile')];
   sc.forEach((el,i)=>{if(i<scT.length&&scT[i])el.textContent=scT[i];});
   // Home stat labels — v89 (reestruturação parte 2): o 3º card mostra o
   // TOTAL de envios (U.totalSent), mas o label estava "Respostas" — e o app
@@ -8398,34 +7856,6 @@ function applyLang(){
   _sPlaceholder('hist-search',t('hist_search_ph'));
   // Hist info box text
   _sFirstSpan('#v-hist .al-blue span, #v-hist [style*="info-circle"] + span',t('hist_info'));
-
-  // ── SEARCH VIEW ──
-  document.querySelectorAll('#v-pesquisa [style*="font-size:16px"]').forEach(el=>{
-    if(el.textContent.match(/Pesquisar Vagas|Search Jobs|Buscar Empleos/)){
-      // Has icon, preserve it
-      const ic=el.querySelector('i');
-      el.textContent=' '+t('search_jobs');
-      if(ic) el.prepend(ic);
-    }
-  });
-  document.querySelectorAll('#v-pesquisa [style*="opacity:.7"]').forEach(el=>{
-    if(el.textContent.match(/Busca em|Search across|Busca en/)) el.textContent=t('search_sub');
-  });
-  _sBtnText('pesq-clear-btn', t('clear'));
-  _sPlaceholder('pesq-input',t('search_ph'));
-  // Search button inside
-  const pesqBtn=document.querySelector('#v-pesquisa button[style*="right:6px"]');
-  if(pesqBtn) pesqBtn.textContent=t('search');
-  // Source chips
-  document.querySelectorAll('.pesq-src-chip').forEach(b=>{
-    if(b.dataset.src==='all') b.textContent='🌐 '+t('all_sources');
-    if(b.dataset.src==='hist'){ const ic=b.querySelector('i'); b.textContent=' '+t('sent'); if(ic)b.prepend(ic); }
-  });
-  // Empty state
-  document.querySelectorAll('#pesq-empty-state div').forEach(el=>{
-    if(el.textContent.match(/Pesquise qualquer|Search anything|Busca cualquier/)) el.textContent=t('search_anything');
-    if(el.textContent.match(/Digite o nome|Type the name|Escribe el nombre/)) el.textContent=t('search_hint');
-  });
 
   // ── RESPONSES ──
   document.querySelectorAll('#v-respostas [style*="font-size:16px"]').forEach(el=>{
