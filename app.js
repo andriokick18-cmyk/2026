@@ -7,6 +7,12 @@
 /* ═══ bloco extraído ═══ */
 
 function esc(s){if(!s&&s!==0)return"";return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
+// v168 (bug real, auditoria 08/09/2026): valor em reais formatado com toFixed(2)
+// puro (ponto decimal, "R$ 150.00") em 2 telas de doação (card Minha Conta,
+// lista Minhas doações) — inconsistente com o resto do MESMO fluxo (a
+// calculadora de doação já formatava certo com .replace('.',',')). Helper
+// único pra nunca mais divergir.
+const brl=n=>(+n||0).toFixed(2).replace('.',',');
 
 // ═══════════════════════════════════════════
 //  ESTADO
@@ -545,7 +551,7 @@ async function _mcUltimoPedido(){
     const p=meus[0];
     const stMap={pendente:["🕐",t('mc_8'),"var(--amber)"],pago:["💰",t('mc_13'),"#2563eb"],ativo:["✅",t('mc_9'),"var(--green)"],cancelado:["❌",t('mc_10'),"var(--red)"]};
     const st2=stMap[String(p.status||"").toLowerCase()]||["ℹ️",String(p.status||"?"),"var(--t3)"];
-    box.innerHTML=`${esc(t('mc_7'))} <strong>R$ ${(+p.valorTotal||0).toFixed(2)}</strong> · <span style="color:${st2[2]};font-weight:700">${st2[0]} ${esc(st2[1])}</span>${p.createdAt?` · ${new Date(p.createdAt).toLocaleDateString('pt-BR')}`:''}`;
+    box.innerHTML=`${esc(t('mc_7'))} <strong>R$ ${brl(p.valorTotal)}</strong> · <span style="color:${st2[2]};font-weight:700">${st2[0]} ${esc(st2[1])}</span>${p.createdAt?` · ${new Date(p.createdAt).toLocaleDateString('pt-BR')}`:''}`;
   }catch(e){box.textContent="";}
 }
 
@@ -8422,7 +8428,21 @@ function renderDiamTroca(d){
   const box=g('#diam-troca'); if(!box)return;
   const tot=d.saldo.real+d.saldo.bonus;
   const NOME={vip:'\u2B50 VIP Manual',vipro:'\u{1F916} VIPro',doublepro:'\u{1F48E} DoublePro'};
-  const DESC={vip:'100 candidaturas manuais/dia',vipro:'100 manual + 100 automático/dia',doublepro:'200 manual + 200 automático/dia · 2 Gmails'}; // v118: números NOVOS (contratações a partir de 02/08/2026); quem já tem plano mantém os antigos até vencer
+  // v168 (RISCO real, auditoria 08/09/2026): antes era um texto hardcoded
+  // ("100 candidaturas manuais/dia" etc.) separado da tabela real de limites
+  // — podia ficar desatualizado se PLAN_LIMITS_NEW mudasse sem editar aqui
+  // também (a regra 13o já previu que isso aconteceria de novo). Agora deriva
+  // de d.limites (mesma fonte que o servidor usa de verdade pra travar os
+  // envios, GET /api/diamonds) — nunca mais 2 verdades sobre o mesmo número.
+  const EXTRA={doublepro:' · 2 Gmails'};
+  const DESC={};
+  ['vip','vipro','doublepro'].forEach(pl=>{
+    const lim=(d.limites||{})[pl];
+    const partes=[];
+    if(lim?.manual)partes.push(lim.manual+' manual');
+    if(lim?.auto)partes.push(lim.auto+' automático');
+    DESC[pl]=(partes.length?partes.join(' + ')+'/dia':'')+(EXTRA[pl]||'');
+  });
   const por={};(d.planos||[]).forEach(p=>{(por[p.plano]=por[p.plano]||[]).push(p);});
   box.innerHTML=`<div style="background:var(--surface);border:2px solid var(--border2);border-radius:var(--rl);overflow:hidden">
     <div style="background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(59,130,246,.08));padding:12px 16px;border-bottom:1px solid var(--border)">
@@ -8725,7 +8745,7 @@ async function loadMeusPagamentos(){
             <div style="font-size:13px;font-weight:700">${planLbl}</div>
             <div style="font-size:11px;color:var(--t3)">${dt} · #${esc((p.id||"").slice(-8).toUpperCase())}</div>
           </div>
-          <div style="font-size:14px;font-weight:800;color:var(--green)">R$ ${(+p.valorTotal||0).toFixed(2)}</div>
+          <div style="font-size:14px;font-weight:800;color:var(--green)">R$ ${brl(p.valorTotal)}</div>
           <span style="font-size:10.5px;font-weight:800;color:${cor};background:${bg};border-radius:8px;padding:3px 8px">${lbl}</span>
         </div>
         ${sub?`<div style="font-size:11px;color:var(--t3);margin-top:4px">${sub}</div>`:""}

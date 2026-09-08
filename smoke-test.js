@@ -443,16 +443,21 @@ async function testAuthWatchdogPush() {
     // no sucesso E sincronizado pelo cooldownLeft do 429 do servidor);
     // (3) o aviso das regras (planRulesNotice) chega ao usuário 1x por
     // sessão (_avisoRegrasPlanos + sessionStorage h2b_prn).
-    const _v118Front = frontAll.includes("100 candidaturas manuais/dia") &&
-      frontAll.includes("100 manual + 100 automático/dia") &&
-      frontAll.includes("200 manual + 200 automático/dia") &&
+    // v168 (auditoria 08/09/2026): o texto de venda dos números (manual/auto
+    // por plano) ERA uma string hardcoded em app.js, uma 2ª verdade separada
+    // de PLAN_LIMITS_NEW — corrigido pra derivar de d.limites (GET
+    // /api/diamonds, ver check dedicado logo abaixo, no bloco do comprador).
+    // A guarda estrutural aqui passou a checar o MECANISMO (deriva de
+    // d.limites, nunca texto solto), não mais os números como string —
+    // números certos já são provados ao vivo pelo check v168 dedicado.
+    const _v118Front = frontAll.includes("d.limites") &&
       frontAll.includes("_manualCdUntil") &&
       frontAll.includes("cooldownLeft") &&
       frontAll.includes("_avisoRegrasPlanos") &&
       frontAll.includes("planRulesNotice") &&
       frontAll.includes("h2b_prn");
-    check("📋 v118: front vende os números novos e aplica cooldown de 1min + aviso de regras (uma vez por sessão)",
-      _v118Front, "textos de venda novos, _manualCdUntil/cooldownLeft ou _avisoRegrasPlanos/h2b_prn não encontrados no front");
+    check("📋 v118/v168: front deriva a descrição de limites de d.limites (nunca mais hardcoded) e aplica cooldown de 1min + aviso de regras (uma vez por sessão)",
+      _v118Front, "d.limites, _manualCdUntil/cooldownLeft ou _avisoRegrasPlanos/h2b_prn não encontrados no front");
 
     // ⏱️ v120: o botão de editar o cooldown existe no modal de envio, o
     // opt-out exige aceite explícito (checkbox trava o botão) e as strings
@@ -1054,6 +1059,18 @@ async function testAuthWatchdogPush() {
     check("💎 v154: comprador segue FREE mas com 98 💎 reais (100 da aprovação − 2 do reajuste de valor 150→147)",
       st3.json?.plan !== "vipro" && st3.json?.vip?.active !== true && dmComp.json?.saldo?.real === 98,
       JSON.stringify({ plan: st3.json?.plan, saldo: dmComp.json?.saldo }).slice(0, 120));
+
+    // 💎 v168 (bug real, auditoria 08/09/2026): a tela "Trocar diamantes por
+    // plano" mostrava um texto de limites HARDCODED em app.js, separado da
+    // fonte única PLAN_LIMITS_NEW — hoje batia, mas nada garantia isso no
+    // futuro. GET /api/diamonds agora expõe "limites" (mesma tabela real
+    // que trava os envios) e o front deriva o texto disso. Prova ao vivo que
+    // os números batem com PLAN_LIMITS_NEW, não só com o texto do momento.
+    check("💎 v168: GET /api/diamonds expõe 'limites' (fonte única PLAN_LIMITS_NEW) — front nunca mais hardcoda o texto de manual/auto por plano",
+      dmComp.json?.limites?.vip?.manual === 100 && dmComp.json?.limites?.vip?.auto === 0 &&
+      dmComp.json?.limites?.vipro?.manual === 100 && dmComp.json?.limites?.vipro?.auto === 100 &&
+      dmComp.json?.limites?.doublepro?.manual === 200 && dmComp.json?.limites?.doublepro?.auto === 200,
+      JSON.stringify(dmComp.json?.limites));
 
     // admin cancela: caixa estornado E os 💎 da doação estornados (13c)
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com" });

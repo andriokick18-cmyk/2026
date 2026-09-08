@@ -42,7 +42,7 @@
 //    completa (6 temporadas, vagas com e-mail) + reestruturação visual
 //    das abas (seção recolhível "Temporadas Anteriores", Manual+Automático).
 //
-const CACHE_NAME = "h2bapply-2026-v5"; // v5: bug real "não dá pra salvar currículo/assuntos/corpos" — rascunho do onboarding (0 proteção antes), tour mobile cobrindo o editor de perfil, mensagem de sessão caída, e correções no sistema de envio (currículo sumindo quando só a carta anexava, {categoria} nunca substituída, corrida de duplo-clique)
+const CACHE_NAME = "h2bapply-2026-v6"; // v6: auditoria da jornada doação→diamante→plano→envio — formatação de R$ (vírgula) em 2 telas de doação, tabela de limites manual/auto derivada da fonte única (nunca mais hardcoded) e correção do "hoje" inflado na Visão do Dono quando uma entrada é cancelada no mesmo dia
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).

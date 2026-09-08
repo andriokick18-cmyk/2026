@@ -10534,9 +10534,16 @@ ${pedido.criadoPor&&pedido.criadoPor!==pedido.userEmail?`\n🛠️ Registrado re
         .map(pp=>(pp.ativadoEm-pp.createdAt)/3600000).filter(h=>h>0&&h<24*14).sort((a,b)=>a-b);
       if(hs.length>=3)medianaAprovacaoHoras=Math.round(hs[Math.floor(hs.length/2)]*10)/10;
     }catch(e){}
+    // v168 (RISCO real, auditoria 08/09/2026): a descrição de limites (manual/
+    // auto por plano) na tela "Trocar diamantes por plano" era um texto
+    // HARDCODED em app.js, separado da fonte única PLAN_LIMITS_NEW — hoje os
+    // números batiam, mas nada os mantinha em sincronia se a tabela mudasse
+    // de novo (regra 13o já previu isso acontecer). Expõe a tabela aqui,
+    // igual já é feito com o preço em 💎 (campo "planos"), pro front derivar
+    // o texto sempre da mesma fonte que o servidor realmente usa.
     return json(res,200,{ok:true,price:DIAMOND_PRICE_BRL,saldo:_diamSaldo(p),diamantesInfinitos:isAdminVip(p),
       medianaAprovacaoHoras,
-      ledger:(Array.isArray(p.diamondLedger)?p.diamondLedger:[]).slice(0,60),planos:tabela});
+      ledger:(Array.isArray(p.diamondLedger)?p.diamondLedger:[]).slice(0,60),planos:tabela,limites:PLAN_LIMITS_NEW});
   }
   // POST /api/diamonds/trocar {plano,dias} — troca 💎 por plano, ativação NA
   // HORA (o dinheiro já foi conferido na doação; não lança caixa de novo).
@@ -15147,9 +15154,19 @@ function _anularNoCaixa(pedidoOuFinId, porPedido, quem, batch, motivo){
     if(ped&&_pv(ped.valorTotal)>0&&_pv(ped.valorTotal)!==v)v=_pv(ped.valorTotal);
     const ajusteId="aj_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,6);
     pg.anuladoPor={ajusteId,em:Date.now(),motivo,por:quem};
+    // v168 (bug real, auditoria 08/09/2026): dataPagamento aqui era um
+    // DATE-ONLY já ajustado pra BRT (-3h) e truncado ("YYYY-MM-DD") — todo
+    // OUTRO lançamento do caixa grava um ISO timestamp COMPLETO (new
+    // Date().toISOString(), com hora). computeEntradasJanelas (e qualquer
+    // outro consumidor) aplica o ajuste de -3h UMA VEZ sobre o timestamp
+    // completo pra achar o dia BRT — aplicado em cima de um valor JÁ
+    // truncado, o ajuste duplo empurrava o par negativo pro dia ANTERIOR,
+    // inflando a janela "hoje" sempre que uma entrada era cancelada no
+    // mesmo dia (o positivo contava, o negativo que devia zerá-lo não).
+    // Mesmo formato de todo mundo agora — sem ajuste, sem truncar aqui.
     fin.pagamentos.push({
       id:ajusteId,tipo:"ajuste",email:pg.email,nome:pg.nome||pg.email,
-      valor:-v,dataPagamento:new Date(Date.now()-3*3600_000).toISOString().slice(0,10),
+      valor:-v,dataPagamento:new Date().toISOString(),
       criadoEm:Date.now(),ajustaPagamentoId:pg.id||null,ajustaPedidoId:pg.pedidoId||null,
       motivo:motivo+" · "+batch,por:"Sistema (caixa nunca apaga)",porEmail:quem,
     });
