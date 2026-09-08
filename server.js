@@ -7121,6 +7121,14 @@ const server=http.createServer(async(req,res)=>{
     // sendAsset, que triplicaria a memória com 30+ fotos sem ganho nenhum).
     try{const img=fs.readFileSync(path.join(__dirname,"tutorial-img",nome));res.writeHead(200,{"Content-Type":nome.endsWith(".png")?"image/png":"image/jpeg","Cache-Control":"public, max-age=604800"});return res.end(img);}catch{res.writeHead(404);return res.end();}
   }
+  // 🖼️ Fotos reais de marca (hero da Home, sidebar, landing, Enviadas —
+  // pedido do dono, print de referência). Mesmo padrão do /tut-img: nome
+  // SANITIZADO (só [a-z0-9-].jpg), nunca traversal.
+  if(pathname.startsWith("/img/")){
+    const nomeImg=pathname.slice("/img/".length);
+    if(!/^[a-z0-9-]+\.jpg$/.test(nomeImg)){res.writeHead(404);return res.end();}
+    try{const img=fs.readFileSync(path.join(__dirname,"img",nomeImg));res.writeHead(200,{"Content-Type":"image/jpeg","Cache-Control":"public, max-age=604800"});return res.end(img);}catch{res.writeHead(404);return res.end();}
+  }
   if(pathname==="/h2bapply-funciona"||pathname==="/h2bapply-funciona.html")return serveHtml("h2bapply-funciona.html"); // SEO: página "H2BApply funciona?" (como funciona, confiança, preços, FAQ)
   if(pathname==="/h2b-e-golpe"||pathname==="/h2b-e-golpe.html")return serveHtml("h2b-e-golpe.html"); // SEO/confiança: página "H2B é golpe?" — golpes comuns, regra federal anti-taxa-de-recrutamento, como verificar vaga real
   if(pathname==="/quanto-ganha-h2b"||pathname==="/quanto-ganha-h2b.html")return serveHtml("quanto-ganha-h2b.html"); // SEO: página "quanto ganha quem trabalha H2B/H2A" — médias reais calculadas ao vivo via /api/public-wage-stats

@@ -7389,7 +7389,7 @@ const LANG_DICT = {
     "select_job":"Selecione uma vaga","select_job_sub":"Clique para ver os detalhes e candidatar-se",
     "back_jobs":"Voltar às vagas","job_search_ph":"Cargo, empresa, estado...",
     // History
-    "hist_title":"Candidaturas Enviadas","hist_search_ph":"Buscar empresa, cargo ou e-mail...",
+    "hist_title":"Candidaturas Enviadas","hist_search_ph":"Buscar empresa, cargo ou e-mail...","hist_banner":"Suas candidaturas, sempre à mão",
     "hist_info":"O botão Reset apaga tudo e faz as vagas voltarem para a lista (útil para recandidatar-se).","home_footer_tag":"Mais que um sistema. É o seu próximo passo.",
     // Search
     "search_jobs":"Buscar Vagas","search_sub":"Busca em todas as fontes: Seasonal, Jan 2026, Jul 2025",
@@ -7554,7 +7554,7 @@ const LANG_DICT = {
     "all":"All","all_f":"All","active_f":"✅ Active","random":"🔀 Random","recent":"Recent","oldest":"Oldest",
     "select_job":"Select a job","select_job_sub":"Click to see details and apply",
     "back_jobs":"Back to jobs","job_search_ph":"Position, company, state...",
-    "hist_title":"Applications Sent","hist_search_ph":"Search company, position or email...",
+    "hist_title":"Applications Sent","hist_search_ph":"Search company, position or email...","hist_banner":"Your applications, always at hand",
     "hist_info":"The Reset button clears everything and returns jobs to the list (useful to reapply).","home_footer_tag":"More than a system. It's your next step.",
     "search_jobs":"Search Jobs","search_sub":"Search across all sources: Seasonal, Jan 2026, Jul 2025",
     "search_ph":"Company, email, ETA case number, position, state...","clear":"Clear",
@@ -7706,7 +7706,7 @@ const LANG_DICT = {
     "all":"Todas","all_f":"Todas","active_f":"✅ Activas","random":"🔀 Aleatorio","recent":"Recientes","oldest":"Antiguas",
     "select_job":"Selecciona un empleo","select_job_sub":"Toca para ver detalles y postularte",
     "back_jobs":"Volver a empleos","job_search_ph":"Cargo, empresa, estado...",
-    "hist_title":"Postulaciones Enviadas","hist_search_ph":"Buscar empresa, cargo o email...",
+    "hist_title":"Postulaciones Enviadas","hist_search_ph":"Buscar empresa, cargo o email...","hist_banner":"Tus postulaciones, siempre a la mano",
     "hist_info":"El botón Reset borra todo y devuelve los empleos a la lista (útil para volver a postularte).","home_footer_tag":"Más que un sistema. Es tu próximo paso.",
     "search_jobs":"Buscar Empleos","search_sub":"Busca en todas las fuentes: Seasonal, Jan 2026, Jul 2025",
     "search_ph":"Empresa, email, ETA case number, cargo, estado...","clear":"Limpiar",

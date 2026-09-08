@@ -1248,6 +1248,18 @@ textarea.input,input.input,select.input{background:#f5f7ff;color:#1e1b4b}
   gap:48px;align-items:start;
 }
 @media(max-width:860px){.ln-hero-inner{grid-template-columns:1fr}}
+.ln-hero-visual{position:relative;border-radius:20px;overflow:hidden;box-shadow:0 20px 50px rgba(15,23,42,.35);aspect-ratio:4/3}
+.ln-hero-visual img{width:100%;height:100%;object-fit:cover;display:block}
+.ln-hero-visual-tag{position:absolute;left:12px;bottom:12px;right:12px;background:rgba(15,23,42,.72);backdrop-filter:blur(4px);border-radius:12px;padding:9px 12px;font-size:12px;font-weight:800;color:#fff;display:flex;align-items:center;gap:6px}
+@media(max-width:860px){.ln-hero-visual{display:none}}
+/* ── VITRINE (foto real de exemplo de vagas) ── */
+.ln-showcase{padding:20px 20px 8px;max-width:1100px;margin:0 auto;width:100%}
+.ln-showcase-inner{background:var(--surface);border:1.5px solid var(--border);border-radius:22px;overflow:hidden;display:grid;grid-template-columns:1.3fr 1fr;box-shadow:0 10px 40px rgba(15,23,42,.08)}
+.ln-showcase-inner img{width:100%;height:100%;object-fit:cover;display:block;min-height:220px}
+.ln-showcase-copy{padding:28px 26px;display:flex;flex-direction:column;justify-content:center}
+.ln-showcase-title{font-family:'Sora',sans-serif;font-size:22px;font-weight:800;color:var(--text);margin-bottom:10px;line-height:1.25}
+.ln-showcase-sub{font-size:13.5px;color:var(--t2);line-height:1.65}
+@media(max-width:720px){.ln-showcase-inner{grid-template-columns:1fr}.ln-showcase-inner img{min-height:180px}}
 
 .ln-vip-pill{
   display:inline-flex;align-items:center;gap:6px;
@@ -1525,7 +1537,8 @@ textarea.input,input.input,select.input{background:#f5f7ff;color:#1e1b4b}
 
 /* ── CTA final ── */
 .ln-cta-section{
-  background:linear-gradient(135deg,#0a1228,#0f1e45,#0a1228);
+  background-image:linear-gradient(135deg,rgba(10,18,40,.93),rgba(15,30,69,.90),rgba(10,18,40,.93)),url(/img/banner-h2bapply-completo.jpg);
+  background-size:cover;background-position:center;
   border-top:1px solid rgba(59,130,246,.15);
   padding:80px 20px;text-align:center;
 }
@@ -2134,6 +2147,12 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
         </div>
       </div>
 
+      <!-- Coluna direita: foto real (Estátua da Liberdade + farol de Martha's Vineyard) -->
+      <div class="ln-hero-visual" aria-hidden="true">
+        <img src="/img/landing-hero-card.jpg" alt="" loading="eager">
+        <div class="ln-hero-visual-tag">🇺🇸 <span>Vagas H-2B &amp; H-2A nos EUA</span></div>
+      </div>
+
     </div>
 
     <!-- Stats bar -->
@@ -2397,6 +2416,17 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
     </div>
   </section>
 
+  <!-- ── VITRINE: como funciona na prática (foto real) ── -->
+  <section class="ln-showcase">
+    <div class="ln-showcase-inner">
+      <img src="/img/promo-vagas-lighthouse.jpg" alt="Exemplo de vagas H2BApply: Bartender, Housekeeping e Kitchen Helper" loading="lazy">
+      <div class="ln-showcase-copy">
+        <div class="ln-showcase-title">Vagas de verdade, todos os dias</div>
+        <div class="ln-showcase-sub">Empresas reais nos EUA — Martha's Vineyard, Cape Cod, Nantucket e centenas de outras cidades — publicando vagas H-2B e H-2A o tempo todo. O H2BApply candidata você automaticamente, direto do seu Gmail.</div>
+      </div>
+    </div>
+  </section>
+
   <!-- ── FOOTER DA LANDING ── -->
   <footer class="ln-footer">
     <div class="ln-footer-inner">
@@ -2513,20 +2543,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       </div>
 
       <!-- Painel decorativo — Estátua da Liberdade em SVG -->
-      <div id="sb-liberty" aria-hidden="true">
-        <svg viewBox="0 0 160 150" preserveAspectRatio="xMidYMax slice" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="80" cy="112" r="46" fill="#fde68a" opacity=".55"/>
-          <g fill="#1c1917" opacity=".85">
-            <rect x="76" y="55" width="8" height="60" rx="1"/>
-            <rect x="60" y="112" width="40" height="7" rx="1.5"/>
-            <path d="M80 20 L86 34 L94 34 L88 43 L91 55 L80 48 L69 55 L72 43 L66 34 L74 34 Z"/>
-            <circle cx="80" cy="40" r="10"/>
-            <path d="M84 30 L100 8 L102 12 L88 34 Z"/>
-            <path d="M97 4 L107 -1 L104 8 L110 10 L100 15 L97 4 Z" opacity=".9"/>
-            <path d="M70 46 Q56 60 58 90 L64 90 Q63 62 74 50 Z"/>
-            <path d="M90 46 Q104 60 102 90 L96 90 Q97 62 86 50 Z"/>
-          </g>
-        </svg>
+      <div id="sb-liberty" aria-hidden="true" style="background-image:linear-gradient(0deg,rgba(0,0,0,.55) 0%,rgba(0,0,0,.1) 55%,transparent 100%),url(/img/sidebar-liberty.jpg);background-size:cover;background-position:top center">
         <div class="sbl-txt">Grandes sonhos.<br>Oportunidades maiores.</div>
       </div>
 
@@ -2559,39 +2576,9 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       <div class="view gone" id="v-home">
         <div class="home-view">
 
-          <!-- ══ HERO — banner fotográfico (farol + bandeira dos EUA em SVG, já
-               que o sandbox de IA não tem saída de rede pra baixar foto real de
-               banco de imagens — mesma paleta navy→índigo de sempre) ══ -->
+          <!-- ══ HERO — banner fotográfico real (Estátua da Liberdade + skyline de NY) ══ -->
           <div style="padding:16px 14px 0">
-            <div class="home-header" style="background:linear-gradient(150deg,#0f172a 0%,#1e1b4b 45%,#4338ca 100%);border-radius:22px;padding:24px 22px 26px;position:relative;overflow:hidden;box-shadow:0 16px 40px rgba(15,23,42,.28);min-height:190px">
-              <!-- Stars decoration -->
-              <div style="position:absolute;inset:0;pointer-events:none;background:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='120'%3E%3Cg fill='rgba(255,255,255,0.08)'%3E%3Ccircle cx='20' cy='20' r='1.5'/%3E%3Ccircle cx='80' cy='35' r='1'/%3E%3Ccircle cx='150' cy='15' r='1.5'/%3E%3Ccircle cx='190' cy='55' r='1'/%3E%3Ccircle cx='60' cy='80' r='1'/%3E%3Ccircle cx='130' cy='90' r='1.5'/%3E%3Ccircle cx='170' cy='75' r='1'/%3E%3C/g%3E%3C/svg%3E\") repeat"></div>
-              <!-- Cena litorânea decorativa (farol + bandeira + ondas), canto direito -->
-              <svg aria-hidden="true" viewBox="0 0 220 170" style="position:absolute;right:-10px;bottom:-6px;width:190px;height:150px;opacity:.9;pointer-events:none" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="hhWave" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0" stop-color="#60a5fa" stop-opacity=".35"/>
-                    <stop offset="1" stop-color="#1d4ed8" stop-opacity=".55"/>
-                  </linearGradient>
-                </defs>
-                <path d="M0 150 Q20 140 40 150 T80 150 T120 150 T160 150 T200 150 T240 150 V170 H0 Z" fill="url(#hhWave)"/>
-                <path d="M0 160 Q20 152 40 160 T80 160 T120 160 T160 160 T200 160 T240 160 V170 H0 Z" fill="#1e3a8a" fill-opacity=".5"/>
-                <ellipse cx="70" cy="152" rx="34" ry="10" fill="rgba(255,255,255,.10)"/>
-                <g transform="translate(52,40)">
-                  <polygon points="12,110 24,110 20,20 16,20" fill="#f1f5f9"/>
-                  <polygon points="13,55 23,55 21,44 15,44" fill="#ef4444"/>
-                  <polygon points="14,32 22,32 21,20 15,20" fill="#f1f5f9"/>
-                  <rect x="10" y="8" width="16" height="13" rx="2" fill="#0f172a" stroke="#f1f5f9" stroke-width="1.5"/>
-                  <polygon points="8,8 28,8 18,0" fill="#ef4444"/>
-                  <path d="M26 14 L70 -6 L70 6 L26 20 Z" fill="#fef3c7" opacity=".35"/>
-                  <rect x="6" y="108" width="24" height="7" rx="1.5" fill="#e2e8f0"/>
-                </g>
-                <g transform="translate(150,52)">
-                  <rect x="0" y="0" width="2.4" height="72" fill="#e2e8f0"/>
-                  <path d="M2.4 4 H34 L29 12 L34 20 H2.4 Z" fill="#dc2626"/>
-                  <path d="M2.4 4 H14 V13 H2.4 Z" fill="#1e3a8a"/>
-                </g>
-              </svg>
+            <div class="home-header" style="background-image:linear-gradient(105deg,rgba(15,23,42,.88) 0%,rgba(15,23,42,.72) 32%,rgba(15,23,42,.28) 65%,rgba(15,23,42,.1) 100%),url(/img/hero-liberty-skyline.jpg);background-size:cover;background-position:center;border-radius:22px;padding:24px 22px 26px;position:relative;overflow:hidden;box-shadow:0 16px 40px rgba(15,23,42,.28);min-height:190px">
               <div style="position:relative;z-index:1;max-width:calc(100% - 92px)">
                 <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
                   <div id="home-avatar" style="width:36px;height:36px;border-radius:50%;overflow:hidden;border:2px solid rgba(255,255,255,.35);background:linear-gradient(135deg,rgba(99,102,241,.4),rgba(124,58,237,.3));display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#fff;flex-shrink:0">?</div>
@@ -2723,11 +2710,13 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
             </div>
           </div>
 
-          <!-- ══ FAIXA DE MARCA — rodapé da Home ══ -->
-          <div style="padding:20px 14px 26px;text-align:center">
-            <div style="font-family:'Sora',sans-serif;font-size:17px;font-weight:800;color:var(--t2);margin-bottom:4px">H2B<span style="color:var(--purple,#7c3aed)">Apply</span></div>
-            <div style="font-size:11.5px;color:var(--t3);margin-bottom:10px" data-i18n="home_footer_tag">Mais que um sistema. É o seu próximo passo.</div>
-            <div style="display:flex;align-items:center;justify-content:center;gap:8px;font-size:18px">🇺🇸</div>
+          <!-- ══ FAIXA DE MARCA — rodapé da Home, foto real (farol de Martha's Vineyard + Estátua da Liberdade) ══ -->
+          <div style="padding:16px 14px 26px">
+            <div style="border-radius:20px;overflow:hidden;position:relative;min-height:150px;background-image:linear-gradient(0deg,rgba(15,23,42,.82) 0%,rgba(15,23,42,.35) 60%,rgba(15,23,42,.1) 100%),url(/img/hero-liberty-lighthouse.jpg);background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end;padding:18px 20px;text-align:center">
+              <div style="font-family:'Sora',sans-serif;font-size:17px;font-weight:800;color:#fff;margin-bottom:4px">H2B<span style="color:#c4b5fd">Apply</span></div>
+              <div style="font-size:11.5px;color:rgba(255,255,255,.85);margin-bottom:8px" data-i18n="home_footer_tag">Mais que um sistema. É o seu próximo passo.</div>
+              <div style="display:flex;align-items:center;justify-content:center;gap:8px;font-size:18px">🇺🇸</div>
+            </div>
           </div>
 
       </div>
@@ -2738,6 +2727,9 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
            isso (GET /api/history, POST /api/history/clear) — só a TELA tinha
            sido removida numa reconstrução anterior. ══ -->
       <div class="view gone" id="v-hist"><div class="view-scroll">
+        <div style="border-radius:16px;overflow:hidden;position:relative;min-height:84px;margin-bottom:14px;background-image:linear-gradient(100deg,rgba(6,78,59,.85) 0%,rgba(6,95,70,.55) 55%,rgba(6,95,70,.15) 100%),url(/img/accent-envio-verde.jpg);background-size:cover;background-position:center;display:flex;align-items:center;padding:14px 18px">
+          <div style="color:#fff;font-weight:900;font-size:15px;line-height:1.3">✈️ <span data-i18n="hist_banner">Suas candidaturas, sempre à mão</span></div>
+        </div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
           <div style="font-size:18px;font-weight:800" data-i18n="hist_title">Candidaturas Enviadas</div>
           <div style="display:flex;gap:6px;align-items:center">
@@ -5935,7 +5927,6 @@ html, body, #app, .bottom-nav, .sidebar, .drawer{
 /* Painel decorativo — Estátua da Liberdade em SVG, silhueta pôr do sol (sem
    saída de rede pro sandbox de IA baixar foto real de banco de imagens) */
 #sb-liberty{margin:4px 3px 2px;border-radius:14px;overflow:hidden;position:relative;min-height:140px}
-#sb-liberty svg{position:absolute;inset:0;width:100%;height:100%}
 #sb-liberty .sbl-txt{position:absolute;left:11px;bottom:11px;right:11px;color:#fff7ed;font-family:'Sora',sans-serif;font-weight:800;font-size:12.5px;line-height:1.25;text-shadow:0 2px 8px rgba(0,0,0,.4)}
 </style>
 <div class="overlay gone" id="tour-overlay" style="z-index:998" onclick="if(event.target===this)closeTour()">
