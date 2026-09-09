@@ -391,7 +391,7 @@ function showApp(){
   // Oculta footer da landing ao logar (bottom-nav substitui)
   const sf=g("#site-footer");if(sf)sf.style.display="none";
   renderHdr();renderSidebar();
-  if(U.isAdmin){const e=g("#sb-admin-sec");if(e)e.style.display="block";const da=g("#d-admin");if(da)da.style.display="block";}
+  if(U.isAdmin){const e=g("#sb-admin-sec");if(e)e.style.display="block";const da=g("#d-admin");if(da)da.style.display="block";const mm=g("#mm-admin-link");if(mm)mm.style.display="flex";}
   _initAdminTab();
   loadTabCounts();
   // Abre na HOME após login (não direto em Vagas)
@@ -446,7 +446,7 @@ function showApp(){
     }
     // Navega para a view correta sem empurrar novo estado
     curView=v;
-    VIEWS.forEach(id=>{const ve=g("#v-"+id);if(ve)ve.classList.toggle("gone",id!==v);const si=g("#si-"+id);if(si)si.classList.toggle("active",id===v);const bn=g("#bn-"+id);if(bn)bn.classList.toggle("active",id===v);});
+    VIEWS.forEach(id=>{const ve=g("#v-"+id);if(ve)ve.classList.toggle("gone",id!==v);const si=g("#si-"+id);if(si)si.classList.toggle("active",id===v);const bn=g("#bn-"+id);if(bn)bn.classList.toggle("active",id===v);});const bnMore=g("#bn-more");if(bnMore)bnMore.classList.toggle("active",BN_MORE_VIEWS.includes(v));
     if(v==="home")renderHome();
     if(v!=="jobs")closeMobDetail();
   });
@@ -590,15 +590,15 @@ function updateLimChip(){
   }
 }
 function updateAutoDot(on){
-  // Dot no botão automático do bottom nav
-  const d=g("#bnd-auto");if(d){if(on)d.classList.add("bn-dot","is-auto");else{d.classList.remove("is-auto");d.style.display="none";}}
-  // Dot na sidebar
-  const sb=g("#sb-auto-dot");if(sb)sb.style.display=on?"block":"none";
+  // v171: os alvos de #bnd-auto/#bn-auto/#sb-auto-dot (botão central
+  // "Automático" elevado no bottom nav antigo + um dot decorativo na
+  // sidebar) já não existem no HTML há tempos — nunca davam erro (g() é
+  // null-safe) mas eram 3 linhas mortas; a nav mobile hoje só abre o
+  // Automático pelo item "Mais" (openAutoModal()), e o destaque na
+  // sidebar já é 100% coberto por .is-active (texto+ícone verde) abaixo.
   const sba=g("#sb-auto-btn");if(sba)sba.classList.toggle("is-active",on);
   // Dot verde no avatar do header quando automático ligado
   const hdrDot=g("#hdr-av-dot");if(hdrDot)hdrDot.style.display=on?"block":"none";
-  // Botão automático no bottom nav fica ativo
-  const bnAuto=g("#bn-auto");if(bnAuto)bnAuto.classList.toggle("is-active",on);
 }
 function renderSidebar(){
   const sbp=g("#sb-prof");if(sbp)sbp.style.display="block";
@@ -652,6 +652,10 @@ document.addEventListener('DOMContentLoaded', function(){updateThemeUI();});
 //  NAVIGATION
 // ═══════════════════════════════════════════
 const VIEWS=["home","jobs","logs","profile","auto","plans","tutorial","settings","hist"];
+// v171: views que só existem dentro do sheet "Mais" (sem botão #bn-<id> próprio
+// no bottom-nav de 5 itens) — o loop de destaque abaixo precisa acender #bn-more
+// pra elas, senão o bottom-nav inteiro fica sem nenhum ícone ativo.
+const BN_MORE_VIEWS=["plans","tutorial","settings"];
 function sv(v,...args){
   // ── "auto" abre modal em vez da view ──
   if(v==="auto"){if(typeof openAutoModal==="function"){openAutoModal();return;}}
@@ -662,7 +666,7 @@ function sv(v,...args){
   // botão do drawer/menu removido em reconstrução anterior, por isso antes
   // NUNCA podia ficar "active" — forçar isso agora apagaria o destaque do
   // item certo assim que o loop abaixo o marcasse ativo).
-  VIEWS.forEach(id=>{const ve=g("#v-"+id);if(ve)ve.classList.toggle("gone",id!==v);const si=g("#si-"+id);if(si)si.classList.toggle("active",id===v);const bn=g("#bn-"+id);if(bn)bn.classList.toggle("active",id===v);});
+  VIEWS.forEach(id=>{const ve=g("#v-"+id);if(ve)ve.classList.toggle("gone",id!==v);const si=g("#si-"+id);if(si)si.classList.toggle("active",id===v);const bn=g("#bn-"+id);if(bn)bn.classList.toggle("active",id===v);});const bnMore=g("#bn-more");if(bnMore)bnMore.classList.toggle("active",BN_MORE_VIEWS.includes(v));
   if(v==="jobs"){setTimeout(loadLugares,400);}if(v==="plans"){try{loadPlanos();}catch(e){}}if(v==="profile"){loadProfile();loadTplView();setTimeout(()=>{_loadSoundPref();renderSoundSelector();},100);}
 
   if(v==="auto"){loadAutoView();if(U.autoJob?.active)startAutoPolling();}
@@ -7489,6 +7493,7 @@ const LANG_DICT = {
     "plans_send_title":"💎 Planos","plans_send_sub":"Assine um plano e turbine seus envios", // 🌐 v166: 3º CTA da Home
     "home_cv_tip":"Mantenha seu currículo sempre atualizado.","home_cv_tip_link":"Editar currículo →", // 🌐 v166: dica discreta da Home
     "inicio":"Início","auto_send":"Envio Automático","manual_send":"Envio Manual",
+    "bn_jobs":"Vagas","bn_more":"Mais","bn_more_title":"Mais opções","bn_auto":"Envio Automático","bn_tutorial":"Central de Tutoriais","bn_settings":"Configurações", // 📱 v171: bottom-nav de 5 itens (era 3 — Enviadas/Vagas não tinham acesso direto no mobile)
     "news_h2b":"Notícias H-2B","sent_tab":"Enviadas","download_app":"Baixar App","menu_lbl":"MENU",
     "hist_short":"Enviadas","saved_short":"Salvas",
     "greet_m":"👋 Bom dia,","greet_t":"👋 Boa tarde,","greet_n":"👋 Boa noite,","greet_d":"👋 Madrugada,",
@@ -7653,6 +7658,7 @@ const LANG_DICT = {
     "plans_send_title":"💎 Plans","plans_send_sub":"Subscribe to a plan and power up your applications", // 🌐 v166: Home 3rd CTA
     "home_cv_tip":"Keep your resume up to date.","home_cv_tip_link":"Edit resume →", // 🌐 v166: Home subtle tip
     "inicio":"Home","auto_send":"Auto Send","manual_send":"Manual Send",
+    "bn_jobs":"Jobs","bn_more":"More","bn_more_title":"More options","bn_auto":"Auto Send","bn_tutorial":"Tutorials Center","bn_settings":"Settings",
     "news_h2b":"H-2B News","sent_tab":"Sent","download_app":"Get the App","menu_lbl":"MENU",
     "hist_short":"Sent","saved_short":"Saved",
     "greet_m":"👋 Good morning,","greet_t":"👋 Good afternoon,","greet_n":"👋 Good evening,","greet_d":"👋 Late night,",
@@ -7801,6 +7807,7 @@ const LANG_DICT = {
     "plans_send_title":"💎 Planes","plans_send_sub":"Suscríbete a un plan y potencia tus postulaciones", // 🌐 v166: 3er CTA de Home
     "home_cv_tip":"Mantén tu currículum siempre actualizado.","home_cv_tip_link":"Editar currículum →", // 🌐 v166: aviso discreto de Home
     "inicio":"Inicio","auto_send":"Envío Automático","manual_send":"Envío Manual",
+    "bn_jobs":"Empleos","bn_more":"Más","bn_more_title":"Más opciones","bn_auto":"Envío Automático","bn_tutorial":"Centro de Tutoriales","bn_settings":"Configuración",
     "news_h2b":"Noticias H-2B","sent_tab":"Enviadas","download_app":"Descargar App","menu_lbl":"MENÚ",
     "hist_short":"Enviadas","saved_short":"Guardadas",
     "greet_m":"👋 Buenos días,","greet_t":"👋 Buenas tardes,","greet_n":"👋 Buenas noches,","greet_d":"👋 Madrugada,",
@@ -7901,10 +7908,14 @@ function applyLang(){
   document.querySelectorAll("[data-i18n-title]").forEach(el=>{const v=t(el.getAttribute("data-i18n-title"));if(v){el.title=v;el.setAttribute("aria-label",v);}});
   document.querySelectorAll('.lang-opt').forEach(b=>b.classList.toggle('active',b.dataset.lang===_curLang));
 
-  // ── BOTTOM NAV — v166: só os 3 destinos principais (Início/Perfil/Planos) ──
+  // ── BOTTOM NAV — v171: 5 destinos (Início/Vagas/Enviadas/Perfil/Mais) —
+  // v166 tinha reduzido a 3 (Início/Perfil/Planos) e deixado Vagas/Enviadas
+  // sem NENHUM acesso de 1 toque no mobile (só via cards da Home). Vagas e
+  // Enviadas usam data-i18n direto no HTML (varredura automática acima);
+  // os 2 que não tinham (bn-profile/bn-more) continuam via _si().
   _si('bn-home','span',t('inicio'));
   _si('bn-profile','span',t('profile'));
-  _si('bn-plans','span',t('plans'));
+  _si('bn-more','span',t('bn_more'));
 
   // ── SIDEBAR — v166: idem (Manual/Currículos/Automático saíram do topo) ──
   _sbItem('si-saved',t('saved_jobs')); // v126

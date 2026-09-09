@@ -141,6 +141,23 @@ a{color:inherit;text-decoration:none}
 [data-theme="dark"] select.input option{background:var(--sf2);color:var(--text)}
 [data-theme="dark"] .btn-secondary{background:var(--sf2)!important;color:var(--t2)!important;border-color:var(--border2)!important}
 [data-theme="dark"] .btn-secondary:hover{background:var(--sf3)!important}
+/* v171 (auditoria mobile 09/09): .overlay/.modal nunca tinham override de
+   tema escuro — o bloco "v14 LIGHT OVERRIDES" fixava fundo branco sólido
+   (#ffffff) sem nenhum [data-theme="dark"] correspondente (só .input e
+   .btn-secondary tinham, provando que a intenção sempre foi o escuro
+   alcançar o conteúdo dos modais). Isso sempre afetou TODO modal do site
+   em tema escuro; ficou mais grave agora porque o sheet "Mais" (novo,
+   único caminho mobile até Planos/Automático/Tutorial/Configurações) usa
+   .mm-item{color:var(--text)} — texto quase branco sobre fundo branco. */
+[data-theme="dark"] .overlay{background:rgba(0,0,0,.75)!important}
+[data-theme="dark"] .modal{background:var(--surface)!important;color:var(--text)!important;border-color:var(--border2)!important;box-shadow:0 24px 80px rgba(0,0,0,.5)!important}
+[data-theme="dark"] .mhandle{background:var(--border2)!important}
+[data-theme="dark"] .mhdr{border-bottom-color:var(--border2)!important}
+[data-theme="dark"] .mttl{color:var(--text)!important}
+[data-theme="dark"] .msub{color:var(--t2)!important}
+[data-theme="dark"] .mx{color:var(--t3)!important}
+[data-theme="dark"] .mx:hover{background:var(--sf2)!important;color:var(--text)!important}
+[data-theme="dark"] .mfoot{border-top-color:var(--border2)!important}
 [data-theme="dark"] .ob-toggle.on,[data-theme="dark"] .ob-toggle-eng.on,[data-theme="dark"] .ob-toggle-cnh.on,[data-theme="dark"] .ob-toggle-s.on{background:var(--blue)!important;color:#fff!important;border-color:var(--blue)!important}
 [data-theme="dark"] #onboarding-overlay>div{background:var(--surface)!important}
 [data-theme="dark"] .pix-code{background:var(--sf2)!important;color:var(--text)!important}
@@ -153,10 +170,6 @@ a{color:inherit;text-decoration:none}
 [data-theme="dark"] .t{background:#e8eaf6!important;color:#0d0f1a!important}
 [data-theme="dark"] .bn i{color:#7c7fb5}
 [data-theme="dark"] .bn span{color:#7c7fb5}
-[data-theme="dark"] .bn-auto-ring{box-shadow:0 4px 18px rgba(124,58,237,.45),0 0 0 3px #161928!important}
-[data-theme="dark"] .bn.bn-auto.is-active .bn-auto-ring{box-shadow:0 4px 18px rgba(5,150,105,.45),0 0 0 3px #161928!important}
-[data-theme="dark"] .bn-badge{border-color:#161928!important}
-[data-theme="dark"] .bn-dot{border-color:#161928!important}
 [data-theme="dark"] .search-bar{background:var(--surface)!important}
 [data-theme="dark"] .search-inp{background:var(--sf2)!important;color:var(--text)!important}
 [data-theme="dark"] .fsel{background:var(--sf2)!important;color:var(--text)!important;border-color:var(--border2)!important}
@@ -448,123 +461,11 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 @keyframes sbAutoGlow{0%,100%{box-shadow:0 12px 30px rgba(219,39,119,.4)}50%{box-shadow:0 16px 40px rgba(249,115,22,.55)}}
 .sb-profile{margin:5px 3px;padding:10px 11px;border:1.5px solid var(--border);border-radius:var(--r);background:var(--sf2)}
 .sb-av{width:32px;height:32px;border-radius:50%;overflow:hidden;flex-shrink:0;background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center}
-/* Bottom nav */
-/* ══ BOTTOM NAV — estilo Instagram/Facebook ══════════════════ */
-.bottom-nav{
-  background:var(--surface);
-  border-top:1px solid rgba(99,102,241,.1);
-  display:flex;
-  align-items:center;
-  flex-shrink:0;
-  padding-bottom:env(safe-area-inset-bottom);
-  height:calc(62px + env(safe-area-inset-bottom));
-  box-shadow:0 -2px 20px rgba(99,102,241,.08);
-  position:relative;
-  z-index:100;
-}
-.bn{
-  flex:1;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:flex-end;
-  padding:6px 4px 8px;
-  gap:3px;
-  cursor:pointer;
-  border:none;
-  background:none;
-  font-family:inherit;
-  position:relative;
-  transition:transform .1s;
-  -webkit-tap-highlight-color:transparent;
-}
-.bn:active{transform:scale(.93)}
-.bn i{font-size:23px;color:#9ca3af;transition:color .15s,transform .15s}
-.bn span{font-size:10px;font-weight:600;color:#9ca3af;transition:color .15s;letter-spacing:.01em}
-.bn.active i{color:#4f46e5;transform:scale(1.08)}
-.bn.active span{color:#4f46e5;font-weight:800}
-
-/* Linha indicadora no topo (estilo Instagram) */
-.bn::before{
-  content:"";
-  position:absolute;
-  top:0;left:50%;
-  transform:translateX(-50%) scaleX(0);
-  width:24px;height:2.5px;
-  background:linear-gradient(90deg,#6366f1,#7c3aed);
-  border-radius:0 0 3px 3px;
-  transition:transform .2s cubic-bezier(.34,1.56,.64,1);
-}
-.bn.active::before{transform:translateX(-50%) scaleX(1)}
-
-/* AUTO — botão central elevado */
-.bn.bn-auto{
-  position:relative;
-  margin-top:-18px;
-  flex-shrink:0;
-}
-.bn.bn-auto .bn-auto-ring{
-  width:52px;height:52px;
-  border-radius:50%;
-  background:linear-gradient(135deg,#7c3aed,#4f46e5);
-  display:flex;align-items:center;justify-content:center;
-  box-shadow:0 4px 18px rgba(124,58,237,.45),0 0 0 3px #fff;
-  transition:transform .15s,box-shadow .15s;
-}
-.bn.bn-auto:active .bn-auto-ring{transform:scale(.92)}
-.bn.bn-auto .bn-auto-ring i{color:#fff;font-size:22px}
-.bn.bn-auto span{color:#7c3aed;font-weight:800;font-size:10px;margin-top:3px}
-.bn.bn-auto.is-active .bn-auto-ring{
-  background:linear-gradient(135deg,#059669,#047857);
-  box-shadow:0 4px 18px rgba(5,150,105,.45),0 0 0 3px #fff;
-  animation:autoPulse 2s ease-in-out infinite;
-}
-@keyframes autoPulse{0%,100%{box-shadow:0 4px 18px rgba(5,150,105,.45),0 0 0 3px #fff}50%{box-shadow:0 4px 24px rgba(5,150,105,.7),0 0 0 4px rgba(5,150,105,.15)}}
-
-/* Badge de notificação */
-.bn-badge{
-  position:absolute;
-  top:-4px;right:-6px;
-  background:#ef4444;
-  color:#fff;
-  font-size:9px;font-weight:800;
-  padding:1px 5px;
-  border-radius:10px;
-  min-width:16px;
-  text-align:center;
-  border:1.5px solid #fff;
-  display:none;
-}
-
-/* Dot no auto (quando rodando) */
-.bn-dot{
-  position:absolute;top:-2px;right:-2px;
-  width:10px;height:10px;
-  background:#10b981;
-  border:2px solid #fff;
-  border-radius:50%;
-  display:none;
-}
-.bn-dot.is-auto{display:block;animation:pulseDot 2s infinite}
-@keyframes pulseDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.7;transform:scale(1.15)}}
-
-/* Avatar no nav */
-.bn-av-wrap{
-  width:28px;height:28px;
-  border-radius:50%;
-  overflow:hidden;
-  background:linear-gradient(135deg,#4f46e5,#7c3aed);
-  display:flex;align-items:center;justify-content:center;
-  border:2px solid rgba(99,102,241,.3);
-  transition:border-color .15s;
-}
-.bn-av-wrap i{font-size:16px;color:#fff}
-.bn-av-wrap img{width:100%;height:100%;object-fit:cover}
-.bn.bn-profile.active .bn-av-wrap{border-color:#4f46e5;border-width:2.5px}
-.bn.bn-profile i{display:none} /* esconde o ícone padrão — usa bn-av-wrap */
-.bn-plans-icon{display:inline-flex;align-items:center;gap:1px;font-size:18px;line-height:1}
-.bn-plans-icon .ti-star-filled{font-size:10px;color:#f59e0b;vertical-align:top;margin-top:1px}
-.bn-plans-icon .ti-robot{font-size:13px;color:var(--blue);vertical-align:middle}
+/* Bottom nav — ver definição única mais abaixo (v171: consolidada) */
+/* v171: .bn-av-wrap/.bn-profile/.bn-plans-icon (avatar do usuário e ícone
+   combinado estrela+robô que o bottom-nav antigo usava nos botões Perfil e
+   Planos) removidos daqui — CSS morto, nenhum HTML usa mais essas classes
+   desde que o nav de 5 itens passou a usar ícones simples (ti-user etc). */
 /* Views */
 .view{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0}
 .view-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px}
@@ -754,6 +655,14 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 .log-date{font-size:10px;color:var(--t4);white-space:nowrap;flex-shrink:0}
 /* Stats boxes */
 .stats-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+/* v171 (auditoria mobile 09/09): a linha de 5 stats de Logs vinha com
+   grid-template-columns:repeat(5,1fr) INLINE, sem NENHUMA quebra pra
+   mobile — 5 caixas espremidas na largura do celular. O inline saiu do
+   HTML; agora usa o padrão 2 colunas da .stats-row por padrão (mobile) e
+   só vira 5-em-1-linha a partir de 480px, onde já cabe confortável. */
+.stats-row-5{grid-template-columns:1fr 1fr}
+.stats-row-5>:last-child{grid-column:1/-1}
+@media(min-width:480px){.stats-row-5{grid-template-columns:repeat(5,1fr)}.stats-row-5>:last-child{grid-column:auto}}
 .stat-box{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r);padding:12px 14px;text-align:center}
 .stat-val{font-size:24px;font-weight:800;color:var(--blue)}
 .stat-lbl{font-size:10px;font-weight:600;color:var(--t3);text-transform:uppercase;margin-top:2px}
@@ -931,8 +840,6 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 .home-greeting{font-size:13px;opacity:.7;margin-bottom:2px}
 .home-name{font-family:'Sora',sans-serif;font-size:20px;font-weight:800;line-height:1.2;white-space:normal;word-break:break-word;padding-right:4px}
 .home-plan-row{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.home-shortcuts{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;padding:16px 14px 10px;position:relative;z-index:1}
-@media(max-width:380px){.home-shortcuts{grid-template-columns:repeat(3,1fr)}}
 .home-shortcut{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--rl);padding:14px 10px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;transition:all .16s;text-align:center;position:relative;overflow:hidden}
 .home-shortcut:hover{border-color:var(--blue);box-shadow:0 4px 20px rgba(37,99,235,.12);transform:translateY(-2px)}
 .home-shortcut:active{transform:scale(.97)}
@@ -1701,7 +1608,6 @@ textarea.input,input.input,select.input{background:#f5f7ff;color:#1e1b4b}
 @media(max-width:360px){
   .bn span{font-size:9px}
   .bn i{font-size:20px}
-  .bn-auto-ring{width:40px;height:40px}
 }
 
 /* Sidebar Logs item - less prominent (power user only) */
@@ -1894,7 +1800,15 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
 .av-btn:hover{transform:scale(1.07);box-shadow:0 2px 12px rgba(99,102,241,.35)}
 .av-btn img{width:100%;height:100%;object-fit:cover;border-radius:50%}
 
-/* Bottom nav — 4 itens, limpo */
+/* Bottom nav (mobile, <768px) — FONTE ÚNICA (v171: existiam 2 definições
+   conflitantes de .bottom-nav/.bn no CSS, cada uma vencendo parte da
+   cascata — resultado era um Frankenstein difícil de prever. Unificadas
+   aqui; de quebra, 2 cores hardcoded que ignoravam o tema escuro por
+   engano (ícone e rótulo ativos) viraram var(--t3)/var(--blue). O botão
+   central "Automático" elevado (.bn-auto) não existe mais no HTML —
+   removido junto (era CSS morto desde antes desta limpeza), assim como
+   .bn-av-wrap/.bn-profile/.bn-plans-icon (avatar e ícone combinado de um
+   nav antigo de 3 itens — nenhum HTML usa mais essas classes). */
 .bottom-nav{
   display:flex;align-items:stretch;
   background:var(--surface);
@@ -1908,48 +1822,25 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
   flex:1;display:flex;flex-direction:column;align-items:center;
   justify-content:center;gap:3px;border:none;background:none;
   cursor:pointer;color:var(--t3);font-size:10px;font-weight:600;
-  font-family:inherit;padding:0;transition:color .15s;
+  font-family:inherit;padding:0;position:relative;
+  transition:color .15s,transform .1s;letter-spacing:.01em;
   -webkit-tap-highlight-color:transparent;
 }
-.bn i{font-size:22px;line-height:1}
-.bn.active,.bn:active{color:var(--blue)}
-.bn.active i{color:var(--blue)}
-
-/* Botão automático central — elevado */
-.bn-auto{
-  color:var(--t2);position:relative;
-  margin-top:-12px;
+.bn:active{transform:scale(.93);color:var(--blue)}
+.bn i{font-size:22px;line-height:1;color:var(--t3);transition:color .15s,transform .15s}
+.bn.active{color:var(--blue)}
+.bn.active i{color:var(--blue);transform:scale(1.08)}
+.bn.active span{color:var(--blue);font-weight:800}
+/* Linha indicadora no topo (estilo Instagram) */
+.bn::before{
+  content:"";position:absolute;top:0;left:50%;
+  transform:translateX(-50%) scaleX(0);
+  width:24px;height:2.5px;
+  background:linear-gradient(90deg,#6366f1,#7c3aed);
+  border-radius:0 0 3px 3px;
+  transition:transform .2s cubic-bezier(.34,1.56,.64,1);
 }
-.bn-auto-ring{
-  width:52px;height:52px;border-radius:50%;
-  background:linear-gradient(135deg,#4f46e5,#7c3aed);
-  display:flex;align-items:center;justify-content:center;
-  box-shadow:0 4px 18px rgba(99,102,241,.45);
-  position:relative;
-}
-.bn-auto-ring i{font-size:22px;color:#fff}
-.bn-auto.is-active .bn-auto-ring{
-  background:linear-gradient(135deg,#059669,#10b981);
-  box-shadow:0 4px 18px rgba(5,150,105,.4);
-}
-.bn-auto span.bn-dot{
-  position:absolute;top:4px;right:4px;
-  width:10px;height:10px;border-radius:50%;
-  background:#4ade80;border:2px solid var(--surface);
-  display:none;
-}
-.bn-auto span.bn-dot.is-auto{display:block}
-.bn-auto>span:last-child{font-size:9px;margin-top:2px;color:var(--t3)}
-
-/* Avatar no bottom nav */
-.bn-av-wrap{
-  width:30px;height:30px;border-radius:50%;
-  background:linear-gradient(135deg,#4f46e5,#7c3aed);
-  display:flex;align-items:center;justify-content:center;
-  overflow:hidden;border:2.5px solid var(--border);
-}
-.bn-av-wrap img{width:100%;height:100%;object-fit:cover}
-.bn-av-wrap i{font-size:18px;color:#fff}
+.bn.active::before{transform:translateX(-50%) scaleX(1)}
 
 /* Sidebar desktop — simplificada */
 @media(min-width:768px){
@@ -2700,22 +2591,22 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
               <div class="home-stat-card" onclick="sv('jobs')" style="cursor:pointer;border-radius:16px;padding:16px 4px 13px;text-align:center;background:var(--surface);border:1.5px solid var(--border);box-shadow:0 4px 14px rgba(15,23,42,.05)">
                 <div style="font-size:20px;line-height:1;margin-bottom:7px">💼</div>
                 <div style="color:var(--blue);font-size:20px;font-weight:900" id="home-stat-jobs">–</div>
-                <div style="font-size:8.5px;color:var(--t3);font-weight:800;text-transform:uppercase;letter-spacing:.03em;margin-top:4px" data-i18n="home_stat_jobs">Vagas Disponíveis</div>
+                <div style="font-size:9.5px;color:var(--t3);font-weight:800;text-transform:uppercase;letter-spacing:.03em;margin-top:4px;line-height:1.25" data-i18n="home_stat_jobs">Vagas Disponíveis</div>
               </div>
               <div class="home-stat-card" onclick="sv('hist')" style="cursor:pointer;border-radius:16px;padding:16px 4px 13px;text-align:center;background:var(--surface);border:1.5px solid var(--border);box-shadow:0 4px 14px rgba(15,23,42,.05)">
                 <div style="font-size:20px;line-height:1;margin-bottom:7px">✈️</div>
                 <div style="color:var(--green);font-size:20px;font-weight:900" id="home-stat-total">–</div>
-                <div style="font-size:8.5px;color:var(--t3);font-weight:800;text-transform:uppercase;letter-spacing:.03em;margin-top:4px" data-i18n="home_stat_emails">E-mails Enviados</div>
+                <div style="font-size:9.5px;color:var(--t3);font-weight:800;text-transform:uppercase;letter-spacing:.03em;margin-top:4px;line-height:1.25" data-i18n="home_stat_emails">E-mails Enviados</div>
               </div>
               <div class="home-stat-card" onclick="sv('hist')" style="cursor:pointer;border-radius:16px;padding:16px 4px 13px;text-align:center;background:var(--surface);border:1.5px solid var(--border);box-shadow:0 4px 14px rgba(15,23,42,.05)">
                 <div style="font-size:20px;line-height:1;margin-bottom:7px">🏢</div>
                 <div style="color:#ef4444;font-size:20px;font-weight:900" id="home-stat-companies">–</div>
-                <div style="font-size:8.5px;color:var(--t3);font-weight:800;text-transform:uppercase;letter-spacing:.03em;margin-top:4px" data-i18n="home_stat_companies">Empresas Contatadas</div>
+                <div style="font-size:9.5px;color:var(--t3);font-weight:800;text-transform:uppercase;letter-spacing:.03em;margin-top:4px;line-height:1.25" data-i18n="home_stat_companies">Empresas Contatadas</div>
               </div>
               <div class="home-stat-card" onclick="openAutoModal()" style="cursor:pointer;border-radius:16px;padding:16px 4px 13px;text-align:center;background:var(--surface);border:1.5px solid var(--border);box-shadow:0 4px 14px rgba(15,23,42,.05)">
                 <div style="font-size:20px;line-height:1;margin-bottom:7px">🤖</div>
                 <div style="color:var(--purple);font-size:20px;font-weight:900" id="home-stat-auto">–</div>
-                <div style="font-size:8.5px;color:var(--t3);font-weight:800;text-transform:uppercase;letter-spacing:.03em;margin-top:4px" data-i18n="auto_send">Envio Automático</div>
+                <div style="font-size:9.5px;color:var(--t3);font-weight:800;text-transform:uppercase;letter-spacing:.03em;margin-top:4px;line-height:1.25" data-i18n="auto_send">Envio Automático</div>
               </div>
             </div>
           </div>
@@ -2888,7 +2779,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
             <button aria-label="Limpar logs" title="Limpar logs" class="btn btn-danger btn-sm" onclick="clearLogs()"><i class="ti ti-trash"></i></button>
           </div>
           <!-- Stats row -->
-          <div class="stats-row" id="log-stats-row" style="grid-template-columns:repeat(5,1fr)">
+          <div class="stats-row stats-row-5" id="log-stats-row">
             <div class="stat-box" onclick="g('#log-status').value='enviado';loadLogs()" style="cursor:pointer"><div class="stat-val" id="log-stat-sent" style="color:var(--green)">–</div><div class="stat-lbl">Enviados</div></div>
             <div class="stat-box" onclick="g('#log-status').value='falhou';loadLogs()" style="cursor:pointer"><div class="stat-val" style="color:var(--red)" id="log-stat-failed">–</div><div class="stat-lbl">Falhas</div></div>
             <div class="stat-box" onclick="g('#log-status').value='duplicado';loadLogs()" style="cursor:pointer"><div class="stat-val" style="color:var(--amber)" id="log-stat-dup">–</div><div class="stat-lbl">Duplicados</div></div>
@@ -3766,27 +3657,64 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
 
     </div><!-- /main-area -->
   </div><!-- /app-body --><!-- Bottom Nav -->
-  <!-- ══ BOTTOM NAV — v166: reduzida aos mesmos 3 destinos da sidebar
-       (Início/Perfil/Planos). Manual, Automático e Currículos saíram da
-       navegação de topo — continuam acessíveis pelos botões grandes da
-       Home (igual no desktop) e pelo modal de sempre (automático). ══ -->
+  <!-- ══ BOTTOM NAV — v171 (achado de auditoria mobile, 09/09/2026): a v166
+       tinha reduzido a 3 destinos (Início/Perfil/Planos) e deixado Vagas e
+       Enviadas — as 2 telas de uso mais frequente do app — sem NENHUM
+       acesso de 1 toque no mobile (só chegava por um card dentro da Home).
+       Agora são 5: Início/Vagas/Enviadas/Perfil ficam diretos; Planos,
+       Automático, Tutorial, Configurações e Sair entram no "Mais" (sheet
+       leve, reaproveitando o padrão .overlay/.modal que já existe — não é
+       o antigo drawer/menu, que foi removido de vez numa reconstrução
+       anterior e nem deveria voltar). ══ -->
   <nav class="bottom-nav" id="bottom-nav">
     <!-- 1: Início -->
     <button class="bn" id="bn-home" onclick="sv('home')">
       <i class="ti ti-home-2"></i>
       <span data-i18n="inicio">Início</span>
     </button>
-    <!-- 2: Meu Perfil -->
+    <!-- 2: Vagas (Envio Manual) -->
+    <button class="bn" id="bn-jobs" onclick="sv('jobs')">
+      <i class="ti ti-send"></i>
+      <span data-i18n="bn_jobs">Vagas</span>
+    </button>
+    <!-- 3: Enviadas -->
+    <button class="bn" id="bn-hist" onclick="sv('hist')">
+      <i class="ti ti-history"></i>
+      <span data-i18n="sent_tab">Enviadas</span>
+    </button>
+    <!-- 4: Meu Perfil -->
     <button class="bn" id="bn-profile" onclick="sv('profile')">
       <i class="ti ti-user"></i>
       <span>Perfil</span>
     </button>
-    <!-- 3: Planos -->
-    <button class="bn" id="bn-plans" onclick="sv('plans')">
-      <i class="ti ti-diamond"></i>
-      <span>💎 Planos</span>
+    <!-- 5: Mais -->
+    <button class="bn" id="bn-more" onclick="g('#more-menu-overlay').classList.remove('gone')">
+      <i class="ti ti-dots-vertical"></i>
+      <span data-i18n="bn_more">Mais</span>
     </button>
   </nav>
+</div>
+
+<style>
+.mm-item{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:none;border:none;border-radius:12px;padding:13px 12px;font-size:14.5px;font-weight:700;font-family:inherit;color:var(--text);cursor:pointer;min-height:44px}
+.mm-item:active{background:var(--sf2)}
+.mm-item i{font-size:19px;color:var(--t3);width:22px;text-align:center;flex-shrink:0}
+</style>
+<div class="overlay gone" id="more-menu-overlay" onclick="if(event.target===this)this.classList.add('gone')">
+  <div class="modal" style="max-width:420px"><div class="mhandle"></div>
+    <div class="mhdr"><div class="mttl" data-i18n="bn_more_title">Mais opções</div><button aria-label="Fechar" title="Fechar" class="mx" onclick="g('#more-menu-overlay').classList.add('gone')"><i class="ti ti-x"></i></button></div>
+    <div class="mbody" style="padding-top:2px">
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <button class="mm-item" onclick="g('#more-menu-overlay').classList.add('gone');sv('plans')"><i class="ti ti-diamond"></i><span data-i18n="plans">💎 Planos</span></button>
+        <button class="mm-item" onclick="g('#more-menu-overlay').classList.add('gone');openAutoModal()"><i class="ti ti-robot"></i><span data-i18n="bn_auto">Envio Automático</span></button>
+        <button class="mm-item" onclick="g('#more-menu-overlay').classList.add('gone');sv('tutorial')"><i class="ti ti-book-2"></i><span data-i18n="bn_tutorial">Central de Tutoriais</span></button>
+        <button class="mm-item" onclick="g('#more-menu-overlay').classList.add('gone');sv('settings')"><i class="ti ti-settings"></i><span data-i18n="bn_settings">Configurações</span></button>
+        <button class="mm-item" id="mm-admin-link" style="display:none" onclick="g('#more-menu-overlay').classList.add('gone');location.href='/admin'"><i class="ti ti-shield"></i><span data-i18n="admin">Painel Admin</span></button>
+        <div style="border-top:1px solid var(--border);margin:6px 4px"></div>
+        <button class="mm-item" style="color:var(--red)" onclick="g('#more-menu-overlay').classList.add('gone');confirmLogout()"><i class="ti ti-logout"></i><span data-i18n="logout">Sair</span></button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ══ TEMPLATE PICKER ══ -->
@@ -5396,7 +5324,22 @@ strong,b{font-weight:700;color:inherit}
     padding:14px 16px 12px;
   }
 
-  /* Sidebar oculta em mobile (já existe drawer) */
+  /* Sidebar já vira bottom-nav abaixo de 768px (ver .sidebar/.bottom-nav) */
+}
+
+/* ── v171 (auditoria mobile 09/09): alvos de toque abaixo do mínimo de
+   44px recomendado. Breakpoint PRÓPRIO em 767px (não 640px como o bloco
+   acima) porque a navegação mobile (.bottom-nav) só vira sidebar desktop
+   a partir de 768px (ver @media(min-width:768px) mais abaixo) — entre
+   641-767px (tablets pequenos/phablets em paisagem) o app ainda está em
+   modo touch com o bottom-nav visível, então o alvo de toque precisa
+   valer até esse limite também, não só até 640px. ── */
+@media (max-width: 767px) {
+  .icon-opt{width:44px;height:44px;font-size:20px} /* eram 36px — 29 no seletor de ícone do editor de perfil */
+  .fbtn{min-height:44px;padding:0 12px} /* eram 30px — filtros/ordenação de Vagas e abas de Enviadas */
+  .tpl-var{min-height:44px;display:inline-flex;align-items:center;padding:0 12px;font-size:12px} /* eram ~20px — variáveis do editor de e-mail */
+  .mx{min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;padding:8px} /* eram ~24px — fechar modal */
+  #tour-prev,#tour-next{min-height:44px;padding:12px 18px} /* eram 30px (.btn-xs) — navegação do tour de boas-vindas */
 }
 
 /* ══════════════════════════════════════════
@@ -5760,11 +5703,11 @@ html, body, #app, .bottom-nav, .sidebar, .drawer{
         <span style="font-size:13px;font-weight:800;color:var(--blue)">Envio Manual — você escolhe cada vaga</span>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px">
-        <div class="ob-tut-card"><img src="/tutorial-img/ob-manual-1.png" alt="Buscar vagas" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>1. Busque vagas por categoria/estado</span></div>
-        <div class="ob-tut-card"><img src="/tutorial-img/ob-manual-2.png" alt="Ver detalhes da vaga" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>2. Veja os detalhes da vaga</span></div>
-        <div class="ob-tut-card"><img src="/tutorial-img/ob-manual-3.png" alt="Escolher perfil" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>3. Confirme o perfil (H-2B/H-2A)</span></div>
-        <div class="ob-tut-card"><img src="/tutorial-img/ob-manual-4.png" alt="Enviar candidatura" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>4. Clique em Enviar</span></div>
-        <div class="ob-tut-card" style="grid-column:span 2"><img src="/tutorial-img/ob-manual-5.png" alt="Confirmação de envio" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>5. Pronto — candidatura enviada!</span></div>
+        <div class="ob-tut-card"><img src="/tut-img/ob-manual-1.png" alt="Buscar vagas" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>1. Busque vagas por categoria/estado</span></div>
+        <div class="ob-tut-card"><img src="/tut-img/ob-manual-2.png" alt="Ver detalhes da vaga" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>2. Veja os detalhes da vaga</span></div>
+        <div class="ob-tut-card"><img src="/tut-img/ob-manual-3.png" alt="Escolher perfil" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>3. Confirme o perfil (H-2B/H-2A)</span></div>
+        <div class="ob-tut-card"><img src="/tut-img/ob-manual-4.png" alt="Enviar candidatura" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>4. Clique em Enviar</span></div>
+        <div class="ob-tut-card" style="grid-column:span 2"><img src="/tut-img/ob-manual-5.png" alt="Confirmação de envio" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>5. Pronto — candidatura enviada!</span></div>
       </div>
 
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
@@ -5772,11 +5715,11 @@ html, body, #app, .bottom-nav, .sidebar, .drawer{
         <span style="font-size:13px;font-weight:800;color:#7c3aed">Envio Automático — o robô candidata por você</span>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px">
-        <div class="ob-tut-card"><img src="/tutorial-img/ob-auto-1.png" alt="Configurar filtros" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>1. Escolha filtros (categoria/estado)</span></div>
-        <div class="ob-tut-card"><img src="/tutorial-img/ob-auto-2.png" alt="Ligar automático" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>2. Ligue o Envio Automático</span></div>
-        <div class="ob-tut-card"><img src="/tutorial-img/ob-auto-3.png" alt="Robô candidatando" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>3. O robô candidata sozinho, 24/7</span></div>
-        <div class="ob-tut-card"><img src="/tutorial-img/ob-auto-4.png" alt="Acompanhar log" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>4. Acompanhe o log em tempo real</span></div>
-        <div class="ob-tut-card" style="grid-column:span 2"><img src="/tutorial-img/ob-auto-5.png" alt="Progresso ao vivo" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>5. Acompanhe o progresso e as respostas no seu Gmail</span></div>
+        <div class="ob-tut-card"><img src="/tut-img/ob-auto-1.png" alt="Configurar filtros" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>1. Escolha filtros (categoria/estado)</span></div>
+        <div class="ob-tut-card"><img src="/tut-img/ob-auto-2.png" alt="Ligar automático" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>2. Ligue o Envio Automático</span></div>
+        <div class="ob-tut-card"><img src="/tut-img/ob-auto-3.png" alt="Robô candidatando" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>3. O robô candidata sozinho, 24/7</span></div>
+        <div class="ob-tut-card"><img src="/tut-img/ob-auto-4.png" alt="Acompanhar log" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>4. Acompanhe o log em tempo real</span></div>
+        <div class="ob-tut-card" style="grid-column:span 2"><img src="/tut-img/ob-auto-5.png" alt="Progresso ao vivo" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>5. Acompanhe o progresso e as respostas no seu Gmail</span></div>
       </div>
 
       <button onclick="_goObStep('5')" class="btn btn-primary w100" style="padding:13px;font-size:14px">Entendi, continuar →</button>

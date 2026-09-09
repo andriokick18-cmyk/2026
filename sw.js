@@ -48,13 +48,31 @@
 //    consentimento informado no checkout. index.html (view Planos + textos
 //    espalhados) e app.js (funções de compra) mudaram juntos.
 //
-const CACHE_NAME = "h2bapply-2026-v10"; // v10 (v170): sistema de diamantes removido — compra direta de plano (escolher plano+período → ver preço em R$ → consentimento → PIX → comprovante → confirmação do admin); aba "💎 Diamantes" renomeada pra "💎 Planos" em header/sidebar/bottom-nav/atalhos; "🧾 Minhas doações" virou "🧾 Meus pedidos"
+//  v2.10 — Bump de rotina (regra 6c, v171 — auditoria mobile 09/09):
+//    bottom-nav mobile de 3→5 itens (Início/Vagas/Enviadas/Perfil/Mais) com
+//    menu "Mais" novo; CSS duplicado/conflitante de .bottom-nav/.bn
+//    consolidado numa fonte única; 5 alvos de toque corrigidos pra ≥44px;
+//    grid de 5 colunas de v-logs virou responsivo; SHELL_URLS corrigido pra
+//    bater com as URLs reais (fonte de ícones não era cacheada de verdade);
+//    bug real achado nesta auditoria: as 10 miniaturas do tour de boas-vindas
+//    apontavam pra /tutorial-img/ (pasta em disco) em vez de /tut-img/ (rota
+//    real) — 404 silencioso desde sempre, corrigido junto.
+//
+const CACHE_NAME = "h2bapply-2026-v11"; // v11 (v171): redesenho mobile — bottom-nav 5 itens + "Mais", CSS consolidado, toque ≥44px, grid responsivo, cache de ícones corrigido, 404 do tour de boas-vindas corrigido
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).
+// v171 (auditoria mobile 09/09): as 2 URLs aqui embaixo NUNCA batiam com o
+// que o index.html realmente pede — a fonte de ícones (889KB, a maior peça
+// estática do app) vinha de um CDN que o HTML não usa mais (ele carrega
+// /vendor/tabler-icons.min.css local), e a URL do Google Fonts estava
+// incompleta (faltava a família Sora e os parâmetros de peso corretos).
+// Resultado: nenhuma das duas nunca era reaproveitada do cache do SW —
+// corrigido pra bater exatamente com os <link> reais do <head>.
 const SHELL_URLS = [
-  "https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap",
-  "https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.29.0/dist/tabler-icons.min.css",
+  "https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&family=Sora:wght@700;800&display=swap",
+  "/vendor/tabler-icons.min.css",
+  "/vendor/fonts/tabler-icons.woff2",
 ];
 
 // ── Instalação: pré-carrega o shell ──────────────────────
