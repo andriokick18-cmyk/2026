@@ -2216,7 +2216,7 @@ async function testAuthWatchdogPush() {
       check("📖 v160: TODAS as fotos referenciadas nos tutoriais existem de verdade no disco (nenhum print quebrado)",
         _imgsRef.length >= 10 && _faltando.length === 0,
         JSON.stringify({ refs: _imgsRef.length, faltando: _faltando }).slice(0, 200));
-      const _img160 = await _getBufA("/tut-img/t03-home.jpg");
+      const _img160 = await _getBufA("/tut-img/t01-landing.jpg");
       const _trav160 = await get("/tut-img/..%2Fserver.js");
       const _nada160 = await get("/tut-img/nao-existe.jpg");
       check("📖 v160: a rota /tut-img serve a foto real (200, image/jpeg) e RECUSA nome fora do padrão (traversal encodado) e arquivo inexistente",
