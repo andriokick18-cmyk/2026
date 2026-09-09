@@ -28,7 +28,7 @@ window.addEventListener("online",()=>{off.style.display="none";T("Conexão resta
 /* ═══ MELHORIA 2: ESC fecha overlays/modais visíveis ═══ */
 document.addEventListener("keydown",e=>{
   if(e.key!=="Escape")return;
-  $$(".resp-modal-overlay,.modal-ov,.overlay,[id$='-overlay']").forEach(m=>{
+  $$(".modal-ov,.overlay,[id$='-overlay']").forEach(m=>{
     if(m.offsetParent!==null && !m.classList.contains("gone")){
       const btn=m.querySelector("[onclick*='close'],[onclick*='Close']");
       if(btn){btn.click();}else{m.classList.add("gone");}

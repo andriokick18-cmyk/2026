@@ -58,7 +58,13 @@
 //    apontavam pra /tutorial-img/ (pasta em disco) em vez de /tut-img/ (rota
 //    real) — 404 silencioso desde sempre, corrigido junto.
 //
-const CACHE_NAME = "h2bapply-2026-v11"; // v11 (v171): redesenho mobile — bottom-nav 5 itens + "Mais", CSS consolidado, toque ≥44px, grid responsivo, cache de ícones corrigido, 404 do tour de boas-vindas corrigido
+//  v2.11 — Bump de rotina (regra 6c): faxina de resquícios de features
+//    removidas (ranking/gamificação, chat/"Respostas", atalhos antigos da
+//    Home, drawer) — só CSS/JS morto sem HTML correspondente, nenhuma
+//    mudança visual pra quem usa o app hoje (provado com Playwright antes
+//    e depois: telas idênticas).
+//
+const CACHE_NAME = "h2bapply-2026-v12"; // v12: limpeza de CSS/JS morto (ranking, chat/respostas, home-shortcut antigo, drawer) — zero mudança visual
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).

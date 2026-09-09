@@ -2,11 +2,12 @@
 
 Plataforma de candidatura automática para vagas **H-2B e H-2A** nos Estados
 Unidos. Este repositório é uma reconstrução enxuta do H2BApply original:
-mantém o motor de envio (manual e automático), login com Google, perfis de
-currículo e o sistema de pagamento (doação Pix → diamantes → planos), mas
-**remove** ranking, IA/Gemini (incluindo o antigo Cérebro Contábil), aba de
-notícias, chat, e o menu/drawer — trocados por uma navegação e um onboarding
-bem mais simples.
+mantém o motor de envio (manual e automático), login com Google e perfis de
+currículo, mas **remove** ranking, IA/Gemini (incluindo o antigo Cérebro
+Contábil), aba de notícias, chat, e o menu/drawer — trocados por uma
+navegação e um onboarding bem mais simples. O pagamento também mudou: não
+existe mais moeda intermediária (diamante) — o usuário escolhe plano e
+período, paga via Pix e sobe o comprovante diretamente.
 
 ## O que faz
 
@@ -18,8 +19,11 @@ bem mais simples.
   "Vagas ao Vivo" (busca direta ao DOL)
 - Onboarding obrigatório com perfis separados H-2B e H-2A (pelo menos um dos
   dois precisa ser criado antes de usar o app)
-- Doação via Pix → diamantes → troca por plano (VIP/VIPro/DoublePro) — sem
-  nenhuma verificação por IA, aprovação sempre manual pelo admin
+- Compra direta de plano (VIP/VIPro/DoublePro): escolhe plano+período, vê o
+  preço oficial, paga via Pix e sobe o comprovante. Se o valor bater, o
+  plano ativa na hora por 3 dias (janela provisória) enquanto o pedido
+  segue pendente — a confirmação humana do admin continua SEMPRE
+  obrigatória pro período cheio
 - Painel admin (`/admin`) focado em contabilidade: total recebido, gastos por
   sócio, lista de usuários por dias de VIP restantes, aprovação de pedidos
   pendentes
@@ -89,11 +93,10 @@ npm start
 
 ### 5. Verificar antes de commitar
 ```bash
-npm run check   # sintaxe de todos os arquivos + checagem de função duplicada
+npm test   # npm run check (sintaxe + função duplicada) + smoke-test.js (~30s, servidor real + fixtures)
 ```
-O `smoke-test.js` herdado do H2BApply original **não roda mais no CI**
-(`npm test`) porque ainda assume features removidas nesta reconstrução —
-precisa ser reescrito do zero antes de voltar a ser usado como gate.
+`smoke-test.js` já foi atualizado pra esta reconstrução e roda no CI a
+cada push (`.github/workflows/ci.yml`).
 
 ## Deploy no Render
 

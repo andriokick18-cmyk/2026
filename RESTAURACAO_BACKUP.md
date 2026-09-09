@@ -12,10 +12,15 @@
 - **Manual pelo painel** (Admin → rotas v2 backup): mesma cobertura, na hora
   que quiser, com auditoria de quem fez.
 
-## 🚨 Restaurar pelo PAINEL (o caminho normal)
+## 🚨 Restaurar pela API (rotas prontas, sem botão dedicado no painel ainda)
 
-1. Painel Admin → Backup → escolher o backup pela data
-2. Confirmar com `RESTAURAR` + seu nome
+As rotas `/api/admin/v2/backup/*` (mod-admin-v2.js) existem e funcionam,
+mas nesta reconstrução `admin.html` ainda não tem uma tela própria pra
+elas — chame direto (com a sessão de admin logada no navegador, ex. via
+DevTools → Console, ou curl com o cookie de sessão):
+
+1. `GET /api/admin/v2/backup/list` → lista os backups disponíveis (data)
+2. `POST /api/admin/v2/backup/restore` com `{name:"<DATA-ESCOLHIDA>"}`
 3. **Reiniciar o servidor** (Render → Manual Deploy → Restart)
 4. Conferir: login de um usuário conhecido → currículo aparece? → Pedidos ok?
 

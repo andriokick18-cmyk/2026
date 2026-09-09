@@ -4907,54 +4907,6 @@ async function loadPublicStats(){
     // 📢 v150: o mesmo toggle liga a JANELA obrigatória antes do login
     window._avisoResetOn=!!d.avisoResetLogin;
     // v157: a pill 🌐 Servidores foi removida da landing (era de 1 servidor só)
-    // ── Landing rank preview ──
-    const prev=document.getElementById("ln-rank-preview");
-    if(prev&&d.rankPreview&&d.rankPreview.length){
-      const podHtml=(e,pos)=>{
-        const ini=(e.name?.[0]||"?").toUpperCase();
-        const grad=pos===1?"var(--rank1)":pos===2?"var(--rank2)":"var(--rank3)";
-        const plan=(e.plan||"free").toLowerCase();
-        const lbl=plan==="doublepro"?"DOUBLEPRO":plan==="vipro"?"VIPRO":plan==="pro"?"PRO":plan==="vip"?"VIP":plan==="adm"?"ADM":"FREE";
-        return`<div class="ln-rank-pod">
-          <div class="ln-rank-av" style="background:${grad}">${ini}</div>
-          <div class="ln-rank-pos">#${pos}</div>
-          <div class="ln-rank-name">${esc(e.name||"Usuário")}</div>
-          <span class="badge badge-${plan}" style="font-size:9px;padding:1px 5px">${lbl}</span>
-          <div class="ln-rank-score">${(e.score||0).toLocaleString("pt-BR")} envios</div>
-        </div>`;
-      };
-      const top=d.rankPreview.slice(0,3);
-      const order=top.length>=3?[top[1],top[0],top[2]]:[top[0]||null,top[1]||null];
-      const posOrder=top.length>=3?[2,1,3]:[1,2];
-      prev.innerHTML=`
-        <div style="text-align:center;margin-bottom:12px">
-          <span style="font-size:11px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.06em">🏆 Top do Dia</span>
-        </div>
-        <div class="ln-rank-podium">${order.map((e,i)=>e?podHtml(e,posOrder[i]):"").join("")}</div>
-        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-          ${d.rankPreview.slice(3).map((e,i)=>{
-            const ini=(e.name?.[0]||"?").toUpperCase();
-            const plan=(e.plan||"free").toLowerCase();
-            return`<div style="display:flex;align-items:center;gap:8px;padding:5px 0">
-              <span style="font-size:11px;color:var(--t3);width:16px;text-align:center">${i+4}</span>
-              <div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#334155,#1e293b);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div>
-              <span style="flex:1;font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.name||"Usuário")}</span>
-              <span class="badge badge-${plan}" style="font-size:9px;padding:1px 5px">${plan==="doublepro"?"DOUBLEPRO":plan==="vipro"?"VIPRO":plan==="pro"?"PRO":plan==="vip"?"VIP":"FREE"}</span>
-              <span style="font-size:11px;color:var(--t2);font-weight:600">${(e.score||0).toLocaleString("pt-BR")}</span>
-            </div>`;
-          }).join("")}
-        </div>
-        <div style="text-align:center;margin-top:10px">
-          <span style="font-size:11px;color:var(--t3)">Entre para ver sua posição completa</span>
-        </div>`;
-    }else if(prev){
-      prev.innerHTML=`<div style="padding:24px 16px;text-align:center">
-        <div style="font-size:28px;margin-bottom:8px">🏆</div>
-        <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.7);margin-bottom:4px">Ranking zerado hoje!</div>
-        <div style="font-size:11px;color:rgba(255,255,255,.4)">Seja o primeiro a enviar candidaturas hoje e lidere o ranking.</div>
-        <button onclick="openAuthGate('choice')" style="margin-top:14px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer">Começar agora</button>
-      </div>`;
-    }
   }catch{}
 }
 document.addEventListener("DOMContentLoaded",()=>{loadPublicStats();setInterval(loadPublicStats,30000);loadPublicReviews();});
@@ -7928,26 +7880,6 @@ function applyLang(){
   // ── HOME ──
   _st('home-auto-title',t('auto_title'));
   _st('home-auto-sub',t('auto_sub'));
-  _sSection('.home-section-title','Atalhos Rápidos','Quick Access','Accesos Rápidos',t('shortcuts'));
-  _sSection('.home-section-title','Hoje','Today','Hoy',t('today'));
-  _sSection('.home-section-title','Conta','Account','Cuenta',t('account'));
-  _sSection('.home-section-title','Últimas Respostas','Latest Replies','Últimas Respuestas',t('latest_replies'));
-  // Home shortcut labels — ordem: Manual, Respostas, Automático, Perfil
-  const sc=document.querySelectorAll('.home-shortcut .home-shortcut-label');
-  const scT=[t('manual'),t('responses'),t('auto_lbl'),t('profile')];
-  sc.forEach((el,i)=>{if(i<scT.length&&scT[i])el.textContent=scT[i];});
-  // Home stat labels — v89 (reestruturação parte 2): o 3º card mostra o
-  // TOTAL de envios (U.totalSent), mas o label estava "Respostas" — e o app
-  // é SÓ-ENVIO (regra 13d: nunca lê a caixa de entrada), então nunca teria
-  // como contar respostas de verdade. Label agora bate com o valor: "Total".
-  document.querySelectorAll('.home-stat-lbl').forEach((el,i)=>{
-    const labels=[t('manual'),t('auto_lbl'),t('total_sends')];
-    if(labels[i])el.textContent=labels[i];
-  });
-  // Home account card texts
-  _sInnerHTML('home-plan-label', _getPlanLabel());
-  _sTextNode('.home-reply-item','Planos & Recompensas','Plans & Rewards','Planes & Recompensas',t('plans_rewards'));
-  _sTextNode('.home-reply-item','Candidaturas Enviadas','Applications Sent','Postulaciones Enviadas',t('sent_apps'));
 
   // ── JOBS VIEW ──
   _sPlaceholder('q',t('job_search_ph'));
@@ -8257,7 +8189,6 @@ function _sInnerHTML(id,html){const el=document.getElementById(id);if(el&&html)e
 function _sFirstSpan(sel,txt){const el=document.querySelector(sel);if(el)el.textContent=txt;} // FIX: função usada em L16778 (troca de idioma) nunca tinha sido definida — quebrava a atualização de i18n em cascata
 function _sText(id,tag,idx,txt){const el=document.getElementById(id);if(!el)return;const items=el.querySelectorAll(tag);if(items[idx])items[idx].textContent=txt;}
 function _sPipeCol(id,txt){const el=document.getElementById(id);if(!el)return;const hdr=el.querySelector('.pipeline-col-hdr');if(hdr){const cnt=hdr.querySelector('.pipeline-cnt');hdr.textContent=txt+' ';if(cnt)hdr.appendChild(cnt);}}
-function _getPlanLabel(){if(!window.U)return t('plan_free');const p=window.U.plan||'free';return{free:t('plan_free'),vip:t('plan_vip'),pro:t('plan_pro'),vipro:t('plan_vipro'),doublepro:'💎 DoublePro'}[p]||t('plan_free');}
 
 // Apply language on load
 document.addEventListener('DOMContentLoaded',()=>{ setTimeout(applyLang, 300); });
