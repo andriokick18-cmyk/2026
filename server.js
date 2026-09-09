@@ -401,14 +401,6 @@ let DB_PUSH   = {};   // NEW: push subscriptions { userEmail → PushSubscriptio
 // NEW v13: índice de candidaturas — { userEmail → { byThread:{tid:appId}, byMsgId:{mid:appId}, byTo:{email:[appId,...]} } }
 let DB_APP_INDEX = {};
 let DB_ADMIN_SETTINGS = { emailNotificationsEnabled: false, newUserTrialEnabled: true, newUserTrialDays: 1, newUserTrialAutoDays: 0, newUserTrialPlan: "vip",
-  // v18-SEC: começa VAZIO de propósito. Antes vinha pré-preenchido com os
-  // fallbacks hardcoded ("84800-54"/"Diego2026"), o que fazia `dp.andrew||env||fallback`
-  // em getEditorPasswords() SEMPRE cair no valor já presente aqui — a prioridade
-  // documentada "painel > env > fallback" nunca conseguia chegar no env var,
-  // porque este objeto nunca estava vazio pra começo de conversa. Deixando vazio,
-  // getEditorPasswords() agora respeita de verdade EDITOR_PWD_ANDREW/EDITOR_PWD_DIEGO
-  // quando definidas, só caindo no fallback de código se nada mais foi configurado.
-  editorPasswords: {},
   // 💼 MC4-P1 (dono, 28/08/2026): divisão societária do LUCRO — padrão 50/50,
   // editável na seção "Sócios & Acerto" da aba 🧠 (computeSocios usa isto).
   sociosSplit: { andrio: 50, diego: 50 },
@@ -428,44 +420,18 @@ let DB_ADMIN_SETTINGS = { emailNotificationsEnabled: false, newUserTrialEnabled:
     { id: 3, nome: "Servidor 3", url: "https://h2b-server-3.onrender.com", maxExibido: 100, status: "oculto" }
   ]
 }; // v9: trial = 1d VIP Manual apenas (sem auto)
-// Senhas de editor (Andrew/Diego) agora vivem no banco e podem ser trocadas pelo
-// próprio dono via painel. Fallback para os padrões caso ainda não tenham sido salvas.
-function getEditorPasswords(){
-  // SEGURANÇA (V954-fix): prioridade = senha trocada no painel > env > fallback legado.
-  // Recomendado: definir EDITOR_PWD_ANDREW / EDITOR_PWD_DIEGO no Render e trocar as
-  // senhas pelo painel — os fallbacks legados ficam expostos a quem tiver o código.
-  const dp=(DB_ADMIN_SETTINGS&&DB_ADMIN_SETTINGS.editorPasswords)||{};
-  return {
-    andrew: dp.andrew||process.env.EDITOR_PWD_ANDREW||"84800-54",
-    diego:  dp.diego ||process.env.EDITOR_PWD_DIEGO ||"Diego2026"
-  };
-}
-// ── v57 (ORDEM DO DONO, 25/07/2026): aprovar plano/editar cliente NÃO pede
-// mais senha de editor. O admin já entrou com o Google — o E-MAIL logado
-// identifica quem aprova (a rota já exige sessão de admin antes; a senha era
-// redundante e ainda vazou com o repo público). O e-mail verdadeiro segue
-// gravado na trilha (_ativadoEditorEmail) e o modal continua permitindo
-// marcar explicitamente quem RECEBEU o dinheiro (recebidoPor).
-// DIEGO_ADMIN_EMAILS: e-mails que contam como "Diego"; o resto dos admins
-// conta como "Andrew" (Andrio). Ajustável por env sem deploy de código.
+// v57/v171 (ORDEM DO DONO): administrador não tem senha nenhuma — só é
+// admin quem entra com o e-mail cadastrado (ADMIN_EMAIL/ADMIN_EMAIL_2/
+// isAdminEmail, a rota já exige sessão de admin antes de qualquer ação).
+// O antigo sistema de "senha de editor" (Andrew/Diego) foi removido por
+// completo nesta faxina — nenhum fluxo de aprovação usava mais, e as
+// senhas padrão de fábrica tinham vazado no código público.
+// DIEGO_ADMIN_EMAILS: e-mails que contam como "Diego" na trilha/acerto
+// financeiro; o resto dos admins conta como "Andrew" (Andrio). Ajustável
+// por env sem deploy de código.
 const DIEGO_ADMIN_EMAILS = new Set(String(process.env.DIEGO_ADMIN_EMAILS||"jesuscristh22@gmail.com").split(",").map(e=>e.trim().toLowerCase()).filter(Boolean));
 function editorFromEmail(email){
   return DIEGO_ADMIN_EMAILS.has(String(email||"").trim().toLowerCase()) ? "diego" : "andrew";
-}
-// Compara senha candidata com as dos editores em tempo constante (anti timing attack).
-// Retorna "andrew" | "diego" | null. (v57: mantida SÓ pela rota legada de troca
-// de senha — nenhum fluxo de aprovação usa mais; remoção completa na próxima faxina.)
-function matchEditorPassword(candidate){
-  const c=String(candidate||"");if(!c)return null;
-  const pwds=getEditorPasswords();
-  let found=null;
-  for(const [who,pwd] of Object.entries(pwds)){
-    if(!pwd)continue;
-    const a=crypto.createHash("sha256").update(c).digest();
-    const b=crypto.createHash("sha256").update(String(pwd)).digest();
-    if(crypto.timingSafeEqual(a,b))found=who; // sem break: tempo constante entre editores
-  }
-  return found;
 }
 // Notifications: { notifications: [{id, title, body, createdAt, createdBy, readBy:[email,...]}] }
 let DB_NOTIF = { notifications: [] };
@@ -1322,22 +1288,6 @@ function boot() {
       console.log("[migrate] 🌐 v156: ERA DE 1 SERVIDOR SÓ — Servidor 1 ABERTO, 2/3 OCULTOS (cadastro e login são sempre aqui; ninguém mais é mandado pros irmãos).");
     }
   }catch(e){ console.warn("[migrate] v156 mono-servidor:", e.message); }
-  // v18-SEC: aviso de boot — as senhas de editor (Andrew/Diego) que aprovam
-  // pagamentos reais (pedido de plano) têm um fallback hardcoded no código-fonte
-  // ("84800-54"/"Diego2026", ver getEditorPasswords()). Esse fallback só é usado
-  // se NENHUMA env var (EDITOR_PWD_ANDREW/EDITOR_PWD_DIEGO) nem senha trocada
-  // pelo painel estiver definida. Como este código já foi compartilhado/exportado
-  // várias vezes, esses valores-padrão devem ser tratados como PÚBLICOS — o aviso
-  // abaixo avisa toda vez que o servidor sobe ainda usando o padrão de fábrica.
-  {
-    const _pwds=getEditorPasswords();
-    const _usingDefault=[];
-    if(_pwds.andrew==="84800-54")_usingDefault.push("andrew");
-    if(_pwds.diego==="Diego2026")_usingDefault.push("diego");
-    if(_usingDefault.length){
-      console.warn(`⚠️⚠️⚠️ [aprovação-pagamento] Senha(s) de editor ainda no padrão de fábrica do código-fonte: ${_usingDefault.join(", ")}. Troque em Admin → Configurações → Senhas de Editor, ou defina EDITOR_PWD_ANDREW/EDITOR_PWD_DIEGO no Render — esses valores já circularam no código e não devem mais ser considerados secretos! ⚠️⚠️⚠️`);
-    }
-  }
   DB_NOTIF    = load(NOTIF_FILE,    { notifications: [] });
   DB_SUGGESTIONS = load(SUGGESTIONS_FILE, []);
   if(!Array.isArray(DB_SUGGESTIONS)) DB_SUGGESTIONS = [];
@@ -13638,26 +13588,8 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}if(DB_APP_INDEX[te]){delete DB
 
 
     // ── ADMIN: Live endpoint retorna adminEmail ────────────────
-    if(pathname==="/api/admin/settings"&&req.method==="GET"){const _s={...DB_ADMIN_SETTINGS};delete _s.editorPasswords;return json(res,200,{settings:_s,adminEmail:s.user_email,editorPwdSet:{andrew:!!getEditorPasswords().andrew,diego:!!getEditorPasswords().diego}});}
-    if(pathname==="/api/admin/settings"&&req.method==="POST"){try{const d=JSON.parse(await readBody(req));delete d.editorPasswords;Object.assign(DB_ADMIN_SETTINGS,d);persist(ADMIN_SETTINGS_FILE,DB_ADMIN_SETTINGS);const _s={...DB_ADMIN_SETTINGS};delete _s.editorPasswords;return json(res,200,{ok:true,settings:_s});}catch(e){return json(res,500,{error:e.message});}}
-    // ── Admin troca a PRÓPRIA senha de editor (Andrew/Diego) ──
-    // Cada sócio troca a sua senha sem o outro saber. Exige a senha atual.
-    if(pathname==="/api/admin/editor-password"&&req.method==="POST"){
-      try{
-        const d=JSON.parse(await readBody(req));
-        const who=(d.who||"").trim().toLowerCase();
-        if(!["andrew","diego"].includes(who))return json(res,400,{error:"Editor inválido. Use 'andrew' ou 'diego'."});
-        const cur=(d.currentPassword||"").toString();
-        const nw=(d.newPassword||"").toString();
-        if(matchEditorPassword(cur)!==who)return json(res,403,{error:"Senha atual incorreta."});
-        if(nw.length<4)return json(res,400,{error:"A nova senha precisa ter pelo menos 4 caracteres."});
-        if(nw===cur)return json(res,400,{error:"A nova senha precisa ser diferente da atual."});
-        DB_ADMIN_SETTINGS.editorPasswords={...pwds,[who]:nw};
-        persist(ADMIN_SETTINGS_FILE,DB_ADMIN_SETTINGS);
-        console.log(`[editor-password] senha de ${who} alterada por ${s.user_email}`);
-        return json(res,200,{ok:true,message:`Senha de ${who==="andrew"?"Andrew":"Diego"} atualizada com sucesso.`});
-      }catch(e){return json(res,500,{error:e.message});}
-    }
+    if(pathname==="/api/admin/settings"&&req.method==="GET"){return json(res,200,{settings:DB_ADMIN_SETTINGS,adminEmail:s.user_email});}
+    if(pathname==="/api/admin/settings"&&req.method==="POST"){try{const d=JSON.parse(await readBody(req));Object.assign(DB_ADMIN_SETTINGS,d);persist(ADMIN_SETTINGS_FILE,DB_ADMIN_SETTINGS);return json(res,200,{ok:true,settings:DB_ADMIN_SETTINGS});}catch(e){return json(res,500,{error:e.message});}}
   }
 
 

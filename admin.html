@@ -820,9 +820,19 @@ function renderPendentes(lista){
     return;
   }
   empty.style.display="none";
+  // Pedidos com o plano JÁ ATIVO provisoriamente (o robô bateu o valor do
+  // comprovante e liberou na hora — usuário está usando AGORA, enquanto
+  // este pedido segue "pendente" aqui) sobem pro topo: são os que mais
+  // urgem revisão, porque cada hora que passa é hora de acesso concedido
+  // sem confirmação humana ainda. Ordenação estável (não mexe na ordem
+  // relativa dentro de cada grupo).
+  var ordenada=lista.map(function(pd,i){return {pd:pd,i:i};}).sort(function(a,b){
+    var pa=a.pd.autoAtivado?0:1, pb=b.pd.autoAtivado?0:1;
+    return pa!==pb?pa-pb:a.i-b.i;
+  }).map(function(x){return x.pd;});
   var html="";
-  for(var i=0;i<lista.length;i++){
-    var pd=lista[i];
+  for(var i=0;i<ordenada.length;i++){
+    var pd=ordenada[i];
     var tipoBadge='<span class="badge blue">Plano</span>';
     var planoTxt=esc(pd.plano||"—")+(pd.dias?(" · "+esc(pd.dias)+"d"):"");
     var pc=pd.preCheck||null;
@@ -833,11 +843,17 @@ function renderPendentes(lista){
         precheckHtml+='<div class="cell-sub">lido: '+fmtMoney(pc.valorLido)+'</div>';
       }
     }
+    // Selo de ativação provisória — o admin precisa saber, olhando a lista,
+    // que ESTE usuário já está usando o plano antes de decidir aprovar ou
+    // rejeitar (comprovante falso = clicar Cancelar aqui remove o acesso).
+    var provisorioBadge=pd.autoAtivado
+      ?'<div class="cell-sub"><span class="badge amber"><i class="ti ti-bolt"></i> já ativo (provisório) — revisar</span></div>'
+      :'';
     var comprovanteBtn=pd.comprovante
       ?('<button class="btn btn-sm" onclick="verComprovante(\''+esc(pd.id)+'\')"><i class="ti ti-eye"></i> Ver</button>')
       :'<span class="badge gray">sem anexo</span>';
-    html+='<tr>'
-      +'<td><div class="cell-main">'+esc(pd.userEmail||"—")+'</div>'+(pd.ehAdmin?'<div class="cell-sub">conta admin</div>':'')+'</td>'
+    html+='<tr'+(pd.autoAtivado?' style="background:var(--amberg)"':'')+'>'
+      +'<td><div class="cell-main">'+esc(pd.userEmail||"—")+'</div>'+(pd.ehAdmin?'<div class="cell-sub">conta admin</div>':'')+provisorioBadge+'</td>'
       +'<td>'+tipoBadge+'</td>'
       +'<td><div class="cell-main">'+fmtMoney(pd.valorTotal)+'</div></td>'
       +'<td>'+planoTxt+'</td>'
@@ -846,7 +862,7 @@ function renderPendentes(lista){
       +'<td><div class="row-actions">'
         +comprovanteBtn
         +'<button class="btn btn-sm btn-green" onclick="confirmarAprovarPedido(\''+esc(pd.id)+'\')"><i class="ti ti-check"></i> Aprovar</button>'
-        +'<button class="btn btn-sm btn-red" onclick="cancelarPedido(\''+esc(pd.id)+'\')"><i class="ti ti-x"></i> Cancelar</button>'
+        +'<button class="btn btn-sm btn-red" onclick="cancelarPedido(\''+esc(pd.id)+'\')"><i class="ti ti-x"></i> '+(pd.autoAtivado?"Rejeitar e retirar plano":"Cancelar")+'</button>'
       +'</div></td>'
       +'</tr>';
   }
@@ -949,7 +965,15 @@ async function aprovarPedido(id,extra){
 }
 
 async function cancelarPedido(id){
-  var motivo=prompt("Motivo do cancelamento (o usuário vai ver este texto):");
+  // O usuário pode JÁ estar usando o plano agora (ativação provisória do
+  // robô, quando o comprovante bateu o valor) — cancelar aqui também
+  // RETIRA esse acesso na hora (mesma ação do backend). O admin precisa
+  // ver isso escrito antes de confirmar, não só descobrir depois.
+  var pd=(STATE.pendentes||[]).find(function(x){return x.id===id;});
+  var avisoProvisorio=pd&&pd.autoAtivado
+    ?"⚠️ Este usuário JÁ ESTÁ USANDO o plano agora (ativação provisória automática) — cancelar aqui retira o plano dele imediatamente.\n\n"
+    :"";
+  var motivo=prompt(avisoProvisorio+"Motivo do cancelamento (o usuário vai ver este texto):");
   if(motivo===null)return;
   motivo=motivo.trim();
   if(motivo.length<3){
@@ -958,7 +982,7 @@ async function cancelarPedido(id){
   }
   try{
     await api("/api/pedido/"+encodeURIComponent(id),{method:"PATCH",body:{status:"cancelado",notaAdmin:motivo}});
-    toast("Pedido cancelado.","ok");
+    toast(pd&&pd.autoAtivado?"Pedido rejeitado — plano retirado do usuário.":"Pedido cancelado.","ok");
     carregarPendentes();
     carregarDashboard(false);
   }catch(e){
