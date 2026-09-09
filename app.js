@@ -155,8 +155,7 @@ async function checkStatus(){
     if(d.connected){
       U={connected:true,email:d.email,name:d.name||d.email,picture:d.picture||"",isAdmin:!!d.isAdmin,plan:d.plan||"free",vip:d.vip||null,todaySentManual:d.todaySentManual||0,manualLimit:d.manualLimit||20,manualRemaining:(d.manualRemaining??20),todaySentAuto:d.todaySentAuto||0,autoLimit:d.autoLimit||10,autoRemaining:(d.autoRemaining??10),autoEnabled:true,autoJob:d.autoJob||null,autoStats:d.autoStats||{sent:0,failed:0},onboarded:!!d.onboarded,profiles:d.profiles||[],senderEmails:d.senderEmails||[],senderMax:d.senderMax||1,adminSettings:d.adminSettings||null,totalSent:d.totalSent||0,totalManual:d.totalManual||0,totalAutoHist:d.totalAutoHist||0,totalReplies:d.totalReplies||0,
   // Novos campos
-  whatsapp:d.whatsapp||"",rankName:d.rankName||"",appAvatarId:d.appAvatarId||"",h2bProfile:d.h2bProfile||{},phone:d.phone||"",serverId:d.serverId||1,publicProfile:d.publicProfile||{},
-  diamonds:d.diamonds||{real:0,bonus:0},diamondPrice:d.diamondPrice||1.5};
+  whatsapp:d.whatsapp||"",rankName:d.rankName||"",appAvatarId:d.appAvatarId||"",h2bProfile:d.h2bProfile||{},phone:d.phone||"",serverId:d.serverId||1,publicProfile:d.publicProfile||{}};
       // 🌐 v149c (dono, 20/08: "tira aquele negócio de qual servidor você
       // está, agora só tem 1 server!") — os selos "Servidor N" do drawer e
       // do perfil foram removidos junto com a era multi-servidor.
@@ -524,28 +523,24 @@ function renderPlanStatusCard(){
       <div style="font-size:11px;color:var(--t3);margin-top:3px">${esc(t('mc_12'))}</div>
     </div>`;
   }
-  const dmd=U.diamonds||{real:0,bonus:0};
-  html+=`<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:12.5px">
-    <span style="font-weight:800">${esc(t('mc_4'))}:</span>
-    <span>💎 <strong>${(dmd.real||0).toLocaleString('pt-BR')}</strong> ${esc(t('mc_5'))}</span>
-    ${(dmd.bonus||0)>0?`<span style="color:var(--t3)">🎁 ${(dmd.bonus||0).toLocaleString('pt-BR')} ${esc(t('mc_6'))}</span>`:''}
-  </div>
-  <div id="mc-pedido" style="font-size:11.5px;color:var(--t3);margin-top:6px"></div>
+  html+=`<div id="mc-pedido" style="font-size:11.5px;color:var(--t3);margin-top:8px"></div>
   </div>`;
   el.innerHTML=html;
   el.style.display="block";
   _mcUltimoPedido();
 }
-// 👤 2.0-P6: status da ÚLTIMA doação direto no card — a pessoa sabe na hora
-// se está aguardando o admin, se os 💎 já caíram ou se foi cancelada.
+// 👤 2.0-P6: status do ÚLTIMO pedido direto no card — a pessoa sabe na hora
+// se está aguardando o admin, se o plano já foi ativado ou se foi cancelado.
+// v170 (retirada do sistema de diamantes): vocabulário 100% de PEDIDO DE
+// PLANO — nunca mais "doação"/"💎 na conta".
 async function _mcUltimoPedido(){
   const box=g("#mc-pedido");if(!box)return;
   try{
     const d=await fetch("/api/pedidos",{credentials:"include"}).then(r=>r.json());
     // admin recebe a lista completa — filtra pros pedidos DELE mesmo
     // 💼 MC5-P2: o campo do pedido é createdAt (criadoEm não existia — a
-    // data nunca aparecia); e 'pago' NÃO é '💎 na conta' (o crédito só roda
-    // no 'ativo') — status honesto próprio pra não mentir pro usuário.
+    // data nunca aparecia); e 'pago' NÃO é 'plano ativo' (a ativação só
+    // roda no 'ativo') — status honesto próprio pra não mentir pro usuário.
     const meus=(d.pedidos||[]).filter(p=>p.userEmail===U.email).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
     if(!meus.length){box.textContent=t('mc_11');return;}
     const p=meus[0];
@@ -578,7 +573,7 @@ function renderHdr(){
       g("#hdr-plans-label").textContent=label;
       plansBtn.style.background="linear-gradient(135deg,#059669,#10b981)";
     } else {
-      g("#hdr-plans-label").textContent="💎 Diamantes";
+      g("#hdr-plans-label").textContent="💎 Planos";
       plansBtn.style.background="linear-gradient(135deg,#4f46e5,#7c3aed)";
     }
   }
@@ -668,7 +663,7 @@ function sv(v,...args){
   // NUNCA podia ficar "active" — forçar isso agora apagaria o destaque do
   // item certo assim que o loop abaixo o marcasse ativo).
   VIEWS.forEach(id=>{const ve=g("#v-"+id);if(ve)ve.classList.toggle("gone",id!==v);const si=g("#si-"+id);if(si)si.classList.toggle("active",id===v);const bn=g("#bn-"+id);if(bn)bn.classList.toggle("active",id===v);});
-  if(v==="jobs"){setTimeout(loadLugares,400);}if(v==="plans"){setTimeout(()=>updatePlanCalc&&updatePlanCalc(),100);try{loadDiamonds();}catch(e){}}if(v==="profile"){loadProfile();loadTplView();setTimeout(()=>{_loadSoundPref();renderSoundSelector();},100);}
+  if(v==="jobs"){setTimeout(loadLugares,400);}if(v==="plans"){try{loadPlanos();}catch(e){}}if(v==="profile"){loadProfile();loadTplView();setTimeout(()=>{_loadSoundPref();renderSoundSelector();},100);}
 
   if(v==="auto"){loadAutoView();if(U.autoJob?.active)startAutoPolling();}
   if(v==="logs"){logSkip=0;logTotal=0;logDone=false;loadLogs();}
@@ -1398,7 +1393,8 @@ async function radarRemove(){
 }
 
 /* ⭐ v134: FUNIL — limite diário atingido = mostrar o que ele está perdendo
-   e a troca por 💎 a 1 clique. No máx 1x por dia (não vira perseguição). */
+   e o link pra assinar um plano a 1 clique. No máx 1x por dia (não vira
+   perseguição). v170: linguagem de assinatura direta, sem diamante. */
 function limitUpsell(){
   try{const day=new Date().toISOString().slice(0,10);if(localStorage.getItem("h2b_upsell")===day)return;localStorage.setItem("h2b_upsell",day);}catch(e){}
   const rest=(typeof total!=="undefined"&&total>1)?total:null;
@@ -1408,7 +1404,7 @@ function limitUpsell(){
     <div style="font-size:40px;margin-bottom:6px">⭐</div>
     <div style="font-size:17px;font-weight:800;margin-bottom:8px">${esc(t('upsell_title'))}</div>
     <div style="font-size:13.5px;color:var(--t2);line-height:1.55;margin-bottom:16px">${rest?esc(t('upsell_left')).replace("{n}",rest.toLocaleString("pt-BR")):esc(t('upsell_left_generic'))}</div>
-    <button class="btn btn-primary" style="width:100%" onclick="this.closest('div[style*=fixed]').remove();sv('plans')">💎 ${esc(t('upsell_cta'))}</button>
+    <button class="btn btn-primary" style="width:100%" onclick="this.closest('div[style*=fixed]').remove();sv('plans')">⭐ ${esc(t('upsell_cta'))}</button>
     <button class="btn btn-secondary" style="width:100%;margin-top:8px" onclick="this.closest('div[style*=fixed]').remove()">${esc(t('upsell_later'))}</button>
   </div>`;
   ov.addEventListener("click",e=>{if(e.target===ov)ov.remove();});
@@ -1807,7 +1803,7 @@ function closeMobDetail(){g("#mob-detail")?.classList.remove("show");}
 async function openModal(jobId){
   const j=JOBS.find(x=>x.id===String(jobId))||sCache[jobId]||null;
   if(!j)return;
-  if(U.manualRemaining<=0){sv("plans");toast("Limite diário atingido. Troque diamantes para mais envios.","r");return;}
+  if(U.manualRemaining<=0){sv("plans");toast("Limite diário atingido. Assine um plano para mais envios.","r");return;}
   // Verifica se tem perfil (busca fresca para evitar falso negativo)
   let _profiles=(UPROFILES.length?UPROFILES:U.profiles||[]).filter(p=>p.active!==false);
   if(!_profiles.length){
@@ -4624,7 +4620,7 @@ async function pollAutoStatus(){
     }
     // Toast para status importantes que mudaram
     if(U.autoJob?.status!==_prevStatus){
-      if(U.autoJob?.status==="paused_no_vip")toast("⛔ Automático pausado — plano expirou. Troque seus 💎 por mais dias em Planos.","r");
+      if(U.autoJob?.status==="paused_no_vip")toast("⛔ Automático pausado — plano expirou. Renove seu plano em Planos.","r");
       if(U.autoJob?.status==="paused_auth_error")toast("🔑 Automático pausado — erro de autenticação. Faça login novamente.","r");
       if(U.autoJob?.status==="finished"&&_prevStatus!=="finished"){const _frases=["🎉 "+t('fq1'),"🏆 "+t('fq2'),"✅ "+t('fq3')+" 🇺🇸","🚀 "+t('fq4')];toast(_frases[Math.floor(Math.random()*_frases.length)],"g");}
     }
@@ -5292,9 +5288,9 @@ async function requestPushPermission(){
     dismissNotifBanner();
     _renderNotifToggle();
     playPlaneSound();
-    toast("🔔 Notificações ativadas! Você será avisado de diamantes, missões e novidades do plano.","g");
+    toast("🔔 Notificações ativadas! Você será avisado de confirmação de comprovante, status do automático e novidades.","g");
     // Testa notificação imediatamente
-    try{new Notification("✅ H2BApply",{body:"Notificações ativadas! Você será avisado de diamantes, missões e novidades.",icon:"/icon-192.png",tag:"h2b-test"});}catch{}
+    try{new Notification("✅ H2BApply",{body:"Notificações ativadas! Você será avisado de confirmação de comprovante, status do automático e novidades.",icon:"/icon-192.png",tag:"h2b-test"});}catch{}
   }else if(p==="denied"){
     toast("Permissão negada. Ative manualmente nas configurações do navegador.","r");
   }
@@ -5510,15 +5506,15 @@ async function renderPendingOrderCard(){
   }
   if(!_pendingOrderCache){box.style.display="none";return;}
   const p=_pendingOrderCache;
-  const planLbl={vip:"VIP Manual",vipro:"VIPro",doublepro:"DoublePro",doacao:"💎 Doação"}[p.plano]||p.plano||"sua doação";
+  const planLbl={vip:"VIP Manual",vipro:"VIPro",doublepro:"DoublePro"}[p.plano]||p.plano||"seu pedido";
   const dt=p.createdAt?new Date(p.createdAt).toLocaleDateString("pt-BR",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}):"";
   box.style.display="block";
   box.innerHTML=`<div style="background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1.5px solid #fcd34d;border-radius:14px;padding:13px 14px;display:flex;align-items:center;gap:12px">
     <div style="width:42px;height:42px;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:21px;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.06)">⏳</div>
     <div style="flex:1;min-width:0">
-      <div style="font-size:10px;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.05em;margin-bottom:1px">Doação em análise</div>
+      <div style="font-size:10px;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.05em;margin-bottom:1px">Pedido em análise</div>
       <div style="font-size:14px;font-weight:800;color:var(--text);line-height:1.25">${esc(planLbl)} em revisão</div>
-      <div style="font-size:11.5px;color:var(--t2);line-height:1.35;margin-top:2px">Enviado ${dt?"em "+dt:"recentemente"} · confirmação em até 24h · dúvidas: WhatsApp no rodapé</div>
+      <div style="font-size:11.5px;color:var(--t2);line-height:1.35;margin-top:2px">Enviado ${dt?"em "+dt:"recentemente"} · confirmação após revisão do admin · dúvidas: WhatsApp no rodapé</div>
     </div>
   </div>`;
 }
@@ -5629,11 +5625,11 @@ function _renderNotifToggle(){
   if(dot)dot.style.transform=_notifEnabled?"translateX(24px)":"translateX(0)";
   if(msg){
     // v-2026: o site é só-envio (GMAIL_SEND_ONLY) e não lê a caixa de entrada
-    // de ninguém — este alerta é só de diamantes/missões/novidades, nunca de
+    // de ninguém — este alerta é só de comprovante/automático/novidades, nunca de
     // resposta de empregador (isso ficava contraditório com o texto fixo do
     // card, que já avisa "não avisamos quando a empresa responde").
-    if(_notifEnabled){msg.style.color="var(--green)";msg.textContent="🛫 Ativado! Você será avisado de diamantes, missões e novidades.";}
-    else{msg.style.color="var(--t3)";msg.textContent="Toque para ativar alertas de diamantes, missões e novidades.";}
+    if(_notifEnabled){msg.style.color="var(--green)";msg.textContent="🛫 Ativado! Você será avisado de confirmação de comprovante, status do automático e novidades.";}
+    else{msg.style.color="var(--t3)";msg.textContent="Toque para ativar alertas de confirmação de comprovante, status do automático e novidades.";}
   }
 }
 
@@ -5742,7 +5738,7 @@ function selectSound(key){
 //  v-2026: não existe backend de Web Push real nesta reconstrução (sem
 //  rotas /api/push/*, sem lib web-push, sem VAPID configurado) — o alerta
 //  funciona só enquanto o app está aberto/conectado (som + Notification()
-//  local de diamantes/missões/novidades). Removido o subsistema de
+//  local de comprovante/automático/novidades). Removido o subsistema de
 //  subscription VAPID que só chamava rotas inexistentes no servidor.
 // ══════════════════════════════════════════════════════════
 
@@ -5798,7 +5794,7 @@ async function _autoPushSetup() {
       _renderNotifToggle();
       dismissNotifBanner();
       // Pequena confirmação visual, não intrusiva
-      toast("🛫 Notificações ativadas! Você será avisado de diamantes, missões e novidades do plano.", "g");
+      toast("🛫 Notificações ativadas! Você será avisado de confirmação de comprovante, status do automático e novidades.", "g");
     } else {
       // Usuário negou — respeita a decisão, não volta a perguntar
       console.debug("[push] Permissão negada pelo usuário.");
@@ -7399,22 +7395,23 @@ console.debug("[v14+] Onboarding, FAQ, Preview Auto, Follow-up, Score carregados
 // ══════════════════════════════════════════════════════════
 const LANG_DICT = {
   pt: {
-    "h_faq_gone":"Vagas somem do manual em dois casos: (1) voc\u00ea j\u00e1 enviou candidatura para aquela empresa, ou (2) aquela vaga est\u00e1 na fila do autom\u00e1tico. Isso \u00e9 correto \u2014 evita enviar duas vezes para a mesma empresa.","mi1_d":"Envie sua 1\u00aa candidatura (manual ou rob\u00f4)","mi2_d":"Salve seu perfil de e-mail e suba um curr\u00edculo PDF","mi3_d":"Alcance 100 candidaturas enviadas","mi4_d":"Alcance 1.000 candidaturas enviadas","mi5_d":"Tenha sua avalia\u00e7\u00e3o do H2BApply aprovada e publicada", // 🌐 v137b
-    "ns1_t":"Crie seu perfil de candidatura","ns1_s":"\u00c9 o que vai nos e-mails para as empresas. Leva 1 minuto.","ns1_c":"Criar perfil","ns2_t":"Anexe seu curr\u00edculo (PDF)","ns2_s":"Sem curr\u00edculo anexado, suas candidaturas n\u00e3o saem.","ns2_c":"Anexar","ns3_t":"Tudo pronto! Comece a se candidatar","ns3_s":"Seu perfil est\u00e1 completo. Envie sua primeira candidatura de hoje.","ns3_c":"Buscar vagas","ns4_t":"Voc\u00ea atingiu o limite de hoje","ns4_s":"Vire VIP e envie at\u00e9 100 candidaturas por dia.","ns4_c":"Ver planos","ns5_t":"Ative o Envio Autom\u00e1tico","ns5_s":"Deixe o sistema enviar candidaturas enquanto voc\u00ea trabalha.","ns5_c":"Ativar","logs_none":"Nenhum log ainda","logs_none_s":"Os logs aparecem aqui quando voc\u00ea usar o Envio Autom\u00e1tico","notif_none_unread":"Nenhuma notifica\u00e7\u00e3o n\u00e3o lida \ud83c\udf89","notif_none":"Nenhuma notifica\u00e7\u00e3o por enquanto","swap_instant":"Ativa NA HORA \u2014 sem espera, sem aprova\u00e7\u00e3o","mi1":"Primeira candidatura","mi2":"Perfil completo","mi3":"100 candidaturas","mi4":"1.000 candidaturas","mi5":"Avalia\u00e7\u00e3o publicada","snd_plane":"Avi\u00e3o","snd_plane_d":"Som de decolagem","sug_hero":"Sua ideia pode virar uma funcionalidade! Mande sua sugest\u00e3o para a equipe do H2BApply.","sc_vagas":"\ud83d\udcbc Sobre as vagas", // 🌐 v137: dinâmicos da varredura E2E
-    "g_1":"Envio Autom\u00e1tico","g_2":"Configure e deixe o sistema trabalhar por voc\u00ea","g_3":"/m\u00eas","g_4":"Autom\u00e1tico + Manual","g_5":"M\u00e1ximo desempenho","g_6":"Atalhos R\u00e1pidos","g_7":"Curr\u00edculos","g_8":"M\u00eas","g_11":"N\u00fameros","g_12":"\ud83c\udde7\ud83c\uddf7 Portugu\u00eas","g_14":"(at\u00e9 600 caracteres)","g_15":"(at\u00e9 400 caracteres)","g_16":"(at\u00e9 300 caracteres)","g_17":"Ajuda o sistema a encontrar vagas certas pra voc\u00ea","g_18":"J\u00e1 foi aos EUA?","g_19":"\u274c N\u00e3o","g_20":"\ud83d\udde3\ufe0f N\u00edvel de ingl\u00eas","g_21":"\ud83d\udcd6 B\u00e1sico","g_22":"\ud83c\udf1f Avan\u00e7.","g_23":"\ud83c\udf3f \u00c1rea preferida","g_24":"\ud83c\udfd7\ufe0f Constru\u00e7\u00e3o","g_25":"\ud83e\udd9e Frutos do mar","g_26":"\ud83d\udcc5 1 m\u00eas","g_27":"Notifica\u00e7\u00f5es","g_28":"\ud83d\udeeb Alertas do H2BApply","g_29":"Toque no bot\u00e3o para ativar","g_30":"seu curr\u00edculo (PDF)","g_31":"texto do e-mail","g_32":"at\u00e9 2 perfis: um H-2B e um H-2A","g_33":"Anexa seu curr\u00edculo PDF em cada candidatura","g_34":"Define o texto do e-mail em ingl\u00eas","g_35":"Essencial para o Envio Autom\u00e1tico funcionar","g_36":"Curr\u00edculo usado:","g_37":"\ud83d\udcc8 \u00daltimos 7 dias","g_38":"Configura\u00e7\u00f5es exclusivas de administrador","g_39":"Sem expira\u00e7\u00e3o \u00b7 200 manual + 200 auto/dia \u00b7 Prioridade m\u00e1xima","g_40":"segundos entre cada envio","g_41":"3min (padr\u00e3o)","g_42":"Adicione Gmails acima para configurar limites","g_43":"\u00b7 invis\u00edvel para usu\u00e1rios","g_44":"Aten\u00e7\u00e3o:","g_45":"1 Gmail \u00fanico","g_46":"responsabilidade do usu\u00e1rio","g_47":"Os mesmos filtros do Envio Manual \u2014 cargo, local, sal\u00e1rio, grupo e mais","g_48":"Categoria r\u00e1pida (detectada automaticamente)","g_49":"vagas pra voc\u00ea","g_50":"\ud83c\udfaf Seu perfil ser\u00e1 usado em todos os envios:","g_51":"\u25b6 Come\u00e7ar agora","g_52":"Envia sem parar 24/7. Reseta \u00e0 meia-noite e continua at\u00e9 zerar a fila.","g_53":"\ud83d\udd50 Agendar hor\u00e1rio","g_54":"Envia das X \u00e0s Y horas todo dia. Fora do hor\u00e1rio fica pausado.","g_55":"Iniciar \u00e0s","g_56":"Parar \u00e0s","g_57":"doar \ud83d\udc8e para um amigo","g_58":"d\u00e1 o \u2b50 VIP 30d","g_59":"d\u00e1 o \ud83e\udd16 VIPro 30d","g_60":"d\u00e1 o \ud83d\udc8e DoublePro 30d","g_61":"quantos \ud83d\udc8e voc\u00ea quiser","g_62":"Doa\u00e7\u00e3o via PIX","g_63":"*obrigat\u00f3rio","g_64":"Print da confirma\u00e7\u00e3o do Pix da sua doa\u00e7\u00e3o","g_65":"Toque para selecionar o comprovante","g_66":"JPG, PNG, PDF \u2014 m\u00e1x 5MB","g_67":"at\u00e9 24h","g_68":"Para d\u00favidas, entre em contato:","g_69":"1 empresa confirmar = voc\u00ea est\u00e1 nos EUA \u2708\ufe0f","g_72":"Aprenda a usar o sistema do zero, passo a passo","g_73":"\ud83d\udccb O que voc\u00ea vai aprender:","g_74":"Resposta da empresa","g_75":"D\u00favidas Comuns","g_76":"Configurar seu Perfil","g_77":"Fa\u00e7a isso ANTES de enviar qualquer candidatura","g_78":"pa\u00eds","g_79":"Aba \"Perfis de Curr\u00edculo\" \u2014 Configurar curr\u00edculo e modelo","g_80":"upload do seu curr\u00edculo em PDF","g_81":"Sem curr\u00edculo, o perfil n\u00e3o \u00e9 salvo.","g_82":"assuntos e corpos de e-mail","g_83":"M\u00ednimo 3 varia\u00e7\u00f5es de cada.","g_84":"Seu perfil est\u00e1 configurado. Agora voc\u00ea pode enviar candidaturas.","g_85":"Envio Manual de Candidaturas","g_86":"Voc\u00ea escolhe cada vaga e envia uma por uma","g_87":"Escolha a planilha de vagas","g_88":"Mais vagas dispon\u00edveis.","g_89":"Como encontrar vagas para voc\u00ea","g_90":"Clique em uma vaga para ver os detalhes","g_91":"Veja o e-mail da empresa e as informa\u00e7\u00f5es da vaga","g_92":"O e-mail com seu curr\u00edculo \u00e9 enviado automaticamente!","g_93":"somem da lista","g_94":"Envio Autom\u00e1tico 24h","g_95":"O sistema envia enquanto voc\u00ea dorme","g_96":"\ud83e\udd16 O que \u00e9 o Envio Autom\u00e1tico?","g_97":"\"Envio Autom\u00e1tico\"","g_98":"quantidade de vagas","g_99":"\"Iniciar Autom\u00e1tico\"","g_100":"\u26a0\ufe0f Aten\u00e7\u00e3o:","g_101":"somem do envio manual","g_102":"A resposta cai direto no SEU Gmail","g_103":"seu pr\u00f3prio Gmail","g_104":"Abra o e-mail da empresa direto no seu Gmail","g_105":"Digite sua resposta em ingl\u00eas e envie \u2014 \u00e9 um e-mail seu, como qualquer outro","g_106":"\ud83d\udca1 Dica de resposta r\u00e1pida:","g_107":"Envie mais candidaturas por dia","g_108":"Gr\u00e1tis","g_109":"VIP \u00b7 67 \ud83d\udc8e/m\u00eas","g_110":"VIPro \u00b7 100 \ud83d\udc8e/m\u00eas","g_111":"DoublePro · 167 💎/mês","g_112":"\ud83c\udf81 Como ganhar VIP gr\u00e1tis:","g_113":"1 dia VIP Manual","g_114":"C\u00f3digos promocionais","g_115":"D\u00favidas Frequentes","g_116":"Respostas r\u00e1pidas para perguntas comuns","g_117":"N\u00e3o.","g_118":"Ainda com d\u00favidas?","g_119":"Assista aos v\u00eddeos explicativos no YouTube ou fale pelo Instagram","g_128":"desaparecer de qualquer lugar p\u00fablico","g_129":"fazer login novamente com o mesmo e-mail","g_130":"m\u00ednimo 10 caracteres","g_131":"Autom\u00e1tico","g_132":"Vaga n\u00e3o identificada","g_133":"\ud83d\udcc5 Dispon\u00edvel","g_134":"\u2753 D\u00favida","g_135":"Constru\u00e7\u00e3o","g_136":"Dep\u00f3sito","g_137":"\ud83c\udff7\ufe0f Cargo espec\u00edfico","g_138":"\ud83d\udcc2 Categoria r\u00e1pida","g_139":"\ud83c\udf0e Tipo de visto","g_140":"\ud83d\udcf6 Status da vaga","g_141":"Grupo de Randomiza\u00e7\u00e3o","g_142":"\u2014 pode escolher v\u00e1rios estados","g_143":"\ud83d\udcb0 Sal\u00e1rio m\u00ednimo","g_144":"\ud83d\udc65 Qtd. vagas m\u00edn.","g_145":"\u2014 pode marcar v\u00e1rios","g_146":"\ud83c\udfb2 Aleat\u00f3rio (padr\u00e3o)","g_147":"\ud83c\udfaf Melhor pra voc\u00ea primeiro","g_148":"\ud83d\udcb0 Maior sal\u00e1rio primeiro","g_149":"\ud83d\udcc5 Come\u00e7a mais cedo primeiro","g_150":"Este perfil ser\u00e1 usado nos envios manuais e autom\u00e1ticos","g_151":"curr\u00edculo (PDF)","g_152":"\u2460 Informa\u00e7\u00f5es B\u00e1sicas","g_153":"\u00cdcone","g_154":"Escolha um \u00edcone para o perfil:","g_155":"\u2461 Curr\u00edculo &amp; Cover Letter (PDF)","g_156":"\ud83d\udcc4 Curr\u00edculo (PDF)","g_157":"\u2705 Curr\u00edculo vinculado a este perfil","g_158":"\ud83d\udce4 Novo arquivo \u2014 ser\u00e1 enviado ao salvar","g_159":"Clique ou arraste um PDF para fazer upload","g_160":"M\u00e1x. 10MB","g_161":"ou escolha da sua conta","g_162":"Carta de apresenta\u00e7\u00e3o \u2014 n\u00e3o obrigat\u00f3ria, mas aumenta as chances de resposta.","g_163":"apenas nas vagas do tipo de visto deste perfil","g_164":"\u2462 Assuntos do E-mail","g_165":"M\u00ednimo 3","g_166":"Vari\u00e1veis:","g_167":"\u2463 Corpos de E-mail","g_168":"\u2699\ufe0f Vari\u00e1veis \u2014 clique para copiar:","g_169":"3 corpos de e-mail","g_170":"Selecione as categorias para as quais este perfil ser\u00e1 usado automaticamente","g_171":"\u2464 Configura\u00e7\u00e3o","g_172":"Prote\u00e7\u00f5es sempre ativas:","g_173":"n\u00e3o podem ser desativados","g_174":"Not\u00edcias","g_186":"Cada perfil de curr\u00edculo tem o curr\u00edculo vinculado diretamente.","g_187":"O envio autom\u00e1tico sempre usa o PDF do perfil correto \u2014 sem confus\u00e3o.","g_190":"Crie seu primeiro Perfil de Curr\u00edculo para","g_191":"come\u00e7ar a enviar candidaturas","g_204":"S\u00f3 precisa estar logado uma vez.","g_212":". \u00c9 por ela que conferimos a sua doa\u00e7\u00e3o.","g_221":"No topo da tela de Envio Manual voc\u00ea v\u00ea 3 abas:","g_229":"10 autom\u00e1ticos/dia","g_230":"sem autom\u00e1tico","g_231":"100 autom\u00e1ticos/dia","g_233":"Por que minhas vagas sumiram do manual?","g_234":"O autom\u00e1tico parou. O que fa\u00e7o?","g_235":"Recebi um e-mail em ingl\u00eas. O que fa\u00e7o?","g_175":"Toque em qualquer candidatura para ver detalhes,","g_176":". O bot\u00e3o","g_177":"apaga tudo e faz as vagas voltarem para a lista (\u00fatil para recandidatar-se).","g_178":"Quem já trocou 💎 diamantes por um plano pode conectar um Gmail extra para reduzir risco de spam.","g_179":"\ud83c\udfad Escolha seu avatar","g_180":"\ud83d\udca1 O que voc\u00ea escrever aqui aparece quando algu\u00e9m","g_181":"\ud83d\udc64 Sobre voc\u00ea","g_182":"\ud83d\udcbc Experi\u00eancias de trabalho","g_183":"\ud83d\udcac O que voc\u00ea acha do H2BApply?","g_184":"\ud83d\udcbe Salve com o bot\u00e3o","g_185":"no fim da p\u00e1gina.","g_188":". Voc\u00ea pode ter","g_189":"o perfil que voc\u00ea escolher no Passo 3 do assistente","g_192":"Estat\u00edsticas","g_193":"Gmails de envio","g_194":"10 envios GR\u00c1TIS/dia para todos!","g_195":"Enviar muitos emails com","g_196":"pode gerar bloqueio tempor\u00e1rio pelo Google. Recomendamos adicionar","g_197":"para distribuir os envios. O risco de bloqueio \u00e9 de","g_198":"\ud83d\udcec Pr\u00f3ximas candidaturas","g_199":"\u2014 Ver\u00e3o","g_200":"\u26a0\ufe0f Filtro de categoria ativo:","g_201":"\u2014 isso limita as vagas! Para ver todas, clique em \"Todos\" acima.","g_202":"O envio alterna","g_203":"O autom\u00e1tico zerou a fila? Resetar enviados","g_205":"Hor\u00e1rio (Bras\u00edlia)","g_207":"\ud83e\uddfe Minhas doa\u00e7\u00f5es","g_208":"na sua conta. Com diamantes voc\u00ea","g_209":"quando quiser \u2014 e pode at\u00e9","g_210":"\ud83d\udcf8 Comprovante da doa\u00e7\u00e3o","g_211":"\ud83d\udcc5 Data em que voc\u00ea doou","g_213":"), seus \ud83d\udc8e caem na conta e voc\u00ea troca por plano","g_214":"Preencha seu","g_215":"(escreva \"Brazil\" em ingl\u00eas),","g_216":"com c\u00f3digo do pa\u00eds (+55 85 99999-9999) e","g_217":"D\u00ea um","g_218":"para o perfil. Ex: \"Meu Perfil Principal\" ou \"Landscape\"","g_219":"(obrigat\u00f3rio). Clique na \u00e1rea pontilhada ou arraste o arquivo.","g_220":"no final da tela.","g_222":"\u2014 Vagas de Ver\u00e3o nos EUA (temporada principal H-2B).","g_223":"\u2014 Vagas de Inverno. Menos vagas, mas ainda v\u00e1lidas.","g_224":"Clique no bot\u00e3o verde","g_225":"Vagas j\u00e1 enviadas","g_226":"que quer colocar no autom\u00e1tico","g_227":"As vagas que voc\u00ea coloca no autom\u00e1tico","g_228":"O H2BApply N\u00c3O l\u00ea nem guarda sua caixa de entrada \u2014 cada candidatura sai do","g_232":"ao se cadastrar (autom\u00e1tico)","g_236":"Se pedir documentos, entre em contato com um despachante de vistos.","g_237":"nas vari\u00e1veis de ambiente do servidor para ativar.","g_239":"Configura\u00e7\u00f5es","g_239b":"Sess\u00e3o","g_239c":"Mais","tut_center":"Central de Tutoriais","settings_adv":"Configura\u00e7\u00f5es avan\u00e7adas","g_240":"Enviar sugest\u00e3o ou ideia pros desenvolvedores","g_241":"Zona de perigo","g_242":"Sugest\u00f5es para os Devs","g_243":"Nova Sugest\u00e3o","g_244":"Sua sugest\u00e3o","g_245":"Fique de olho no","g_246":"para novidades!","g_247":"\ud83d\udc8e Grupo de Randomiza\u00e7\u00e3o","g_248":"\u00e9 exclusivo do plano","g_249":"\ud83d\udccd Localiza\u00e7\u00e3o","g_250":"\ud83d\udcc5 M\u00eas de in\u00edcio da vaga","g_251":"Nome do perfil","g_252":"Descri\u00e7\u00e3o","g_253":"para evitar bloqueio por spam.","g_255":"para evitar spam.","g_256":"Planilhas compat\u00edveis","g_257":"Categorias de vaga", // 🌐 v136: varredura final (auto)
+    "h_faq_gone":"Vagas somem do manual em dois casos: (1) voc\u00ea j\u00e1 enviou candidatura para aquela empresa, ou (2) aquela vaga est\u00e1 na fila do autom\u00e1tico. Isso \u00e9 correto \u2014 evita enviar duas vezes para a mesma empresa.", // 🌐 v137b
+    "ns1_t":"Crie seu perfil de candidatura","ns1_s":"\u00c9 o que vai nos e-mails para as empresas. Leva 1 minuto.","ns1_c":"Criar perfil","ns2_t":"Anexe seu curr\u00edculo (PDF)","ns2_s":"Sem curr\u00edculo anexado, suas candidaturas n\u00e3o saem.","ns2_c":"Anexar","ns3_t":"Tudo pronto! Comece a se candidatar","ns3_s":"Seu perfil est\u00e1 completo. Envie sua primeira candidatura de hoje.","ns3_c":"Buscar vagas","ns4_t":"Voc\u00ea atingiu o limite de hoje","ns4_s":"Vire VIP e envie at\u00e9 100 candidaturas por dia.","ns4_c":"Ver planos","ns5_t":"Ative o Envio Autom\u00e1tico","ns5_s":"Deixe o sistema enviar candidaturas enquanto voc\u00ea trabalha.","ns5_c":"Ativar","logs_none":"Nenhum log ainda","logs_none_s":"Os logs aparecem aqui quando voc\u00ea usar o Envio Autom\u00e1tico","notif_none_unread":"Nenhuma notifica\u00e7\u00e3o n\u00e3o lida \ud83c\udf89","notif_none":"Nenhuma notifica\u00e7\u00e3o por enquanto","snd_plane":"Avi\u00e3o","snd_plane_d":"Som de decolagem","sug_hero":"Sua ideia pode virar uma funcionalidade! Mande sua sugest\u00e3o para a equipe do H2BApply.","sc_vagas":"\ud83d\udcbc Sobre as vagas", // 🌐 v137: dinâmicos da varredura E2E
+    "g_1":"Envio Autom\u00e1tico","g_2":"Configure e deixe o sistema trabalhar por voc\u00ea","g_3":"/m\u00eas","g_4":"Autom\u00e1tico + Manual","g_5":"M\u00e1ximo desempenho","g_6":"Atalhos R\u00e1pidos","g_7":"Curr\u00edculos","g_8":"M\u00eas","g_11":"N\u00fameros","g_12":"\ud83c\udde7\ud83c\uddf7 Portugu\u00eas","g_14":"(at\u00e9 600 caracteres)","g_15":"(at\u00e9 400 caracteres)","g_16":"(at\u00e9 300 caracteres)","g_17":"Ajuda o sistema a encontrar vagas certas pra voc\u00ea","g_18":"J\u00e1 foi aos EUA?","g_19":"\u274c N\u00e3o","g_20":"\ud83d\udde3\ufe0f N\u00edvel de ingl\u00eas","g_21":"\ud83d\udcd6 B\u00e1sico","g_22":"\ud83c\udf1f Avan\u00e7.","g_23":"\ud83c\udf3f \u00c1rea preferida","g_24":"\ud83c\udfd7\ufe0f Constru\u00e7\u00e3o","g_25":"\ud83e\udd9e Frutos do mar","g_26":"\ud83d\udcc5 1 m\u00eas","g_27":"Notifica\u00e7\u00f5es","g_28":"\ud83d\udeeb Alertas do H2BApply","g_29":"Toque no bot\u00e3o para ativar","g_30":"seu curr\u00edculo (PDF)","g_31":"texto do e-mail","g_32":"at\u00e9 2 perfis: um H-2B e um H-2A","g_33":"Anexa seu curr\u00edculo PDF em cada candidatura","g_34":"Define o texto do e-mail em ingl\u00eas","g_35":"Essencial para o Envio Autom\u00e1tico funcionar","g_36":"Curr\u00edculo usado:","g_37":"\ud83d\udcc8 \u00daltimos 7 dias","g_38":"Configura\u00e7\u00f5es exclusivas de administrador","g_39":"Sem expira\u00e7\u00e3o \u00b7 200 manual + 200 auto/dia \u00b7 Prioridade m\u00e1xima","g_40":"segundos entre cada envio","g_41":"3min (padr\u00e3o)","g_42":"Adicione Gmails acima para configurar limites","g_43":"\u00b7 invis\u00edvel para usu\u00e1rios","g_44":"Aten\u00e7\u00e3o:","g_45":"1 Gmail \u00fanico","g_46":"responsabilidade do usu\u00e1rio","g_47":"Os mesmos filtros do Envio Manual \u2014 cargo, local, sal\u00e1rio, grupo e mais","g_48":"Categoria r\u00e1pida (detectada automaticamente)","g_49":"vagas pra voc\u00ea","g_50":"\ud83c\udfaf Seu perfil ser\u00e1 usado em todos os envios:","g_51":"\u25b6 Come\u00e7ar agora","g_52":"Envia sem parar 24/7. Reseta \u00e0 meia-noite e continua at\u00e9 zerar a fila.","g_53":"\ud83d\udd50 Agendar hor\u00e1rio","g_54":"Envia das X \u00e0s Y horas todo dia. Fora do hor\u00e1rio fica pausado.","g_55":"Iniciar \u00e0s","g_56":"Parar \u00e0s","g_62":"Pagamento via PIX","g_63":"*obrigat\u00f3rio","g_64":"Print da confirmação do Pix do seu pagamento","g_65":"Toque para selecionar o comprovante","g_66":"JPG, PNG, PDF \u2014 m\u00e1x 5MB","g_67":"at\u00e9 24h","g_68":"Para d\u00favidas, entre em contato:","g_69":"1 empresa confirmar = voc\u00ea est\u00e1 nos EUA \u2708\ufe0f","g_72":"Aprenda a usar o sistema do zero, passo a passo","g_73":"\ud83d\udccb O que voc\u00ea vai aprender:","g_74":"Resposta da empresa","g_75":"D\u00favidas Comuns","g_76":"Configurar seu Perfil","g_77":"Fa\u00e7a isso ANTES de enviar qualquer candidatura","g_78":"pa\u00eds","g_79":"Aba \"Perfis de Curr\u00edculo\" \u2014 Configurar curr\u00edculo e modelo","g_80":"upload do seu curr\u00edculo em PDF","g_81":"Sem curr\u00edculo, o perfil n\u00e3o \u00e9 salvo.","g_82":"assuntos e corpos de e-mail","g_83":"M\u00ednimo 3 varia\u00e7\u00f5es de cada.","g_84":"Seu perfil est\u00e1 configurado. Agora voc\u00ea pode enviar candidaturas.","g_85":"Envio Manual de Candidaturas","g_86":"Voc\u00ea escolhe cada vaga e envia uma por uma","g_87":"Escolha a planilha de vagas","g_88":"Mais vagas dispon\u00edveis.","g_89":"Como encontrar vagas para voc\u00ea","g_90":"Clique em uma vaga para ver os detalhes","g_91":"Veja o e-mail da empresa e as informa\u00e7\u00f5es da vaga","g_92":"O e-mail com seu curr\u00edculo \u00e9 enviado automaticamente!","g_93":"somem da lista","g_94":"Envio Autom\u00e1tico 24h","g_95":"O sistema envia enquanto voc\u00ea dorme","g_96":"\ud83e\udd16 O que \u00e9 o Envio Autom\u00e1tico?","g_97":"\"Envio Autom\u00e1tico\"","g_98":"quantidade de vagas","g_99":"\"Iniciar Autom\u00e1tico\"","g_100":"\u26a0\ufe0f Aten\u00e7\u00e3o:","g_101":"somem do envio manual","g_102":"A resposta cai direto no SEU Gmail","g_103":"seu pr\u00f3prio Gmail","g_104":"Abra o e-mail da empresa direto no seu Gmail","g_105":"Digite sua resposta em ingl\u00eas e envie \u2014 \u00e9 um e-mail seu, como qualquer outro","g_106":"\ud83d\udca1 Dica de resposta r\u00e1pida:","g_107":"Envie mais candidaturas por dia","g_108":"Gr\u00e1tis","g_109":"VIP · R$100/mês","g_110":"VIPro · R$150/mês","g_111":"DoublePro · R$250/mês","g_112":"\ud83c\udf81 Como ganhar VIP gr\u00e1tis:","g_113":"1 dia VIP Manual","g_114":"C\u00f3digos promocionais","g_115":"D\u00favidas Frequentes","g_116":"Respostas r\u00e1pidas para perguntas comuns","g_117":"N\u00e3o.","g_118":"Ainda com d\u00favidas?","g_119":"Assista aos v\u00eddeos explicativos no YouTube ou fale pelo Instagram","g_128":"desaparecer de qualquer lugar p\u00fablico","g_129":"fazer login novamente com o mesmo e-mail","g_130":"m\u00ednimo 10 caracteres","g_131":"Autom\u00e1tico","g_132":"Vaga n\u00e3o identificada","g_133":"\ud83d\udcc5 Dispon\u00edvel","g_134":"\u2753 D\u00favida","g_135":"Constru\u00e7\u00e3o","g_136":"Dep\u00f3sito","g_137":"\ud83c\udff7\ufe0f Cargo espec\u00edfico","g_138":"\ud83d\udcc2 Categoria r\u00e1pida","g_139":"\ud83c\udf0e Tipo de visto","g_140":"\ud83d\udcf6 Status da vaga","g_141":"Grupo de Randomiza\u00e7\u00e3o","g_142":"\u2014 pode escolher v\u00e1rios estados","g_143":"\ud83d\udcb0 Sal\u00e1rio m\u00ednimo","g_144":"\ud83d\udc65 Qtd. vagas m\u00edn.","g_145":"\u2014 pode marcar v\u00e1rios","g_146":"\ud83c\udfb2 Aleat\u00f3rio (padr\u00e3o)","g_147":"\ud83c\udfaf Melhor pra voc\u00ea primeiro","g_148":"\ud83d\udcb0 Maior sal\u00e1rio primeiro","g_149":"\ud83d\udcc5 Come\u00e7a mais cedo primeiro","g_150":"Este perfil ser\u00e1 usado nos envios manuais e autom\u00e1ticos","g_151":"curr\u00edculo (PDF)","g_152":"\u2460 Informa\u00e7\u00f5es B\u00e1sicas","g_153":"\u00cdcone","g_154":"Escolha um \u00edcone para o perfil:","g_155":"\u2461 Curr\u00edculo &amp; Cover Letter (PDF)","g_156":"\ud83d\udcc4 Curr\u00edculo (PDF)","g_157":"\u2705 Curr\u00edculo vinculado a este perfil","g_158":"\ud83d\udce4 Novo arquivo \u2014 ser\u00e1 enviado ao salvar","g_159":"Clique ou arraste um PDF para fazer upload","g_160":"M\u00e1x. 10MB","g_161":"ou escolha da sua conta","g_162":"Carta de apresenta\u00e7\u00e3o \u2014 n\u00e3o obrigat\u00f3ria, mas aumenta as chances de resposta.","g_163":"apenas nas vagas do tipo de visto deste perfil","g_164":"\u2462 Assuntos do E-mail","g_165":"M\u00ednimo 3","g_166":"Vari\u00e1veis:","g_167":"\u2463 Corpos de E-mail","g_168":"\u2699\ufe0f Vari\u00e1veis \u2014 clique para copiar:","g_169":"3 corpos de e-mail","g_170":"Selecione as categorias para as quais este perfil ser\u00e1 usado automaticamente","g_171":"\u2464 Configura\u00e7\u00e3o","g_172":"Prote\u00e7\u00f5es sempre ativas:","g_173":"n\u00e3o podem ser desativados","g_174":"Not\u00edcias","g_186":"Cada perfil de curr\u00edculo tem o curr\u00edculo vinculado diretamente.","g_187":"O envio autom\u00e1tico sempre usa o PDF do perfil correto \u2014 sem confus\u00e3o.","g_190":"Crie seu primeiro Perfil de Curr\u00edculo para","g_191":"come\u00e7ar a enviar candidaturas","g_204":"S\u00f3 precisa estar logado uma vez.","g_212":". É por ela que conferimos o seu pagamento.","g_221":"No topo da tela de Envio Manual voc\u00ea v\u00ea 3 abas:","g_229":"10 autom\u00e1ticos/dia","g_230":"sem autom\u00e1tico","g_231":"100 autom\u00e1ticos/dia","g_233":"Por que minhas vagas sumiram do manual?","g_234":"O autom\u00e1tico parou. O que fa\u00e7o?","g_235":"Recebi um e-mail em ingl\u00eas. O que fa\u00e7o?","g_175":"Toque em qualquer candidatura para ver detalhes,","g_176":". O bot\u00e3o","g_177":"apaga tudo e faz as vagas voltarem para a lista (\u00fatil para recandidatar-se).","g_178":"Quem já tem um plano ativo pode conectar um Gmail extra para reduzir risco de spam.","g_179":"\ud83c\udfad Escolha seu avatar","g_180":"\ud83d\udca1 O que voc\u00ea escrever aqui aparece quando algu\u00e9m","g_181":"\ud83d\udc64 Sobre voc\u00ea","g_182":"\ud83d\udcbc Experi\u00eancias de trabalho","g_183":"\ud83d\udcac O que voc\u00ea acha do H2BApply?","g_184":"\ud83d\udcbe Salve com o bot\u00e3o","g_185":"no fim da p\u00e1gina.","g_188":". Voc\u00ea pode ter","g_189":"o perfil que voc\u00ea escolher no Passo 3 do assistente","g_192":"Estat\u00edsticas","g_193":"Gmails de envio","g_194":"10 envios GR\u00c1TIS/dia para todos!","g_195":"Enviar muitos emails com","g_196":"pode gerar bloqueio tempor\u00e1rio pelo Google. Recomendamos adicionar","g_197":"para distribuir os envios. O risco de bloqueio \u00e9 de","g_198":"\ud83d\udcec Pr\u00f3ximas candidaturas","g_199":"\u2014 Ver\u00e3o","g_200":"\u26a0\ufe0f Filtro de categoria ativo:","g_201":"\u2014 isso limita as vagas! Para ver todas, clique em \"Todos\" acima.","g_202":"O envio alterna","g_203":"O autom\u00e1tico zerou a fila? Resetar enviados","g_205":"Hor\u00e1rio (Bras\u00edlia)","g_207":"🧾 Meus pedidos","g_210":"📸 Comprovante do pagamento","g_211":"📅 Data em que você pagou","g_213":"), seu plano é ativado","g_214":"Preencha seu","g_215":"(escreva \"Brazil\" em ingl\u00eas),","g_216":"com c\u00f3digo do pa\u00eds (+55 85 99999-9999) e","g_217":"D\u00ea um","g_218":"para o perfil. Ex: \"Meu Perfil Principal\" ou \"Landscape\"","g_219":"(obrigat\u00f3rio). Clique na \u00e1rea pontilhada ou arraste o arquivo.","g_220":"no final da tela.","g_222":"\u2014 Vagas de Ver\u00e3o nos EUA (temporada principal H-2B).","g_223":"\u2014 Vagas de Inverno. Menos vagas, mas ainda v\u00e1lidas.","g_224":"Clique no bot\u00e3o verde","g_225":"Vagas j\u00e1 enviadas","g_226":"que quer colocar no autom\u00e1tico","g_227":"As vagas que voc\u00ea coloca no autom\u00e1tico","g_228":"O H2BApply N\u00c3O l\u00ea nem guarda sua caixa de entrada \u2014 cada candidatura sai do","g_232":"ao se cadastrar (autom\u00e1tico)","g_236":"Se pedir documentos, entre em contato com um despachante de vistos.","g_237":"nas vari\u00e1veis de ambiente do servidor para ativar.","g_239":"Configura\u00e7\u00f5es","g_239b":"Sess\u00e3o","g_239c":"Mais","tut_center":"Central de Tutoriais","settings_adv":"Configura\u00e7\u00f5es avan\u00e7adas","g_240":"Enviar sugest\u00e3o ou ideia pros desenvolvedores","g_241":"Zona de perigo","g_242":"Sugest\u00f5es para os Devs","g_243":"Nova Sugest\u00e3o","g_244":"Sua sugest\u00e3o","g_245":"Fique de olho no","g_246":"para novidades!","g_247":"\ud83d\udc8e Grupo de Randomiza\u00e7\u00e3o","g_248":"\u00e9 exclusivo do plano","g_249":"\ud83d\udccd Localiza\u00e7\u00e3o","g_250":"\ud83d\udcc5 M\u00eas de in\u00edcio da vaga","g_251":"Nome do perfil","g_252":"Descri\u00e7\u00e3o","g_253":"para evitar bloqueio por spam.","g_255":"para evitar spam.","g_256":"Planilhas compat\u00edveis","g_257":"Categorias de vaga", // 🌐 v136: varredura final (auto)
     "gu_t":"Como o H2BApply usa sua conta Google","gu_b":"Pedimos <strong>uma única permissão</strong> do Google: enviar e-mails pelo seu Gmail (<code style=\"background:rgba(255,255,255,.08);padding:1px 6px;border-radius:5px\">gmail.send</code>) — usada exclusivamente para enviar as candidaturas de emprego que <strong>você mesmo escreve e autoriza</strong>. O H2BApply <strong>nunca lê, nunca armazena e nunca acessa sua caixa de entrada</strong>. As respostas dos empregadores chegam direto no seu próprio Gmail. Você pode revogar o acesso a qualquer momento em myaccount.google.com.","gu_l":"Leia nossa Política de Privacidade completa →", // ✅ v145: transparência do uso da conta Google (verificação OAuth)
-    "rst_t":"Atualizamos o sistema de login","rst_b":"Seu login foi resetado, mas <strong>NADA foi apagado</strong> — envios, dias de plano, diamantes e currículos estão todos salvos. Entre com o <strong>MESMO e-mail do Google</strong> que você usava antes. ⚠️ <strong>Não crie outra conta</strong> com e-mail diferente: mais de uma conta dá risco de <strong>banimento permanente dos dois e-mails</strong>. As vagas são limitadas — use a conta que você já tem.", // 📢 v144: aviso do reset de login (OAuth novo)
+    "rst_t":"Atualizamos o sistema de login","rst_b":"Seu login foi resetado, mas <strong>NADA foi apagado</strong> — envios, dias de plano e currículos estão todos salvos. Entre com o <strong>MESMO e-mail do Google</strong> que você usava antes. ⚠️ <strong>Não crie outra conta</strong> com e-mail diferente: mais de uma conta dá risco de <strong>banimento permanente dos dois e-mails</strong>. As vagas são limitadas — use a conta que você já tem.", // 📢 v144: aviso do reset de login (OAuth novo)
     "pe_draft_confirm":"📝 Achamos um rascunho salvo deste perfil (sua sessão deve ter caído antes de salvar). Restaurar o texto?","pe_draft_restored":"📝 Rascunho restaurado","pe_session_lost":"🔒 Sua sessão caiu (o servidor reiniciou) — seu texto JÁ ESTÁ SALVO aqui no aparelho. Faça login de novo e abra este perfil de novo que ele volta sozinho.", // 📝 v143: rascunho do editor de perfil (caso Keyla)
-    "au_t":"Regra de conta única — leia antes de entrar","au_b":"Cada pessoa pode ter UMA conta no H2BApply. Criar uma segunda conta — mesmo com outro e-mail — pode causar BAN PERMANENTE das duas contas, sem devolução de nada. Lembre-se: o nome no seu currículo é sempre o mesmo, e o sistema cruza nome, telefone e aparelho sozinho — conta duplicada é fácil de detectar. As vagas de acesso são limitadas: use sempre o MESMO e-mail, e na tela do Google escolha exatamente o e-mail que você digitou.","au_f":"✅ 1 pessoa = 1 conta = todos os seus envios, dias de VIP e diamantes sempre juntos e seguros.", // ⚠️ v149: regra de conta única (ordem do dono)
-    "rn_t":"Atualização importante — leia antes de entrar","rn_p1":"Atualizamos o H2BApply: os 3 servidores viraram UM só — todas as contas foram trazidas pra cá. NADA foi apagado: seus envios, dias de VIP, diamantes e currículos estão aqui. Entre usando apenas 1 e-mail, de preferência o e-mail principal que já estava cadastrado na sua conta.","rn_warn":"⚠️ Sistema anti-duplicação: se forem criadas 2 contas com o mesmo nome no currículo — mesmo com e-mails diferentes — as duas contas podem ser BANIDAS PERMANENTEMENTE. Use somente 1 conta.","rn_ok":"✅ Li e entendi — continuar", // 📢 v150: janela do reset antes do login
-    "mc_1":"Minha Conta","mc_13":"PIX recebido — 💎 a caminho","mc_14":"Troque seus 💎 por mais dias na aba Planos.","mc_15":"ATENÇÃO: expira em","lb_ajuste":"Ajuste de bônus","lb_credito":"Crédito","mp_doa":"Doação","mp_diam":"diamantes","mp_pend":"⏳ Em análise","mp_pago":"💰 PIX recebido — 💎 a caminho","mp_cred":"💎 creditados","mp_canc":"✖ Cancelada","mp_canc_sub":"Se achar que foi engano, chame no WhatsApp","mp_motivo":"Motivo","mp_ileg":"⚠️ Não conseguimos ler seu comprovante — reenvie uma foto nítida.","mp_ok":"✅ Comprovante conferido pelo robô","mp_analise":"🔍 Comprovante em análise","mp_reenviar":"📤 Reenviar comprovante","mp_media":"confirmação média real","mp_sub24":"Analisamos e confirmamos — você recebe notificação","mp_vertodos":"ver todos", "mc_2":"Plano Grátis","mc_3":"envios manuais por dia","mc_4":"💎 Meus diamantes","mc_5":"reais","mc_6":"bônus (só valem pra troca de plano)","mc_7":"🧾 Última doação:","mc_8":"aguardando confirmação do admin","mc_9":"confirmada — 💎 na sua conta","mc_10":"cancelada","mc_11":"Você ainda não fez nenhuma doação.","mc_12":"Troque seus 💎 por um plano quando quiser — a troca é imediata.", // 👤 2.0-P6: Minha Conta em 5s
-    "tut_t":"Central de Tutoriais","tut_s":"28 passo a passos com fotos reais — tudo o que dá pra fazer no H2BApply, explicado tela por tela","tut_ph":"🔍 O que você quer aprender? Ex.: currículo, automático, diamantes...","tut_v":"Nada encontrado com essa palavra — tente outro termo (ex.: \"enviar\", \"plano\", \"perfil\").","tut_load":"⏳ Carregando os tutoriais...", // 📖 v160
+    "au_t":"Regra de conta única — leia antes de entrar","au_b":"Cada pessoa pode ter UMA conta no H2BApply. Criar uma segunda conta — mesmo com outro e-mail — pode causar BAN PERMANENTE das duas contas, sem devolução de nada. Lembre-se: o nome no seu currículo é sempre o mesmo, e o sistema cruza nome, telefone e aparelho sozinho — conta duplicada é fácil de detectar. As vagas de acesso são limitadas: use sempre o MESMO e-mail, e na tela do Google escolha exatamente o e-mail que você digitou.","au_f":"✅ 1 pessoa = 1 conta = todos os seus envios e dias de VIP sempre juntos e seguros.", // ⚠️ v149: regra de conta única (ordem do dono)
+    "rn_t":"Atualização importante — leia antes de entrar","rn_p1":"Atualizamos o H2BApply: os 3 servidores viraram UM só — todas as contas foram trazidas pra cá. NADA foi apagado: seus envios, dias de VIP e currículos estão aqui. Entre usando apenas 1 e-mail, de preferência o e-mail principal que já estava cadastrado na sua conta.","rn_warn":"⚠️ Sistema anti-duplicação: se forem criadas 2 contas com o mesmo nome no currículo — mesmo com e-mails diferentes — as duas contas podem ser BANIDAS PERMANENTEMENTE. Use somente 1 conta.","rn_ok":"✅ Li e entendi — continuar", // 📢 v150: janela do reset antes do login
+    "mc_1":"Minha Conta","mc_13":"Comprovante recebido — aguardando confirmação","mc_14":"Renove seu plano na aba Planos.","mc_15":"ATENÇÃO: expira em","mp_pend":"⏳ Em análise","mp_pago":"💰 Pagamento recebido — aguardando confirmação","mp_canc":"✖ Cancelado","mp_canc_sub":"Se achar que foi engano, chame no WhatsApp","mp_motivo":"Motivo","mp_ileg":"⚠️ Não conseguimos ler seu comprovante — reenvie uma foto nítida.","mp_ok":"✅ Comprovante conferido pelo robô","mp_analise":"🔍 Comprovante em análise","mp_reenviar":"📤 Reenviar comprovante","mp_media":"confirmação média real","mp_sub24":"Analisamos e confirmamos — você recebe notificação","mp_vertodos":"ver todos", "mc_2":"Plano Grátis","mc_3":"envios manuais por dia","mc_7":"🧾 Último pedido:","mc_8":"aguardando confirmação do admin","mc_9":"confirmado — plano ativado","mc_10":"cancelado","mc_11":"Você ainda não fez nenhum pedido.","mc_12":"Assine um plano quando quiser para aumentar seu limite diário.", // 👤 2.0-P6: Minha Conta em 5s (v170: sem sistema de diamantes)
+    "tut_t":"Central de Tutoriais","tut_s":"28 passo a passos com fotos reais — tudo o que dá pra fazer no H2BApply, explicado tela por tela","tut_ph":"🔍 O que você quer aprender? Ex.: currículo, automático, planos...","tut_v":"Nada encontrado com essa palavra — tente outro termo (ex.: \"enviar\", \"plano\", \"perfil\").","tut_load":"⏳ Carregando os tutoriais...", // 📖 v160
+    "consent_title":"☑️ Antes de continuar","consent_b1":"É um serviço digital pago de automação de envio — o H2BApply nunca escreve o e-mail por você; o conteúdo enviado é sempre seu.","consent_b2":"O preço mostrado agora é o valor final a pagar.","consent_b3":"Depois de pagar via PIX, envie o comprovante e continue logado na mesma conta até a confirmação — automática quando bate, e sempre revisada por um admin.","consent_b4":"O risco de bloqueio da conta Gmail é do Google (terceiro), não do H2BApply — dá pra reduzir usando mais de uma conta de envio.","consent_b5":"Você tem direito de arrependimento de 7 dias corridos.","consent_check":"Li e entendo como o programa funciona e o que estou pagando.","consent_terms_link":"Ver Termos completos →","consent_required_msg":"Marque que você leu e entende antes de continuar.","consent_choose_plan":"Escolha um plano e o período antes de continuar.","plan_step1_title":"Escolha seu plano e período","plan_step1_intro":"Você paga <strong>diretamente</strong> pelo plano escolhido — sem moeda intermediária. Veja os limites de cada plano, escolha o período e o preço final aparece na hora, antes de pagar.","plan_calc_empty":"Escolha um plano e o período","plan_error_load":"Não deu pra carregar os planos.","plan_try_again":"Tentar de novo", // 💎 v170: compra direta de plano — consentimento informado (CEO mode, 09/09/2026)
     "pv_title":"Vagas pra você","pv_all":"Ver todas","pv_apply":"Candidatar","pv_apply_t":"Candidatar a esta vaga","pv_w1":"categoria que você prefere","pv_w2":"dentro do que seu perfil mira","pv_w3":"estado do seu perfil","pv_w4":"pede experiência e você já tem","pv_w5":"aceita quem está começando","pv_w6":"pede experiência que você ainda não tem","pv_w7":"pede inglês avançado","pv_w8":"não exige inglês avançado","pv_w9":"seu inglês avançado é diferencial aqui", // 🎯 v139: Vagas pra você (Home)
-    "snd_title":"Som de nova resposta","snd_sel":"selecionado!","hs_t":"Bem-vindo ao H2BApply!","hs1":"Vá em <strong>Perfil → Perfis de Email</strong> e configure seu currículo","hs2":"Acesse <strong>Envio Manual</strong> para escolher vagas e candidatar","hs3":"Ative o <strong>Envio Automático</strong> para candidaturas 24h no piloto automático","hs4":"As respostas caem direto no <strong>seu próprio Gmail</strong> — fique de olho por lá","lb_doacao":"Doação confirmada","lb_troca":"Troca por plano","lb_tin":"Recebido de amigo","lb_tout":"Doado para amigo","lb_admin":"Ajuste do admin","lb_estorno":"Estorno","lb_missao":"Missão cumprida","lb_correcao":"Correção de valor","lb_upgrade":"Upgrade de plano","fq1":"Fila concluída! Você aplicou para todas as vagas.","fq2":"Missão cumprida! Aguarde as respostas chegarem.","fq3":"Todas as candidaturas enviadas! O sucesso está a caminho.","fq4":"Fila zerada! Você deu um grande passo hoje.","h_faq_qty_q":"Quantos e-mails devo enviar por dia?","h_faq_qty":"Quanto mais melhor — mas com qualidade. O sistema tem proteção anti-spam. No plano gratuito são 20 manuais + 10 automáticos por dia. Com VIP Manual são 100 manuais por dia. Com VIPro são 100 + 100 por dia. Com DoublePro (2 Gmails) são 200 + 200 por dia. Enviar para muitas empresas aumenta suas chances.","h_faq_reply":"Abra o e-mail direto no seu Gmail e leia. Se a empresa perguntar se você está disponível, responda: <em>\"Yes, I am available to start on the requested date.\"</em> Se pedir documentos, entre em contato com um despachante de vistos.","h_faq_visa":"<strong>Isso garante emprego ou visto? Não.</strong> O H2BApply é uma ferramenta que envia e-mails para você. A decisão de te contratar é do empregador. A decisão do visto é do consulado americano. Quanto mais candidaturas você enviar, maiores as chances de receber uma oferta.","g_258":"Já doou antes? É só enviar o mesmo comprovante na tela de planos — sem doar de novo.","g_259":"Digite o nome da empresa, um e-mail recebido, o ETA case number, o cargo ou o estado para encontrar todas as vagas correspondentes","g_260":"Adicione um segundo Gmail. O automático distribui os envios entre os dois emails, reduzindo risco de spam.","g_261":"Os e-mails sairão com o currículo e os textos do perfil escolhido no Passo 3 — assuntos e corpos alternam automaticamente contra spam.","g_262":"O sistema rotaciona entre os assuntos e corpos de e-mail cadastrados para evitar parecer spam. Quer ajustar algo? Toque em \"Trocar\" acima.","g_263":"Escreva seu nome exatamente como está no passaporte. Se o nome estiver errado, pode causar problemas com o empregador.","g_264":"É como um robô que trabalha por você. Você configura uma vez e ele fica enviando candidaturas sozinho, mesmo com seu celular desligado.","g_265":"Verifique na aba Home se o automático ainda aparece como ativo. Se parou, pode ter atingido o limite diário do seu plano — ele reinicia automaticamente no dia seguinte à meia-noite.","g_266":"Nenhum assunto ainda. Escreva pelo menos 3 variações suas em \"+ Adicionar\" — use as variáveis acima pra personalizar automaticamente.","g_267":"Nenhum corpo de e-mail ainda. Escreva pelo menos 3 variações suas em \"+ Adicionar\" — use as variáveis acima pra personalizar automaticamente.","g_268":"Perfil único: seu perfil serve automaticamente para qualquer vaga, de qualquer planilha.","g_269":"⚙️ Filtros avançados","g_270":"Você escreve os textos — o H2BApply nunca preenche isso por você, só entrega.","g_271":"escritos por você","g_272":"as suas versões, escritas por você", // 🌐 v137c: sons/boas-vindas/extrato/FAQ + 11 textos longos da varredura
+    "snd_title":"Som de nova resposta","snd_sel":"selecionado!","hs_t":"Bem-vindo ao H2BApply!","hs1":"Vá em <strong>Perfil → Perfis de Email</strong> e configure seu currículo","hs2":"Acesse <strong>Envio Manual</strong> para escolher vagas e candidatar","hs3":"Ative o <strong>Envio Automático</strong> para candidaturas 24h no piloto automático","hs4":"As respostas caem direto no <strong>seu próprio Gmail</strong> — fique de olho por lá","fq1":"Fila concluída! Você aplicou para todas as vagas.","fq2":"🏆 Fila concluída! Aguarde as respostas chegarem.","fq3":"Todas as candidaturas enviadas! O sucesso está a caminho.","fq4":"Fila zerada! Você deu um grande passo hoje.","h_faq_qty_q":"Quantos e-mails devo enviar por dia?","h_faq_qty":"Quanto mais melhor — mas com qualidade. O sistema tem proteção anti-spam. No plano gratuito são 20 manuais + 10 automáticos por dia. Com VIP Manual são 100 manuais por dia. Com VIPro são 100 + 100 por dia. Com DoublePro (2 Gmails) são 200 + 200 por dia. Enviar para muitas empresas aumenta suas chances.","h_faq_reply":"Abra o e-mail direto no seu Gmail e leia. Se a empresa perguntar se você está disponível, responda: <em>\"Yes, I am available to start on the requested date.\"</em> Se pedir documentos, entre em contato com um despachante de vistos.","h_faq_visa":"<strong>Isso garante emprego ou visto? Não.</strong> O H2BApply é uma ferramenta que envia e-mails para você. A decisão de te contratar é do empregador. A decisão do visto é do consulado americano. Quanto mais candidaturas você enviar, maiores as chances de receber uma oferta.","g_258":"Já pagou antes? É só enviar o mesmo comprovante na tela de planos — sem pagar de novo.","g_259":"Digite o nome da empresa, um e-mail recebido, o ETA case number, o cargo ou o estado para encontrar todas as vagas correspondentes","g_260":"Adicione um segundo Gmail. O automático distribui os envios entre os dois emails, reduzindo risco de spam.","g_261":"Os e-mails sairão com o currículo e os textos do perfil escolhido no Passo 3 — assuntos e corpos alternam automaticamente contra spam.","g_262":"O sistema rotaciona entre os assuntos e corpos de e-mail cadastrados para evitar parecer spam. Quer ajustar algo? Toque em \"Trocar\" acima.","g_263":"Escreva seu nome exatamente como está no passaporte. Se o nome estiver errado, pode causar problemas com o empregador.","g_264":"É como um robô que trabalha por você. Você configura uma vez e ele fica enviando candidaturas sozinho, mesmo com seu celular desligado.","g_265":"Verifique na aba Home se o automático ainda aparece como ativo. Se parou, pode ter atingido o limite diário do seu plano — ele reinicia automaticamente no dia seguinte à meia-noite.","g_266":"Nenhum assunto ainda. Escreva pelo menos 3 variações suas em \"+ Adicionar\" — use as variáveis acima pra personalizar automaticamente.","g_267":"Nenhum corpo de e-mail ainda. Escreva pelo menos 3 variações suas em \"+ Adicionar\" — use as variáveis acima pra personalizar automaticamente.","g_268":"Perfil único: seu perfil serve automaticamente para qualquer vaga, de qualquer planilha.","g_269":"⚙️ Filtros avançados","g_270":"Você escreve os textos — o H2BApply nunca preenche isso por você, só entrega.","g_271":"escritos por você","g_272":"as suas versões, escritas por você", // 🌐 v137c: sons/boas-vindas/extrato/FAQ + 11 textos longos da varredura
     // Nav
     "home":"Home","manual":"Manual","search":"Pesquisar","auto":"Auto","responses":"Respostas",
     // Sidebar
-    "notifications":"Notificações","plans":"💎 Diamantes","profile":"Perfil","admin":"Painel Admin","logout":"Sair","logout_confirm":"Sair da sua conta? Você pode entrar de novo a qualquer momento com o mesmo e-mail do Google.", // v167: botão de sair (achado E2E crítico)
+    "notifications":"Notificações","plans":"💎 Planos","profile":"Perfil","admin":"Painel Admin","logout":"Sair","logout_confirm":"Sair da sua conta? Você pode entrar de novo a qualquer momento com o mesmo e-mail do Google.", // v167: botão de sair (achado E2E crítico)
     // Home
     "auto_title":"Envio Automático","auto_sub":"Toque para configurar e iniciar",
     "shortcuts":"Atalhos Rápidos","today":"Hoje","account":"Conta","latest_replies":"Últimas Respostas",
@@ -7428,14 +7425,14 @@ const LANG_DICT = {
     "all_states":"Todos estados","salary":"Salário","qty_jobs":"Qtd vagas",
     // v119: sugestões instantâneas da busca
     "sug_companies":"Empresas","sug_roles":"Cargos","sug_cities":"Cidades","sug_regions":"Regiões","sug_states":"Estados","sug_jobs":"vagas",
-    "extra_gmail":"Gmail Extra para Envios","upgrade_to_enable":"Troque diamantes para ativar.","tap_to_pick":"(toque para escolher)","search_btn":"Buscar",
+    "extra_gmail":"Gmail Extra para Envios","upgrade_to_enable":"Assine um plano para ativar.","tap_to_pick":"(toque para escolher)","search_btn":"Buscar",
     // 📡⭐ v134 — Radar de Vagas + funil do limite
     "radar_btn":"📡 Radar","radar_title":"Radar de Vagas","radar_sub":"Salve os filtros de agora (busca, estado, cidade) e receba um aviso no celular quando entrar vaga NOVA que combina — no máximo 1 aviso por dia.",
     "radar_create":"Criar radar com os filtros atuais","radar_active":"Seu radar está LIGADO","radar_off":"Desligar radar",
     "radar_all":"Todas as vagas novas","radar_alerts":"aviso(s) já enviados","radar_created":"Radar ligado! Você será avisado quando entrar vaga nova que combina.","radar_removed":"Radar desligado.",
-    "upsell_title":"Seu limite de hoje acabou — as vagas não esperam","upsell_left":"Ainda restam {n} vagas disponíveis HOJE que você não vai alcançar no plano atual. Troque diamantes por um plano e continue agora mesmo — ativa na hora.",
-    "upsell_left_generic":"Amanhã o limite volta — mas as melhores vagas de hoje já terão recebido outros candidatos. Troque diamantes por um plano e continue agora — ativa na hora.",
-    "upsell_cta":"Ver planos e trocar por 💎","upsell_later":"Continuar amanhã de graça",
+    "upsell_title":"Seu limite de hoje acabou — as vagas não esperam","upsell_left":"Ainda restam {n} vagas disponíveis HOJE que você não vai alcançar no plano atual. Assine um plano e continue agora mesmo — comprovante conferido, plano ativado.",
+    "upsell_left_generic":"Amanhã o limite volta — mas as melhores vagas de hoje já terão recebido outros candidatos. Assine um plano e continue agora.",
+    "upsell_cta":"Ver planos e assinar","upsell_later":"Continuar amanhã de graça",
     // 🌐 Etapa 5 do i18n — status dinâmicos do robô
     "st_starting":"🟡 Iniciando...","st_sending":"🟢 Enviando...","st_paused":"⏸ Pausado",
     "st_no_session":"⚠️ Faça login novamente","st_finished":"✅ Concluído","st_resuming":"🟢 Retomando...",
@@ -7455,10 +7452,10 @@ const LANG_DICT = {
     
     
     
-    "plans_title":"Diamantes & Planos","plans_sub":"Doe via PIX, ganhe diamantes e troque por planos quando quiser",
-    "plans_note":"Doação confirmada em até 24h • Troca por plano ativa NA HORA",
-    "diamond_qty":"Quantidade de diamantes","diamond_when":"Os diamantes caem na conta quando o admin confirmar o comprovante",
-    "gift_friend":"🎁 Doar diamantes para um amigo","contact_data":"Seus dados de contato","contact_sub":"Para ativarmos seu plano e entrar em contato",
+    "plans_title":"Planos H2BApply","plans_sub":"Escolha um plano, pague via PIX e envie o comprovante",
+    "plans_note":"Comprovante conferido automaticamente • Confirmação final sempre por um admin",
+    
+    "contact_data":"Seus dados de contato","contact_sub":"Para ativarmos seu plano e entrar em contato",
     "order_summary":"📋 Resumo do pedido","notes_lbl":"Observações",
     "rank_sub":"Compita com outros usuários • Suba de posição • Conquiste o topo",
     "settings_sub":"Sua conta, sua privacidade.","your_account":"Sua conta","how_works":"💡 Como funciona?",
@@ -7489,7 +7486,7 @@ const LANG_DICT = {
     "home_auto_b1":"Envia pra várias vagas por dia","home_auto_b3":"Nunca repete uma candidatura","home_auto_b4":"Funciona 24h — você não precisa ficar online","home_auto_cta":"Iniciar Envio Automático",
     "home_man_b1":"Pesquise e filtre as vagas","home_man_b4":"Envie quando estiver pronto",
     "manual_send_title":"Envio Manual","manual_send_sub":"Busque vagas e envie candidaturas agora",
-    "plans_send_title":"💎 Diamantes","plans_send_sub":"Turbine seus envios com diamantes", // 🌐 v166: 3º CTA da Home
+    "plans_send_title":"💎 Planos","plans_send_sub":"Assine um plano e turbine seus envios", // 🌐 v166: 3º CTA da Home
     "home_cv_tip":"Mantenha seu currículo sempre atualizado.","home_cv_tip_link":"Editar currículo →", // 🌐 v166: dica discreta da Home
     "inicio":"Início","auto_send":"Envio Automático","manual_send":"Envio Manual",
     "news_h2b":"Notícias H-2B","sent_tab":"Enviadas","download_app":"Baixar App","menu_lbl":"MENU",
@@ -7522,9 +7519,9 @@ const LANG_DICT = {
     "search_hint":"Digite o nome da empresa, um e-mail recebido, o ETA case number, o cargo ou o estado",
     // Responses
     "all_inbox":"Todos","unread":"Não lidas","favorites":"Favoritos","this_week":"Esta semana",
-    "enable_notif":"Ativar notificações","enable_notif_sub":"Receba avisos de diamantes, missões e novidades — mesmo com o app fechado",
+    "enable_notif":"Ativar notificações","enable_notif_sub":"Receba avisos de confirmação de comprovante, status do automático e novidades — mesmo com o app fechado",
     "activate":"Ativar","inbox_search_ph":"Buscar empresa, assunto...","notif_short":"Notif",
-    "reply_alert":"Alerta de nova resposta","reply_alert_sub":"Som + aviso de diamantes, missões e novidades (o site não lê e-mail — não avisamos quando a empresa responde)",
+    "reply_alert":"Alerta de nova resposta","reply_alert_sub":"Som + aviso de confirmação de comprovante, status do automático e novidades (o site não lê e-mail — não avisamos quando a empresa responde)",
     "pipe_responded":"Respondeu","pipe_positive":"Interesse","pipe_interview":"Entrevista","pipe_offer":"Oferta",
     // Ranking
     
@@ -7572,20 +7569,21 @@ const LANG_DICT = {
     "sys_notif_label":"Aviso do Sistema","sys_notif_ok":"✅ Li e entendi","sys_notif_all":"🔔 Ver todas notificações",
   },
   en: {
-    "h_faq_gone":"Jobs disappear from manual in two cases: (1) you already applied to that company, or (2) that job is in the auto queue. That's correct \u2014 it prevents emailing the same company twice.","mi1_d":"Send your 1st application (manual or robot)","mi2_d":"Save your email profile and upload a PDF resume","mi3_d":"Reach 100 applications sent","mi4_d":"Reach 1,000 applications sent","mi5_d":"Get your H2BApply review approved and published", // 🌐 v137b
-    "ns1_t":"Create your application profile","ns1_s":"It's what goes in the emails to companies. Takes 1 minute.","ns1_c":"Create profile","ns2_t":"Attach your resume (PDF)","ns2_s":"Without a resume attached, your applications won't go out.","ns2_c":"Attach","ns3_t":"All set! Start applying","ns3_s":"Your profile is complete. Send your first application today.","ns3_c":"Find jobs","ns4_t":"You hit today's limit","ns4_s":"Go VIP and send up to 100 applications a day.","ns4_c":"See plans","ns5_t":"Turn on Auto Send","ns5_s":"Let the system send applications while you work.","ns5_c":"Turn on","logs_none":"No logs yet","logs_none_s":"Logs show up here once you use Auto Send","notif_none_unread":"No unread notifications \ud83c\udf89","notif_none":"No notifications for now","swap_instant":"Activates INSTANTLY \u2014 no wait, no approval","mi1":"First application","mi2":"Complete profile","mi3":"100 applications","mi4":"1,000 applications","mi5":"Published review","snd_plane":"Airplane","snd_plane_d":"Takeoff sound","sug_hero":"Your idea can become a feature! Send your suggestion to the H2BApply team.","sc_vagas":"\ud83d\udcbc About the jobs", // 🌐 v137: dinâmicos da varredura E2E
-    "g_1":"Auto Send","g_2":"Set it up and let the system work for you","g_3":"/mo","g_4":"Auto + Manual","g_5":"Maximum performance","g_6":"Quick Access","g_7":"Resumes","g_8":"Month","g_11":"Stats","g_12":"\ud83c\udde7\ud83c\uddf7 Portugu\u00eas","g_14":"(up to 600 characters)","g_15":"(up to 400 characters)","g_16":"(up to 300 characters)","g_17":"Helps the system find the right jobs for you","g_18":"Ever been to the USA?","g_19":"\u274c No","g_20":"\ud83d\udde3\ufe0f English level","g_21":"\ud83d\udcd6 Basic","g_22":"\ud83c\udf1f Advanced","g_23":"\ud83c\udf3f Preferred area","g_24":"\ud83c\udfd7\ufe0f Construction","g_25":"\ud83e\udd9e Seafood","g_26":"\ud83d\udcc5 1 month","g_27":"Notifications","g_28":"\ud83d\udeeb H2BApply alerts","g_29":"Tap the button to enable","g_30":"your resume (PDF)","g_31":"the email text","g_32":"up to 2 profiles: one H-2B and one H-2A","g_33":"Attaches your PDF resume to every application","g_34":"Sets the email text in English","g_35":"Essential for Auto Send to work","g_36":"Resume used:","g_37":"\ud83d\udcc8 Last 7 days","g_38":"Admin-only settings","g_39":"No expiration \u00b7 200 manual + 200 auto/day \u00b7 Top priority","g_40":"seconds between each send","g_41":"3min (default)","g_42":"Add Gmails above to set limits","g_43":"\u00b7 invisible to users","g_44":"Warning:","g_45":"1 single Gmail","g_46":"user's responsibility","g_47":"Same filters as Manual Send \u2014 role, location, pay, group and more","g_48":"Quick category (auto-detected)","g_49":"jobs for you","g_50":"\ud83c\udfaf Your profile will be used in every send:","g_51":"\u25b6 Start now","g_52":"Sends non-stop 24/7. Resets at midnight and keeps going until the queue is empty.","g_53":"\ud83d\udd50 Schedule hours","g_54":"Sends from X to Y o'clock every day. Outside that window it pauses.","g_55":"Start at","g_56":"Stop at","g_57":"gift \ud83d\udc8e to a friend","g_58":"gets \u2b50 VIP 30d","g_59":"gets \ud83e\udd16 VIPro 30d","g_60":"gets \ud83d\udc8e DoublePro 30d","g_61":"any amount of \ud83d\udc8e you want","g_62":"Donation via PIX","g_63":"*required","g_64":"Screenshot of your PIX donation confirmation","g_65":"Tap to select the receipt","g_66":"JPG, PNG, PDF \u2014 max 5MB","g_67":"within 24h","g_68":"Questions? Contact us:","g_69":"1 company saying yes = you're in the USA \u2708\ufe0f","g_72":"Learn the system from scratch, step by step","g_73":"\ud83d\udccb What you'll learn:","g_74":"Company reply","g_75":"Common Questions","g_76":"Set Up Your Profile","g_77":"Do this BEFORE sending any application","g_78":"country","g_79":"\"Resume Profiles\" tab \u2014 set up resume and template","g_80":"upload your resume as PDF","g_81":"Without a resume, the profile won't save.","g_82":"email subjects and bodies","g_83":"At least 3 variations of each.","g_84":"Your profile is set. You can now send applications.","g_85":"Manual Application Sending","g_86":"You pick each job and send one by one","g_87":"Choose the job sheet","g_88":"More jobs available.","g_89":"How to find jobs for you","g_90":"Click a job to see the details","g_91":"See the company's email and the job info","g_92":"The email with your resume is sent automatically!","g_93":"disappear from the list","g_94":"24h Auto Send","g_95":"The system sends while you sleep","g_96":"\ud83e\udd16 What is Auto Send?","g_97":"\"Auto Send\"","g_98":"number of jobs","g_99":"\"Start Auto\"","g_100":"\u26a0\ufe0f Warning:","g_101":"disappear from manual sending","g_102":"Replies land straight in YOUR Gmail","g_103":"your own Gmail","g_104":"Open the company's email right in your Gmail","g_105":"Type your reply in English and send \u2014 it's your own email, like any other","g_106":"\ud83d\udca1 Quick reply tip:","g_107":"Send more applications per day","g_108":"Free","g_109":"VIP \u00b7 67 \ud83d\udc8e/mo","g_110":"VIPro \u00b7 100 \ud83d\udc8e/mo","g_111":"DoublePro · 167 💎/mo","g_112":"\ud83c\udf81 How to earn free VIP:","g_113":"1 day of VIP Manual","g_114":"Promo codes","g_115":"FAQ","g_116":"Quick answers to common questions","g_117":"No.","g_118":"Still have questions?","g_119":"Watch the explainer videos on YouTube or reach out on Instagram","g_128":"disappear from anywhere public","g_129":"log in again with the same email","g_130":"at least 10 characters","g_131":"Auto","g_132":"Job not identified","g_133":"\ud83d\udcc5 Available","g_134":"\u2753 Question","g_135":"Construction","g_136":"Warehouse","g_137":"\ud83c\udff7\ufe0f Specific role","g_138":"\ud83d\udcc2 Quick category","g_139":"\ud83c\udf0e Visa type","g_140":"\ud83d\udcf6 Job status","g_141":"Randomization Group","g_142":"\u2014 you can pick several states","g_143":"\ud83d\udcb0 Minimum wage","g_144":"\ud83d\udc65 Min. openings","g_145":"\u2014 you can check several","g_146":"\ud83c\udfb2 Random (default)","g_147":"\ud83c\udfaf Best for you first","g_148":"\ud83d\udcb0 Highest pay first","g_149":"\ud83d\udcc5 Earliest start first","g_150":"This profile will be used for manual and automatic sends","g_151":"resume (PDF)","g_152":"\u2460 Basic Info","g_153":"Icon","g_154":"Pick an icon for the profile:","g_155":"\u2461 Resume &amp; Cover Letter (PDF)","g_156":"\ud83d\udcc4 Resume (PDF)","g_157":"\u2705 Resume linked to this profile","g_158":"\ud83d\udce4 New file \u2014 will upload when you save","g_159":"Click or drag a PDF to upload","g_160":"Max 10MB","g_161":"or pick one from your account","g_162":"Cover letter \u2014 optional, but boosts reply chances.","g_163":"only for jobs matching this profile's visa type","g_164":"\u2462 Email Subjects","g_165":"At least 3","g_166":"Variables:","g_167":"\u2463 Email Bodies","g_168":"\u2699\ufe0f Variables \u2014 click to copy:","g_169":"3 email bodies","g_170":"Select the categories this profile will be used for automatically","g_171":"\u2464 Settings","g_172":"Always-on protections:","g_173":"cannot be turned off","g_174":"News","g_175":"Tap any application to see details,","g_176":". The","g_177":"button wipes everything and puts the jobs back on the list (handy to re-apply).","g_178":"Anyone who already exchanged 💎 diamonds for a plan can connect an extra Gmail to lower spam risk.","g_179":"\ud83c\udfad Pick your avatar","g_180":"\ud83d\udca1 Whatever you write here shows up when someone","g_181":"\ud83d\udc64 About you","g_182":"\ud83d\udcbc Work experience","g_183":"\ud83d\udcac What do you think of H2BApply?","g_184":"\ud83d\udcbe Save with the button","g_185":"at the bottom of the page.","g_186":"Each resume profile has its resume linked directly.","g_187":"Auto send always uses the right profile's PDF \u2014 no mix-ups.","g_188":". You can have","g_189":"the profile you pick in Step 3 of the wizard","g_190":"Create your first Resume Profile to","g_191":"start sending applications","g_192":"Statistics","g_193":"Sending Gmails","g_194":"10 FREE sends/day for everyone!","g_195":"Sending many emails with","g_196":"can trigger a temporary block by Google. We recommend adding","g_197":"to spread the sends. The block risk is","g_198":"\ud83d\udcec Upcoming applications","g_199":"\u2014 Summer","g_200":"\u26a0\ufe0f Category filter on:","g_201":"\u2014 that limits the jobs! To see all, click \"All\" above.","g_202":"Sending alternates","g_203":"Auto queue hit zero? Reset sent","g_204":"You only need to be logged in once.","g_205":"Time (Bras\u00edlia)","g_207":"\ud83e\uddfe My donations","g_208":"in your account. With diamonds you","g_209":"whenever you want \u2014 and you can even","g_210":"\ud83d\udcf8 Donation receipt","g_211":"\ud83d\udcc5 Date you donated","g_212":". That's how we verify your donation.","g_213":"), your \ud83d\udc8e land in your account and you swap them for a plan","g_214":"Fill in your","g_215":"(write \"Brazil\" in English),","g_216":"with country code (+55 85 99999-9999) and","g_217":"Give a","g_218":"name to the profile. E.g. \"My Main Profile\" or \"Landscape\"","g_219":"(required). Click the dotted area or drag the file.","g_220":"at the bottom of the screen.","g_221":"At the top of the Manual Send screen you'll see 3 tabs:","g_222":"\u2014 Summer jobs in the USA (main H-2B season).","g_223":"\u2014 Winter jobs. Fewer, but still valid.","g_224":"Click the green button","g_225":"Jobs already sent","g_226":"you want to add to auto","g_227":"The jobs you put on auto","g_228":"H2BApply does NOT read or store your inbox \u2014 every application goes out from your","g_229":"10 auto/day","g_230":"no auto","g_231":"100 auto/day","g_232":"on signup (automatic)","g_233":"Why did my jobs vanish from manual?","g_234":"Auto stopped. What do I do?","g_235":"I got an email in English. What do I do?","g_236":"If they ask for documents, contact a visa agent.","g_237":"in the server's environment variables to enable.","g_239":"Settings","g_239b":"Session","g_239c":"More","tut_center":"Tutorial Center","settings_adv":"Advanced settings","g_240":"Send a suggestion or idea to the devs","g_241":"Danger zone","g_242":"Suggestions for the Devs","g_243":"New Suggestion","g_244":"Your suggestion","g_245":"Keep an eye on","g_246":"for news!","g_247":"\ud83d\udc8e Randomization Group","g_248":"is exclusive to the plan","g_249":"\ud83d\udccd Location","g_250":"\ud83d\udcc5 Job start month","g_251":"Profile name","g_252":"Description","g_253":"to avoid spam blocks.","g_255":"to avoid spam.","g_256":"Compatible sheets","g_257":"Job categories", // 🌐 v136: varredura final (auto)
+    "h_faq_gone":"Jobs disappear from manual in two cases: (1) you already applied to that company, or (2) that job is in the auto queue. That's correct \u2014 it prevents emailing the same company twice.", // 🌐 v137b
+    "ns1_t":"Create your application profile","ns1_s":"It's what goes in the emails to companies. Takes 1 minute.","ns1_c":"Create profile","ns2_t":"Attach your resume (PDF)","ns2_s":"Without a resume attached, your applications won't go out.","ns2_c":"Attach","ns3_t":"All set! Start applying","ns3_s":"Your profile is complete. Send your first application today.","ns3_c":"Find jobs","ns4_t":"You hit today's limit","ns4_s":"Go VIP and send up to 100 applications a day.","ns4_c":"See plans","ns5_t":"Turn on Auto Send","ns5_s":"Let the system send applications while you work.","ns5_c":"Turn on","logs_none":"No logs yet","logs_none_s":"Logs show up here once you use Auto Send","notif_none_unread":"No unread notifications \ud83c\udf89","notif_none":"No notifications for now","snd_plane":"Airplane","snd_plane_d":"Takeoff sound","sug_hero":"Your idea can become a feature! Send your suggestion to the H2BApply team.","sc_vagas":"\ud83d\udcbc About the jobs", // 🌐 v137: dinâmicos da varredura E2E
+    "g_1":"Auto Send","g_2":"Set it up and let the system work for you","g_3":"/mo","g_4":"Auto + Manual","g_5":"Maximum performance","g_6":"Quick Access","g_7":"Resumes","g_8":"Month","g_11":"Stats","g_12":"\ud83c\udde7\ud83c\uddf7 Portugu\u00eas","g_14":"(up to 600 characters)","g_15":"(up to 400 characters)","g_16":"(up to 300 characters)","g_17":"Helps the system find the right jobs for you","g_18":"Ever been to the USA?","g_19":"\u274c No","g_20":"\ud83d\udde3\ufe0f English level","g_21":"\ud83d\udcd6 Basic","g_22":"\ud83c\udf1f Advanced","g_23":"\ud83c\udf3f Preferred area","g_24":"\ud83c\udfd7\ufe0f Construction","g_25":"\ud83e\udd9e Seafood","g_26":"\ud83d\udcc5 1 month","g_27":"Notifications","g_28":"\ud83d\udeeb H2BApply alerts","g_29":"Tap the button to enable","g_30":"your resume (PDF)","g_31":"the email text","g_32":"up to 2 profiles: one H-2B and one H-2A","g_33":"Attaches your PDF resume to every application","g_34":"Sets the email text in English","g_35":"Essential for Auto Send to work","g_36":"Resume used:","g_37":"\ud83d\udcc8 Last 7 days","g_38":"Admin-only settings","g_39":"No expiration \u00b7 200 manual + 200 auto/day \u00b7 Top priority","g_40":"seconds between each send","g_41":"3min (default)","g_42":"Add Gmails above to set limits","g_43":"\u00b7 invisible to users","g_44":"Warning:","g_45":"1 single Gmail","g_46":"user's responsibility","g_47":"Same filters as Manual Send \u2014 role, location, pay, group and more","g_48":"Quick category (auto-detected)","g_49":"jobs for you","g_50":"\ud83c\udfaf Your profile will be used in every send:","g_51":"\u25b6 Start now","g_52":"Sends non-stop 24/7. Resets at midnight and keeps going until the queue is empty.","g_53":"\ud83d\udd50 Schedule hours","g_54":"Sends from X to Y o'clock every day. Outside that window it pauses.","g_55":"Start at","g_56":"Stop at","g_62":"Payment via PIX","g_63":"*required","g_64":"Screenshot of your PIX payment confirmation","g_65":"Tap to select the receipt","g_66":"JPG, PNG, PDF \u2014 max 5MB","g_67":"within 24h","g_68":"Questions? Contact us:","g_69":"1 company saying yes = you're in the USA \u2708\ufe0f","g_72":"Learn the system from scratch, step by step","g_73":"\ud83d\udccb What you'll learn:","g_74":"Company reply","g_75":"Common Questions","g_76":"Set Up Your Profile","g_77":"Do this BEFORE sending any application","g_78":"country","g_79":"\"Resume Profiles\" tab \u2014 set up resume and template","g_80":"upload your resume as PDF","g_81":"Without a resume, the profile won't save.","g_82":"email subjects and bodies","g_83":"At least 3 variations of each.","g_84":"Your profile is set. You can now send applications.","g_85":"Manual Application Sending","g_86":"You pick each job and send one by one","g_87":"Choose the job sheet","g_88":"More jobs available.","g_89":"How to find jobs for you","g_90":"Click a job to see the details","g_91":"See the company's email and the job info","g_92":"The email with your resume is sent automatically!","g_93":"disappear from the list","g_94":"24h Auto Send","g_95":"The system sends while you sleep","g_96":"\ud83e\udd16 What is Auto Send?","g_97":"\"Auto Send\"","g_98":"number of jobs","g_99":"\"Start Auto\"","g_100":"\u26a0\ufe0f Warning:","g_101":"disappear from manual sending","g_102":"Replies land straight in YOUR Gmail","g_103":"your own Gmail","g_104":"Open the company's email right in your Gmail","g_105":"Type your reply in English and send \u2014 it's your own email, like any other","g_106":"\ud83d\udca1 Quick reply tip:","g_107":"Send more applications per day","g_108":"Free","g_109":"VIP · $100/mo","g_110":"VIPro · $150/mo","g_111":"DoublePro · $250/mo","g_112":"\ud83c\udf81 How to earn free VIP:","g_113":"1 day of VIP Manual","g_114":"Promo codes","g_115":"FAQ","g_116":"Quick answers to common questions","g_117":"No.","g_118":"Still have questions?","g_119":"Watch the explainer videos on YouTube or reach out on Instagram","g_128":"disappear from anywhere public","g_129":"log in again with the same email","g_130":"at least 10 characters","g_131":"Auto","g_132":"Job not identified","g_133":"\ud83d\udcc5 Available","g_134":"\u2753 Question","g_135":"Construction","g_136":"Warehouse","g_137":"\ud83c\udff7\ufe0f Specific role","g_138":"\ud83d\udcc2 Quick category","g_139":"\ud83c\udf0e Visa type","g_140":"\ud83d\udcf6 Job status","g_141":"Randomization Group","g_142":"\u2014 you can pick several states","g_143":"\ud83d\udcb0 Minimum wage","g_144":"\ud83d\udc65 Min. openings","g_145":"\u2014 you can check several","g_146":"\ud83c\udfb2 Random (default)","g_147":"\ud83c\udfaf Best for you first","g_148":"\ud83d\udcb0 Highest pay first","g_149":"\ud83d\udcc5 Earliest start first","g_150":"This profile will be used for manual and automatic sends","g_151":"resume (PDF)","g_152":"\u2460 Basic Info","g_153":"Icon","g_154":"Pick an icon for the profile:","g_155":"\u2461 Resume &amp; Cover Letter (PDF)","g_156":"\ud83d\udcc4 Resume (PDF)","g_157":"\u2705 Resume linked to this profile","g_158":"\ud83d\udce4 New file \u2014 will upload when you save","g_159":"Click or drag a PDF to upload","g_160":"Max 10MB","g_161":"or pick one from your account","g_162":"Cover letter \u2014 optional, but boosts reply chances.","g_163":"only for jobs matching this profile's visa type","g_164":"\u2462 Email Subjects","g_165":"At least 3","g_166":"Variables:","g_167":"\u2463 Email Bodies","g_168":"\u2699\ufe0f Variables \u2014 click to copy:","g_169":"3 email bodies","g_170":"Select the categories this profile will be used for automatically","g_171":"\u2464 Settings","g_172":"Always-on protections:","g_173":"cannot be turned off","g_174":"News","g_175":"Tap any application to see details,","g_176":". The","g_177":"button wipes everything and puts the jobs back on the list (handy to re-apply).","g_178":"Anyone with an active plan can connect an extra Gmail to lower spam risk.","g_179":"\ud83c\udfad Pick your avatar","g_180":"\ud83d\udca1 Whatever you write here shows up when someone","g_181":"\ud83d\udc64 About you","g_182":"\ud83d\udcbc Work experience","g_183":"\ud83d\udcac What do you think of H2BApply?","g_184":"\ud83d\udcbe Save with the button","g_185":"at the bottom of the page.","g_186":"Each resume profile has its resume linked directly.","g_187":"Auto send always uses the right profile's PDF \u2014 no mix-ups.","g_188":". You can have","g_189":"the profile you pick in Step 3 of the wizard","g_190":"Create your first Resume Profile to","g_191":"start sending applications","g_192":"Statistics","g_193":"Sending Gmails","g_194":"10 FREE sends/day for everyone!","g_195":"Sending many emails with","g_196":"can trigger a temporary block by Google. We recommend adding","g_197":"to spread the sends. The block risk is","g_198":"\ud83d\udcec Upcoming applications","g_199":"\u2014 Summer","g_200":"\u26a0\ufe0f Category filter on:","g_201":"\u2014 that limits the jobs! To see all, click \"All\" above.","g_202":"Sending alternates","g_203":"Auto queue hit zero? Reset sent","g_204":"You only need to be logged in once.","g_205":"Time (Bras\u00edlia)","g_207":"🧾 My orders","g_210":"📸 Payment receipt","g_211":"📅 Date you paid","g_212":". That's how we verify your payment.","g_213":"), your plan is activated","g_214":"Fill in your","g_215":"(write \"Brazil\" in English),","g_216":"with country code (+55 85 99999-9999) and","g_217":"Give a","g_218":"name to the profile. E.g. \"My Main Profile\" or \"Landscape\"","g_219":"(required). Click the dotted area or drag the file.","g_220":"at the bottom of the screen.","g_221":"At the top of the Manual Send screen you'll see 3 tabs:","g_222":"\u2014 Summer jobs in the USA (main H-2B season).","g_223":"\u2014 Winter jobs. Fewer, but still valid.","g_224":"Click the green button","g_225":"Jobs already sent","g_226":"you want to add to auto","g_227":"The jobs you put on auto","g_228":"H2BApply does NOT read or store your inbox \u2014 every application goes out from your","g_229":"10 auto/day","g_230":"no auto","g_231":"100 auto/day","g_232":"on signup (automatic)","g_233":"Why did my jobs vanish from manual?","g_234":"Auto stopped. What do I do?","g_235":"I got an email in English. What do I do?","g_236":"If they ask for documents, contact a visa agent.","g_237":"in the server's environment variables to enable.","g_239":"Settings","g_239b":"Session","g_239c":"More","tut_center":"Tutorial Center","settings_adv":"Advanced settings","g_240":"Send a suggestion or idea to the devs","g_241":"Danger zone","g_242":"Suggestions for the Devs","g_243":"New Suggestion","g_244":"Your suggestion","g_245":"Keep an eye on","g_246":"for news!","g_247":"\ud83d\udc8e Randomization Group","g_248":"is exclusive to the plan","g_249":"\ud83d\udccd Location","g_250":"\ud83d\udcc5 Job start month","g_251":"Profile name","g_252":"Description","g_253":"to avoid spam blocks.","g_255":"to avoid spam.","g_256":"Compatible sheets","g_257":"Job categories", // 🌐 v136: varredura final (auto)
     "gu_t":"How H2BApply uses your Google account","gu_b":"We request <strong>a single permission</strong> from Google: sending e-mails through your Gmail (<code style=\"background:rgba(255,255,255,.08);padding:1px 6px;border-radius:5px\">gmail.send</code>) — used exclusively to send the job application e-mails that <strong>you yourself write and authorize</strong>. H2BApply <strong>never reads, never stores and never accesses your inbox</strong>. Employer replies arrive directly in your own Gmail. You can revoke access at any time at myaccount.google.com.","gu_l":"Read our full Privacy Policy →", // ✅ v145: transparência do uso da conta Google (verificação OAuth)
-    "rst_t":"We updated the login system","rst_b":"Your login was reset, but <strong>NOTHING was deleted</strong> — your applications, plan days, diamonds and resumes are all saved. Sign in with the <strong>SAME Google e-mail</strong> you used before. ⚠️ <strong>Do not create another account</strong> with a different e-mail: more than one account risks a <strong>permanent ban of both e-mails</strong>. Spots are limited — use the account you already have.", // 📢 v144: aviso do reset de login (OAuth novo)
+    "rst_t":"We updated the login system","rst_b":"Your login was reset, but <strong>NOTHING was deleted</strong> — your applications, plan days and resumes are all saved. Sign in with the <strong>SAME Google e-mail</strong> you used before. ⚠️ <strong>Do not create another account</strong> with a different e-mail: more than one account risks a <strong>permanent ban of both e-mails</strong>. Spots are limited — use the account you already have.", // 📢 v144: aviso do reset de login (OAuth novo)
     "pe_draft_confirm":"📝 We found a saved draft of this profile (your session must have dropped before saving). Restore the text?","pe_draft_restored":"📝 Draft restored","pe_session_lost":"🔒 Your session dropped (the server restarted) — your text is ALREADY SAVED on this device. Log in again and reopen this profile to get it back.", // 📝 v143: rascunho do editor de perfil (caso Keyla)
-    "au_t":"One-account rule — read before signing in","au_b":"Each person may have ONE H2BApply account. Creating a second account — even with a different e-mail — can lead to a PERMANENT BAN of both accounts, with nothing refunded. Remember: the name on your resume is always the same, and the system cross-checks name, phone and device on its own — a duplicate account is easy to detect. Access spots are limited: always use the SAME e-mail, and on the Google screen pick exactly the e-mail you typed.","au_f":"✅ 1 person = 1 account = all your sends, VIP days and diamonds always together and safe.", // ⚠️ v149: regra de conta única (ordem do dono)
-    "rn_t":"Important update — read before signing in","rn_p1":"We updated H2BApply: the 3 servers became ONE — every account was brought here. NOTHING was deleted: your sends, VIP days, diamonds and resumes are all here. Sign in using only 1 e-mail, preferably the main e-mail already registered on your account.","rn_warn":"⚠️ Anti-duplication system: if 2 accounts are created with the same name on the resume — even with different e-mails — both accounts can be PERMANENTLY BANNED. Use only 1 account.","rn_ok":"✅ I read and understood — continue", // 📢 v150: janela do reset antes do login
-    "mc_1":"My Account","mc_13":"PIX received — 💎 on the way","mc_14":"Swap your 💎 for more days in the Plans tab.","mc_15":"ATTENTION: expires in","lb_ajuste":"Bonus adjustment","lb_credito":"Credit","mp_doa":"Donation","mp_diam":"diamonds","mp_pend":"⏳ Under review","mp_pago":"💰 PIX received — 💎 on the way","mp_cred":"💎 credited","mp_canc":"✖ Cancelled","mp_canc_sub":"If you think it was a mistake, message us on WhatsApp","mp_motivo":"Reason","mp_ileg":"⚠️ We could not read your receipt — resend a clear photo.","mp_ok":"✅ Receipt verified by the robot","mp_analise":"🔍 Receipt under review","mp_reenviar":"📤 Resend receipt","mp_media":"real average confirmation","mp_sub24":"We review and confirm — you will get a notification","mp_vertodos":"see all", "mc_2":"Free Plan","mc_3":"manual sends per day","mc_4":"💎 My diamonds","mc_5":"real","mc_6":"bonus (plan swaps only)","mc_7":"🧾 Last donation:","mc_8":"awaiting admin confirmation","mc_9":"confirmed — 💎 credited","mc_10":"cancelled","mc_11":"You haven't made any donation yet.","mc_12":"Swap your 💎 for a plan anytime — instantly.", // 👤 2.0-P6
-    "tut_t":"Tutorials Center","tut_s":"28 step-by-step guides with real screenshots — everything you can do on H2BApply, screen by screen","tut_ph":"🔍 What do you want to learn? E.g.: resume, automatic, diamonds...","tut_v":"Nothing found — try another word (e.g. \"send\", \"plan\", \"profile\").","tut_load":"⏳ Loading tutorials...", // 📖 v160
+    "au_t":"One-account rule — read before signing in","au_b":"Each person may have ONE H2BApply account. Creating a second account — even with a different e-mail — can lead to a PERMANENT BAN of both accounts, with nothing refunded. Remember: the name on your resume is always the same, and the system cross-checks name, phone and device on its own — a duplicate account is easy to detect. Access spots are limited: always use the SAME e-mail, and on the Google screen pick exactly the e-mail you typed.","au_f":"✅ 1 person = 1 account = all your sends and VIP days always together and safe.", // ⚠️ v149: regra de conta única (ordem do dono)
+    "rn_t":"Important update — read before signing in","rn_p1":"We updated H2BApply: the 3 servers became ONE — every account was brought here. NOTHING was deleted: your sends, VIP days and resumes are all here. Sign in using only 1 e-mail, preferably the main e-mail already registered on your account.","rn_warn":"⚠️ Anti-duplication system: if 2 accounts are created with the same name on the resume — even with different e-mails — both accounts can be PERMANENTLY BANNED. Use only 1 account.","rn_ok":"✅ I read and understood — continue", // 📢 v150: janela do reset antes do login
+    "mc_1":"My Account","mc_13":"Receipt received — awaiting confirmation","mc_14":"Renew your plan in the Plans tab.","mc_15":"ATTENTION: expires in","mp_pend":"⏳ Under review","mp_pago":"💰 Payment received — awaiting confirmation","mp_canc":"✖ Cancelled","mp_canc_sub":"If you think it was a mistake, message us on WhatsApp","mp_motivo":"Reason","mp_ileg":"⚠️ We could not read your receipt — resend a clear photo.","mp_ok":"✅ Receipt verified by the robot","mp_analise":"🔍 Receipt under review","mp_reenviar":"📤 Resend receipt","mp_media":"real average confirmation","mp_sub24":"We review and confirm — you will get a notification","mp_vertodos":"see all", "mc_2":"Free Plan","mc_3":"manual sends per day","mc_7":"🧾 Last order:","mc_8":"awaiting admin confirmation","mc_9":"confirmed — plan activated","mc_10":"cancelled","mc_11":"You haven't placed any orders yet.","mc_12":"Subscribe to a plan anytime to raise your daily limit.", // 👤 2.0-P6 (v170: no more diamond system)
+    "tut_t":"Tutorials Center","tut_s":"28 step-by-step guides with real screenshots — everything you can do on H2BApply, screen by screen","tut_ph":"🔍 What do you want to learn? E.g.: resume, automatic, plans...","tut_v":"Nothing found — try another word (e.g. \"send\", \"plan\", \"profile\").","tut_load":"⏳ Loading tutorials...", // 📖 v160
+    "consent_title":"☑️ Before you continue","consent_b1":"This is a paid digital application-sending automation service — H2BApply never writes the e-mail for you; the content sent is always your own.","consent_b2":"The price shown now is the final amount to pay.","consent_b3":"After paying via PIX, send the receipt and stay signed in on the same account until confirmation — automatic when it matches, and always reviewed by an admin.","consent_b4":"The risk of your Gmail account being blocked belongs to Google (a third party), not H2BApply — you can lower it by using more than one sending account.","consent_b5":"You have a 7-day right of withdrawal.","consent_check":"I have read and understand how the program works and what I'm paying for.","consent_terms_link":"See full Terms →","consent_required_msg":"Check that you've read and understood before continuing.","consent_choose_plan":"Choose a plan and the period before continuing.","plan_step1_title":"Choose your plan and period","plan_step1_intro":"You pay <strong>directly</strong> for the plan you choose — no middleman currency. See each plan's limits, pick the period, and the final price shows right away, before you pay.","plan_calc_empty":"Choose a plan and the period","plan_error_load":"Couldn't load the plans.","plan_try_again":"Try again", // 💎 v170: compra direta de plano — consentimento informado (CEO mode, 09/09/2026)
     "pv_title":"Jobs for you","pv_all":"See all","pv_apply":"Apply","pv_apply_t":"Apply to this job","pv_w1":"category you prefer","pv_w2":"matches what your profile targets","pv_w3":"your profile's state","pv_w4":"asks for experience and you have it","pv_w5":"open to beginners","pv_w6":"asks for experience you don't have yet","pv_w7":"asks for advanced English","pv_w8":"doesn't require advanced English","pv_w9":"your advanced English stands out here", // 🎯 v139: Vagas pra você (Home)
-    "snd_title":"New reply sound","snd_sel":"selected!","hs_t":"Welcome to H2BApply!","hs1":"Go to <strong>Profile → Email Profiles</strong> and set up your resume","hs2":"Open <strong>Manual Send</strong> to pick jobs and apply","hs3":"Turn on <strong>Auto Send</strong> for 24/7 applications on autopilot","hs4":"Replies land straight in <strong>your own Gmail</strong> — keep an eye there","lb_doacao":"Donation confirmed","lb_troca":"Swapped for plan","lb_tin":"Received from a friend","lb_tout":"Given to a friend","lb_admin":"Admin adjustment","lb_estorno":"Refund","lb_missao":"Mission completed","lb_correcao":"Amount correction","lb_upgrade":"Plan upgrade","fq1":"Queue finished! You applied to every job.","fq2":"Mission accomplished! Now wait for the replies.","fq3":"All applications sent! Success is on the way.","fq4":"Queue cleared! You took a big step today.","h_faq_qty_q":"How many emails should I send per day?","h_faq_qty":"The more the better — with quality. The system has anti-spam protection. On the free plan it's 20 manual + 10 automatic per day. With VIP Manual it's 100 manual per day. With VIPro it's 100 + 100 per day. With DoublePro (2 Gmails) it's 200 + 200 per day. Applying to many companies increases your chances.","h_faq_reply":"Open the email right in your Gmail and read it. If the company asks whether you are available, reply: <em>\"Yes, I am available to start on the requested date.\"</em> If they ask for documents, contact a visa agent.","h_faq_visa":"<strong>Does this guarantee a job or visa? No.</strong> H2BApply is a tool that sends emails for you. Hiring is the employer's decision. The visa is the US consulate's decision. The more applications you send, the higher your chances of getting an offer.","g_258":"Already donated before? Just send the same receipt on the plans screen — no need to donate again.","g_259":"Type the company name, an email you received, the ETA case number, the job title or the state to find all matching jobs","g_260":"Add a second Gmail. The auto-sender splits applications between both emails, reducing spam risk.","g_261":"Emails go out with the resume and texts of the profile chosen in Step 3 — subjects and bodies rotate automatically against spam.","g_262":"The system rotates through your saved email subjects and bodies to avoid looking like spam. Want to adjust something? Tap \"Change\" above.","g_263":"Write your name exactly as it appears in your passport. A wrong name can cause problems with the employer.","g_264":"It's like a robot working for you. You set it up once and it keeps applying on its own, even with your phone off.","g_265":"Check the Home tab to see if the auto-sender still shows as active. If it stopped, it may have hit your plan's daily limit — it restarts automatically the next day at midnight.","g_266":"No subjects yet. Write at least 3 variations of your own in \"+ Add\" — use the variables above to personalize automatically.","g_267":"No email bodies yet. Write at least 3 variations of your own in \"+ Add\" — use the variables above to personalize automatically.","g_268":"Single profile: your profile is automatically used for any job, from any sheet.","g_269":"⚙️ Advanced filters","g_270":"You write the texts — H2BApply never fills this in for you, it only delivers.","g_271":"written by you","g_272":"your own versions, written by you", // 🌐 v137c: sons/boas-vindas/extrato/FAQ + 11 textos longos da varredura
+    "snd_title":"New reply sound","snd_sel":"selected!","hs_t":"Welcome to H2BApply!","hs1":"Go to <strong>Profile → Email Profiles</strong> and set up your resume","hs2":"Open <strong>Manual Send</strong> to pick jobs and apply","hs3":"Turn on <strong>Auto Send</strong> for 24/7 applications on autopilot","hs4":"Replies land straight in <strong>your own Gmail</strong> — keep an eye there","fq1":"Queue finished! You applied to every job.","fq2":"🏆 Queue done! Now wait for the replies.","fq3":"All applications sent! Success is on the way.","fq4":"Queue cleared! You took a big step today.","h_faq_qty_q":"How many emails should I send per day?","h_faq_qty":"The more the better — with quality. The system has anti-spam protection. On the free plan it's 20 manual + 10 automatic per day. With VIP Manual it's 100 manual per day. With VIPro it's 100 + 100 per day. With DoublePro (2 Gmails) it's 200 + 200 per day. Applying to many companies increases your chances.","h_faq_reply":"Open the email right in your Gmail and read it. If the company asks whether you are available, reply: <em>\"Yes, I am available to start on the requested date.\"</em> If they ask for documents, contact a visa agent.","h_faq_visa":"<strong>Does this guarantee a job or visa? No.</strong> H2BApply is a tool that sends emails for you. Hiring is the employer's decision. The visa is the US consulate's decision. The more applications you send, the higher your chances of getting an offer.","g_258":"Already paid before? Just send the same receipt on the plans screen — no need to pay again.","g_259":"Type the company name, an email you received, the ETA case number, the job title or the state to find all matching jobs","g_260":"Add a second Gmail. The auto-sender splits applications between both emails, reducing spam risk.","g_261":"Emails go out with the resume and texts of the profile chosen in Step 3 — subjects and bodies rotate automatically against spam.","g_262":"The system rotates through your saved email subjects and bodies to avoid looking like spam. Want to adjust something? Tap \"Change\" above.","g_263":"Write your name exactly as it appears in your passport. A wrong name can cause problems with the employer.","g_264":"It's like a robot working for you. You set it up once and it keeps applying on its own, even with your phone off.","g_265":"Check the Home tab to see if the auto-sender still shows as active. If it stopped, it may have hit your plan's daily limit — it restarts automatically the next day at midnight.","g_266":"No subjects yet. Write at least 3 variations of your own in \"+ Add\" — use the variables above to personalize automatically.","g_267":"No email bodies yet. Write at least 3 variations of your own in \"+ Add\" — use the variables above to personalize automatically.","g_268":"Single profile: your profile is automatically used for any job, from any sheet.","g_269":"⚙️ Advanced filters","g_270":"You write the texts — H2BApply never fills this in for you, it only delivers.","g_271":"written by you","g_272":"your own versions, written by you", // 🌐 v137c: sons/boas-vindas/extrato/FAQ + 11 textos longos da varredura
     "home":"Home","manual":"Manual","search":"Search","auto":"Auto","responses":"Replies",
-    "notifications":"Notifications","plans":"💎 Diamonds","profile":"Profile","admin":"Admin Panel","logout":"Logout","logout_confirm":"Log out of your account? You can sign back in anytime with the same Google email.",
+    "notifications":"Notifications","plans":"💎 Plans","profile":"Profile","admin":"Admin Panel","logout":"Logout","logout_confirm":"Log out of your account? You can sign back in anytime with the same Google email.",
     "auto_title":"Auto Send","auto_sub":"Tap to configure and start",
     "shortcuts":"Quick Access","today":"Today","account":"Account","latest_replies":"Latest Replies",
     "auto_lbl":"Auto","total_sends":"Total","profile_lbl":"Profile",
@@ -7597,13 +7595,13 @@ const LANG_DICT = {
     "roi_calc":"Results Calculator","roi_if":"If only 1% of companies reply positively:","roi_cta":"Just 1 company confirms → you're in the USA ✈️",
     "all_states":"All states","salary":"Salary","qty_jobs":"# Positions",
     "sug_companies":"Companies","sug_roles":"Job titles","sug_cities":"Cities","sug_regions":"Regions","sug_states":"States","sug_jobs":"jobs",
-    "extra_gmail":"Extra Gmail for Sending","upgrade_to_enable":"Exchange diamonds to enable.","tap_to_pick":"(tap to choose)","search_btn":"Search",
+    "extra_gmail":"Extra Gmail for Sending","upgrade_to_enable":"Subscribe to a plan to enable it.","tap_to_pick":"(tap to choose)","search_btn":"Search",
     "radar_btn":"📡 Radar","radar_title":"Job Radar","radar_sub":"Save your current filters (search, state, city) and get a phone alert when a NEW matching job arrives — at most 1 alert per day.",
     "radar_create":"Create radar with current filters","radar_active":"Your radar is ON","radar_off":"Turn radar off",
     "radar_all":"All new jobs","radar_alerts":"alert(s) sent so far","radar_created":"Radar on! You'll be alerted when a new matching job arrives.","radar_removed":"Radar off.",
-    "upsell_title":"Today's limit is gone — jobs won't wait","upsell_left":"There are still {n} jobs available TODAY that you can't reach on your current plan. Swap diamonds for a plan and keep going right now — activates instantly.",
-    "upsell_left_generic":"The limit resets tomorrow — but today's best jobs will already have other applicants. Swap diamonds for a plan and keep going now — activates instantly.",
-    "upsell_cta":"See plans & swap 💎","upsell_later":"Continue free tomorrow",
+    "upsell_title":"Today's limit is gone — jobs won't wait","upsell_left":"There are still {n} jobs available TODAY that you can't reach on your current plan. Subscribe to a plan and keep going right now — receipt confirmed, plan activated.",
+    "upsell_left_generic":"The limit resets tomorrow — but today's best jobs will already have other applicants. Subscribe to a plan and keep going now.",
+    "upsell_cta":"See plans & subscribe","upsell_later":"Continue free tomorrow",
     "st_starting":"🟡 Starting...","st_sending":"🟢 Sending...","st_paused":"⏸ Paused",
     "st_no_session":"⚠️ Please log in again","st_finished":"✅ Done","st_resuming":"🟢 Resuming...",
     "st_refilled":"🔄 Queue refilled — sending...","st_wait_interval":"⏳ Waiting interval...","st_wait_hour":"⏳ Waiting scheduled time...",
@@ -7621,10 +7619,10 @@ const LANG_DICT = {
     
     
     
-    "plans_title":"Diamonds & Plans","plans_sub":"Donate via PIX, earn diamonds and swap them for plans anytime",
-    "plans_note":"Donation confirmed within 24h • Plan swap activates INSTANTLY",
-    "diamond_qty":"Diamond amount","diamond_when":"Diamonds land in your account once the admin confirms the receipt",
-    "gift_friend":"🎁 Gift diamonds to a friend","contact_data":"Your contact info","contact_sub":"So we can activate your plan and reach you",
+    "plans_title":"H2BApply Plans","plans_sub":"Choose a plan, pay via PIX and send the receipt",
+    "plans_note":"Receipt checked automatically • Final confirmation always by an admin",
+    
+    "contact_data":"Your contact info","contact_sub":"So we can activate your plan and reach you",
     "order_summary":"📋 Order summary","notes_lbl":"Notes",
     "rank_sub":"Compete with other users • Climb positions • Reach the top",
     "settings_sub":"Your account, your privacy.","your_account":"Your account","how_works":"💡 How does it work?",
@@ -7652,7 +7650,7 @@ const LANG_DICT = {
     "home_auto_b1":"Applies to several jobs a day","home_auto_b3":"Never repeats an application","home_auto_b4":"Works 24h — you don't need to stay online","home_auto_cta":"Start Auto Send",
     "home_man_b1":"Search and filter jobs","home_man_b4":"Send when you're ready",
     "manual_send_title":"Manual Send","manual_send_sub":"Find jobs and apply right now",
-    "plans_send_title":"💎 Diamonds","plans_send_sub":"Power up your applications with diamonds", // 🌐 v166: Home 3rd CTA
+    "plans_send_title":"💎 Plans","plans_send_sub":"Subscribe to a plan and power up your applications", // 🌐 v166: Home 3rd CTA
     "home_cv_tip":"Keep your resume up to date.","home_cv_tip_link":"Edit resume →", // 🌐 v166: Home subtle tip
     "inicio":"Home","auto_send":"Auto Send","manual_send":"Manual Send",
     "news_h2b":"H-2B News","sent_tab":"Sent","download_app":"Get the App","menu_lbl":"MENU",
@@ -7680,9 +7678,9 @@ const LANG_DICT = {
     "search_anything":"Search for anything",
     "search_hint":"Type the company name, a received email, the ETA case number, position or state",
     "all_inbox":"All","unread":"Unread","favorites":"Favorites","this_week":"This week",
-    "enable_notif":"Enable notifications","enable_notif_sub":"Get alerts for diamonds, missions and news — even with the app closed",
+    "enable_notif":"Enable notifications","enable_notif_sub":"Get alerts for receipt confirmation, auto-send status and news — even with the app closed",
     "activate":"Enable","inbox_search_ph":"Search company, subject...","notif_short":"Notif",
-    "reply_alert":"New reply alert","reply_alert_sub":"Sound + alert for diamonds, missions and news (the site never reads your inbox — we can't tell you when a company replies)",
+    "reply_alert":"New reply alert","reply_alert_sub":"Sound + alert for receipt confirmation, auto-send status and news (the site never reads your inbox — we can't tell you when a company replies)",
     "pipe_responded":"Responded","pipe_positive":"Interested","pipe_interview":"Interview","pipe_offer":"Offer",
     
     
@@ -7721,20 +7719,21 @@ const LANG_DICT = {
     "sys_notif_label":"System Notice","sys_notif_ok":"✅ Got it","sys_notif_all":"🔔 View all notifications",
   },
   es: {
-    "h_faq_gone":"Los empleos desaparecen del manual en dos casos: (1) ya te postulaste a esa empresa, o (2) ese empleo est\u00e1 en la cola del autom\u00e1tico. Es correcto \u2014 evita escribir dos veces a la misma empresa.","mi1_d":"Env\u00eda tu 1\u00aa postulaci\u00f3n (manual o robot)","mi2_d":"Guarda tu perfil de correo y sube un curr\u00edculum PDF","mi3_d":"Alcanza 100 postulaciones enviadas","mi4_d":"Alcanza 1.000 postulaciones enviadas","mi5_d":"Logra que tu rese\u00f1a de H2BApply sea aprobada y publicada", // 🌐 v137b
-    "ns1_t":"Crea tu perfil de postulaci\u00f3n","ns1_s":"Es lo que va en los correos a las empresas. Toma 1 minuto.","ns1_c":"Crear perfil","ns2_t":"Adjunta tu curr\u00edculum (PDF)","ns2_s":"Sin curr\u00edculum adjunto, tus postulaciones no salen.","ns2_c":"Adjuntar","ns3_t":"\u00a1Todo listo! Empieza a postularte","ns3_s":"Tu perfil est\u00e1 completo. Env\u00eda tu primera postulaci\u00f3n hoy.","ns3_c":"Buscar empleos","ns4_t":"Alcanzaste el l\u00edmite de hoy","ns4_s":"Hazte VIP y env\u00eda hasta 100 postulaciones al d\u00eda.","ns4_c":"Ver planes","ns5_t":"Activa el Env\u00edo Autom\u00e1tico","ns5_s":"Deja que el sistema env\u00ede postulaciones mientras trabajas.","ns5_c":"Activar","logs_none":"Sin registros todav\u00eda","logs_none_s":"Los registros aparecen aqu\u00ed cuando uses el Env\u00edo Autom\u00e1tico","notif_none_unread":"Ninguna notificaci\u00f3n sin leer \ud83c\udf89","notif_none":"Ninguna notificaci\u00f3n por ahora","swap_instant":"Activa AL INSTANTE \u2014 sin espera, sin aprobaci\u00f3n","mi1":"Primera postulaci\u00f3n","mi2":"Perfil completo","mi3":"100 postulaciones","mi4":"1.000 postulaciones","mi5":"Rese\u00f1a publicada","snd_plane":"Avi\u00f3n","snd_plane_d":"Sonido de despegue","sug_hero":"\u00a1Tu idea puede volverse una funci\u00f3n! Env\u00eda tu sugerencia al equipo de H2BApply.","sc_vagas":"\ud83d\udcbc Sobre los empleos", // 🌐 v137: dinâmicos da varredura E2E
-    "g_1":"Env\u00edo Autom\u00e1tico","g_2":"Configura y deja que el sistema trabaje por ti","g_3":"/mes","g_4":"Autom\u00e1tico + Manual","g_5":"M\u00e1ximo rendimiento","g_6":"Accesos R\u00e1pidos","g_7":"Curr\u00edculums","g_8":"Mes","g_11":"N\u00fameros","g_12":"\ud83c\udde7\ud83c\uddf7 Portugu\u00eas","g_14":"(hasta 600 caracteres)","g_15":"(hasta 400 caracteres)","g_16":"(hasta 300 caracteres)","g_17":"Ayuda al sistema a encontrar los empleos correctos para ti","g_18":"\u00bfYa fuiste a EE.UU.?","g_19":"\u274c No","g_20":"\ud83d\udde3\ufe0f Nivel de ingl\u00e9s","g_21":"\ud83d\udcd6 B\u00e1sico","g_22":"\ud83c\udf1f Avanzado","g_23":"\ud83c\udf3f \u00c1rea preferida","g_24":"\ud83c\udfd7\ufe0f Construcci\u00f3n","g_25":"\ud83e\udd9e Mariscos","g_26":"\ud83d\udcc5 1 mes","g_27":"Notificaciones","g_28":"\ud83d\udeeb Alertas de H2BApply","g_29":"Toca el bot\u00f3n para activar","g_30":"tu curr\u00edculum (PDF)","g_31":"el texto del correo","g_32":"hasta 2 perfiles: uno H-2B y uno H-2A","g_33":"Adjunta tu curr\u00edculum PDF en cada postulaci\u00f3n","g_34":"Define el texto del correo en ingl\u00e9s","g_35":"Esencial para que el Env\u00edo Autom\u00e1tico funcione","g_36":"Curr\u00edculum usado:","g_37":"\ud83d\udcc8 \u00daltimos 7 d\u00edas","g_38":"Configuraci\u00f3n exclusiva de administrador","g_39":"Sin expiraci\u00f3n \u00b7 200 manual + 200 auto/d\u00eda \u00b7 Prioridad m\u00e1xima","g_40":"segundos entre cada env\u00edo","g_41":"3min (predeterminado)","g_42":"Agrega Gmails arriba para configurar l\u00edmites","g_43":"\u00b7 invisible para los usuarios","g_44":"Atenci\u00f3n:","g_45":"1 solo Gmail","g_46":"responsabilidad del usuario","g_47":"Los mismos filtros del Env\u00edo Manual \u2014 puesto, lugar, salario, grupo y m\u00e1s","g_48":"Categor\u00eda r\u00e1pida (detectada autom\u00e1ticamente)","g_49":"empleos para ti","g_50":"\ud83c\udfaf Tu perfil se usar\u00e1 en todos los env\u00edos:","g_51":"\u25b6 Empezar ahora","g_52":"Env\u00eda sin parar 24/7. Se reinicia a medianoche y sigue hasta vaciar la cola.","g_53":"\ud83d\udd50 Programar horario","g_54":"Env\u00eda de X a Y horas cada d\u00eda. Fuera del horario queda en pausa.","g_55":"Iniciar a las","g_56":"Parar a las","g_57":"regalar \ud83d\udc8e a un amigo","g_58":"da el \u2b50 VIP 30d","g_59":"da el \ud83e\udd16 VIPro 30d","g_60":"da el \ud83d\udc8e DoublePro 30d","g_61":"la cantidad de \ud83d\udc8e que quieras","g_62":"Donaci\u00f3n v\u00eda PIX","g_63":"*obligatorio","g_64":"Captura de la confirmaci\u00f3n del PIX de tu donaci\u00f3n","g_65":"Toca para seleccionar el comprobante","g_66":"JPG, PNG, PDF \u2014 m\u00e1x 5MB","g_67":"hasta 24h","g_68":"\u00bfDudas? Cont\u00e1ctanos:","g_69":"1 empresa que confirme = est\u00e1s en EE.UU. \u2708\ufe0f","g_72":"Aprende el sistema desde cero, paso a paso","g_73":"\ud83d\udccb Lo que vas a aprender:","g_74":"Respuesta de la empresa","g_75":"Preguntas Comunes","g_76":"Configurar tu Perfil","g_77":"Haz esto ANTES de enviar cualquier postulaci\u00f3n","g_78":"pa\u00eds","g_79":"Pesta\u00f1a \"Perfiles de Curr\u00edculum\" \u2014 configurar curr\u00edculum y plantilla","g_80":"sube tu curr\u00edculum en PDF","g_81":"Sin curr\u00edculum, el perfil no se guarda.","g_82":"asuntos y cuerpos de correo","g_83":"M\u00ednimo 3 variaciones de cada uno.","g_84":"Tu perfil est\u00e1 listo. Ya puedes enviar postulaciones.","g_85":"Env\u00edo Manual de Postulaciones","g_86":"Eliges cada empleo y env\u00edas uno por uno","g_87":"Elige la planilla de empleos","g_88":"M\u00e1s empleos disponibles.","g_89":"C\u00f3mo encontrar empleos para ti","g_90":"Haz clic en un empleo para ver los detalles","g_91":"Ve el correo de la empresa y la informaci\u00f3n del empleo","g_92":"\u00a1El correo con tu curr\u00edculum se env\u00eda autom\u00e1ticamente!","g_93":"desaparecen de la lista","g_94":"Env\u00edo Autom\u00e1tico 24h","g_95":"El sistema env\u00eda mientras duermes","g_96":"\ud83e\udd16 \u00bfQu\u00e9 es el Env\u00edo Autom\u00e1tico?","g_97":"\"Env\u00edo Autom\u00e1tico\"","g_98":"cantidad de empleos","g_99":"\"Iniciar Autom\u00e1tico\"","g_100":"\u26a0\ufe0f Atenci\u00f3n:","g_101":"desaparecen del env\u00edo manual","g_102":"La respuesta cae directo en TU Gmail","g_103":"tu propio Gmail","g_104":"Abre el correo de la empresa directo en tu Gmail","g_105":"Escribe tu respuesta en ingl\u00e9s y env\u00eda \u2014 es un correo tuyo, como cualquier otro","g_106":"\ud83d\udca1 Tip de respuesta r\u00e1pida:","g_107":"Env\u00eda m\u00e1s postulaciones por d\u00eda","g_108":"Gratis","g_109":"VIP \u00b7 67 \ud83d\udc8e/mes","g_110":"VIPro \u00b7 100 \ud83d\udc8e/mes","g_111":"DoublePro · 167 💎/mes","g_112":"\ud83c\udf81 C\u00f3mo ganar VIP gratis:","g_113":"1 d\u00eda de VIP Manual","g_114":"C\u00f3digos promocionales","g_115":"Preguntas Frecuentes","g_116":"Respuestas r\u00e1pidas a preguntas comunes","g_117":"No.","g_118":"\u00bfTodav\u00eda con dudas?","g_119":"Mira los videos explicativos en YouTube o escr\u00edbenos por Instagram","g_128":"desaparecer de cualquier lugar p\u00fablico","g_129":"iniciar sesi\u00f3n de nuevo con el mismo correo","g_130":"m\u00ednimo 10 caracteres","g_131":"Autom\u00e1tico","g_132":"Empleo no identificado","g_133":"\ud83d\udcc5 Disponible","g_134":"\u2753 Duda","g_135":"Construcci\u00f3n","g_136":"Dep\u00f3sito","g_137":"\ud83c\udff7\ufe0f Puesto espec\u00edfico","g_138":"\ud83d\udcc2 Categor\u00eda r\u00e1pida","g_139":"\ud83c\udf0e Tipo de visa","g_140":"\ud83d\udcf6 Estado del empleo","g_141":"Grupo de Randomizaci\u00f3n","g_142":"\u2014 puedes elegir varios estados","g_143":"\ud83d\udcb0 Salario m\u00ednimo","g_144":"\ud83d\udc65 M\u00edn. de puestos","g_145":"\u2014 puedes marcar varios","g_146":"\ud83c\udfb2 Aleatorio (predeterminado)","g_147":"\ud83c\udfaf Mejor para ti primero","g_148":"\ud83d\udcb0 Mayor salario primero","g_149":"\ud83d\udcc5 Empieza antes primero","g_150":"Este perfil se usar\u00e1 en los env\u00edos manuales y autom\u00e1ticos","g_151":"curr\u00edculum (PDF)","g_152":"\u2460 Informaci\u00f3n B\u00e1sica","g_153":"\u00cdcono","g_154":"Elige un \u00edcono para el perfil:","g_155":"\u2461 Curr\u00edculum &amp; Cover Letter (PDF)","g_156":"\ud83d\udcc4 Curr\u00edculum (PDF)","g_157":"\u2705 Curr\u00edculum vinculado a este perfil","g_158":"\ud83d\udce4 Archivo nuevo \u2014 se subir\u00e1 al guardar","g_159":"Haz clic o arrastra un PDF para subirlo","g_160":"M\u00e1x. 10MB","g_161":"o elige uno de tu cuenta","g_162":"Carta de presentaci\u00f3n \u2014 opcional, pero aumenta las respuestas.","g_163":"solo en empleos del tipo de visa de este perfil","g_164":"\u2462 Asuntos del Correo","g_165":"M\u00ednimo 3","g_166":"Variables:","g_167":"\u2463 Cuerpos de Correo","g_168":"\u2699\ufe0f Variables \u2014 clic para copiar:","g_169":"3 cuerpos de correo","g_170":"Selecciona las categor\u00edas para las que este perfil se usar\u00e1 autom\u00e1ticamente","g_171":"\u2464 Configuraci\u00f3n","g_172":"Protecciones siempre activas:","g_173":"no se pueden desactivar","g_174":"Noticias","g_175":"Toca cualquier postulaci\u00f3n para ver detalles,","g_176":". El bot\u00f3n","g_177":"borra todo y devuelve los empleos a la lista (\u00fatil para volver a postularte).","g_178":"Quien ya cambió 💎 diamantes por un plan puede conectar un Gmail extra para reducir el riesgo de spam.","g_179":"\ud83c\udfad Elige tu avatar","g_180":"\ud83d\udca1 Lo que escribas aqu\u00ed aparece cuando alguien","g_181":"\ud83d\udc64 Sobre ti","g_182":"\ud83d\udcbc Experiencia laboral","g_183":"\ud83d\udcac \u00bfQu\u00e9 opinas de H2BApply?","g_184":"\ud83d\udcbe Guarda con el bot\u00f3n","g_185":"al final de la p\u00e1gina.","g_186":"Cada perfil tiene su curr\u00edculum vinculado directamente.","g_187":"El autom\u00e1tico siempre usa el PDF del perfil correcto \u2014 sin confusiones.","g_188":". Puedes tener","g_189":"el perfil que elijas en el Paso 3 del asistente","g_190":"Crea tu primer Perfil de Curr\u00edculum para","g_191":"empezar a enviar postulaciones","g_192":"Estad\u00edsticas","g_193":"Gmails de env\u00edo","g_194":"\u00a110 env\u00edos GRATIS/d\u00eda para todos!","g_195":"Enviar muchos correos con","g_196":"puede generar un bloqueo temporal de Google. Recomendamos agregar","g_197":"para distribuir los env\u00edos. El riesgo de bloqueo es de","g_198":"\ud83d\udcec Pr\u00f3ximas postulaciones","g_199":"\u2014 Verano","g_200":"\u26a0\ufe0f Filtro de categor\u00eda activo:","g_201":"\u2014 \u00a1eso limita los empleos! Para ver todos, haz clic en \"Todos\" arriba.","g_202":"El env\u00edo alterna","g_203":"\u00bfEl autom\u00e1tico vaci\u00f3 la cola? Restablecer enviados","g_204":"Solo necesitas iniciar sesi\u00f3n una vez.","g_205":"Horario (Bras\u00edlia)","g_207":"\ud83e\uddfe Mis donaciones","g_208":"en tu cuenta. Con diamantes t\u00fa","g_209":"cuando quieras \u2014 y hasta puedes","g_210":"\ud83d\udcf8 Comprobante de la donaci\u00f3n","g_211":"\ud83d\udcc5 Fecha en que donaste","g_212":". Con ella verificamos tu donaci\u00f3n.","g_213":"), tus \ud83d\udc8e caen en tu cuenta y los cambias por un plan","g_214":"Completa tu","g_215":"(escribe \"Brazil\" en ingl\u00e9s),","g_216":"con c\u00f3digo de pa\u00eds (+55 85 99999-9999) y","g_217":"Dale un","g_218":"nombre al perfil. Ej: \"Mi Perfil Principal\" o \"Landscape\"","g_219":"(obligatorio). Haz clic en el \u00e1rea punteada o arrastra el archivo.","g_220":"al final de la pantalla.","g_221":"En la parte superior del Env\u00edo Manual ver\u00e1s 3 pesta\u00f1as:","g_222":"\u2014 Empleos de verano en EE.UU. (temporada principal H-2B).","g_223":"\u2014 Empleos de invierno. Menos, pero a\u00fan v\u00e1lidos.","g_224":"Haz clic en el bot\u00f3n verde","g_225":"Empleos ya enviados","g_226":"que quieras poner en autom\u00e1tico","g_227":"Los empleos que pones en autom\u00e1tico","g_228":"H2BApply NO lee ni guarda tu bandeja de entrada \u2014 cada postulaci\u00f3n sale de tu","g_229":"10 autom\u00e1ticos/d\u00eda","g_230":"sin autom\u00e1tico","g_231":"100 autom\u00e1ticos/d\u00eda","g_232":"al registrarte (autom\u00e1tico)","g_233":"\u00bfPor qu\u00e9 mis empleos desaparecieron del manual?","g_234":"El autom\u00e1tico par\u00f3. \u00bfQu\u00e9 hago?","g_235":"Recib\u00ed un correo en ingl\u00e9s. \u00bfQu\u00e9 hago?","g_236":"Si piden documentos, contacta a un gestor de visas.","g_237":"en las variables de entorno del servidor para activar.","g_239":"Configuraci\u00f3n","g_239b":"Sesi\u00f3n","g_239c":"M\u00e1s","tut_center":"Centro de Tutoriales","settings_adv":"Configuraci\u00f3n avanzada","g_240":"Enviar una sugerencia o idea a los devs","g_241":"Zona de peligro","g_242":"Sugerencias para los Devs","g_243":"Nueva Sugerencia","g_244":"Tu sugerencia","g_245":"Mantente atento a","g_246":"\u00a1para novedades!","g_247":"\ud83d\udc8e Grupo de Randomizaci\u00f3n","g_248":"es exclusivo del plan","g_249":"\ud83d\udccd Ubicaci\u00f3n","g_250":"\ud83d\udcc5 Mes de inicio del empleo","g_251":"Nombre del perfil","g_252":"Descripci\u00f3n","g_253":"para evitar bloqueos por spam.","g_255":"para evitar spam.","g_256":"Planillas compatibles","g_257":"Categor\u00edas de empleo", // 🌐 v136: varredura final (auto)
+    "h_faq_gone":"Los empleos desaparecen del manual en dos casos: (1) ya te postulaste a esa empresa, o (2) ese empleo est\u00e1 en la cola del autom\u00e1tico. Es correcto \u2014 evita escribir dos veces a la misma empresa.", // 🌐 v137b
+    "ns1_t":"Crea tu perfil de postulaci\u00f3n","ns1_s":"Es lo que va en los correos a las empresas. Toma 1 minuto.","ns1_c":"Crear perfil","ns2_t":"Adjunta tu curr\u00edculum (PDF)","ns2_s":"Sin curr\u00edculum adjunto, tus postulaciones no salen.","ns2_c":"Adjuntar","ns3_t":"\u00a1Todo listo! Empieza a postularte","ns3_s":"Tu perfil est\u00e1 completo. Env\u00eda tu primera postulaci\u00f3n hoy.","ns3_c":"Buscar empleos","ns4_t":"Alcanzaste el l\u00edmite de hoy","ns4_s":"Hazte VIP y env\u00eda hasta 100 postulaciones al d\u00eda.","ns4_c":"Ver planes","ns5_t":"Activa el Env\u00edo Autom\u00e1tico","ns5_s":"Deja que el sistema env\u00ede postulaciones mientras trabajas.","ns5_c":"Activar","logs_none":"Sin registros todav\u00eda","logs_none_s":"Los registros aparecen aqu\u00ed cuando uses el Env\u00edo Autom\u00e1tico","notif_none_unread":"Ninguna notificaci\u00f3n sin leer \ud83c\udf89","notif_none":"Ninguna notificaci\u00f3n por ahora","snd_plane":"Avi\u00f3n","snd_plane_d":"Sonido de despegue","sug_hero":"\u00a1Tu idea puede volverse una funci\u00f3n! Env\u00eda tu sugerencia al equipo de H2BApply.","sc_vagas":"\ud83d\udcbc Sobre los empleos", // 🌐 v137: dinâmicos da varredura E2E
+    "g_1":"Env\u00edo Autom\u00e1tico","g_2":"Configura y deja que el sistema trabaje por ti","g_3":"/mes","g_4":"Autom\u00e1tico + Manual","g_5":"M\u00e1ximo rendimiento","g_6":"Accesos R\u00e1pidos","g_7":"Curr\u00edculums","g_8":"Mes","g_11":"N\u00fameros","g_12":"\ud83c\udde7\ud83c\uddf7 Portugu\u00eas","g_14":"(hasta 600 caracteres)","g_15":"(hasta 400 caracteres)","g_16":"(hasta 300 caracteres)","g_17":"Ayuda al sistema a encontrar los empleos correctos para ti","g_18":"\u00bfYa fuiste a EE.UU.?","g_19":"\u274c No","g_20":"\ud83d\udde3\ufe0f Nivel de ingl\u00e9s","g_21":"\ud83d\udcd6 B\u00e1sico","g_22":"\ud83c\udf1f Avanzado","g_23":"\ud83c\udf3f \u00c1rea preferida","g_24":"\ud83c\udfd7\ufe0f Construcci\u00f3n","g_25":"\ud83e\udd9e Mariscos","g_26":"\ud83d\udcc5 1 mes","g_27":"Notificaciones","g_28":"\ud83d\udeeb Alertas de H2BApply","g_29":"Toca el bot\u00f3n para activar","g_30":"tu curr\u00edculum (PDF)","g_31":"el texto del correo","g_32":"hasta 2 perfiles: uno H-2B y uno H-2A","g_33":"Adjunta tu curr\u00edculum PDF en cada postulaci\u00f3n","g_34":"Define el texto del correo en ingl\u00e9s","g_35":"Esencial para que el Env\u00edo Autom\u00e1tico funcione","g_36":"Curr\u00edculum usado:","g_37":"\ud83d\udcc8 \u00daltimos 7 d\u00edas","g_38":"Configuraci\u00f3n exclusiva de administrador","g_39":"Sin expiraci\u00f3n \u00b7 200 manual + 200 auto/d\u00eda \u00b7 Prioridad m\u00e1xima","g_40":"segundos entre cada env\u00edo","g_41":"3min (predeterminado)","g_42":"Agrega Gmails arriba para configurar l\u00edmites","g_43":"\u00b7 invisible para los usuarios","g_44":"Atenci\u00f3n:","g_45":"1 solo Gmail","g_46":"responsabilidad del usuario","g_47":"Los mismos filtros del Env\u00edo Manual \u2014 puesto, lugar, salario, grupo y m\u00e1s","g_48":"Categor\u00eda r\u00e1pida (detectada autom\u00e1ticamente)","g_49":"empleos para ti","g_50":"\ud83c\udfaf Tu perfil se usar\u00e1 en todos los env\u00edos:","g_51":"\u25b6 Empezar ahora","g_52":"Env\u00eda sin parar 24/7. Se reinicia a medianoche y sigue hasta vaciar la cola.","g_53":"\ud83d\udd50 Programar horario","g_54":"Env\u00eda de X a Y horas cada d\u00eda. Fuera del horario queda en pausa.","g_55":"Iniciar a las","g_56":"Parar a las","g_62":"Pago vía PIX","g_63":"*obligatorio","g_64":"Captura de la confirmación del PIX de tu pago","g_65":"Toca para seleccionar el comprobante","g_66":"JPG, PNG, PDF \u2014 m\u00e1x 5MB","g_67":"hasta 24h","g_68":"\u00bfDudas? Cont\u00e1ctanos:","g_69":"1 empresa que confirme = est\u00e1s en EE.UU. \u2708\ufe0f","g_72":"Aprende el sistema desde cero, paso a paso","g_73":"\ud83d\udccb Lo que vas a aprender:","g_74":"Respuesta de la empresa","g_75":"Preguntas Comunes","g_76":"Configurar tu Perfil","g_77":"Haz esto ANTES de enviar cualquier postulaci\u00f3n","g_78":"pa\u00eds","g_79":"Pesta\u00f1a \"Perfiles de Curr\u00edculum\" \u2014 configurar curr\u00edculum y plantilla","g_80":"sube tu curr\u00edculum en PDF","g_81":"Sin curr\u00edculum, el perfil no se guarda.","g_82":"asuntos y cuerpos de correo","g_83":"M\u00ednimo 3 variaciones de cada uno.","g_84":"Tu perfil est\u00e1 listo. Ya puedes enviar postulaciones.","g_85":"Env\u00edo Manual de Postulaciones","g_86":"Eliges cada empleo y env\u00edas uno por uno","g_87":"Elige la planilla de empleos","g_88":"M\u00e1s empleos disponibles.","g_89":"C\u00f3mo encontrar empleos para ti","g_90":"Haz clic en un empleo para ver los detalles","g_91":"Ve el correo de la empresa y la informaci\u00f3n del empleo","g_92":"\u00a1El correo con tu curr\u00edculum se env\u00eda autom\u00e1ticamente!","g_93":"desaparecen de la lista","g_94":"Env\u00edo Autom\u00e1tico 24h","g_95":"El sistema env\u00eda mientras duermes","g_96":"\ud83e\udd16 \u00bfQu\u00e9 es el Env\u00edo Autom\u00e1tico?","g_97":"\"Env\u00edo Autom\u00e1tico\"","g_98":"cantidad de empleos","g_99":"\"Iniciar Autom\u00e1tico\"","g_100":"\u26a0\ufe0f Atenci\u00f3n:","g_101":"desaparecen del env\u00edo manual","g_102":"La respuesta cae directo en TU Gmail","g_103":"tu propio Gmail","g_104":"Abre el correo de la empresa directo en tu Gmail","g_105":"Escribe tu respuesta en ingl\u00e9s y env\u00eda \u2014 es un correo tuyo, como cualquier otro","g_106":"\ud83d\udca1 Tip de respuesta r\u00e1pida:","g_107":"Env\u00eda m\u00e1s postulaciones por d\u00eda","g_108":"Gratis","g_109":"VIP · R$100/mes","g_110":"VIPro · R$150/mes","g_111":"DoublePro · R$250/mes","g_112":"\ud83c\udf81 C\u00f3mo ganar VIP gratis:","g_113":"1 d\u00eda de VIP Manual","g_114":"C\u00f3digos promocionales","g_115":"Preguntas Frecuentes","g_116":"Respuestas r\u00e1pidas a preguntas comunes","g_117":"No.","g_118":"\u00bfTodav\u00eda con dudas?","g_119":"Mira los videos explicativos en YouTube o escr\u00edbenos por Instagram","g_128":"desaparecer de cualquier lugar p\u00fablico","g_129":"iniciar sesi\u00f3n de nuevo con el mismo correo","g_130":"m\u00ednimo 10 caracteres","g_131":"Autom\u00e1tico","g_132":"Empleo no identificado","g_133":"\ud83d\udcc5 Disponible","g_134":"\u2753 Duda","g_135":"Construcci\u00f3n","g_136":"Dep\u00f3sito","g_137":"\ud83c\udff7\ufe0f Puesto espec\u00edfico","g_138":"\ud83d\udcc2 Categor\u00eda r\u00e1pida","g_139":"\ud83c\udf0e Tipo de visa","g_140":"\ud83d\udcf6 Estado del empleo","g_141":"Grupo de Randomizaci\u00f3n","g_142":"\u2014 puedes elegir varios estados","g_143":"\ud83d\udcb0 Salario m\u00ednimo","g_144":"\ud83d\udc65 M\u00edn. de puestos","g_145":"\u2014 puedes marcar varios","g_146":"\ud83c\udfb2 Aleatorio (predeterminado)","g_147":"\ud83c\udfaf Mejor para ti primero","g_148":"\ud83d\udcb0 Mayor salario primero","g_149":"\ud83d\udcc5 Empieza antes primero","g_150":"Este perfil se usar\u00e1 en los env\u00edos manuales y autom\u00e1ticos","g_151":"curr\u00edculum (PDF)","g_152":"\u2460 Informaci\u00f3n B\u00e1sica","g_153":"\u00cdcono","g_154":"Elige un \u00edcono para el perfil:","g_155":"\u2461 Curr\u00edculum &amp; Cover Letter (PDF)","g_156":"\ud83d\udcc4 Curr\u00edculum (PDF)","g_157":"\u2705 Curr\u00edculum vinculado a este perfil","g_158":"\ud83d\udce4 Archivo nuevo \u2014 se subir\u00e1 al guardar","g_159":"Haz clic o arrastra un PDF para subirlo","g_160":"M\u00e1x. 10MB","g_161":"o elige uno de tu cuenta","g_162":"Carta de presentaci\u00f3n \u2014 opcional, pero aumenta las respuestas.","g_163":"solo en empleos del tipo de visa de este perfil","g_164":"\u2462 Asuntos del Correo","g_165":"M\u00ednimo 3","g_166":"Variables:","g_167":"\u2463 Cuerpos de Correo","g_168":"\u2699\ufe0f Variables \u2014 clic para copiar:","g_169":"3 cuerpos de correo","g_170":"Selecciona las categor\u00edas para las que este perfil se usar\u00e1 autom\u00e1ticamente","g_171":"\u2464 Configuraci\u00f3n","g_172":"Protecciones siempre activas:","g_173":"no se pueden desactivar","g_174":"Noticias","g_175":"Toca cualquier postulaci\u00f3n para ver detalles,","g_176":". El bot\u00f3n","g_177":"borra todo y devuelve los empleos a la lista (\u00fatil para volver a postularte).","g_178":"Quien ya tiene un plan activo puede conectar un Gmail extra para reducir el riesgo de spam.","g_179":"\ud83c\udfad Elige tu avatar","g_180":"\ud83d\udca1 Lo que escribas aqu\u00ed aparece cuando alguien","g_181":"\ud83d\udc64 Sobre ti","g_182":"\ud83d\udcbc Experiencia laboral","g_183":"\ud83d\udcac \u00bfQu\u00e9 opinas de H2BApply?","g_184":"\ud83d\udcbe Guarda con el bot\u00f3n","g_185":"al final de la p\u00e1gina.","g_186":"Cada perfil tiene su curr\u00edculum vinculado directamente.","g_187":"El autom\u00e1tico siempre usa el PDF del perfil correcto \u2014 sin confusiones.","g_188":". Puedes tener","g_189":"el perfil que elijas en el Paso 3 del asistente","g_190":"Crea tu primer Perfil de Curr\u00edculum para","g_191":"empezar a enviar postulaciones","g_192":"Estad\u00edsticas","g_193":"Gmails de env\u00edo","g_194":"\u00a110 env\u00edos GRATIS/d\u00eda para todos!","g_195":"Enviar muchos correos con","g_196":"puede generar un bloqueo temporal de Google. Recomendamos agregar","g_197":"para distribuir los env\u00edos. El riesgo de bloqueo es de","g_198":"\ud83d\udcec Pr\u00f3ximas postulaciones","g_199":"\u2014 Verano","g_200":"\u26a0\ufe0f Filtro de categor\u00eda activo:","g_201":"\u2014 \u00a1eso limita los empleos! Para ver todos, haz clic en \"Todos\" arriba.","g_202":"El env\u00edo alterna","g_203":"\u00bfEl autom\u00e1tico vaci\u00f3 la cola? Restablecer enviados","g_204":"Solo necesitas iniciar sesi\u00f3n una vez.","g_205":"Horario (Bras\u00edlia)","g_207":"🧾 Mis pedidos","g_210":"📸 Comprobante del pago","g_211":"📅 Fecha en que pagaste","g_212":". Con ella verificamos tu pago.","g_213":"), tu plan se activa","g_214":"Completa tu","g_215":"(escribe \"Brazil\" en ingl\u00e9s),","g_216":"con c\u00f3digo de pa\u00eds (+55 85 99999-9999) y","g_217":"Dale un","g_218":"nombre al perfil. Ej: \"Mi Perfil Principal\" o \"Landscape\"","g_219":"(obligatorio). Haz clic en el \u00e1rea punteada o arrastra el archivo.","g_220":"al final de la pantalla.","g_221":"En la parte superior del Env\u00edo Manual ver\u00e1s 3 pesta\u00f1as:","g_222":"\u2014 Empleos de verano en EE.UU. (temporada principal H-2B).","g_223":"\u2014 Empleos de invierno. Menos, pero a\u00fan v\u00e1lidos.","g_224":"Haz clic en el bot\u00f3n verde","g_225":"Empleos ya enviados","g_226":"que quieras poner en autom\u00e1tico","g_227":"Los empleos que pones en autom\u00e1tico","g_228":"H2BApply NO lee ni guarda tu bandeja de entrada \u2014 cada postulaci\u00f3n sale de tu","g_229":"10 autom\u00e1ticos/d\u00eda","g_230":"sin autom\u00e1tico","g_231":"100 autom\u00e1ticos/d\u00eda","g_232":"al registrarte (autom\u00e1tico)","g_233":"\u00bfPor qu\u00e9 mis empleos desaparecieron del manual?","g_234":"El autom\u00e1tico par\u00f3. \u00bfQu\u00e9 hago?","g_235":"Recib\u00ed un correo en ingl\u00e9s. \u00bfQu\u00e9 hago?","g_236":"Si piden documentos, contacta a un gestor de visas.","g_237":"en las variables de entorno del servidor para activar.","g_239":"Configuraci\u00f3n","g_239b":"Sesi\u00f3n","g_239c":"M\u00e1s","tut_center":"Centro de Tutoriales","settings_adv":"Configuraci\u00f3n avanzada","g_240":"Enviar una sugerencia o idea a los devs","g_241":"Zona de peligro","g_242":"Sugerencias para los Devs","g_243":"Nueva Sugerencia","g_244":"Tu sugerencia","g_245":"Mantente atento a","g_246":"\u00a1para novedades!","g_247":"\ud83d\udc8e Grupo de Randomizaci\u00f3n","g_248":"es exclusivo del plan","g_249":"\ud83d\udccd Ubicaci\u00f3n","g_250":"\ud83d\udcc5 Mes de inicio del empleo","g_251":"Nombre del perfil","g_252":"Descripci\u00f3n","g_253":"para evitar bloqueos por spam.","g_255":"para evitar spam.","g_256":"Planillas compatibles","g_257":"Categor\u00edas de empleo", // 🌐 v136: varredura final (auto)
     "gu_t":"Cómo H2BApply usa tu cuenta de Google","gu_b":"Pedimos <strong>un único permiso</strong> de Google: enviar correos por tu Gmail (<code style=\"background:rgba(255,255,255,.08);padding:1px 6px;border-radius:5px\">gmail.send</code>) — usado exclusivamente para enviar las postulaciones de empleo que <strong>tú mismo escribes y autorizas</strong>. H2BApply <strong>nunca lee, nunca almacena y nunca accede a tu bandeja de entrada</strong>. Las respuestas de los empleadores llegan directo a tu propio Gmail. Puedes revocar el acceso en cualquier momento en myaccount.google.com.","gu_l":"Lee nuestra Política de Privacidad completa →", // ✅ v145: transparência do uso da conta Google (verificação OAuth)
-    "rst_t":"Actualizamos el sistema de inicio de sesión","rst_b":"Tu inicio de sesión fue reiniciado, pero <strong>NADA fue borrado</strong> — tus postulaciones, días de plan, diamantes y currículums están guardados. Entra con el <strong>MISMO correo de Google</strong> que usabas antes. ⚠️ <strong>No crees otra cuenta</strong> con un correo diferente: más de una cuenta arriesga un <strong>baneo permanente de ambos correos</strong>. Los cupos son limitados — usa la cuenta que ya tienes.", // 📢 v144: aviso do reset de login (OAuth novo)
+    "rst_t":"Actualizamos el sistema de inicio de sesión","rst_b":"Tu inicio de sesión fue reiniciado, pero <strong>NADA fue borrado</strong> — tus postulaciones, días de plan y currículums están guardados. Entra con el <strong>MISMO correo de Google</strong> que usabas antes. ⚠️ <strong>No crees otra cuenta</strong> con un correo diferente: más de una cuenta arriesga un <strong>baneo permanente de ambos correos</strong>. Los cupos son limitados — usa la cuenta que ya tienes.", // 📢 v144: aviso do reset de login (OAuth novo)
     "pe_draft_confirm":"📝 Encontramos un borrador guardado de este perfil (tu sesión debió caerse antes de guardar). ¿Restaurar el texto?","pe_draft_restored":"📝 Borrador restaurado","pe_session_lost":"🔒 Tu sesión se cayó (el servidor se reinició) — tu texto YA ESTÁ GUARDADO en este dispositivo. Inicia sesión de nuevo y vuelve a abrir este perfil para recuperarlo.", // 📝 v143: rascunho do editor de perfil (caso Keyla)
-    "au_t":"Regla de cuenta única — lee antes de entrar","au_b":"Cada persona puede tener UNA cuenta en H2BApply. Crear una segunda cuenta — incluso con otro e-mail — puede causar un BAN PERMANENTE de las dos cuentas, sin devolución de nada. Recuerda: el nombre en tu currículum es siempre el mismo, y el sistema cruza nombre, teléfono y dispositivo por sí solo — una cuenta duplicada es fácil de detectar. Los cupos de acceso son limitados: usa siempre el MISMO e-mail, y en la pantalla de Google elige exactamente el e-mail que escribiste.","au_f":"✅ 1 persona = 1 cuenta = todos tus envíos, días de VIP y diamantes siempre juntos y seguros.", // ⚠️ v149: regra de conta única (ordem do dono)
-    "rn_t":"Actualización importante — lee antes de entrar","rn_p1":"Actualizamos H2BApply: los 3 servidores se volvieron UNO solo — todas las cuentas fueron traídas aquí. NADA fue borrado: tus envíos, días de VIP, diamantes y currículums están aquí. Entra usando solo 1 e-mail, de preferencia el e-mail principal que ya estaba registrado en tu cuenta.","rn_warn":"⚠️ Sistema anti-duplicación: si se crean 2 cuentas con el mismo nombre en el currículum — incluso con e-mails diferentes — las dos cuentas pueden ser BANEADAS PERMANENTEMENTE. Usa solamente 1 cuenta.","rn_ok":"✅ Leí y entendí — continuar", // 📢 v150: janela do reset antes do login
-    "mc_1":"Mi Cuenta","mc_13":"PIX recibido — 💎 en camino","mc_14":"Cambia tus 💎 por más días en la pestaña Planes.","mc_15":"ATENCIÓN: expira en","lb_ajuste":"Ajuste de bono","lb_credito":"Crédito","mp_doa":"Donación","mp_diam":"diamantes","mp_pend":"⏳ En revisión","mp_pago":"💰 PIX recibido — 💎 en camino","mp_cred":"💎 acreditados","mp_canc":"✖ Cancelada","mp_canc_sub":"Si crees que fue un error, escríbenos por WhatsApp","mp_motivo":"Motivo","mp_ileg":"⚠️ No pudimos leer tu comprobante — reenvía una foto nítida.","mp_ok":"✅ Comprobante verificado por el robot","mp_analise":"🔍 Comprobante en revisión","mp_reenviar":"📤 Reenviar comprobante","mp_media":"confirmación media real","mp_sub24":"Revisamos y confirmamos — recibirás una notificación","mp_vertodos":"ver todos", "mc_2":"Plan Gratis","mc_3":"envíos manuales por día","mc_4":"💎 Mis diamantes","mc_5":"reales","mc_6":"bono (solo para cambiar de plan)","mc_7":"🧾 Última donación:","mc_8":"esperando confirmación del admin","mc_9":"confirmada — 💎 en tu cuenta","mc_10":"cancelada","mc_11":"Aún no hiciste ninguna donación.","mc_12":"Cambia tus 💎 por un plan cuando quieras — al instante.", // 👤 2.0-P6
-    "tut_t":"Central de Tutoriales","tut_s":"28 guías paso a paso con fotos reales — todo lo que puedes hacer en H2BApply, pantalla por pantalla","tut_ph":"🔍 ¿Qué quieres aprender? Ej.: currículum, automático, diamantes...","tut_v":"Nada encontrado — prueba otra palabra (ej. \"enviar\", \"plan\", \"perfil\").","tut_load":"⏳ Cargando los tutoriales...", // 📖 v160
+    "au_t":"Regla de cuenta única — lee antes de entrar","au_b":"Cada persona puede tener UNA cuenta en H2BApply. Crear una segunda cuenta — incluso con otro e-mail — puede causar un BAN PERMANENTE de las dos cuentas, sin devolución de nada. Recuerda: el nombre en tu currículum es siempre el mismo, y el sistema cruza nombre, teléfono y dispositivo por sí solo — una cuenta duplicada es fácil de detectar. Los cupos de acceso son limitados: usa siempre el MISMO e-mail, y en la pantalla de Google elige exactamente el e-mail que escribiste.","au_f":"✅ 1 persona = 1 cuenta = todos tus envíos y días de VIP siempre juntos y seguros.", // ⚠️ v149: regra de conta única (ordem do dono)
+    "rn_t":"Actualización importante — lee antes de entrar","rn_p1":"Actualizamos H2BApply: los 3 servidores se volvieron UNO solo — todas las cuentas fueron traídas aquí. NADA fue borrado: tus envíos, días de VIP y currículums están aquí. Entra usando solo 1 e-mail, de preferencia el e-mail principal que ya estaba registrado en tu cuenta.","rn_warn":"⚠️ Sistema anti-duplicación: si se crean 2 cuentas con el mismo nombre en el currículum — incluso con e-mails diferentes — las dos cuentas pueden ser BANEADAS PERMANENTEMENTE. Usa solamente 1 cuenta.","rn_ok":"✅ Leí y entendí — continuar", // 📢 v150: janela do reset antes do login
+    "mc_1":"Mi Cuenta","mc_13":"Comprobante recibido — esperando confirmación","mc_14":"Renueva tu plan en la pestaña Planes.","mc_15":"ATENCIÓN: expira en","mp_pend":"⏳ En revisión","mp_pago":"💰 Pago recibido — esperando confirmación","mp_canc":"✖ Cancelado","mp_canc_sub":"Si crees que fue un error, escríbenos por WhatsApp","mp_motivo":"Motivo","mp_ileg":"⚠️ No pudimos leer tu comprobante — reenvía una foto nítida.","mp_ok":"✅ Comprobante verificado por el robot","mp_analise":"🔍 Comprobante en revisión","mp_reenviar":"📤 Reenviar comprobante","mp_media":"confirmación media real","mp_sub24":"Revisamos y confirmamos — recibirás una notificación","mp_vertodos":"ver todos", "mc_2":"Plan Gratis","mc_3":"envíos manuales por día","mc_7":"🧾 Último pedido:","mc_8":"esperando confirmación del admin","mc_9":"confirmado — plan activado","mc_10":"cancelado","mc_11":"Aún no hiciste ningún pedido.","mc_12":"Cambia a un plan cuando quieras para aumentar tu límite diario.", // 👤 2.0-P6 (v170: sin sistema de diamantes)
+    "tut_t":"Central de Tutoriales","tut_s":"28 guías paso a paso con fotos reales — todo lo que puedes hacer en H2BApply, pantalla por pantalla","tut_ph":"🔍 ¿Qué quieres aprender? Ej.: currículum, automático, planes...","tut_v":"Nada encontrado — prueba otra palabra (ej. \"enviar\", \"plan\", \"perfil\").","tut_load":"⏳ Cargando los tutoriales...", // 📖 v160
+    "consent_title":"☑️ Antes de continuar","consent_b1":"Es un servicio digital pago de automatización de envío — H2BApply nunca escribe el correo por ti; el contenido enviado siempre es tuyo.","consent_b2":"El precio mostrado ahora es el valor final a pagar.","consent_b3":"Después de pagar vía PIX, envía el comprobante y sigue conectado en la misma cuenta hasta la confirmación — automática cuando coincide, y siempre revisada por un admin.","consent_b4":"El riesgo de bloqueo de la cuenta Gmail es de Google (tercero), no de H2BApply — se reduce usando más de una cuenta de envío.","consent_b5":"Tienes derecho de arrepentimiento de 7 días corridos.","consent_check":"Leí y entiendo cómo funciona el programa y qué estoy pagando.","consent_terms_link":"Ver Términos completos →","consent_required_msg":"Marca que leíste y entendiste antes de continuar.","consent_choose_plan":"Elige un plan y el período antes de continuar.","plan_step1_title":"Elige tu plan y período","plan_step1_intro":"Pagas <strong>directamente</strong> por el plan elegido — sin moneda intermediaria. Mira los límites de cada plan, elige el período y el precio final aparece al instante, antes de pagar.","plan_calc_empty":"Elige un plan y el período","plan_error_load":"No se pudieron cargar los planes.","plan_try_again":"Intentar de nuevo", // 💎 v170: compra direta de plano — consentimento informado (CEO mode, 09/09/2026)
     "pv_title":"Vacantes para ti","pv_all":"Ver todas","pv_apply":"Postular","pv_apply_t":"Postular a esta vacante","pv_w1":"categoría que prefieres","pv_w2":"dentro de lo que tu perfil busca","pv_w3":"estado de tu perfil","pv_w4":"pide experiencia y tú ya la tienes","pv_w5":"acepta principiantes","pv_w6":"pide experiencia que aún no tienes","pv_w7":"pide inglés avanzado","pv_w8":"no exige inglés avanzado","pv_w9":"tu inglés avanzado es un diferencial aquí", // 🎯 v139: Vagas pra você (Home)
-    "snd_title":"Sonido de nueva respuesta","snd_sel":"¡seleccionado!","hs_t":"¡Bienvenido a H2BApply!","hs1":"Ve a <strong>Perfil → Perfiles de Email</strong> y configura tu currículum","hs2":"Entra en <strong>Envío Manual</strong> para elegir vacantes y postularte","hs3":"Activa el <strong>Envío Automático</strong> para postulaciones 24h en piloto automático","hs4":"Las respuestas llegan directo a <strong>tu propio Gmail</strong> — mantente atento allí","lb_doacao":"Donación confirmada","lb_troca":"Canje por plan","lb_tin":"Recibido de un amigo","lb_tout":"Donado a un amigo","lb_admin":"Ajuste del admin","lb_estorno":"Reembolso","lb_missao":"Misión cumplida","lb_correcao":"Corrección de valor","lb_upgrade":"Mejora de plan","fq1":"¡Cola terminada! Te postulaste a todas las vacantes.","fq2":"¡Misión cumplida! Espera a que lleguen las respuestas.","fq3":"¡Todas las postulaciones enviadas! El éxito está en camino.","fq4":"¡Cola vaciada! Diste un gran paso hoy.","h_faq_qty_q":"¿Cuántos correos debo enviar por día?","h_faq_qty":"Cuantos más, mejor — pero con calidad. El sistema tiene protección anti-spam. En el plan gratuito son 20 manuales + 10 automáticos por día. Con VIP Manual son 100 manuales por día. Con VIPro son 100 + 100 por día. Con DoublePro (2 Gmails) son 200 + 200 por día. Postularte a muchas empresas aumenta tus chances.","h_faq_reply":"Abre el correo directo en tu Gmail y léelo. Si la empresa pregunta si estás disponible, responde: <em>\"Yes, I am available to start on the requested date.\"</em> Si piden documentos, contacta a un gestor de visas.","h_faq_visa":"<strong>¿Esto garantiza empleo o visa? No.</strong> H2BApply es una herramienta que envía correos por ti. Contratarte es decisión del empleador. La visa es decisión del consulado americano. Cuantas más postulaciones envíes, mayores las chances de recibir una oferta.","g_258":"¿Ya donaste antes? Solo envía el mismo comprobante en la pantalla de planes — sin donar de nuevo.","g_259":"Escribe el nombre de la empresa, un correo recibido, el ETA case number, el puesto o el estado para encontrar todas las vacantes correspondientes","g_260":"Agrega un segundo Gmail. El automático reparte los envíos entre los dos correos, reduciendo el riesgo de spam.","g_261":"Los correos salen con el currículum y los textos del perfil elegido en el Paso 3 — asuntos y cuerpos alternan automáticamente contra el spam.","g_262":"El sistema rota entre los asuntos y cuerpos de correo guardados para no parecer spam. ¿Quieres ajustar algo? Toca \"Cambiar\" arriba.","g_263":"Escribe tu nombre exactamente como está en tu pasaporte. Un nombre equivocado puede causar problemas con el empleador.","g_264":"Es como un robot que trabaja por ti. Lo configuras una vez y sigue postulando solo, incluso con tu celular apagado.","g_265":"Verifica en la pestaña Home si el automático sigue activo. Si se detuvo, puede haber alcanzado el límite diario de tu plan — se reinicia automáticamente al día siguiente a medianoche.","g_266":"Aún no hay asuntos. Escribe al menos 3 variaciones tuyas en \"+ Agregar\" — usa las variables de arriba para personalizar automáticamente.","g_267":"Aún no hay cuerpos de correo. Escribe al menos 3 variaciones tuyas en \"+ Agregar\" — usa las variables de arriba para personalizar automáticamente.","g_268":"Perfil único: tu perfil sirve automáticamente para cualquier vacante, de cualquier planilla.","g_269":"⚙️ Filtros avanzados","g_270":"Tú escribes los textos — H2BApply nunca los completa por ti, solo entrega.","g_271":"escritos por ti","g_272":"tus propias versiones, escritas por ti", // 🌐 v137c: sons/boas-vindas/extrato/FAQ + 11 textos longos da varredura
+    "snd_title":"Sonido de nueva respuesta","snd_sel":"¡seleccionado!","hs_t":"¡Bienvenido a H2BApply!","hs1":"Ve a <strong>Perfil → Perfiles de Email</strong> y configura tu currículum","hs2":"Entra en <strong>Envío Manual</strong> para elegir vacantes y postularte","hs3":"Activa el <strong>Envío Automático</strong> para postulaciones 24h en piloto automático","hs4":"Las respuestas llegan directo a <strong>tu propio Gmail</strong> — mantente atento allí","fq1":"¡Cola terminada! Te postulaste a todas las vacantes.","fq2":"🏆 ¡Cola terminada! Espera a que lleguen las respuestas.","fq3":"¡Todas las postulaciones enviadas! El éxito está en camino.","fq4":"¡Cola vaciada! Diste un gran paso hoy.","h_faq_qty_q":"¿Cuántos correos debo enviar por día?","h_faq_qty":"Cuantos más, mejor — pero con calidad. El sistema tiene protección anti-spam. En el plan gratuito son 20 manuales + 10 automáticos por día. Con VIP Manual son 100 manuales por día. Con VIPro son 100 + 100 por día. Con DoublePro (2 Gmails) son 200 + 200 por día. Postularte a muchas empresas aumenta tus chances.","h_faq_reply":"Abre el correo directo en tu Gmail y léelo. Si la empresa pregunta si estás disponible, responde: <em>\"Yes, I am available to start on the requested date.\"</em> Si piden documentos, contacta a un gestor de visas.","h_faq_visa":"<strong>¿Esto garantiza empleo o visa? No.</strong> H2BApply es una herramienta que envía correos por ti. Contratarte es decisión del empleador. La visa es decisión del consulado americano. Cuantas más postulaciones envíes, mayores las chances de recibir una oferta.","g_258":"¿Ya pagaste antes? Solo envía el mismo comprobante en la pantalla de planes — sin pagar de nuevo.","g_259":"Escribe el nombre de la empresa, un correo recibido, el ETA case number, el puesto o el estado para encontrar todas las vacantes correspondientes","g_260":"Agrega un segundo Gmail. El automático reparte los envíos entre los dos correos, reduciendo el riesgo de spam.","g_261":"Los correos salen con el currículum y los textos del perfil elegido en el Paso 3 — asuntos y cuerpos alternan automáticamente contra el spam.","g_262":"El sistema rota entre los asuntos y cuerpos de correo guardados para no parecer spam. ¿Quieres ajustar algo? Toca \"Cambiar\" arriba.","g_263":"Escribe tu nombre exactamente como está en tu pasaporte. Un nombre equivocado puede causar problemas con el empleador.","g_264":"Es como un robot que trabaja por ti. Lo configuras una vez y sigue postulando solo, incluso con tu celular apagado.","g_265":"Verifica en la pestaña Home si el automático sigue activo. Si se detuvo, puede haber alcanzado el límite diario de tu plan — se reinicia automáticamente al día siguiente a medianoche.","g_266":"Aún no hay asuntos. Escribe al menos 3 variaciones tuyas en \"+ Agregar\" — usa las variables de arriba para personalizar automáticamente.","g_267":"Aún no hay cuerpos de correo. Escribe al menos 3 variaciones tuyas en \"+ Agregar\" — usa las variables de arriba para personalizar automáticamente.","g_268":"Perfil único: tu perfil sirve automáticamente para cualquier vacante, de cualquier planilla.","g_269":"⚙️ Filtros avanzados","g_270":"Tú escribes los textos — H2BApply nunca los completa por ti, solo entrega.","g_271":"escritos por ti","g_272":"tus propias versiones, escritas por ti", // 🌐 v137c: sons/boas-vindas/extrato/FAQ + 11 textos longos da varredura
     "home":"Inicio","manual":"Manual","search":"Buscar","auto":"Auto","responses":"Respuestas",
-    "notifications":"Notificaciones","plans":"💎 Diamantes","profile":"Perfil","admin":"Panel Admin","logout":"Salir","logout_confirm":"¿Cerrar sesión de tu cuenta? Puedes volver a entrar cuando quieras con el mismo correo de Google.",
+    "notifications":"Notificaciones","plans":"💎 Planes","profile":"Perfil","admin":"Panel Admin","logout":"Salir","logout_confirm":"¿Cerrar sesión de tu cuenta? Puedes volver a entrar cuando quieras con el mismo correo de Google.",
     "auto_title":"Envío Automático","auto_sub":"Toca para configurar e iniciar",
     "shortcuts":"Accesos Rápidos","today":"Hoy","account":"Cuenta","latest_replies":"Últimas Respuestas",
     "auto_lbl":"Automático","total_sends":"Total","profile_lbl":"Perfil",
@@ -7744,13 +7743,13 @@ const LANG_DICT = {
     "roi_calc":"Calculadora de Resultados","roi_if":"Si solo el 1% de las empresas responde positivamente:","roi_cta":"¡Solo 1 empresa confirma → estás en los EUA! ✈️",
     "all_states":"Todos los estados","salary":"Salario","qty_jobs":"# Puestos",
     "sug_companies":"Empresas","sug_roles":"Puestos","sug_cities":"Ciudades","sug_regions":"Regiones","sug_states":"Estados","sug_jobs":"empleos",
-    "extra_gmail":"Gmail Extra para Envíos","upgrade_to_enable":"Cambia diamantes para activar.","tap_to_pick":"(toca para elegir)","search_btn":"Buscar",
+    "extra_gmail":"Gmail Extra para Envíos","upgrade_to_enable":"Suscríbete a un plan para activarlo.","tap_to_pick":"(toca para elegir)","search_btn":"Buscar",
     "radar_btn":"📡 Radar","radar_title":"Radar de Empleos","radar_sub":"Guarda tus filtros actuales (búsqueda, estado, ciudad) y recibe un aviso en el celular cuando llegue un empleo NUEVO que combine — máximo 1 aviso al día.",
     "radar_create":"Crear radar con los filtros actuales","radar_active":"Tu radar está ENCENDIDO","radar_off":"Apagar radar",
     "radar_all":"Todos los empleos nuevos","radar_alerts":"aviso(s) enviados","radar_created":"¡Radar encendido! Te avisaremos cuando llegue un empleo nuevo que combine.","radar_removed":"Radar apagado.",
-    "upsell_title":"Tu límite de hoy se acabó — los empleos no esperan","upsell_left":"Aún quedan {n} empleos disponibles HOY que no alcanzarás con tu plan actual. Cambia diamantes por un plan y sigue ahora mismo — activa al instante.",
-    "upsell_left_generic":"El límite vuelve mañana — pero los mejores empleos de hoy ya tendrán otros candidatos. Cambia diamantes por un plan y sigue ahora — activa al instante.",
-    "upsell_cta":"Ver planes y cambiar 💎","upsell_later":"Seguir gratis mañana",
+    "upsell_title":"Tu límite de hoy se acabó — los empleos no esperan","upsell_left":"Aún quedan {n} empleos disponibles HOY que no alcanzarás con tu plan actual. Suscríbete a un plan y sigue ahora mismo — comprobante confirmado, plan activado.",
+    "upsell_left_generic":"El límite vuelve mañana — pero los mejores empleos de hoy ya tendrán otros candidatos. Suscríbete a un plan y sigue ahora.",
+    "upsell_cta":"Ver planes y suscribirse","upsell_later":"Seguir gratis mañana",
     "st_starting":"🟡 Iniciando...","st_sending":"🟢 Enviando...","st_paused":"⏸ Pausado",
     "st_no_session":"⚠️ Inicia sesión de nuevo","st_finished":"✅ Completado","st_resuming":"🟢 Reanudando...",
     "st_refilled":"🔄 Cola recargada — enviando...","st_wait_interval":"⏳ Esperando intervalo...","st_wait_hour":"⏳ Esperando horario...",
@@ -7768,10 +7767,10 @@ const LANG_DICT = {
     
     
     
-    "plans_title":"Diamantes & Planes","plans_sub":"Dona vía PIX, gana diamantes y cámbialos por planes cuando quieras",
-    "plans_note":"Donación confirmada en hasta 24h • El cambio de plan activa AL INSTANTE",
-    "diamond_qty":"Cantidad de diamantes","diamond_when":"Los diamantes llegan a tu cuenta cuando el admin confirma el comprobante",
-    "gift_friend":"🎁 Regalar diamantes a un amigo","contact_data":"Tus datos de contacto","contact_sub":"Para activar tu plan y contactarte",
+    "plans_title":"Planes H2BApply","plans_sub":"Elige un plan, paga vía PIX y envía el comprobante",
+    "plans_note":"Comprobante verificado automáticamente • Confirmación final siempre por un admin",
+    
+    "contact_data":"Tus datos de contacto","contact_sub":"Para activar tu plan y contactarte",
     "order_summary":"📋 Resumen del pedido","notes_lbl":"Observaciones",
     "rank_sub":"Compite con otros usuarios • Sube posiciones • Conquista la cima",
     "settings_sub":"Tu cuenta, tu privacidad.","your_account":"Tu cuenta","how_works":"💡 ¿Cómo funciona?",
@@ -7799,7 +7798,7 @@ const LANG_DICT = {
     "home_auto_b1":"Envía a varias vacantes por día","home_auto_b3":"Nunca repite una postulación","home_auto_b4":"Funciona 24h — no necesitas estar en línea","home_auto_cta":"Iniciar Envío Automático",
     "home_man_b1":"Busca y filtra las vacantes","home_man_b4":"Envía cuando estés listo",
     "manual_send_title":"Envío Manual","manual_send_sub":"Busca empleos y postúlate ahora",
-    "plans_send_title":"💎 Diamantes","plans_send_sub":"Potencia tus postulaciones con diamantes", // 🌐 v166: 3er CTA de Home
+    "plans_send_title":"💎 Planes","plans_send_sub":"Suscríbete a un plan y potencia tus postulaciones", // 🌐 v166: 3er CTA de Home
     "home_cv_tip":"Mantén tu currículum siempre actualizado.","home_cv_tip_link":"Editar currículum →", // 🌐 v166: aviso discreto de Home
     "inicio":"Inicio","auto_send":"Envío Automático","manual_send":"Envío Manual",
     "news_h2b":"Noticias H-2B","sent_tab":"Enviadas","download_app":"Descargar App","menu_lbl":"MENÚ",
@@ -7827,9 +7826,9 @@ const LANG_DICT = {
     "search_anything":"Busca cualquier cosa",
     "search_hint":"Escribe el nombre de la empresa, un email recibido, el ETA case number, el cargo o el estado",
     "all_inbox":"Todos","unread":"No leídas","favorites":"Favoritos","this_week":"Esta semana",
-    "enable_notif":"Activar notificaciones","enable_notif_sub":"Recibe avisos de diamantes, misiones y novedades — incluso con la app cerrada",
+    "enable_notif":"Activar notificaciones","enable_notif_sub":"Recibe avisos de confirmación de comprobante, estado del automático y novedades — incluso con la app cerrada",
     "activate":"Activar","inbox_search_ph":"Buscar empresa, asunto...","notif_short":"Notif",
-    "reply_alert":"Alerta de nueva respuesta","reply_alert_sub":"Sonido + aviso de diamantes, misiones y novedades (el sitio no lee tu correo — no avisamos cuando la empresa responde)",
+    "reply_alert":"Alerta de nueva respuesta","reply_alert_sub":"Sonido + aviso de confirmación de comprobante, estado del automático y novedades (el sitio no lee tu correo — no avisamos cuando la empresa responde)",
     "pipe_responded":"Respondió","pipe_positive":"Interesado","pipe_interview":"Entrevista","pipe_offer":"Oferta",
     
     
@@ -8258,247 +8257,132 @@ if(document.readyState!=='loading') setTimeout(applyLang,400);
 console.debug("[v19] Language system (PT/EN/ES) loaded");
 
 // ══════════════════════════════════════════════════════════
-//  💎 SISTEMA DE DIAMANTES (v64 — não existe mais compra de plano)
+//  💎 COMPRA DIRETA DE PLANO (v170 — dono, 09/09/2026: "retire todo
+//  sistema de diamantes... reestruture pra pessoa conseguir comprar")
 // ══════════════════════════════════════════════════════════
+// O sistema de diamantes (saldo, troca, upgrade por diferença, doação
+// entre amigos, missões) foi retirado por completo — regra da casa
+// "🚫 INDICAÇÃO PREMIADA — NUNCA" também proíbe qualquer coisa parecida
+// com recompensa por convidar/transferir, então essa peça não volta.
+// Fluxo novo: a pessoa escolhe PLANO + PERÍODO, o preço em R$ vem
+// SEMPRE de GET /api/planos (nunca hardcoded — regra 13o), ela confirma
+// que leu e entende o consentimento (clickwrap, ver seção 12 dos Termos
+// em server.js) e só DEPOIS vê a chave Pix. POST /api/pedido manda
+// {tipo:'plano',plano,dias,consentimento:true,...} — o servidor
+// recalcula o valor sozinho e ignora qualquer valorTotal do cliente.
 // v43 (ordem do dono, 23/07/2026): InfinitePay REMOVIDA — todo pagamento é
 // Pix pro PicPay do Andrio (chave 53981453496), em qualquer plano/período.
 // 2026-07: consolidado numa chave só (telefone do Andrio) — antes o combo
 // mostrava a chave/e-mail do Jesus (jesuscristh@jim.com), removido a pedido.
 const PIX_KEY = '53981453496'; // Andrio — única chave Pix usada em todo o sistema
 const PIX_NAME = 'Andrio Kickhofel';
-const PIX_CODE = '00020126360014br.gov.bcb.pix0114+55539814534965204000053039865802BR5916ANDRIO KICKHOFEL6009Sao Paulo62290525REC6A01509D25E099580108226304BB33';
 
 let _planComp64 = null; // base64 do comprovante
 let _planCompType = 'image/jpeg';
 
-// 💎 v64: a calculadora do passo 1 agora é da DOAÇÃO (qtd 💎 → valor R$).
-function updatePlanCalc() {
-  const qty=Math.max(0,parseInt(g('#diam-qty')?.value,10)||0);
-  // 💼 MC5-P2 item 7: a marcação dos packs usa a QUANTIDADE REAL da tabela
-  // oficial (window._diamPacksById, preenchida pelo /api/diamonds) — os
-  // números do HTML são só fallback pro app abrir sem rede.
-  [67,100,167].forEach(id=>{const el=g('#dpack-'+id);if(!el)return;const q2=(window._diamPacksById||{})[id]||id;el.className='plan-option'+(q2===qty?' selected':'');});
-  const price=(U.diamondPrice||1.5);
-  const total=qty*price;
-  const cDesc=g('#calc-desc'),cTotal=g('#calc-total');
-  if(!qty){if(cDesc)cDesc.textContent='Escolha um pacote ou digite a quantidade';if(cTotal)cTotal.textContent='—';return;}
-  if(cDesc)cDesc.textContent=qty+' \u{1F48E} × R$ '+price.toFixed(2).replace('.',',')+' · doação única';
-  if(cTotal)cTotal.textContent='R$ '+total.toFixed(2).replace('.',',');
-}
-function setDiamQty(q){const i=g('#diam-qty');if(i)i.value=q;updatePlanCalc();}
+// window._planosData (cache de /api/planos), window._planoEscolhido
+// ('vip'|'vipro'|'doublepro') e window._diasEscolhido (30|60|90|365) —
+// inicializados aqui pra nunca ficarem undefined antes de loadPlanos()
+// rodar (checkStatus() não lê mais diamante nenhum do /api/status).
+window._planosData = window._planosData || null;
+window._planoEscolhido = window._planoEscolhido || null;
+window._diasEscolhido = window._diasEscolhido || null;
 
-// ── 💎 v64: saldo, troca por plano, transferência e extrato ────────────────
-let _diamData=null;
-async function loadDiamonds(){
+// Carrega a fonte ÚNICA de preço/limites (GET /api/planos, pública) toda
+// vez que a aba Planos abre. Falha de rede nunca deixa a tela quebrada em
+// silêncio — mostra um card com "tentar de novo" (mesmo padrão dos outros
+// loads do app).
+async function loadPlanos(){
+  const box=g('#plan-select'); if(!box)return;
+  box.innerHTML=`<div style="text-align:center;padding:20px"><span class="spin"></span></div>`;
   try{
-    const r=await fetch('/api/diamonds',{credentials:'include'});
-    const d=await r.json(); if(!d.ok)return;
-    _diamData=d; U.diamonds=d.saldo; U.diamondPrice=d.price; U.diamantesInfinitos=!!d.diamantesInfinitos;
-    const sc=g('#diam-saldo-card');
-    if(sc){
-      const tot=d.saldo.real+d.saldo.bonus;
-      sc.innerHTML=`<div style="background:linear-gradient(135deg,#0f172a,#312e81);border-radius:var(--rl);padding:16px;display:flex;align-items:center;gap:12px;color:#fff">
-        <div style="font-size:34px">\u{1F48E}</div>
-        <div style="flex:1">
-          <div style="font-size:12px;opacity:.75">Seus diamantes</div>
-          <div style="font-size:24px;font-weight:800">${U.diamantesInfinitos?'♾️':tot.toLocaleString('pt-BR')}</div>
-          <div style="font-size:10.5px;opacity:.7">${U.diamantesInfinitos?'\u{1F6E1}️ Conta admin: diamantes infinitos pra teste — nunca conta como gasto real; doações pra outros usuários continuam contando normal':`${d.saldo.real.toLocaleString('pt-BR')} reais (podem ser doados) · ${d.saldo.bonus.toLocaleString('pt-BR')} de brinde`}</div>
-        </div>
-      </div>`;
-    }
-    window._diamMediana=d.medianaAprovacaoHoras; // 💼 MC5-P2: promessa honesta
-    _renderPacksFromTable(d); // 💼 MC5-P2 item 7 (13c): packs sempre da tabela
-    renderDiamUpgrade(d);renderDiamTroca(d);renderDiamExtrato(d);
+    const r=await fetch('/api/planos',{credentials:'include'});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'?');
+    window._planosData=d;
+    _renderPlanosUI(d);
+    _planStep1Sync();
   }catch(e){
-    // 💼 MC5-P2 item 9: falha nunca mais some em silêncio — card de retry
-    const sc=g('#diam-saldo-card');
-    if(sc)sc.innerHTML=`<div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--rl);padding:14px;text-align:center;font-size:12px;color:var(--red)">Não deu pra carregar seus \u{1F48E}. <span style="text-decoration:underline;cursor:pointer;font-weight:700" onclick="loadDiamonds()">Tentar de novo</span></div>`;
+    box.innerHTML=`<div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--rl);padding:14px;text-align:center;font-size:12px;color:var(--red)">${esc(t('plan_error_load'))} <span style="text-decoration:underline;cursor:pointer;font-weight:700" onclick="loadPlanos()">${esc(t('plan_try_again'))}</span></div>`;
   }
-  loadMissoes(); // 🎁 v68: recompensas (retroativo — quem já cumpriu recebe na hora)
 }
-// 💼 MC5-P2 item 7 (regra 13c): os packs derivam SEMPRE da tabela oficial
-// (/api/diamonds → planos) — o HTML estático é só esqueleto/fallback. Se um
-// preço mudar (PLANO_PRECO_TAB ou DIAMOND_PRICE_BRL), os packs acompanham
-// sozinhos — nunca mais induzem doação com valor errado (classe do bug 13f).
-function _renderPacksFromTable(d){
-  try{
-    const packs=(d.planos||[]).filter(p2=>p2&&p2.dias===30&&["vip","vipro","doublepro"].includes(p2.plano));
-    if(packs.length!==3)return;
-    const map={vip:67,vipro:100,doublepro:167};
-    const byId={};
-    for(const p2 of packs){
-      const id=map[p2.plano];byId[id]=p2.diamantes;
-      const el=g('#dpack-'+id);if(!el)continue;
-      el.setAttribute('onclick','setDiamQty('+p2.diamantes+')');
-      const big=el.querySelector('div');
-      if(big)big.innerHTML=big.innerHTML.replace(/^\d+\s/,p2.diamantes+' ');
-    }
-    window._diamPacksById=byId;
-  }catch(e){}
-}
-async function loadMissoes(){
-  const box=g('#diam-missoes'); if(!box)return;
-  try{
-    const r=await fetch('/api/missions',{credentials:'include'});
-    const d=await r.json(); if(!d.ok)return;
-    const n=(d.progresso&&d.progresso.envios)||0;
-    const prog=m=>{
-      if(m.id==='envios_100'&&!m.done)return `${Math.min(n,100)}/100`;
-      if(m.id==='envios_1000'&&!m.done)return `${Math.min(n,1000)}/1000`;
-      return '';
-    };
-    const feitas=d.missoes.filter(m=>m.done).length;
-    box.innerHTML=`<div style="background:var(--surface);border:2px solid var(--border2);border-radius:var(--rl);overflow:hidden">
-      <div style="background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(251,191,36,.07));padding:12px 16px;border-bottom:1px solid var(--border)">
-        <div style="font-size:14px;font-weight:800">🎁 Recompensas <span style="font-size:11px;color:var(--t3);font-weight:700">${feitas}/${d.missoes.length}</span></div>
-        <div style="font-size:11px;color:var(--t3)">Use o app e ganhe 💎 de brinde — junte e troque por planos</div>
+
+// Seletor de plano+período — 3 cards (VIP/VIPro/DoublePro), cada um com
+// os limites REAIS vindos de d.limites e os preços REAIS de d.precos.
+// Nunca texto fixo de limite/preço — sempre desta fonte (mesma classe de
+// bug 13o que o v168 já corrigiu no extrato de diamantes).
+function _renderPlanosUI(d){
+  const box=g('#plan-select'); if(!box||!d)return;
+  const NOME={vip:'⭐ VIP Manual',vipro:'🤖 VIPro',doublepro:'💎 DoublePro'};
+  const DIAS_LBL={30:'30 dias',60:'60 dias',90:'90 dias',365:'1 ano'};
+  const porPlano={};
+  (d.precos||[]).forEach(p=>{(porPlano[p.plano]=porPlano[p.plano]||[]).push(p);});
+  Object.keys(porPlano).forEach(pl=>porPlano[pl].sort((a,b)=>a.dias-b.dias));
+  const sel=window._planoEscolhido, selDias=window._diasEscolhido;
+  box.innerHTML=['vip','vipro','doublepro'].map(pl=>{
+    const lim=(d.limites||{})[pl]||{};
+    const partes=[];
+    if(lim.manual)partes.push(lim.manual+' manuais/dia');
+    if(lim.auto)partes.push(lim.auto+' automáticas/dia');
+    const descLim=partes.length?partes.join(' + '):'';
+    const isSel=sel===pl;
+    return `<div style="background:var(--surface);border:2px solid ${isSel?'var(--blue)':'var(--border2)'};border-radius:var(--rl);padding:14px;margin-bottom:10px;${isSel?'box-shadow:0 0 0 3px rgba(37,99,235,.14)':''}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div style="font-size:14.5px;font-weight:800">${NOME[pl]}</div>
+        ${isSel?'<span style="font-size:10px;font-weight:800;color:var(--blue);background:var(--bluel);border-radius:8px;padding:3px 8px">✓</span>':''}
       </div>
-      <div style="padding:6px 16px 10px">
-        ${d.missoes.map(m=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-          <div style="font-size:20px;flex-shrink:0;${m.done?'':'filter:grayscale(1);opacity:.6'}">${m.emoji}</div>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:12.5px;font-weight:700;color:var(--text)">${esc(({primeiro_envio:t('mi1'),perfil_completo:t('mi2'),envios_100:t('mi3'),envios_1000:t('mi4'),avaliacao:t('mi5')})[m.id]||m.titulo)} ${prog(m)?`<span style="font-size:10px;color:var(--t3);font-weight:700">· ${prog(m)}</span>`:''}</div>
-            <div style="font-size:10.5px;color:var(--t3)">${esc(({primeiro_envio:t('mi1_d'),perfil_completo:t('mi2_d'),envios_100:t('mi3_d'),envios_1000:t('mi4_d'),avaliacao:t('mi5_d')})[m.id]||m.desc)}</div>
-          </div>
-          <div style="flex-shrink:0;font-size:12px;font-weight:800;${m.done?'color:var(--green)':'color:#d97706'}">${m.done?'✓ +'+m.bonus+' 💎':'+'+m.bonus+' 💎'}</div>
-        </div>`).join('')}
+      <div style="font-size:11.5px;color:var(--t3);margin-bottom:10px">${esc(descLim)}</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px">
+        ${(porPlano[pl]||[]).map(c=>{
+          const chSel=isSel&&selDias===c.dias;
+          return `<button type="button" class="btn ${chSel?'btn-primary':'btn-secondary'}" style="justify-content:center;font-size:12.5px;padding:10px 6px" onclick="selectPlanoDias('${pl}',${c.dias})">${DIAS_LBL[c.dias]||c.dias+'d'} · R$ ${brl(c.valorTotal)}</button>`;
+        }).join('')}
       </div>
     </div>`;
-  }catch(e){}
+  }).join('');
 }
-// v80 (ordem do dono, 29/07): quem JÁ TEM plano pago ativo vê aqui a opção
-// de UPGRADE — paga só a diferença em 💎 (mesmo período que já assinou),
-// os dias continuam exatamente os mesmos (nunca reinicia/soma).
-function renderDiamUpgrade(d){
-  const box=g('#diam-upgrade'); if(!box)return;
-  const ORDEM=['vip','vipro','doublepro'];
-  // v81: admin/DM tem plano efetivo SEMPRE máximo (getPlan() do servidor
-  // sempre devolve doublepro pra admin, pra ter os limites de envio máximos)
-  // — isso esconderia o card de upgrade pra sempre. Pra admin, usa o plano
-  // BRUTO gravado (o que ele realmente "comprou" testando com diamante
-  // infinito), igual um usuário comum, senão nunca dá pra testar o upgrade.
-  const planoAtual=(U.isAdmin?(U.vip?.plan||'free'):(U.plan||'free'));
-  const idxAtual=ORDEM.indexOf(planoAtual);
-  const vipAtivo=U.vip&&((U.vip.manualExpires&&U.vip.manualExpires>Date.now())||(U.vip.autoExpires&&U.vip.autoExpires>Date.now()));
-  // v84: trial e código resgatado (cortesia, nunca pago — regra 13c) não dão
-  // direito a upgrade — o servidor já recusa (400), isso só evita mostrar um
-  // botão que sempre daria erro pra quem não é admin testando.
-  const _semDireito=!U.isAdmin&&["trial","code"].includes(U.vip?.source||"");
-  if(idxAtual<0||idxAtual>=ORDEM.length-1||!vipAtivo||_semDireito){box.innerHTML='';return;}
-  const dias=U.vip?.days||30;
-  const NOME={vip:'⭐ VIP Manual',vipro:'\u{1F916} VIPro',doublepro:'\u{1F48E} DoublePro'};
-  const preco=pl=>{const row=(d.planos||[]).find(p=>p.plano===pl&&p.dias===dias);return row?row.diamantes:null;};
-  const precoAtual=preco(planoAtual);
-  const opcoes=ORDEM.slice(idxAtual+1).map(pl=>({plano:pl,diferenca:preco(pl)!=null&&precoAtual!=null?preco(pl)-precoAtual:null})).filter(o=>o.diferenca!=null&&o.diferenca>0);
-  if(!opcoes.length){box.innerHTML='';return;}
-  box.innerHTML=`<div style="background:var(--surface);border:2px solid rgba(99,102,241,.35);border-radius:var(--rl);overflow:hidden">
-    <div style="background:linear-gradient(135deg,rgba(99,102,241,.15),rgba(59,130,246,.1));padding:12px 16px;border-bottom:1px solid var(--border)">
-      <div style="font-size:14px;font-weight:800">⬆️ Upgrade de plano</div>
-      <div style="font-size:11px;color:var(--t3)">Você já é ${NOME[planoAtual]||planoAtual.toUpperCase()} — suba de tier pagando só a diferença${U.isAdmin?' · 🛡️ conta admin: grátis, só teste':''}</div>
-    </div>
-    <div style="padding:12px 16px;display:flex;flex-direction:column;gap:8px">
-      ${opcoes.map(o=>`<button class="btn btn-primary" style="justify-content:space-between;padding:12px 14px" onclick="upgradePlano('${o.plano}',${o.diferenca})">
-        <span>Upgrade para ${NOME[o.plano]}</span><strong>${o.diferenca} \u{1F48E}</strong>
-      </button>`).join('')}
-      <div style="font-size:10.5px;color:var(--t3);line-height:1.5;margin-top:2px">⚠️ Seus dias continuam os MESMOS de quando você assinou — o upgrade não reinicia nem soma dias, só troca o plano.</div>
-    </div>
-  </div>`;
+
+// Escolha de plano+período — marca a seleção, atualiza o resumo de preço
+// (reaproveita #plan-calc/#calc-desc/#calc-total que já existiam) e
+// sincroniza o botão de continuar (gated pelo consentimento também).
+function selectPlanoDias(plano,dias){
+  window._planoEscolhido=plano;
+  window._diasEscolhido=dias;
+  if(window._planosData)_renderPlanosUI(window._planosData);
+  _planStep1Sync();
 }
-async function upgradePlano(novoPlano,diferenca){
-  if(!confirm(`Fazer upgrade para ${novoPlano.toUpperCase()} por ${diferenca} \u{1F48E}?\n\nSeus dias continuam os MESMOS de quando você assinou (não reiniciam, não somam).`))return;
-  try{
-    const r=await fetch('/api/plans/upgrade',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({novoPlano})});
-    const d=await r.json();
-    if(d.ok){gaEvent('upgrade',{plan:novoPlano,diamonds:diferenca});toast(`⬆️ Upgrade feito! Agora você é ${novoPlano.toUpperCase()}.`,'g');setTimeout(()=>location.reload(),1200);}
-    else toast('⚠️ '+(d.error||'Não foi possível fazer o upgrade'),'r');
-  }catch(e){toast('Erro: '+e.message,'r');}
+function _updatePlanCalcResumo(){
+  const cDesc=g('#calc-desc'),cTotal=g('#calc-total');
+  const pl=window._planoEscolhido,dias=window._diasEscolhido;
+  if(!pl||!dias){ if(cDesc)cDesc.textContent=t('plan_calc_empty'); if(cTotal)cTotal.textContent='—'; return; }
+  const NOME={vip:'⭐ VIP Manual',vipro:'🤖 VIPro',doublepro:'💎 DoublePro'};
+  const row=(window._planosData?.precos||[]).find(p=>p.plano===pl&&p.dias===dias);
+  const total=row?row.valorTotal:0;
+  if(cDesc)cDesc.textContent=`${NOME[pl]||pl} · ${dias===365?'1 ano':dias+' dias'}`;
+  if(cTotal)cTotal.textContent='R$ '+brl(total);
 }
-function renderDiamTroca(d){
-  const box=g('#diam-troca'); if(!box)return;
-  const tot=d.saldo.real+d.saldo.bonus;
-  const NOME={vip:'\u2B50 VIP Manual',vipro:'\u{1F916} VIPro',doublepro:'\u{1F48E} DoublePro'};
-  // v168 (RISCO real, auditoria 08/09/2026): antes era um texto hardcoded
-  // ("100 candidaturas manuais/dia" etc.) separado da tabela real de limites
-  // — podia ficar desatualizado se PLAN_LIMITS_NEW mudasse sem editar aqui
-  // também (a regra 13o já previu que isso aconteceria de novo). Agora deriva
-  // de d.limites (mesma fonte que o servidor usa de verdade pra travar os
-  // envios, GET /api/diamonds) — nunca mais 2 verdades sobre o mesmo número.
-  const EXTRA={doublepro:' · 2 Gmails'};
-  const DESC={};
-  ['vip','vipro','doublepro'].forEach(pl=>{
-    const lim=(d.limites||{})[pl];
-    const partes=[];
-    if(lim?.manual)partes.push(lim.manual+' manual');
-    if(lim?.auto)partes.push(lim.auto+' automático');
-    DESC[pl]=(partes.length?partes.join(' + ')+'/dia':'')+(EXTRA[pl]||'');
-  });
-  const por={};(d.planos||[]).forEach(p=>{(por[p.plano]=por[p.plano]||[]).push(p);});
-  box.innerHTML=`<div style="background:var(--surface);border:2px solid var(--border2);border-radius:var(--rl);overflow:hidden">
-    <div style="background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(59,130,246,.08));padding:12px 16px;border-bottom:1px solid var(--border)">
-      <div style="font-size:14px;font-weight:800">\u{1F501} Trocar diamantes por plano</div>
-      <div style="font-size:11px;color:var(--t3)">${esc(t('swap_instant'))}${U.isAdmin?' · 🛡️ conta admin: grátis, só teste':''}</div>
-    </div>
-    <div style="padding:12px 16px;display:flex;flex-direction:column;gap:12px">
-      ${['vip','vipro','doublepro'].map(pl=>`<div>
-        <div style="font-size:13px;font-weight:800;margin-bottom:2px">${NOME[pl]}</div>
-        <div style="font-size:10.5px;color:var(--t3);margin-bottom:6px">${DESC[pl]}</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-          ${(por[pl]||[]).map(c=>{const da=U.isAdmin||tot>=c.diamantes;return`<button class="btn ${da?'btn-primary':'btn-secondary'}" style="justify-content:center;font-size:12px;padding:9px 6px${da?'':';opacity:.55'}" onclick="trocarPlano('${pl}',${c.dias},${c.diamantes})">${c.dias===365?'1 ano':c.dias+'d'} · ${c.diamantes} \u{1F48E}</button>`;}).join('')}
-        </div>
-      </div>`).join('')}
-    </div>
-  </div>`;
-}
-async function trocarPlano(plano,dias,preco){
-  const tot=((U.diamonds&&U.diamonds.real)||0)+((U.diamonds&&U.diamonds.bonus)||0);
-  if(!U.isAdmin&&tot<preco){toast(`Faltam ${preco-tot} \u{1F48E} — doe para completar!`,'r');return;}
-  if(!confirm(`Trocar ${preco} \u{1F48E} pelo ${plano.toUpperCase()} por ${dias===365?'1 ano':dias+' dias'}? Ativa na hora.`))return;
-  try{
-    const r=await fetch('/api/diamonds/trocar',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({plano,dias})});
-    const d=await r.json();
-    if(d.ok){gaEvent('purchase',{plan:plano,dias,diamonds:preco});toast(`\u{1F389} ${plano.toUpperCase()} ativado por ${preco} \u{1F48E}!`,'g');setTimeout(()=>location.reload(),1200);}
-    else toast('\u26A0\uFE0F '+(d.error||'Não foi possível trocar'),'r');
-  }catch(e){toast('Erro: '+e.message,'r');}
-}
-async function transferDiamantes(){
-  const para=(g('#diam-tx-email')?.value||'').trim().toLowerCase();
-  const qtd=parseInt(g('#diam-tx-qtd')?.value,10)||0;
-  if(!para||qtd<1){toast('Preencha o e-mail do amigo e a quantidade','r');return;}
-  if(!confirm(`Doar ${qtd} \u{1F48E} para ${para}? Essa ação não pode ser desfeita.`))return;
-  try{
-    const r=await fetch('/api/diamonds/transfer',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({para,qtd})});
-    const d=await r.json();
-    if(d.ok){toast(`\u{1F381} ${qtd} \u{1F48E} doados para ${para}!`,'g');const q=g('#diam-tx-qtd');if(q)q.value='';loadDiamonds();}
-    else toast('\u26A0\uFE0F '+(d.error||'Não foi possível doar'),'r');
-  }catch(e){toast('Erro: '+e.message,'r');}
-}
-function renderDiamExtrato(d){
-  const box=g('#diam-extrato'); if(!box)return;
-  const led=d.ledger||[];
-  if(!led.length){box.innerHTML='';return;}
-  // 🌐 v137: rótulos do extrato traduzidos na renderização (runtime, sem TDZ)
-  // 💼 MC5-P2 item 8: rótulos que faltavam (ajuste/crédito apareciam como
-  // chave crua), "ver todos" (antes só 12 dos 60 lançamentos) e o SALDO
-  // depois de cada lançamento (o servidor já mandava, ninguém mostrava).
-  const LBL={doacao:'\u{1F49A} '+t('lb_doacao'),troca:'\u{1F501} '+t('lb_troca'),transfer_in:'\u{1F381} '+t('lb_tin'),transfer_out:'\u{1F381} '+t('lb_tout'),admin:'\u{1F6E0} '+t('lb_admin'),estorno:'\u26D4 '+t('lb_estorno'),missao:'\u{1F381} '+t('lb_missao'),correcao:'\u270F\uFE0F '+t('lb_correcao'),upgrade:'\u2B06\uFE0F '+t('lb_upgrade'),ajuste:'\u2696\uFE0F '+t('lb_ajuste'),credito:'\u2795 '+t('lb_credito')};
-  const lim=window._diamExtratoAll?led.length:12;
-  box.innerHTML=`<div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--rl);overflow:hidden">
-    <div style="padding:10px 16px;border-bottom:1px solid var(--border);font-size:13px;font-weight:800">\u{1F4DC} Extrato de diamantes</div>
-    ${led.slice(0,lim).map(e=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border);font-size:12px">
-      <div style="flex:1;min-width:0"><div style="font-weight:700">${LBL[e.tipo]||esc(e.tipo||'')}</div><div style="font-size:10.5px;color:var(--t3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.nota||e.para||e.de||(e.plano?e.plano+' '+e.dias+'d':''))} · ${new Date(e.ts).toLocaleDateString('pt-BR')}</div></div>
-      <div style="flex-shrink:0;text-align:right"><div style="font-weight:800;color:${(e.qtd||0)>=0?'var(--green)':'var(--red)'}">${(e.qtd||0)>=0?'+':''}${e.qtd||0} \u{1F48E}</div>${(e.saldoReal!=null)?`<div style="font-size:9.5px;color:var(--t3)">saldo: ${(e.saldoReal||0)+(e.saldoBonus||0)}</div>`:''}</div>
-    </div>`).join('')}
-    ${led.length>lim?`<div style="padding:8px 16px;text-align:center;font-size:11.5px;color:var(--blue);cursor:pointer;font-weight:700" onclick="window._diamExtratoAll=true;renderDiamExtrato(_diamData)">${esc(t('mp_vertodos'))} (${led.length})</div>`:''}
-  </div>`;
+// Clickwrap (achado de pesquisa de UX — gesto duplo: marcar + clicar é o
+// padrão juridicamente mais defensável): o botão de continuar do Passo 1
+// só libera com plano+período escolhidos E o checkbox de consentimento
+// marcado. Nunca pré-marcado, nunca destravado por atalho.
+function _planStep1Sync(){
+  _updatePlanCalcResumo();
+  const btn=g('#plan-step1-continue-btn');
+  if(btn){
+    const ok=!!(window._planoEscolhido&&window._diasEscolhido)&&!!g('#plan-consent-check')?.checked;
+    btn.disabled=!ok;
+  }
 }
 
 function goToPlanStep2() {
-  // 💎 v64: o "pedido" agora é uma DOAÇÃO (qtd de diamantes → R$).
-  const qty=Math.max(0,parseInt(g('#diam-qty')?.value,10)||0);
-  if(!qty){ toast('Escolha quantos \u{1F48E} você quer doar','r'); return; }
-  const total=(qty*(U.diamondPrice||1.5)).toFixed(2);
-  window._diamQtyPedido=qty;
-  gaEvent('checkout_step2',{plan:'doacao',dias:0,value:parseFloat(total),currency:'BRL'});
+  const plano=window._planoEscolhido,dias=window._diasEscolhido;
+  if(!plano||!dias){ toast(t('consent_choose_plan'),'r'); return; }
+  if(!g('#plan-consent-check')?.checked){ toast(t('consent_required_msg'),'r'); return; }
+
+  const row=(window._planosData?.precos||[]).find(p=>p.plano===plano&&p.dias===dias);
+  const total=row?row.valorTotal:0;
+  const NOME={vip:'⭐ VIP Manual',vipro:'🤖 VIPro',doublepro:'💎 DoublePro'};
+  gaEvent('checkout_step2',{plan:plano,dias,value:total,currency:'BRL'});
 
   const nameInp=g('#plan-form-name');
   if(nameInp && !nameInp.value) nameInp.value=U.name||'';
@@ -8507,31 +8391,31 @@ function goToPlanStep2() {
 
   const sc=g('#plan-summary-content');
   if(sc) sc.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;font-size:14px">
-    <div><strong>\u{1F48E} Doação</strong> · ${qty} diamantes</div>
-    <div style="font-weight:800;color:var(--green);font-size:18px">R$ ${total.replace('.',',')}</div>
-  </div><div style="font-size:11px;color:var(--t3);margin-top:4px">Os diamantes caem na sua conta quando o admin confirmar o comprovante.</div>`;
+    <div><strong>${NOME[plano]||plano}</strong> · ${dias===365?'1 ano':dias+' dias'}</div>
+    <div style="font-weight:800;color:var(--green);font-size:18px">R$ ${brl(total)}</div>
+  </div><div style="font-size:11px;color:var(--t3);margin-top:4px">O valor exato é sempre conferido pelo servidor — este é o preço oficial da tabela.</div>`;
 
-  // Pagamento único — Pix pro PicPay do Andrio (v43), agora como DOAÇÃO.
+  // Pagamento único — Pix pro PicPay do Andrio (v43), agora pagamento direto.
   const payEl=g('#plan-payment-links');
   if(payEl){
     payEl.innerHTML=`<div style="background:linear-gradient(135deg,rgba(16,185,129,.1),rgba(5,150,105,.06));border:1.5px solid rgba(16,185,129,.35);border-radius:12px;padding:14px">
       <div style="font-size:13px;font-weight:800;color:var(--green);margin-bottom:10px;display:flex;align-items:center;gap:6px">
-        \u{1F4F1} Doar via Pix (PicPay) — ${qty} \u{1F48E}
+        📱 Pagar via Pix (PicPay) — ${NOME[plano]||plano} · ${dias===365?'1 ano':dias+' dias'}
       </div>
       <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:10px;margin-bottom:10px">
         <div style="font-size:11px;color:var(--t3);margin-bottom:4px">Chave Pix (telefone) — PicPay:</div>
         <div style="font-size:16px;font-weight:800;color:var(--green);letter-spacing:.5px;word-break:break-all">${PIX_KEY}</div>
         <div style="font-size:11px;color:var(--t3);margin-top:4px">Titular: <strong style="color:var(--text)">${PIX_NAME}</strong></div>
       </div>
-      <button class="btn btn-success w100" onclick="navigator.clipboard.writeText('${PIX_KEY}');toast('Chave Pix copiada \u2713','g')" style="margin-bottom:10px;font-size:14px;padding:12px">
+      <button class="btn btn-success w100" onclick="navigator.clipboard.writeText('${PIX_KEY}');toast('Chave Pix copiada ✓','g')" style="margin-bottom:10px;font-size:14px;padding:12px">
         <i class="ti ti-copy"></i> Copiar chave Pix
       </button>
       <div style="background:rgba(16,185,129,.12);border-radius:8px;padding:10px;text-align:center">
-        <div style="font-size:20px;font-weight:800;color:var(--green)">R$ ${total.replace('.',',')}</div>
-        <div style="font-size:11px;color:var(--t3);margin-top:2px">${qty} \u{1F48E} · Doação única</div>
+        <div style="font-size:20px;font-weight:800;color:var(--green)">R$ ${brl(total)}</div>
+        <div style="font-size:11px;color:var(--t3);margin-top:2px">${NOME[plano]||plano} · ${dias===365?'1 ano':dias+' dias'}</div>
       </div>
       <div style="font-size:11px;color:var(--t3);margin-top:8px;text-align:center">
-        Doe por QUALQUER banco ou pelo app do PicPay usando a chave acima. Depois envie o comprovante abaixo — assim que o admin confirmar, seus diamantes caem na conta.
+        Pague por QUALQUER banco ou pelo app do PicPay usando a chave acima. Depois envie o comprovante abaixo — seu pedido é analisado assim que o comprovante chegar.
       </div>
     </div>`;
   }
@@ -8554,7 +8438,7 @@ function goToPlanStep1() {
 // → JPEG ~1600px) antes de subir — mata HEIC de iPhone (que o robô de
 // leitura não entende), derruba fotos de 5MB pra ~200KB e padroniza o mime.
 // PDF passa direto (o robô agora lê PDF também). Qualquer falha = arquivo
-// cru como sempre foi (fail-open, nunca trava o envio da doação).
+// cru como sempre foi (fail-open, nunca trava o envio do pedido).
 function _compComprovante(file){
   return new Promise((resolve)=>{
     try{
@@ -8609,9 +8493,11 @@ async function handleComprovante(ev) {
 }
 
 async function submitPlanOrder() {
-  // 💎 v64: envia pedido de DOAÇÃO (tipo:"doacao") — o servidor calcula os
-  // diamantes pelo valor (1 💎 = R$1,50) e o admin credita ao aprovar.
-  const qty=Math.max(0,parseInt(window._diamQtyPedido,10)||0);
+  // v170: envia pedido de PLANO DIRETO (tipo:'plano') — o servidor
+  // recalcula o preço oficial (plano+dias) e IGNORA qualquer valor mandado
+  // pelo cliente. consentimento:true só vai se o checkbox estiver marcado
+  // — sem isso o front nem tenta a chamada (o backend também recusa, 400).
+  const plano=window._planoEscolhido, dias=window._diasEscolhido;
   const name = g('#plan-form-name')?.value.trim() || '';
   const wpp = g('#plan-form-wpp')?.value.trim() || '';
   const phone = g('#plan-form-phone')?.value.trim() || '';
@@ -8621,28 +8507,31 @@ async function submitPlanOrder() {
   const statusEl = g('#plan-submit-status');
   const btn = g('#plan-submit-btn');
 
-  if(!qty) { toast('Volte e escolha quantos \u{1F48E} você quer doar', 'r'); return; }
+  if(!plano||!dias) { toast('Volte e escolha o plano e o período', 'r'); return; }
+  if(!g('#plan-consent-check')?.checked) { toast(t('consent_required_msg'), 'r'); return; }
   if(!name) { toast('Preencha seu nome', 'r'); return; }
   if(!wpp) { toast('Preencha o WhatsApp', 'r'); return; }
   if(!city) { toast('Preencha a cidade', 'r'); return; }
-  if(!_planComp64) { toast('Adicione o comprovante da doação', 'r'); g('#comp-drop-area').style.borderColor = 'var(--red)'; return; }
+  if(!_planComp64) { toast('Adicione o comprovante do pagamento', 'r'); g('#comp-drop-area').style.borderColor = 'var(--red)'; return; }
 
   const pagoEmVal = g('#plan-form-pago-em')?.value;
-  if(!pagoEmVal) { toast('Informe a data em que você doou (a mesma do comprovante)', 'r'); g('#plan-form-pago-em')?.focus(); return; }
+  if(!pagoEmVal) { toast('Informe a data em que você pagou (a mesma do comprovante)', 'r'); g('#plan-form-pago-em')?.focus(); return; }
   const pagoEmTs = new Date(pagoEmVal + 'T12:00:00').getTime();
   if(isNaN(pagoEmTs)) { toast('Data inválida', 'r'); return; }
   if(pagoEmTs > Date.now() + 86400000) { toast('A data não pode ser no futuro', 'r'); return; }
 
-  const total = parseFloat((qty*(U.diamondPrice||1.5)).toFixed(2));
+  const row=(window._planosData?.precos||[]).find(p=>p.plano===plano&&p.dias===dias);
+  const total = row?row.valorTotal:0;
+  const NOME={vip:'⭐ VIP Manual',vipro:'🤖 VIPro',doublepro:'💎 DoublePro'};
 
   if(btn) { btn.disabled = true; btn.innerHTML = '<span class="spin spin-sm"></span> Enviando...'; }
-  if(statusEl) { statusEl.style.display = 'block'; statusEl.innerHTML = '<div style="font-size:12px;color:var(--t3)">Enviando doação...</div>'; }
+  if(statusEl) { statusEl.style.display = 'block'; statusEl.innerHTML = '<div style="font-size:12px;color:var(--t3)">Enviando pedido...</div>'; }
 
   try {
     const r = await fetch('/api/pedido', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tipo: 'doacao', valorTotal: total, userName: name, userWhatsapp: wpp, userPhone: phone, userCity: city, userState: state, nota, comprovante: _planComp64, comprovanteType: _planCompType, pagoEm: pagoEmTs }),
+      body: JSON.stringify({ tipo: 'plano', plano, dias, consentimento: true, userName: name, userWhatsapp: wpp, userPhone: phone, userCity: city, userState: state, nota, comprovante: _planComp64, comprovanteType: _planCompType, pagoEm: pagoEmTs }),
     });
     const d = await r.json();
     if(d.ok) {
@@ -8653,24 +8542,30 @@ async function submitPlanOrder() {
       if(d.duplicado) {
         if(dTitle) dTitle.textContent = 'Você já tem um pedido!';
         if(dMsg) dMsg.innerHTML = esc(d.message || 'Você já tem um pedido em análise.') + '<br><strong>Para dúvidas, entre em contato:</strong>';
-        toast('\u2139\uFE0F ' + (d.message || 'Você já tem um pedido em análise.'), 'au');
+        toast('ℹ️ ' + (d.message || 'Você já tem um pedido em análise.'), 'au');
       } else {
-        gaEvent('purchase_order_submitted',{plan:'doacao',dias:0,value:total,currency:'BRL'});
-        if(dTitle) dTitle.textContent = 'Doação enviada! \u{1F48E}';
-        if(dMsg) dMsg.innerHTML = 'Recebemos sua doação e o comprovante.<br>Assim que o admin confirmar, seus <strong>' + qty + ' \u{1F48E}</strong> caem na conta e você pode trocar por planos na hora. Avisamos por notificação!<br><strong>Para dúvidas, entre em contato:</strong>';
-        toast('\u2705 Doação enviada! Aguarde a confirmação.', 'g');
+        gaEvent('purchase_order_submitted',{plan:plano,dias,value:total,currency:'BRL'});
+        if(dTitle) dTitle.textContent = 'Pedido enviado! 🎉';
+        // Promessa HONESTA de prazo: mediana REAL das últimas confirmações
+        // (vinda de /api/planos), NUNCA um número fixo inventado tipo "24h".
+        const med=window._planosData?.medianaAprovacaoHoras;
+        const medTxt=(typeof med==="number"&&med>0)
+          ?('normalmente em <strong>~'+(med<1?Math.max(1,Math.round(med*60))+' minutos':String(med).replace('.',',')+'h')+'</strong>')
+          :'assim que possível';
+        if(dMsg) dMsg.innerHTML = 'Recebemos seu pedido e o comprovante.<br>Um admin confirma manualmente — '+medTxt+' — e assim que confirmado, seu <strong>'+(NOME[plano]||plano)+'</strong> é ativado. Avisamos por notificação!<br><strong>Para dúvidas, entre em contato:</strong>';
+        toast('✅ Pedido enviado! Aguarde a confirmação.', 'g');
       }
-      renderPushAsk('plan-push-ask','Quer saber NA HORA em que seus diamantes forem creditados? Ative as notificações.');
+      renderPushAsk('plan-push-ask','Quer saber NA HORA em que seu plano for ativado? Ative as notificações.');
       _pendingOrderCache=undefined;
       _mpLoaded=false;
 
     } else {
       if(statusEl) statusEl.innerHTML = '<div style="font-size:12px;color:var(--red)">Erro: ' + esc(d.error||'?') + '</div>';
-      if(btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-send"></i> Enviar doação'; }
+      if(btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-send"></i> Enviar pedido'; }
     }
   } catch(e) {
     if(statusEl) statusEl.innerHTML = '<div style="font-size:12px;color:var(--red)">Erro: ' + esc(e.message) + '</div>';
-    if(btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-send"></i> Enviar doação'; }
+    if(btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-send"></i> Enviar pedido'; }
   }
 }
 
@@ -8693,31 +8588,33 @@ async function loadMeusPagamentos(){
     const d=await r.json();
     const peds=(d.pedidos||[]).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
     _mpLoaded=true;
-    // 💼 MC5-P2: renderer da ERA DOAÇÃO (o antigo era da era plano e mostrava
-    // "doacao · ?d"): status em vocabulário de doação, mediana REAL de
-    // confirmação no lugar do "24h" fixo, motivo do cancelamento visível e
-    // status do comprovante (com reenvio em 1 toque quando ilegível).
-    const _med=window._diamMediana;
+    // v170: renderer da ERA COMPRA DIRETA — status em vocabulário de pedido
+    // de plano, mediana REAL de confirmação no lugar do "24h" fixo, motivo
+    // do cancelamento visível e status do comprovante (com reenvio em 1
+    // toque quando ilegível). Pedidos LEGADOS que ainda tenham tipo
+    // "doacao" no banco (importados/antigos, de antes do v170) mostram só
+    // o valor em R$, sem inventar conversão pra diamante — o crédito de
+    // 💎 não existe mais.
+    const _med=window._planosData?.medianaAprovacaoHoras;
     const _medTxt=(typeof _med==="number"&&_med>0)?(t('mp_media')+": ~"+(_med<1?Math.max(1,Math.round(_med*60))+"min":String(_med).replace(".",",")+"h")):t('mp_sub24');
     const stLbl=(p)=>{
-      const ehDoa=p.tipo==="doacao"||p.plano==="doacao";
       if(p.status==="pendente"&&p.autoAtivado)return["⚡ Liberado provisório","#d97706","rgba(245,158,11,.12)","Comprovante conferido pelo robô — plano já liberado; confirmação final da equipe pendente"];
       if(p.status==="pendente")return[t('mp_pend'),"#d97706","rgba(245,158,11,.12)",_medTxt];
       if(p.status==="pago")return[t('mp_pago'),"#2563eb","rgba(37,99,235,.1)",""];
-      if(p.status==="ativo")return[ehDoa?t('mp_cred'):"✅ Ativo","#059669","rgba(16,185,129,.12)",p.ativadoEm?("✔ "+new Date(p.ativadoEm).toLocaleDateString("pt-BR")):""];
+      if(p.status==="ativo")return["✅ Ativo","#059669","rgba(16,185,129,.12)",p.ativadoEm?("✔ "+new Date(p.ativadoEm).toLocaleDateString("pt-BR")):""];
       if(p.status==="cancelado")return[t('mp_canc'),"#dc2626","rgba(239,68,68,.1)",p.motivoCancelamento?(t('mp_motivo')+": "+esc(p.motivoCancelamento)):t('mp_canc_sub')];
       return[esc(p.status||"?"),"var(--t3)","var(--sf2)",""];
     };
     const codeNote=(U.vip?.source==="code")?`<div style="font-size:11.5px;color:var(--t2);background:var(--sf2);border:1px solid var(--border2);border-radius:10px;padding:9px 12px;margin-bottom:6px">🎟️ Seu plano atual veio de um <strong>código promocional</strong>.</div>`:"";
     if(!peds.length){
-      box.innerHTML=codeNote+`<div style="font-size:12px;color:var(--t3);text-align:center;padding:10px">Nenhuma doação por aqui ainda.</div>`;
+      box.innerHTML=codeNote+`<div style="font-size:12px;color:var(--t3);text-align:center;padding:10px">Nenhum pedido por aqui ainda.</div>`;
       return;
     }
     box.innerHTML=codeNote+peds.map(p=>{
       const[lbl,cor,bg,sub]=stLbl(p);
-      const ehDoa=p.tipo==="doacao"||p.plano==="doacao";
-      const planLbl=ehDoa
-        ?("💎 "+t('mp_doa')+" · "+(parseInt(p.diamantesCreditados||p.diamantes,10)||Math.round((+p.valorTotal||0)/(U.diamondPrice||1.5)))+" "+t('mp_diam'))
+      const ehLegadoDoacao=p.tipo==="doacao"||p.plano==="doacao"; // legado pré-v170, sem conversão pra 💎
+      const planLbl=ehLegadoDoacao
+        ?"🧾 Pedido (legado)"
         :((({vip:"⭐ VIP Manual",vipro:"🤖 VIPro",doublepro:"💎 DoublePro"})[p.plano]||esc(p.plano||"?"))+" · "+(parseInt(p.dias,10)||"?")+"d");
       const dt=p.createdAt?new Date(p.createdAt).toLocaleDateString("pt-BR"):"–";
       const compLinha=(()=>{
@@ -8772,8 +8669,6 @@ function mpReenviarComprovante(pid){
   };
   inp.click();
 }
-
-// Inicializar calculator quando v-plans é aberto
 
 // ════════════════════════════════════════════════════════════
 //  WHATSAPP OBRIGATÓRIO

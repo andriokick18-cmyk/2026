@@ -1,152 +1,106 @@
-# ✅ Google OAuth Verification Checklist — H2BApply
+# ✅ Checklist completo — Verificação OAuth do Google (H2BApply)
 
-**Gerado em:** Junho 2026 · **Atualizado em:** 26/07/2026 (v72 — send-only universal)
-**App:** H2BApply · **3 servidores, 3 (ou 2) projetos OAuth no Google Cloud**
-**OAuth Client:** Google Cloud Console → APIs & Services → Credentials
+**Atualizado em:** 09/09/2026 · **Domínio:** h2bapply.com · **Servidor único** (a era multi-servidor acabou — não é mais preciso rodar fusão nenhuma antes de verificar).
 
----
-
-## 🎉 CONFIRMADO HOJE: NENHUM DOS 3 SERVIDORES PRECISA DE CASA
-
-Pesquisei agora na documentação oficial do Google (links no fim) pra ter
-certeza, porque isso muda o tamanho do problema inteiro:
-
-O Google divide escopos OAuth em 3 níveis — **não-sensível** (email,
-profile), **sensível** (ex.: `gmail.send`) e **restrito** (ex.:
-`gmail.readonly`, `gmail.modify`, `gmail.metadata`, `gmail.insert`,
-`gmail.compose`, `mail.google.com`). **`gmail.send` é SENSÍVEL, não
-RESTRITO** — confirmado na própria referência de escopos do Gmail e nas
-páginas de verificação do Google (fontes no fim do arquivo).
-
-Por que isso importa tanto: só escopo **restrito** exige a **auditoria
-CASA** (Cloud Application Security Assessment) — um processo caro (pode
-passar de milhares de dólares) e demorado (meses), reavaliado TODO ANO.
-Quem pede **só escopo sensível** (nosso caso, desde o v72 — TODO servidor
-pede só `gmail.send`) passa pela **verificação sensível simples**: sem
-CASA, sem auditoria de segurança terceirizada. Prazo típico da própria
-documentação do Google: **~3 a 10 dias úteis** depois de uma submissão
-completa (bem diferente do "4-6 semanas" que este arquivo dizia antes —
-aquele prazo era pro cenário ANTIGO, com `gmail.readonly`+`gmail.modify`,
-que É restrito).
-
-**Conclusão prática:** o v72 (26/07) não foi só uma decisão de privacidade
-— foi a decisão que tirou os 3 servidores da fila cara/lenta da CASA e
-botou todos na fila rápida. Isso vale pros 3 igual, não só pro Servidor 3.
+Consolida e substitui `GUIA_VERIFICACAO_GOOGLE.txt` e o checklist anterior. O roteiro de vídeo continua em `GOOGLE_VERIFICATION_VIDEO_SCRIPT.md`. Todo item marcado **[CÓDIGO]** já foi conferido/corrigido no repositório; todo item **[DONO]** só pode ser feito por fora, no Google Cloud Console / Search Console — nenhum código resolve isso.
 
 ---
 
-## 🚀 PLANO DE ATAQUE — OS 3 SERVIDORES (26/07/2026)
+## Por que isso é rápido e barato pro nosso caso
 
-Cada servidor tem seu próprio Client ID no Google Cloud (README_SERVIDORES:
-Servidor 1 e 3 têm projeto próprio; o Servidor 2 pode estar usando o
-mesmo Client ID do 1 — CONFERIR). Verificação é POR PROJETO OAuth, não por
-domínio — ou seja, pode ser preciso repetir este passo a passo até 3 vezes
-(uma vez por Client ID diferente).
-
-**ORDEM DE PRIORIDADE (maior impacto primeiro):**
-1. **Servidor 3** (applyh2b.com) — CRÍTICO: é onde todo cadastro NOVO
-   entra, e o teto de ~100 usuários do app não verificado trava o
-   crescimento agora. Prioridade máxima.
-2. **Servidor 1** (h2bapply.com) — já tem base de usuários; conferir se
-   já foi verificado alguma vez (login do dono no GCC do projeto dele diz).
-3. **Servidor 2** (h2b-teste) — se usa o MESMO Client ID do Servidor 1,
-   verificar o 1 já resolve os dois.
-
-**PRÉ-REQUISITO do Servidor 3 (bloqueia tudo):** o DNS de applyh2b.com
-precisa apontar pro Render e abrir com cadeado (README_SERVIDORES, Caso
-1). O Google visita o site do domínio durante a análise — domínio morto
-= reprovação na hora. **Ainda pendente hoje** (conferido agora: o domínio
-ainda resolve pro parking da Namecheap, não pro Render).
-
-**PASSO A PASSO (repita para cada Client ID/projeto, ~30 min + espera):**
-1. search.google.com/search-console → adicionar a propriedade do domínio
-   daquele servidor → verificar (DNS TXT na Namecheap ou HTML tag).
-2. Google Cloud Console (projeto daquele servidor) → OAuth consent screen:
-   - App name: `H2BApply` · Support email: e-mail de suporte daquele servidor
-   - App logo: ícone 120x120 (usar o icon-512.png reduzido)
-   - App domain / Privacy / Terms: URLs daquele domínio
-   - Authorized domains: SÓ o domínio real (remover `onrender.com` se
-     estiver lá — domínio de plataforma não é aceito como authorized domain)
-3. Mesma tela → Scopes → confirmar que só existe:
-   `openid`, `email`, `profile`, `.../auth/gmail.send`
-   (se aparecer `gmail.readonly` ou `gmail.modify` sobrando de uma
-   verificação antiga, REMOVER — cada escopo a mais que sobra reabre a
-   exigência de justificar ele também)
-4. Publishing status → **Publish app** → botão **Prepare for verification**.
-5. JUSTIFICATIVA DO ESCOPO gmail.send (colar em inglês):
-   > H2BApply helps Brazilian workers apply to U.S. seasonal jobs (H-2B/H-2A
-   > visas) listed publicly by the U.S. Department of Labor. The user writes
-   > their own application e-mails and attaches their own resume; the app
-   > sends these applications FROM the user's own Gmail account, one by one,
-   > only to employers the user selected. gmail.send is the only Gmail scope
-   > requested: the app cannot read, modify, or delete any mailbox content,
-   > and does not access the inbox in any way. Each send is user-initiated
-   > (manually or via a queue the user starts, pauses and stops at any time).
-6. VÍDEO de demonstração (roteiro pronto em
-   GOOGLE_VERIFICATION_VIDEO_SCRIPT.md — gravar no domínio daquele
-   servidor, mostrando: login → consent com 1 escopo só (send) → usuário
-   escreve os próprios textos → envio → o e-mail aparece em "Enviado" DO
-   GMAIL DO USUÁRIO). Subir como link não listado no YouTube.
-7. Enviar e responder os e-mails do time de verificação (chegam no e-mail
-   de suporte daquele projeto — responder SEMPRE em inglês, rápido; é
-   assim que se mantém o prazo de ~3-10 dias em vez de esticar).
-
-**Enquanto a verificação não sai:** o aviso amarelo continua (normal) e o
-teto de 100 vale no Servidor 3 — se apertar, os primeiros ~100 são os
-early users e a verificação vira urgência máxima.
+O Google separa escopos OAuth em 3 níveis: não-sensível, **sensível** (ex.: `gmail.send`) e **restrito** (ex.: `gmail.readonly`, `gmail.modify`, `mail.google.com`). Só escopo **restrito** exige a auditoria **CASA** (paga, cara, demorada, renovada todo ano). `gmail.send` é sensível — verificação padrão e gratuita, **~3 a 10 dias úteis** após submissão completa. O app já pede *só* esse escopo (hardcoded, `GMAIL_SEND_ONLY = true`, `server.js`) — a decisão mais importante já está tomada.
 
 ---
 
-## 🟢 JÁ ESTÁ CORRETO (código — vale pros 3 servidores desde o v72)
+## A. Escopo e arquitetura OAuth — técnico, no código
 
-| Item | Status | Detalhes |
-|------|--------|----------|
-| **Escopos mínimos** | ✅ | Apenas: `openid`, `email`, `profile`, `gmail.send` — hardcoded, não é mais opcional |
-| **Sem escopos restritos** | ✅ | Sem `gmail.readonly`, `gmail.modify`, `gmail.metadata`, `mail.google.com` — nunca mais, nos 3 |
-| **Nenhuma leitura de inbox** | ✅ | v72: bounce-scan e polling de resposta foram desligados — zero chamada de leitura ao Gmail |
-| **Página de Privacidade** | ✅ | `/privacy` e `/privacidade` — completa, já reflete o modo só-envio |
-| **Página de Termos** | ✅ | `/terms` e `/termos` |
-| **Página de Exclusão de Conta** | ✅ | `/delete-account` — exigida pelo Google |
-| **HTTPS** | ✅ | Render.com fornece SSL automático |
-| **robots.txt / sitemap.xml** | ✅ | Presentes |
-| **Página google-data-usage** | ✅ | `/google-data-usage` |
-| **Política de Limited Use** | ✅ | Declarada na `/privacy` e `/google-data-usage` |
-| **Revogação de token** | ✅ | Tokens revogados ao excluir conta |
-| **State parameter no OAuth** | ✅ | CSRF protection implementada |
-| **Rate limit no OAuth** | ✅ | 15 tentativas por 15 minutos |
+1. **[CÓDIGO ✅]** Só `openid email profile gmail.send` é solicitado — `OAUTH_SCOPES` em `server.js:136`, hardcoded, não é mais toggle por ambiente.
+2. **[CÓDIGO ✅]** Nunca `gmail.readonly`/`gmail.modify`/`gmail.metadata`/`gmail.insert`/`gmail.compose`/`mail.google.com`.
+3. **[CÓDIGO ✅]** Nenhuma rota lê a caixa de entrada — bounce-scan e polling de resposta desligados de propósito (`GMAIL_SEND_ONLY` guarda isso em pelo menos 3 pontos do server.js).
+4. **[CÓDIGO ✅ — conferido 09/09]** `state` contra CSRF: `/oauth/start` gera um valor aleatório de 20 bytes (`crypto.randomBytes`), grava em `sessions["__p__"+state]` (ou `__sender__` no fluxo de conta extra) e consome UMA VEZ SÓ no `/oauth/callback` (`delete` logo após o uso — nunca reaproveitável). Sem state válido = fluxo recusado.
+5. **[CÓDIGO ✅ — conferido 09/09]** Rate limit: `/oauth/start` chama `rateLimit(ip+"_oauth", 30, 900_000)` — 30 tentativas por 15 minutos por IP, com aviso claro ao estourar.
+6. **[CÓDIGO ✅ — conferido 09/09]** Token revogado de verdade ao excluir conta: `/api/account/delete` chama o endpoint `/revoke` do Google (`oauth2.googleapis.com`) com o `refresh_token`/`cached_access_token` do usuário antes do soft-delete.
+7. **[CÓDIGO ✅ — conferido 09/09]** Só 2 redirect URIs vivos no código, sempre construídos a partir de um allowlist de hosts (`_oauthBase()` — nunca aceita host arbitrário do header): `/oauth/callback` (fluxo principal, unificado) e `/oauth/add-sender/callback` (mantido como alias de compatibilidade, redireciona pro unificado). **[DONO]** só falta conferir que os 2 estão cadastrados no Google Cloud Console exatamente assim.
+8. **[CÓDIGO ✅ — conferido 09/09]** Renovação automática de token expirado no meio da fila: 401/"Invalid Credentials"/"Token has been expired or revoked" durante um envio (manual ou automático) dispara `refreshTokenForUser`/`refreshSenderToken` e RE-TENTA o mesmo envio — a vaga nunca é queimada por um token vencido, e o erro nunca aparece pro usuário à toa.
+
+## B. Domínio e Search Console
+
+9. **[DONO]** Verificar a propriedade `h2bapply.com` em search.google.com/search-console (registro TXT no DNS da Namecheap).
+10. **[DONO]** Confirmar que homepage, política de privacidade, termos, authorized domains, redirect URIs e JavaScript origins **apontam todos pro MESMO domínio verificado** — um único campo divergente (ex.: um subdomínio não verificado) já reprova a submissão inteira.
+11. **[DONO]** Remover qualquer `onrender.com` que tenha sobrado da lista de "authorized domains" — domínio de plataforma não conta como domínio próprio.
+12. **[DONO]** DNS ativo com HTTPS válido (cadeado) — o Google visita o site durante a análise; domínio fora do ar é reprovação na hora.
+
+## C. Tela de permissão OAuth (Google Cloud Console)
+
+13. **[DONO]** Nome do app **exatamente** igual ao nome mostrado no site: `H2BApply`.
+14. **[DONO]** E-mail de suporte real e monitorado (já usamos `suporte@h2bapply.com` em todo o site — usar o mesmo aqui).
+15. **[DONO]** E-mail de contato do desenvolvedor real e monitorado.
+16. **[DONO]** Homepage URL = `https://h2bapply.com`.
+17. **[CÓDIGO ✅]** Privacy Policy URL pronta e pública sem login: `/privacidade`.
+18. **[CÓDIGO ✅]** Terms of Service URL pronta e pública sem login: `/termos`.
+19. **[DONO]** Authorized domains = só `h2bapply.com`.
+20. **[DONO] ⚠️ Estratégico:** NÃO subir logo na primeira submissão — logo dispara uma verificação de marca separada que atrasa tudo. Subir só depois de aprovado.
+21. **[DONO]** Escopos declarados na tela = exatamente os usados no código (item 1), nada "por precaução".
+22. **[DONO]** Tipo de usuário: **Externo** (qualquer conta Google pode se cadastrar).
+23. **[DONO]** Publishing status: **Em produção** (não "Testing") antes de clicar em "Preparar para verificação".
+
+## D. Páginas obrigatórias do site — públicas, sem exigir login
+
+24. **[CÓDIGO ✅]** `/privacidade` e `/privacy` — com o parágrafo "Google API Limited Use Disclosure" em inglês.
+25. **[CÓDIGO ✅]** `/termos` e `/terms`.
+26. **[CÓDIGO ✅]** `/delete-account` e `/excluir-conta` — funcional, com instrução clara.
+27. **[CÓDIGO ✅ — criado agora]** `/google-data-usage` — página dedicada, curta, só sobre o uso de dados do Google (reforça a Limited Use disclosure num link direto e fácil de achar pro revisor, em vez de exigir que ele leia a política inteira).
+28. **[CÓDIGO ✅]** Homepage com a seção "Como o H2BApply usa sua conta Google" explicando o escopo em linguagem simples.
+29. **[CÓDIGO ✅]** `robots.txt` e `sitemap.xml`.
+30. **[CÓDIGO ✅]** Contato visível em mais de um lugar (rodapé + páginas legais + WhatsApp).
+
+## E. O vídeo de demonstração
+
+31. **[DONO]** Gravado no domínio REAL de produção — nunca localhost/staging.
+32. **[DONO]** Mostra a tela de consentimento do Google com o nome do app e a permissão "Enviar e-mail em seu nome" visíveis por alguns segundos — o momento mais importante do vídeo inteiro.
+33. **[DONO]** Mostra o fluxo completo: login → usuário escreve o próprio e-mail (assunto/corpo/currículo) → clica Enviar → o e-mail aparece em "Enviados" no Gmail do próprio usuário.
+34. **[DONO]** Formato: YouTube não listado, 2 a 4 minutos, com ou sem narração (legendas/zoom ajudam).
+35. **[DONO] (reforça bastante)** Mostrar myaccount.google.com → Segurança → apps com acesso → H2BApply aparecendo só com "enviar e-mail", nada mais.
+
+## F. Texto de justificativa do escopo
+
+36. **[DONO]** Descrever em inglês, específico ao produto (não genérico) — modelo pronto em `GUIA_VERIFICACAO_GOOGLE.txt`.
+37. **[DONO]** Deixar explícito: nunca lê, nunca armazena, nunca acessa a caixa de entrada.
+38. **[DONO]** Referenciar a URL exata da política de privacidade dentro do texto.
+
+## G. Erros mais comuns que reprovam — evitar
+
+39. Nome do app inconsistente entre o site e a tela de consentimento.
+40. Subir logo junto na primeira submissão (ver item 20).
+41. Homepage/política hospedada em domínio não verificado no Search Console.
+42. Vídeo sem mostrar a tela de consentimento, ou gravado fora do domínio real.
+43. Pedir qualquer escopo a mais "por via das dúvidas" — cada escopo extra exige justificar ele também.
+44. Responder devagar, ou em português, ao time de revisão do Google (sempre inglês, sempre rápido — é o que segura o prazo de poucos dias).
+45. Política de privacidade sem a frase de Limited Use — a nossa já tem.
+
+## H. Sinais de confiança que reviewers (humanos) avaliam, além do checklist técnico
+
+46. **[pendente — próxima etapa]** Site rápido e limpo no celular — não só "funciona", mas parece profissional. Reviewers do Google acessam pelo telefone também, e isso pesa na avaliação subjetiva de "isso parece legítimo?".
+47. **[CÓDIGO ✅]** Sem erros de JavaScript no console — coberto pela suíte de testes (guarda de sintaxe `vm.Script` em todo `<script>` inline).
+48. **[CÓDIGO ✅]** HTTPS em toda navegação, sem conteúdo misto.
+49. **[CÓDIGO ✅]** Ícones e `manifest.json` completos para instalar como app (192/256/384/512/maskable + favicon já existem).
+50. **[CÓDIGO ✅]** Nome da marca consistente em toda parte — título da aba, favicon, rodapé, e-mails, redes sociais.
+51. **[CÓDIGO ✅]** Política de privacidade e termos escritos em linguagem clara, não só juridiquês — Google também avalia isso.
+52. **[CÓDIGO ✅]** Nada na tela de login que pareça urgência artificial ou phishing (contagens regressivas agressivas, etc.).
+
+## I. Pós-aprovação
+
+53. **[DONO]** Só depois de aprovado: subir o logo real na tela de consentimento.
+54. **[DONO]** Desligar qualquer banner temporário de aviso de reset/transição que ainda esteja ligado nas Configurações do admin.
+55. **[DONO]** Escopo sensível não tem prazo fixo de revalidação anual (isso é regra do escopo *restrito*/CASA) — ainda assim, vale conferir 1x/ano se a política do Google mudou algo.
 
 ---
 
-## 🔴 SÓ O DONO PODE FAZER (fora do código, no Google Cloud Console)
-
-| Item | Prioridade | Onde |
-|------|-----------|------|
-| **Corrigir DNS do applyh2b.com** | 🔴 BLOQUEIA TUDO | Namecheap + Render (README_SERVIDORES, Caso 1) |
-| **Conferir se Servidor 2 usa o MESMO Client ID do 1** | 🔴 CRÍTICO | Evita fazer o trabalho 2x à toa |
-| **Verificar domínio no Search Console** | 🔴 CRÍTICO | search.google.com/search-console, por domínio |
-| **Authorized domains no GCC (remover onrender.com)** | 🔴 CRÍTICO | OAuth consent screen, por projeto |
-| **Logo 120x120 + nome + homepage/privacy/terms** | 🟡 IMPORTANTE | OAuth consent screen, por projeto |
-| **Publish app + Prepare for verification** | 🔴 CRÍTICO | OAuth consent screen, por projeto |
-| **Colar a justificativa do gmail.send** | 🔴 CRÍTICO | Formulário de verificação |
-| **Gravar e subir o vídeo** | 🟡 IMPORTANTE | GOOGLE_VERIFICATION_VIDEO_SCRIPT.md |
-| **Responder e-mails do time do Google em inglês, rápido** | 🔴 CRÍTICO | Segura o prazo de ~3-10 dias |
-
----
-
-## ⚠️ RISCOS (atualizados com a confirmação de hoje)
-
-| Risco | Severidade | Mitigação |
-|-------|-----------|-----------|
-| App em "Testing" com teto de 100 usuários | 🔴 BLOQUEANTE (Servidor 3) | Publicar + verificar — some sozinho |
-| Domínio applyh2b.com sem DNS | 🔴 BLOQUEIA a verificação inteira | Corrigir Namecheap (Caso 1) |
-| Sobrar `gmail.readonly`/`modify` de config antiga em algum projeto | 🟡 MÉDIO | Conferir e remover na tela de Scopes antes de submeter |
-| ~~`gmail.send` exige CASA~~ | ✅ **DESCARTADO HOJE** | Confirmado oficialmente: sensível, não restrito — SEM CASA |
-
----
-
-## 📚 Fontes (consultadas 26/07/2026)
+## 📚 Fontes consultadas (09/09/2026)
 
 - [Sensitive scope verification — Google for Developers](https://developers.google.com/identity/protocols/oauth2/production-readiness/sensitive-scope-verification)
 - [Restricted scope verification — Google for Developers](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification)
-- [Gmail API — OAuth scopes reference](https://developers.google.com/workspace/gmail/api/auth/scopes)
-- [Restricted Scopes — Google Cloud Platform Console Help](https://support.google.com/cloud/answer/13464325)
+- [Verification requirements — Google Cloud Platform Console Help](https://support.google.com/cloud/answer/13464321)
+- [Unverified apps — Google Cloud Platform Console Help](https://support.google.com/cloud/answer/7454865)
+- [Google OAuth Verification Guide (2026)](https://singhamandeep.com/google-oauth-verification-guide/)
+- [Fix the "App isn't verified" warning (2026)](https://singhamandeep.com/google-oauth-unverified-app-warning/)

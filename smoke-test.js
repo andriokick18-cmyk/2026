@@ -134,7 +134,6 @@ users["fusao.conflito@test.com"] = {
   email: "fusao.conflito@test.com", name: "Conflito Antigo", plan: "vip",
   created_at: "2026-01-01T00:00:00.000Z", cvs: [], profiles: [],
   vip: { active: true, plan: "vip", manualExpires: Date.now() + 10 * 86400_000, autoExpires: 0, source: "payment" },
-  diamonds: { real: 5, bonus: 0 },
 };
 fs.writeFileSync(path.join(DATA, "users.json"), JSON.stringify(users, null, 2));
 // 🔓 v152: simula o ban acidental do Esdras (delete-account bane o e-mail
@@ -143,15 +142,6 @@ fs.writeFileSync(path.join(DATA, "users.json"), JSON.stringify(users, null, 2));
 // ignora pontos) — a cura precisa achar pela forma canônica, não por texto.
 fs.writeFileSync(path.join(DATA, "blocked_emails.json"), JSON.stringify({
   emails: ["esdrassilva.h2b@gmail.com", "fica.banido@test.com"] }));
-// 💎 v154: conta com bônus INFLADO pela fusão (40💎 de bônus mas só 2
-// missões pagas = 5💎, com 2💎 de bônus já gastos numa troca) — a migração
-// do boot precisa deixar bonus = 5−2 = 3, SEM tocar nos 50 reais.
-users["bonusbug@test.com"] = { email: "bonusbug@test.com", name: "Bonus Bug", plan: "free",
-  created_at: "2026-06-01T00:00:00.000Z", profiles: [],
-  diamonds: { real: 50, bonus: 40 },
-  missoes: { primeiro_envio: 1753000000000, perfil_completo: 1753000000001 },
-  diamondLedger: [{ ts: 1753100000000, tipo: "troca", qtd: -10, real: -8, bonus: -2, saldoReal: 50, saldoBonus: 40, plano: "vip" }] };
-fs.writeFileSync(path.join(DATA, "users.json"), JSON.stringify(users, null, 2));
 // 🩻 v163: 2 pedidos com comprovante em base64 pra medir os que ficam
 // RESIDENTES na RAM (mais 2 chegam depois pela fusão B+C — memX exige ≥4).
 fs.writeFileSync(path.join(DATA, "pedidos.json"), JSON.stringify([
@@ -443,13 +433,14 @@ async function testAuthWatchdogPush() {
     // no sucesso E sincronizado pelo cooldownLeft do 429 do servidor);
     // (3) o aviso das regras (planRulesNotice) chega ao usuário 1x por
     // sessão (_avisoRegrasPlanos + sessionStorage h2b_prn).
-    // v168 (auditoria 08/09/2026): o texto de venda dos números (manual/auto
-    // por plano) ERA uma string hardcoded em app.js, uma 2ª verdade separada
-    // de PLAN_LIMITS_NEW — corrigido pra derivar de d.limites (GET
-    // /api/diamonds, ver check dedicado logo abaixo, no bloco do comprador).
-    // A guarda estrutural aqui passou a checar o MECANISMO (deriva de
-    // d.limites, nunca texto solto), não mais os números como string —
-    // números certos já são provados ao vivo pelo check v168 dedicado.
+    // v168→v170 (auditoria 08/09/2026, depois retirado o diamante em 09/09):
+    // o texto de venda dos números (manual/auto por plano) ERA uma string
+    // hardcoded em app.js, uma 2ª verdade separada de PLAN_LIMITS_NEW —
+    // corrigido pra derivar sempre de GET /api/planos (ver check dedicado
+    // logo abaixo, no bloco do comprador). A guarda estrutural aqui passou a
+    // checar o MECANISMO (deriva da fonte única, nunca texto solto), não
+    // mais os números como string — números certos já são provados ao vivo
+    // pelo check v170 dedicado.
     const _v118Front = frontAll.includes("d.limites") &&
       frontAll.includes("_manualCdUntil") &&
       frontAll.includes("cooldownLeft") &&
@@ -873,16 +864,20 @@ async function testAuthWatchdogPush() {
     // README: fora do escopo.)
     // ═══ CAMINHO DO DINHEIRO: comprador (não-admin) compra, admin aprova ═══
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "comprador@test.com", name: "Comprador" });
-    const pd1 = await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, valorTotal: 150, userName: "Comprador" });
+    const pdSemConsent = await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, consentimento: false, userName: "Comprador" });
+    check("🧾 v170: pedido SEM consentimento marcado é recusado (400) — compra direta exige aceite explícito antes de criar o pedido", pdSemConsent.status === 400, pdSemConsent.body.slice(0, 140));
+    const pd1 = await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, valorTotal: 1, consentimento: true, userName: "Comprador" });
     const pdId = pd1.json?.pedidoId;
     check("pedido criado pelo comprador", pd1.json?.ok === true && !!pdId, pd1.body.slice(0, 120));
-    // 💼 MC5-P1 (29/08): desde o v154 TODO pedido de usuário é DOAÇÃO — e
-    // doação NUNCA mais cai no dedup de pendente (o PIX é feito ANTES do
-    // envio; engolir o 2º comprovante era dinheiro real sem rastro). O 2º
-    // pedido agora nasce como pedido PRÓPRIO — e é cancelado aqui em
+    const pd1Get = await get("/api/pedido/" + pdId);
+    check("🧾 v170: o preço vem SEMPRE da tabela oficial — o valorTotal mandado pelo cliente (R$1, propositalmente errado) é ignorado e o pedido nasce com R$150 (VIPro 30d)",
+      pd1Get.json?.pedido?.valorTotal === 150, JSON.stringify({ valorTotal: pd1Get.json?.pedido?.valorTotal }));
+    // 💼 MC5-P1 (29/08): pendente aberto NUNCA mais cai no dedup (o PIX é
+    // feito ANTES do envio; engolir o 2º comprovante era dinheiro real sem
+    // rastro). O 2º pedido nasce como pedido PRÓPRIO — e é cancelado aqui em
     // seguida pra não mudar o estado dos checks antigos da mesa do dono.
-    const pd2 = await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, valorTotal: 150 });
-    check("💼 MC5-P1: 2ª doação com pendente aberto vira pedido PRÓPRIO (dedup não engole mais o comprovante)", pd2.json?.ok === true && !pd2.json?.duplicado && pd2.json?.pedidoId && pd2.json?.pedidoId !== pdId, pd2.body.slice(0, 120));
+    const pd2 = await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, consentimento: true });
+    check("💼 MC5-P1: 2º pedido com pendente aberto vira pedido PRÓPRIO (dedup não engole mais o comprovante)", pd2.json?.ok === true && !pd2.json?.duplicado && pd2.json?.pedidoId && pd2.json?.pedidoId !== pdId, pd2.body.slice(0, 120));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     await req2("PATCH", "/api/pedido/" + pd2.json?.pedidoId, { status: "cancelado" });
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "comprador@test.com", name: "Comprador" });
@@ -897,22 +892,22 @@ async function testAuthWatchdogPush() {
     const bad = await req2("PATCH", "/api/pedido/" + pdId, { status: "Banana" });
     check("status fora da máquina de estados → 400", bad.status === 400, bad.body.slice(0, 100));
     const act = await req2("PATCH", "/api/pedido/" + pdId, { status: "ativo" });
-    // 💎 v154 (ordem do dono, 21/08): TODO pedido aprovado é DOAÇÃO — o
-    // pedido de "plano" do front antigo nasce/normaliza como doação e a
-    // aprovação credita SÓ diamantes (R$150 → 100💎). NENHUM dia de VIP.
-    check("💎 v154: ativação SEM senha (admin logado) → credita 100 💎 (R$150) e NÃO ativa plano nenhum",
-      act.json?.ok === true && act.json?.diamantes === 100, act.body.slice(0, 160));
+    // 🧾 v170 (dono, 09/09/2026 — "retire todo sistema de diamantes... a
+    // pessoa consegue comprar"): aprovar o pedido ativa o PLANO na hora,
+    // sem etapa de diamante no meio.
+    check("🧾 v170: ativação (admin logado) ativa o PLANO na hora — sem diamante no meio",
+      act.json?.ok === true && act.json?.plano === "vipro" && act.json?.dias === 30, act.body.slice(0, 160));
     const _udComprador = (await get("/api/admin/user-detail/" + encodeURIComponent("comprador@test.com"))).json?.user;
-    check("💎 v154: comprador NÃO ganhou nenhum dia de VIP na aprovação (plan free, sem expiração manual)",
-      (_udComprador?.plan || "free") === "free" && !(_udComprador?.vip?.manualExpires > Date.now()),
-      JSON.stringify({ plan: _udComprador?.plan, vip: _udComprador?.vip?.manualExpires }).slice(0, 120));
-    // 💎 v154: e a RECONCILIAÇÃO do boot não devolve dias por doação (era o
-    // bug real: doação sem campo `dias` caía no padrão de 30 e cada doação
-    // aprovada virava +30 dias manuais em todo boot)
-    const recDoa = await req2("POST", "/api/admin/reconciliar-planos", { apply: false });
-    check("💎 v154: reconciliação IGNORA doações — nenhuma correção proposta pro comprador (antes: +30d por doação em todo boot)",
-      recDoa.json?.ok === true && !(recDoa.json?.relatorio || []).some((x) => x.email === "comprador@test.com"),
-      JSON.stringify((recDoa.json?.relatorio || []).map((x) => x.email)).slice(0, 120));
+    check("🧾 v170: comprador ganhou o plano VIPro com dias manuais E automáticos no futuro (30d) — compra direta, sem diamante",
+      _udComprador?.plan === "vipro" && _udComprador?.vip?.manualExpires > Date.now() && _udComprador?.vip?.autoExpires > Date.now(),
+      JSON.stringify({ plan: _udComprador?.plan, vip: _udComprador?.vip }).slice(0, 160));
+    // 🧾 v170: a ativação direta já grava manualExpires/autoExpires/vip.limits
+    // e pd.diasTotal consistentes — a reconciliação do boot não deveria achar
+    // NENHUMA divergência pro comprador logo depois de uma ativação sadia.
+    const recPos = await req2("POST", "/api/admin/reconciliar-planos", { apply: false });
+    check("🧾 v170: reconciliação do boot não acusa divergência pro comprador — os dados já nascem consistentes na ativação direta",
+      recPos.json?.ok === true && !(recPos.json?.relatorio || []).some((x) => x.email === "comprador@test.com"),
+      JSON.stringify((recPos.json?.relatorio || []).map((x) => x.email)).slice(0, 120));
     const dupAct = await req2("PATCH", "/api/pedido/" + pdId, { status: "ativo" });
     check("dupla ativação do MESMO pedido é barrada (409)", dupAct.status === 409, dupAct.body.slice(0, 100));
     const fin1 = await get("/api/admin/financeiro");
@@ -1050,29 +1045,25 @@ async function testAuthWatchdogPush() {
     const se = await get("/api/sent-emails");
     check("GET /api/sent-emails → listas de enviados e fila", se.json?.ok === true && Array.isArray(se.json?.sent) && Array.isArray(se.json?.queued), se.body.slice(0, 100));
 
-    // 💎 v154: o comprador ficou com os DIAMANTES da doação (100, menos os 2
-    // do reajuste do corrigirValor 150→147 = 98) e SEGUE free — dia de VIP só
-    // por troca 💎/upgrade/código/admin, nunca por aprovação.
+    // 🧾 v170: comprador está com VIPro ativo (30d, ganho na aprovação direta)
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "comprador@test.com" });
     const st3 = await get("/api/status");
-    const dmComp = await get("/api/diamonds");
-    check("💎 v154: comprador segue FREE mas com 98 💎 reais (100 da aprovação − 2 do reajuste de valor 150→147)",
-      st3.json?.plan !== "vipro" && st3.json?.vip?.active !== true && dmComp.json?.saldo?.real === 98,
-      JSON.stringify({ plan: st3.json?.plan, saldo: dmComp.json?.saldo }).slice(0, 120));
+    check("🧾 v170: comprador está com VIPro ativo (dias manuais e automáticos no futuro) — compra direta, sem diamante",
+      st3.json?.plan === "vipro" && st3.json?.vip?.active === true, JSON.stringify({ plan: st3.json?.plan, vip: !!st3.json?.vip?.active }));
 
-    // 💎 v168 (bug real, auditoria 08/09/2026): a tela "Trocar diamantes por
-    // plano" mostrava um texto de limites HARDCODED em app.js, separado da
-    // fonte única PLAN_LIMITS_NEW — hoje batia, mas nada garantia isso no
-    // futuro. GET /api/diamonds agora expõe "limites" (mesma tabela real
-    // que trava os envios) e o front deriva o texto disso. Prova ao vivo que
-    // os números batem com PLAN_LIMITS_NEW, não só com o texto do momento.
-    check("💎 v168: GET /api/diamonds expõe 'limites' (fonte única PLAN_LIMITS_NEW) — front nunca mais hardcoda o texto de manual/auto por plano",
-      dmComp.json?.limites?.vip?.manual === 100 && dmComp.json?.limites?.vip?.auto === 0 &&
-      dmComp.json?.limites?.vipro?.manual === 100 && dmComp.json?.limites?.vipro?.auto === 100 &&
-      dmComp.json?.limites?.doublepro?.manual === 200 && dmComp.json?.limites?.doublepro?.auto === 200,
-      JSON.stringify(dmComp.json?.limites));
+    // 🧾 v170: GET /api/planos é a fonte ÚNICA e PÚBLICA de preço/limites —
+    // o front nunca hardcoda o texto de manual/auto por plano (mesma
+    // preocupação do antigo v168, agora sem diamante no meio).
+    const plTab = await get("/api/planos");
+    check("🧾 v170: GET /api/planos expõe 'limites' (fonte única PLAN_LIMITS_NEW) e 'precos' (fonte única PLANO_PRECO_TAB), sem exigir sessão",
+      plTab.json?.ok === true &&
+      plTab.json?.limites?.vip?.manual === 100 && plTab.json?.limites?.vip?.auto === 0 &&
+      plTab.json?.limites?.vipro?.manual === 100 && plTab.json?.limites?.vipro?.auto === 100 &&
+      plTab.json?.limites?.doublepro?.manual === 200 && plTab.json?.limites?.doublepro?.auto === 200 &&
+      (plTab.json?.precos || []).some((p2) => p2.plano === "vipro" && p2.dias === 30 && p2.valorTotal === 150),
+      JSON.stringify({ limites: plTab.json?.limites, n: plTab.json?.precos?.length }).slice(0, 200));
 
-    // admin cancela: caixa estornado E os 💎 da doação estornados (13c)
+    // admin cancela: caixa estornado E os dias de VIP estornados
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com" });
     const canc = await req2("PATCH", "/api/pedido/" + pdId, { status: "cancelado" });
     // 💼 MC5-P6: o cancelamento NUNCA mais APAGA a entrada do caixa — o
@@ -1086,102 +1077,10 @@ async function testAuthWatchdogPush() {
       canc.json?.ok === true && _cOrig && !!_cOrig.anuladoPor && _cAj && _cAj.valor === -147,
       JSON.stringify({ anulado: !!_cOrig?.anuladoPor, aj: _cAj?.valor }).slice(0, 120));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "comprador@test.com" });
-    const dmComp2 = await get("/api/diamonds");
-    check("💎 v154: cancelamento estorna os 💎 da doação (98→0) — regra 13c",
-      (dmComp2.json?.saldo?.real || 0) === 0, JSON.stringify(dmComp2.json?.saldo).slice(0, 100));
-
-    // ═══ 💎 v64: SISTEMA DE DIAMANTES — o novo caminho do dinheiro ═══
-    // Doação PIX → admin aprova → 💎 REAIS; troca por plano ativa NA HORA
-    // (sem lançar caixa de novo); só 💎 real transfere; bônus é gasto primeiro.
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "doador@test.com", name: "Doador" });
-    const dp1 = await req2("POST", "/api/pedido", { tipo: "doacao", valorTotal: 150, userName: "Doador", userWhatsapp: "53 9 9999-9999", userCity: "Pelotas" });
-    const dpId = dp1.json?.pedidoId || dp1.json?.pedido?.id;
-    check("💎 doação criada (R$150 → pedido tipo doacao)", dp1.json?.ok === true && !!dpId, dp1.body.slice(0, 140));
-    const dmAntes = await get("/api/diamonds");
-    check("💎 saldo começa zerado", dmAntes.json?.ok === true && dmAntes.json?.saldo?.real === 0 && dmAntes.json?.saldo?.bonus === 0, dp1.body.slice(0, 100));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-    const dpAct = await req2("PATCH", "/api/pedido/" + dpId, { status: "ativo" });
-    check("💎 aprovação da doação credita 100 💎 REAIS (R$150 ÷ 1,50)", dpAct.json?.ok === true && dpAct.json?.diamantes === 100, dpAct.body.slice(0, 140));
-    const finD = await get("/api/admin/financeiro");
-    check("💎 doação aprovada lançou R$150 no livro-caixa", (finD.json?.pagamentos || []).some((x) => x.pedidoId === dpId && x.valor === 150));
-    // bônus do admin: 20 💎 de brinde (intransferíveis, gastos primeiro)
-    const admB = await req2("POST", "/api/admin/diamonds", { email: "doador@test.com", bonus: 20, nota: "brinde smoke" });
-    check("💎 admin credita 20 💎 de brinde", admB.json?.ok === true && admB.json?.saldo?.bonus === 20, admB.body.slice(0, 100));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "doador@test.com" });
-    const dm1 = await get("/api/diamonds");
-    check("💎 saldo do doador: 100 reais + 20 bônus", dm1.json?.saldo?.real === 100 && dm1.json?.saldo?.bonus === 20, JSON.stringify(dm1.json?.saldo));
-    // transferir 30 💎 → só do REAL (bônus fica intocado)
-    const tx1 = await req2("POST", "/api/diamonds/transfer", { para: "comprador@test.com", qtd: 30 });
-    check("💎 transferência de 30 💎 sai SÓ do saldo real (bônus intacto)", tx1.json?.ok === true && tx1.json?.saldo?.real === 70 && tx1.json?.saldo?.bonus === 20, tx1.body.slice(0, 120));
-    const txMuito = await req2("POST", "/api/diamonds/transfer", { para: "comprador@test.com", qtd: 999 });
-    check("💎 transferir mais do que tem de REAL é barrado (402)", txMuito.status === 402, `status=${txMuito.status}`);
-    // troca por plano: VIP 30d = 67 💎 (100/1,50) — gasta os 20 de bônus PRIMEIRO
-    const tr1 = await req2("POST", "/api/diamonds/trocar", { plano: "vip", dias: 30 });
-    check("💎 troca por VIP 30d custa 67 💎 e ativa na hora", tr1.json?.ok === true && tr1.json?.preco === 67 && tr1.json?.saldo?.bonus === 0 && tr1.json?.saldo?.real === 23, tr1.body.slice(0, 140));
-    const stD = await get("/api/status");
-    check("💎 doador está VIP ativo depois da troca", stD.json?.plan === "vip" && stD.json?.vip?.active === true, JSON.stringify({ plan: stD.json?.plan, vip: !!stD.json?.vip?.active }));
-    // a TROCA não pode lançar caixa de novo (o dinheiro entrou na doação)
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com" });
-    const finD3 = await get("/api/admin/financeiro");
-    const entradasDoador = (finD3.json?.pagamentos || []).filter((x) => x.email === "doador@test.com");
-    check("💎 troca por plano NÃO duplica o caixa (só a doação conta)", entradasDoador.length === 1, JSON.stringify(entradasDoador.map((x) => x.valor)));
-    // saldo insuficiente é recusado com 402
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "doador@test.com" });
-    const tr2 = await req2("POST", "/api/diamonds/trocar", { plano: "doublepro", dias: 365 });
-    check("💎 troca sem saldo suficiente → 402", tr2.status === 402, `status=${tr2.status}`);
-
-    // ═══ 💎 v77 (dono, 28/07: "usuário comprou 250 reais em diamantes e
-    // ativou o DoublePro, mas não aparece lá que ele está com o doublepro")
-    // ═══════════════════════════════════════════════════════════════════
-    // CAUSA RAIZ ACHADA: doação creditava 💎 com Math.floor(valorTotal÷1,5),
-    // mas planoPrecoDiamantes() cobra o preço do plano com Math.round(). Pra
-    // planos cujo preço em R$ não é múltiplo exato de 1,5 (DoublePro 30d =
-    // R$250 = 166,67💎 "cru"), doar EXATAMENTE o valor de tabela do plano
-    // creditava 166💎 (floor) mas o plano custava 167💎 (round) — 1💎 curto,
-    // sem nenhum aviso claro, e o admin não tinha como enxergar isso na
-    // hora (daí "não sei se tá funcionando"). Corrigido: doação agora usa a
-    // MESMA regra (round) que o preço do plano — doar o valor de tabela de
-    // qualquer plano sempre cobre EXATAMENTE aquele plano, nunca mais falta
-    // 1💎 por causa de arredondamento diferente dos 2 lados da mesma conta.
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "doadorround@test.com", name: "Doador Round" });
-    const dpR1 = await req2("POST", "/api/pedido", { tipo: "doacao", valorTotal: 250, userName: "Doador Round", userWhatsapp: "53 9 9999-9999", userCity: "Pelotas" });
-    const dpRId = dpR1.json?.pedidoId || dpR1.json?.pedido?.id;
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-    const dpRAct = await req2("PATCH", "/api/pedido/" + dpRId, { status: "ativo" });
-    check("💎 v77: doar EXATAMENTE o preço de tabela do DoublePro 30d (R$250) credita 167💎 (round), não mais 166 (floor)",
-      dpRAct.json?.ok === true && dpRAct.json?.diamantes === 167, dpRAct.body.slice(0, 140));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "doadorround@test.com" });
-    const trDPR = await req2("POST", "/api/diamonds/trocar", { plano: "doublepro", dias: 30 });
-    check("💎 v77: com o crédito corrigido, dá EXATAMENTE pra trocar por DoublePro 30d (sem faltar 1💎)",
-      trDPR.json?.ok === true && trDPR.json?.preco === 167 && trDPR.json?.saldo?.real === 0, trDPR.body.slice(0, 160));
-
-    // ═══ 💎 v77b (achado revisando o v77): corrigir o VALOR de uma doação
-    // JÁ APROVADA atualizava o caixa mas nunca reajustava os diamantes já
-    // creditados — mesma classe de bug do arredondamento (13f), só que
-    // pelo caminho de CORREÇÃO manual em vez da aprovação original. Testa
-    // as 2 rotas que corrigem valor (ambas usadas pelo admin.html): PATCH
-    // /api/pedido/:id {corrigirValor} (Conferência) e POST
-    // /api/admin/pedido-set-valor (tela de Pedidos). ═══
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-    // doadorround está com saldo 0 (gastou os 167💎 no DoublePro) — corrige
-    // o valor da doação pra CIMA (R$250→R$300, precisa de 200💎) e credita
-    // a diferença (33💎) sem precisar de saldo prévio (crédito nunca falha).
-    const corrPatch = await req2("PATCH", "/api/pedido/" + dpRId, { corrigirValor: 300 });
-    check("💎 v77b: corrigirValor (Conferência) recalcula e credita a diferença de diamantes (+33💎)",
-      corrPatch.json?.ok === true && corrPatch.json?.diamCorrecao?.aplicado === 33 && corrPatch.json?.diamCorrecao?.faltou === 0,
-      corrPatch.body.slice(0, 200));
-    const dmAfterUp = await get("/api/admin/diamonds/user/doadorround@test.com");
-    check("💎 v77b: saldo do doadorround refletiu o +33💎 da correção pra cima", dmAfterUp.json?.saldo?.real === 33, JSON.stringify(dmAfterUp.json?.saldo));
-    // corrige pra BAIXO agora (R$300→R$100, precisa só de 67💎) — tem que
-    // remover 133💎, mas só sobram 33💎 no saldo (o resto já foi gasto no
-    // DoublePro) — remove o que der (33) e ACUSA o que faltou (100), nunca
-    // deixa saldo negativo.
-    const corrPost = await req2("POST", "/api/admin/pedido-set-valor", { pedidoId: dpRId, valor: 100 });
-    check("💎 v77b: pedido-set-valor remove o que der do saldo quando a correção pra baixo não cabe mais (33 removidos, 100 acusados como já gastos)",
-      corrPost.json?.ok === true && corrPost.json?.diamCorrecao?.aplicado === -33 && corrPost.json?.diamCorrecao?.faltou === 100,
-      corrPost.body.slice(0, 200));
-    const dmAfterDown = await get("/api/admin/diamonds/user/doadorround@test.com");
-    check("💎 v77b: saldo nunca fica negativo — foi a 0, não a -100", dmAfterDown.json?.saldo?.real === 0, JSON.stringify(dmAfterDown.json?.saldo));
+    const stCancelado = await get("/api/status");
+    check("🧾 v170: cancelamento estorna os DIAS de VIP concedidos (30d voltam) — pd.diasTotal alimenta o estorno-de-dias corretamente",
+      !(stCancelado.json?.vip?.manualExpires > Date.now() + 3600_000) && !(stCancelado.json?.vip?.autoExpires > Date.now() + 3600_000),
+      JSON.stringify(stCancelado.json?.vip));
 
     // ═══ 🛡️ v79 (Diego, 29/07 — áudio no WhatsApp: "ativei DoublePro pro
     // Esdras várias vezes e não entra, volta pro VipPro") ═══
@@ -1276,152 +1175,6 @@ async function testAuthWatchdogPush() {
     check("💳 v141: usuário comum recebe 401/403 (admin-only — dado financeiro sensível)", [401, 403].includes(finU403.status), `status=${finU403.status}`);
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
 
-    // ═══ ⬆️ v80 (ordem do dono, 29/07): UPGRADE DE PLANO — quem já tem plano
-    // pago ativo paga só a DIFERENÇA em 💎 (mesmo período) pra subir de tier
-    // — NUNCA reinicia nem soma dias. Cobre exatamente os 3 requisitos do
-    // dono: (1) desconta os diamantes certos, (2) dias continuam os mesmos,
-    // (3) nunca duplica o caixa (upgrade é 100% em diamantes). ═══
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "upgradeuser@test.com", name: "Upgrade User" });
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-    const upTop = await req2("POST", "/api/admin/diamonds", { email: "upgradeuser@test.com", real: 300, nota: "top-up smoke upgrade" });
-    check("⬆️ v80: top-up credita 300💎 pro teste de upgrade", upTop.json?.ok === true, upTop.body.slice(0, 120));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "upgradeuser@test.com" });
-    // Começa no VIP 30d (67💎) — plano mais barato, só manual, SEM automático ainda.
-    const upBuyVip = await req2("POST", "/api/diamonds/trocar", { plano: "vip", dias: 30 });
-    check("⬆️ v80: compra VIP 30d (67💎) pra começar o teste de upgrade", upBuyVip.json?.ok === true && upBuyVip.json?.preco === 67, upBuyVip.body.slice(0, 140));
-    const stVipAntes = await get("/api/status");
-    const manualExpiresAntes = stVipAntes.json?.vip?.manualExpires;
-    check("⬆️ v80: VIP 30d ativo, SÓ manual (sem automático ainda)", stVipAntes.json?.plan === "vip" && manualExpiresAntes > Date.now() && !(stVipAntes.json?.vip?.autoExpires > Date.now()), JSON.stringify(stVipAntes.json?.vip));
-    // Upgrade pra VIPRO — diferença: 100💎(vipro/30d) - 67💎(vip/30d) = 33💎
-    const upgVipro = await req2("POST", "/api/plans/upgrade", { novoPlano: "vipro" });
-    check("⬆️ v80: upgrade VIP→VIPRO cobra EXATAMENTE a diferença (33💎), não o preço cheio (100💎)", upgVipro.json?.ok === true && upgVipro.json?.diferenca === 33, upgVipro.body.slice(0, 160));
-    const stVipro = await get("/api/status");
-    check("⬆️ v80: upgrade NÃO mexeu no manualExpires — dias continuam EXATAMENTE os mesmos de antes", stVipro.json?.vip?.manualExpires === manualExpiresAntes, JSON.stringify({ antes: manualExpiresAntes, depois: stVipro.json?.vip?.manualExpires }));
-    check("⬆️ v80: automático foi destravado pela 1ª vez, mas até a MESMA data do manual (nunca ganhou +30d novos)", stVipro.json?.vip?.autoExpires === manualExpiresAntes, JSON.stringify({ manualExpiresAntes, autoExpiresDepois: stVipro.json?.vip?.autoExpires }));
-    check("⬆️ v80+v118: plano e limites viraram VIPRO de verdade (tabela nova: 100 manual + 100 auto)", stVipro.json?.plan === "vipro" && stVipro.json?.manualLimit === 100 && stVipro.json?.autoLimit === 100, JSON.stringify({ plan: stVipro.json?.plan, manualLimit: stVipro.json?.manualLimit, autoLimit: stVipro.json?.autoLimit }));
-    // Upgrade de novo, VIPRO→DOUBLEPRO — diferença: 167💎(doublepro/30d) - 100💎(vipro/30d) = 67💎
-    const upgDouble = await req2("POST", "/api/plans/upgrade", { novoPlano: "doublepro" });
-    check("⬆️ v80: upgrade VIPRO→DOUBLEPRO cobra EXATAMENTE a diferença (67💎)", upgDouble.json?.ok === true && upgDouble.json?.diferenca === 67, upgDouble.body.slice(0, 160));
-    const stDouble2 = await get("/api/status");
-    check("⬆️ v80: 2º upgrade TAMBÉM não mexeu nos dias — manualExpires e autoExpires continuam os mesmos do início", stDouble2.json?.vip?.manualExpires === manualExpiresAntes && stDouble2.json?.vip?.autoExpires === manualExpiresAntes, JSON.stringify(stDouble2.json?.vip));
-    check("⬆️ v80+v118: agora com DoublePro de verdade — tabela nova: 200 manual + 200 automático (não ficou preso nos limites do VipPro)", stDouble2.json?.plan === "doublepro" && stDouble2.json?.manualLimit === 200 && stDouble2.json?.autoLimit === 200, JSON.stringify({ plan: stDouble2.json?.plan, manualLimit: stDouble2.json?.manualLimit, autoLimit: stDouble2.json?.autoLimit }));
-    // Saldo final: 300 - 67(compra vip) - 33(upgrade vipro) - 67(upgrade doublepro) = 133
-    const dmUpFinal = await get("/api/diamonds");
-    check("⬆️ v80: saldo final bate exatamente com as 3 cobranças (300-67-33-67=133💎) — nada cobrado a mais ou a menos", dmUpFinal.json?.saldo?.real === 133, JSON.stringify(dmUpFinal.json?.saldo));
-    // Downgrade/mesmo-tier tem que ser recusado
-    const upSame = await req2("POST", "/api/plans/upgrade", { novoPlano: "doublepro" });
-    check("⬆️ v80: 'upgrade' pro MESMO tier que já tem é recusado (400)", upSame.status === 400, `status=${upSame.status}`);
-    const upDowngrade = await req2("POST", "/api/plans/upgrade", { novoPlano: "vipro" });
-    check("⬆️ v80: 'upgrade' pra um tier INFERIOR é recusado (400) — upgrade não é downgrade disfarçado", upDowngrade.status === 400, `status=${upDowngrade.status}`);
-    // Sem plano pago ativo não pode "upgradar"
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "semplano@test.com", name: "Sem Plano" });
-    const upSemPlano = await req2("POST", "/api/plans/upgrade", { novoPlano: "vipro" });
-    check("⬆️ v80: quem não tem plano pago ativo não consegue 'upgrade' (tem que comprar direto)", upSemPlano.status === 400, `status=${upSemPlano.status}`);
-    // Saldo insuficiente pro upgrade → 402, educado
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "pobreupgrade@test.com", name: "Pobre Upgrade" });
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-    const upPobreVip = await req2("POST", "/api/admin/set-plan", { email: "pobreupgrade@test.com", plan: "vip" }); // usa o admin (sem gastar diamante) só pra ter um VIP ativo
-    check("⬆️ v80: (setup) admin ativou VIP pro teste de saldo insuficiente", upPobreVip.json?.ok === true, upPobreVip.body.slice(0, 140));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "pobreupgrade@test.com" });
-    const upPobre = await req2("POST", "/api/plans/upgrade", { novoPlano: "vipro" });
-    check("⬆️ v80: upgrade sem 💎 suficiente → 402 (nunca ativa de graça)", upPobre.status === 402, upPobre.body.slice(0, 160));
-
-    // ═══ 📋 v118 (ORDEM DO DONO, 02/08): NOVAS REGRAS DE PLANOS ═══
-    // Tabela nova (vip 100/0 · vipro 100/100 · doublepro 200/200) vale SÓ
-    // pra ativação NOVA (vip.limits carimbado na hora — contrato congelado).
-    // Quem pagou ANTES não tem vip.limits, continua na tabela antiga até
-    // expirar (nenhum pagante perde nada) e é AVISADO via planRulesNotice.
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "legadoplano@test.com" });
-    const stLegado = await get("/api/status");
-    check("📋 v118: usuário LEGADO (VipPro pago antes da mudança, sem vip.limits) MANTÉM 200 manual + 200 auto da tabela antiga",
-      stLegado.json?.plan === "vipro" && stLegado.json?.manualLimit === 200 && stLegado.json?.autoLimit === 200,
-      JSON.stringify({ plan: stLegado.json?.plan, manualLimit: stLegado.json?.manualLimit, autoLimit: stLegado.json?.autoLimit }));
-    check("📋 v118: usuário legado recebe o AVISO das regras novas (planRulesNotice com garantia até a data + limites de hoje)",
-      typeof stLegado.json?.planRulesNotice === "string" && /garantido/.test(stLegado.json.planRulesNotice) && /200/.test(stLegado.json.planRulesNotice),
-      String(stLegado.json?.planRulesNotice).slice(0, 180));
-    // Ativação NOVA de VIP (só manual): carimba 100 manual e NÃO destrava automático
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "vipnovo118@test.com", name: "Vip Novo 118" });
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-    await req2("POST", "/api/admin/set-plan", { email: "vipnovo118@test.com", plan: "vip" });
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "vipnovo118@test.com" });
-    const stVipNovo = await get("/api/status");
-    check("📋 v118: VIP novo (R$100) = 100 candidaturas MANUAIS/dia, sem automático destravado",
-      stVipNovo.json?.plan === "vip" && stVipNovo.json?.manualLimit === 100,
-      JSON.stringify({ plan: stVipNovo.json?.plan, manualLimit: stVipNovo.json?.manualLimit, autoLimit: stVipNovo.json?.autoLimit }));
-    check("📋 v118: quem ativou DEPOIS da mudança (vip.limits carimbado) NÃO vê o aviso de regras novas",
-      !stVipNovo.json?.planRulesNotice, String(stVipNovo.json?.planRulesNotice || "null"));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-    // ⏱️ v118: intervalo humanizado do automático virou ~7min (6,5–7,5) pra
-    // usuário comum — unit puro na MESMA função que o motor usa em produção.
-    const { createCalcSmartInterval } = require("./mod-engine-core.js");
-    const _calcIv = createCalcSmartInterval({ getUser: () => ({}), isAdminVip: () => false });
-    let _ivDentro = true, _ivMin = Infinity, _ivMax = 0;
-    for (let _k = 0; _k < 300; _k++) { const _v = _calcIv("comum@test.com"); _ivMin = Math.min(_ivMin, _v); _ivMax = Math.max(_ivMax, _v); if (_v < 6.5 * 60_000 || _v > 7.5 * 60_000) _ivDentro = false; }
-    check("⏱️ v118: calcSmartInterval devolve SEMPRE entre 6,5 e 7,5 minutos (média ~7) pra usuário comum",
-      _ivDentro, `min=${Math.round(_ivMin / 1000)}s max=${Math.round(_ivMax / 1000)}s`);
-    const _admIv = createCalcSmartInterval({ getUser: () => ({ isAdmin: true, adminSettings: { intervalSecs: 60 } }), isAdminVip: () => true })("admin@test.com");
-    check("⏱️ v118: intervalo CUSTOM do admin continua respeitado (não foi atropelado pelos 7min)",
-      _admIv >= 45_000 && _admIv <= 75_000, `admIv=${Math.round(_admIv / 1000)}s`);
-    // Financeiro (caixa) NUNCA recebe entrada nova por causa do upgrade —
-    // upgrade é 100% em diamantes, dinheiro já entrou quando os 💎 foram doados.
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-    const finUpgrade = await get("/api/admin/financeiro");
-    const entradasUpgradeUser = (finUpgrade.json?.pagamentos || []).filter((x) => x.email === "upgradeuser@test.com");
-    check("⬆️ v80: upgrade NUNCA lança entrada no caixa (100% diamantes — dinheiro já contou na doação original)", entradasUpgradeUser.length === 0, JSON.stringify(entradasUpgradeUser));
-
-    // ═══ 💎 v81 (ordem do dono, 29/07/2026 — "eu e o Diego temos limite
-    // infinito"): admin/DM pode testar troca/upgrade de plano GRÁTIS (só pra
-    // testar a funcionalidade) — nunca desconta diamante de verdade, nunca
-    // gera lançamento, nunca conta em nenhum agregado do site. MAS se o
-    // admin DOAR diamantes pra um usuário de verdade, isso CONTA normal —
-    // o destinatário recebe 💎 real de verdade e aparece no extrato como
-    // doação do admin, sem descontar nada do admin (poço infinito). ═══
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-    const dmSaldoAntes = await get("/api/diamonds");
-    check("💎 v81: admin começa com saldo 0 (nunca comprou nada de verdade)", dmSaldoAntes.json?.saldo?.real === 0 && dmSaldoAntes.json?.saldo?.bonus === 0, JSON.stringify(dmSaldoAntes.json?.saldo));
-    check("💎 v81: /api/diamonds avisa 'diamantesInfinitos:true' pra conta admin", dmSaldoAntes.json?.diamantesInfinitos === true, JSON.stringify(dmSaldoAntes.json));
-    const overviewAntes = await get("/api/admin/diamonds/overview");
-    const gastoTrocaAntes = overviewAntes.json?.totals?.totalGastoEmTrocasPorPlano || 0;
-    const transferAntes = overviewAntes.json?.totals?.totalTransferidoEntreUsuarios || 0;
-    // Admin "compra" VIP 30d SEM ter diamante nenhum — tem que funcionar (é teste).
-    const dmBuyVip = await req2("POST", "/api/diamonds/trocar", { plano: "vip", dias: 30 });
-    check("💎 v81: admin com 0💎 consegue trocar por VIP mesmo assim (diamante infinito de teste)", dmBuyVip.json?.ok === true, dmBuyVip.body.slice(0, 160));
-    check("💎 v81: saldo do admin continua EXATAMENTE 0 depois da troca — não gastou de verdade", dmBuyVip.json?.saldo?.real === 0 && dmBuyVip.json?.saldo?.bonus === 0, JSON.stringify(dmBuyVip.json?.saldo));
-    const stDmVip = await get("/api/status");
-    check("💎 v81: plano BRUTO do admin virou vip de verdade (vip.plan/manualExpires gravados)", stDmVip.json?.vip?.plan === "vip" && stDmVip.json?.vip?.manualExpires > Date.now(), JSON.stringify(stDmVip.json?.vip));
-    const dmManualExpiresAntes = stDmVip.json?.vip?.manualExpires;
-    const dmLedgerAposTroca = await get("/api/diamonds");
-    check("💎 v81: NENHUM lançamento 'troca' no extrato do admin — teste não conta em lugar nenhum", !(dmLedgerAposTroca.json?.ledger || []).some((e) => e.tipo === "troca"), JSON.stringify(dmLedgerAposTroca.json?.ledger));
-    // Upgrade também grátis, com os dias intocados (mesma regra do usuário normal)
-    const dmUpgVipro = await req2("POST", "/api/plans/upgrade", { novoPlano: "vipro" });
-    check("💎 v81: admin faz upgrade VIP→VIPRO de graça (0💎 cobrados de verdade)", dmUpgVipro.json?.ok === true, dmUpgVipro.body.slice(0, 160));
-    const stDmVipro = await get("/api/status");
-    check("💎 v81: upgrade do admin também preserva os dias (manualExpires intocado)", stDmVipro.json?.vip?.manualExpires === dmManualExpiresAntes && stDmVipro.json?.vip?.plan === "vipro", JSON.stringify(stDmVipro.json?.vip));
-    const dmSaldoAposUpgrade = await get("/api/diamonds");
-    check("💎 v81: saldo do admin AINDA é 0 depois do upgrade também — e nenhum lançamento 'upgrade' no extrato", dmSaldoAposUpgrade.json?.saldo?.real === 0 && !(dmSaldoAposUpgrade.json?.ledger || []).some((e) => e.tipo === "upgrade"), JSON.stringify(dmSaldoAposUpgrade.json));
-    const overviewDepoisTroca = await get("/api/admin/diamonds/overview");
-    check("💎 v81: troca/upgrade de teste do admin NÃO mexeu nos agregados do site (totalGastoEmTrocasPorPlano igual antes e depois)", (overviewDepoisTroca.json?.totals?.totalGastoEmTrocasPorPlano || 0) === gastoTrocaAntes, JSON.stringify({ antes: gastoTrocaAntes, depois: overviewDepoisTroca.json?.totals?.totalGastoEmTrocasPorPlano }));
-
-    // Doação do admin pra usuário de verdade — ISSO conta.
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "receberadmin@test.com", name: "Recebe Doacao Admin" });
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-    const dmDoa = await req2("POST", "/api/diamonds/transfer", { para: "receberadmin@test.com", qtd: 15 });
-    check("💎 v81: admin doa 15💎 pra usuário real MESMO com saldo 0 (poço infinito, nunca bloqueia)", dmDoa.json?.ok === true, dmDoa.body.slice(0, 160));
-    check("💎 v81: saldo do admin continua 0 depois de doar — a doação NUNCA sai do saldo dele", dmDoa.json?.saldo?.real === 0, JSON.stringify(dmDoa.json?.saldo));
-    const dmLedgerAposDoacao = await get("/api/diamonds");
-    const dmTransferOut = (dmLedgerAposDoacao.json?.ledger || []).find((e) => e.tipo === "transfer_out" && e.para === "receberadmin@test.com");
-    check("💎 v81: extrato do PRÓPRIO admin registra a doação pra auditoria (qtd certa), mas com real:0 (não descontou de verdade)", !!dmTransferOut && dmTransferOut.qtd === -15 && dmTransferOut.real === 0, JSON.stringify(dmTransferOut));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "receberadmin@test.com" });
-    const dmRecebeu = await get("/api/diamonds");
-    check("💎 v81: destinatário recebeu 15💎 REAIS de verdade (pode gastar/repassar)", dmRecebeu.json?.saldo?.real === 15, JSON.stringify(dmRecebeu.json?.saldo));
-    const dmTransferIn = (dmRecebeu.json?.ledger || []).find((e) => e.tipo === "transfer_in");
-    check("💎 v81: extrato do destinatário mostra a doação atribuída CERTINHO ao e-mail do admin", dmTransferIn?.de === "smoke@test.com" && dmTransferIn?.qtd === 15, JSON.stringify(dmTransferIn));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-    const overviewDepoisDoacao = await get("/api/admin/diamonds/overview");
-    check("💎 v81: doação do admin CONTA nos agregados do site (totalTransferidoEntreUsuarios subiu exatamente 15) — diferente da troca/upgrade de teste, essa é real",
-      (overviewDepoisDoacao.json?.totals?.totalTransferidoEntreUsuarios || 0) === transferAntes + 15,
-      JSON.stringify({ antes: transferAntes, depois: overviewDepoisDoacao.json?.totals?.totalTransferidoEntreUsuarios }));
-
     // ═══ 🎯 v82 (ordem do dono, 29/07/2026 — "IA sugerindo as vagas com mais
     // chance pra cada um", prioridade #1 da casa): MATCH DE VAGA. Pontua cada
     // vaga pelo encaixe com o perfil do candidato (categoria preferida,
@@ -1482,97 +1235,6 @@ async function testAuthWatchdogPush() {
     check("🎯 v82: fila esperta prioriza a categoria do perfil (landscape) — mesma faixa de contato (0), só o match decide, sem sobreposição possível (score 60-80 vs 40-60)",
       _cats.length >= 20 && _cats.slice(0, 10).every((c) => c === "landscape"),
       JSON.stringify(_cats));
-
-    // ═══ GUARDA PONTA A PONTA da troca por DoublePro vista pelo lado do
-    // ADMIN, não só pelo /api/status do próprio usuário (que já era testado
-    // acima só pro plano vip). Cobre as 2 rotas que o painel admin realmente
-    // usa (renderUsersTable via /api/admin/users e o polling de refreshAll
-    // via /api/admin/live) — se getPlan()/isVipActive() divergirem entre o
-    // que o usuário vê e o que o admin vê, esta guarda pega. ═══
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-    const dpTop = await req2("POST", "/api/admin/diamonds", { email: "doador@test.com", real: 300, nota: "top-up smoke doublepro" });
-    check("💎 v77: top-up admin credita 300 💎 reais pro teste de DoublePro", dpTop.json?.ok === true && dpTop.json?.saldo?.real === 323, dpTop.body.slice(0, 140));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "doador@test.com" });
-    const trDP = await req2("POST", "/api/diamonds/trocar", { plano: "doublepro", dias: 30 });
-    check("💎 v77: troca por DoublePro 30d custa 167 💎 e responde ok", trDP.json?.ok === true && trDP.json?.preco === 167 && trDP.json?.saldo?.real === 156, trDP.body.slice(0, 160));
-    const stDP = await get("/api/status");
-    check("💎 v77: /api/status (usuário) mostra plan=doublepro e vip ativo", stDP.json?.plan === "doublepro" && stDP.json?.vip?.active === true, JSON.stringify({ plan: stDP.json?.plan, vip: !!stDP.json?.vip?.active }));
-    check("🚨 v77+v118: quem trocou 💎 por DoublePro AGORA leva a tabela nova carimbada — 200 manual + 200 automático (mesma régua do v79 pro caminho de diamantes)",
-      stDP.json?.manualLimit === 200 && stDP.json?.autoLimit === 200,
-      JSON.stringify({ manualLimit: stDP.json?.manualLimit, autoLimit: stDP.json?.autoLimit }));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-    const adUsers = await get("/api/admin/users");
-    const doadorNaListaUsers = (adUsers.json?.users || []).find((u) => u.email === "doador@test.com");
-    check("💎 v77: /api/admin/users (Todos Usuários) MOSTRA doublepro pro admin — o gap que o dono reportou",
-      doadorNaListaUsers?.plan === "doublepro" && doadorNaListaUsers?.vip?.active === true,
-      JSON.stringify({ plan: doadorNaListaUsers?.plan, vipActive: doadorNaListaUsers?.vip?.active, autoExpires: doadorNaListaUsers?.vip?.autoExpires }));
-    const adLive = await get("/api/admin/live");
-    const doadorNaListaLive = (adLive.json?.users || []).find((u) => u.email === "doador@test.com");
-    check("💎 v77: /api/admin/live (Visão Geral/VIP & Planos) TAMBÉM mostra doublepro",
-      doadorNaListaLive?.plan === "doublepro", JSON.stringify({ plan: doadorNaListaLive?.plan }));
-
-    // ═══ 💎 v77: PAINEL COMPLETO DE DIAMANTES (ranking + extrato por usuário
-    // + agregados) — ordem do dono: "quero ver quem tem mais diamantes, o
-    // que qualquer usuário comprou, como foi usado, 20+ informações" ═══
-    const dOver = await get("/api/admin/diamonds/overview");
-    check("💎 v77: overview responde ok com os campos principais (totals/ranking/topDoadores/atividadeRecente)",
-      dOver.json?.ok === true && dOver.json?.totals && Array.isArray(dOver.json?.ranking) && Array.isArray(dOver.json?.topDoadores) && Array.isArray(dOver.json?.atividadeRecente),
-      dOver.body.slice(0, 200));
-    check("💎 v77: ranking vem ordenado do MAIOR saldo pro menor",
-      dOver.json.ranking.every((r, i, arr) => i === 0 || arr[i - 1].total >= r.total), JSON.stringify(dOver.json.ranking.slice(0, 5)));
-    const doadorNoRanking = (dOver.json?.ranking || []).find((r) => r.email === "doador@test.com");
-    check("💎 v77: doador@test.com aparece no ranking com o plano doublepro e saldo correto (156💎 real)",
-      doadorNoRanking?.plano === "doublepro" && doadorNoRanking?.real === 156, JSON.stringify(doadorNoRanking));
-    check("💎 v77: totals.usuariosComSaldo + usuariosSemSaldo bate com o total de usuários do servidor",
-      dOver.json.totals.usuariosComSaldo + dOver.json.totals.usuariosSemSaldo === dOver.json.totals.usuariosTotal,
-      JSON.stringify(dOver.json.totals));
-    check("💎 v77: trocasPorPlano contabilizou as trocas de VIP e DoublePro feitas neste teste",
-      dOver.json?.trocasPorPlano?.vip?.count >= 1 && dOver.json?.trocasPorPlano?.doublepro?.count >= 2,
-      JSON.stringify(dOver.json?.trocasPorPlano));
-    const doadorNoTop = (dOver.json?.topDoadores || []).find((r) => r.email === "doador@test.com");
-    check("💎 v77: topDoadores lista doador@test.com com os 100💎 reais da doação original",
-      doadorNoTop?.realDoado === 100, JSON.stringify(doadorNoTop));
-
-    const dUserFicha = await get("/api/admin/diamonds/user/doador@test.com");
-    check("💎 v77: ficha individual (/api/admin/diamonds/user/:email) mostra saldo, plano e extrato completo",
-      dUserFicha.json?.ok === true && dUserFicha.json?.plano === "doublepro" && dUserFicha.json?.saldo?.real === 156 && Array.isArray(dUserFicha.json?.ledger) && dUserFicha.json.ledger.length >= 5,
-      dUserFicha.body.slice(0, 200));
-    const dUser404 = await get("/api/admin/diamonds/user/naoexiste@test.com");
-    check("💎 v77: ficha de e-mail inexistente → 404 (não quebra, não inventa)", dUser404.status === 404);
-
-    // não-admin NUNCA vê o painel de diamantes de todo mundo (dado financeiro sensível)
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
-    const dOverAsUser = await get("/api/admin/diamonds/overview");
-    check("💎 v77: usuário comum recebe 403 no overview de diamantes (painel é admin-only)", dOverAsUser.status === 403);
-    const dUserFichaAsUser = await get("/api/admin/diamonds/user/doador@test.com");
-    check("💎 v77: usuário comum recebe 403 na ficha de diamantes de outra pessoa", dUserFichaAsUser.status === 403);
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-
-    // quem recebeu a transferência pode gastar (30 💎 reais no comprador)
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "comprador@test.com" });
-    const dmC = await get("/api/diamonds");
-    check("💎 comprador recebeu os 30 💎 reais da transferência", dmC.json?.saldo?.real === 30, JSON.stringify(dmC.json?.saldo));
-
-    // ═══ 🎁 v68: MISSÕES — recompensas em 💎 bônus (retroativas) ═══
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
-    const ms1 = await get("/api/missions");
-    const msPerfil = (ms1.json?.missoes || []).find((m) => m.id === "perfil_completo");
-    check("🎁 /api/missions lista as 5 missões com progresso", ms1.json?.ok === true && (ms1.json?.missoes || []).length === 5, ms1.body.slice(0, 140));
-    check("🎁 perfil completo (fixture tem perfil+CV) é premiado RETROATIVAMENTE", msPerfil?.done === true, JSON.stringify(msPerfil));
-    const dmM = await get("/api/diamonds");
-    check("🎁 missão creditou 💎 BÔNUS (intransferível, gasto primeiro)", (dmM.json?.saldo?.bonus || 0) >= 3 && (dmM.json?.ledger || []).some((l) => l.tipo === "missao"), JSON.stringify(dmM.json?.saldo));
-    await get("/api/missions"); // reabrir a tela não pode pagar de novo
-    const dmM2 = await get("/api/diamonds");
-    check("🎁 missão paga UMA vez só (reabrir não duplica)", (dmM2.json?.saldo?.bonus || 0) === (dmM.json?.saldo?.bonus || 0), `antes=${dmM.json?.saldo?.bonus} depois=${dmM2.json?.saldo?.bonus}`);
-    // 🔒 v84b (ordem do dono, 31/07 vendo o painel real: 408 bônus em
-    // circulação): 💎 de missão é bônus, e bônus NUNCA pode ser doado —
-    // só serve pra troca/upgrade de plano. Este usuário tem SÓ bônus
-    // (0 reais) — a doação tem que ser recusada (402) com o saldo intacto.
-    const _bonusAntes = dmM2.json?.saldo?.bonus || 0;
-    const txBonus = await req2("POST", "/api/diamonds/transfer", { para: "comprador@test.com", qtd: 1 });
-    check("🔒 v84b: usuário SÓ com 💎 de missão (bônus) NÃO consegue doar nem 1 — bônus é intransferível de verdade", txBonus.status === 402, `status=${txBonus.status} body=${txBonus.body.slice(0, 120)}`);
-    const dmM3 = await get("/api/diamonds");
-    check("🔒 v84b: a tentativa de doação recusada não mexeu no saldo de bônus", (dmM3.json?.saldo?.bonus || 0) === _bonusAntes && (dmM3.json?.saldo?.real || 0) === 0, JSON.stringify(dmM3.json?.saldo));
 
     // ═══ 🌍 v129 (ORDEM DO DONO, 13/08): OS 3 SERVIDORES SÃO UM NEGÓCIO SÓ ═══
     // Contabilidade soma os 3 (ranking foi removido por completo nesta
@@ -1767,14 +1429,12 @@ async function testAuthWatchdogPush() {
         created_at: "2026-05-01T00:00:00.000Z", profiles: [],
         vip: { active: true, plan: "vipro", manualExpires: _fNow + 20 * 86400_000, autoExpires: _fNow + 20 * 86400_000, source: "payment",
           creditos: [{ id: "credB1", quando: _fNow - 86400_000, dias: 30, tipo: "pago", origem: "pagamento", motivo: "VIPro", dadoPor: "sistema", valor: 150 }] },
-        diamonds: { real: 7, bonus: 3 },
         cvs: [{ idx: 9001, name: "CV_Legado.pdf", size: 2000, cvType: "resume" }] },
       // conta que existe NOS DOIS — no B é a MAIS NOVA (2026-08-01), então
       // o perfil dela VENCE; dias/diamantes/envios do A são SOMADOS.
       "fusao.conflito@test.com": { email: "fusao.conflito@test.com", name: "Conflito Novo", plan: "vip",
         created_at: "2026-08-01T00:00:00.000Z", profiles: [],
-        vip: { active: true, plan: "vip", manualExpires: _fNow + 8 * 86400_000, autoExpires: _fNow + 5 * 86400_000, source: "payment" },
-        diamonds: { real: 2, bonus: 1 } },
+        vip: { active: true, plan: "vip", manualExpires: _fNow + 8 * 86400_000, autoExpires: _fNow + 5 * 86400_000, source: "payment" } },
     }));
     fs.writeFileSync(path.join(DATA_B, "history.json"), JSON.stringify({
       "fusao.legado@test.com": [
@@ -1835,9 +1495,9 @@ async function testAuthWatchdogPush() {
     check("🚚 v144: CONFLITO DE E-MAIL — dias de VIP SOMADOS (10 locais + 8 do B ≈ 18 manual · 5 auto) — ninguém perde o que pagou",
       _mDias >= 17 && _mDias <= 18 && _aDias >= 4 && _aDias <= 5, JSON.stringify({ manual: _mDias, auto: _aDias }));
     const _uCon = (await get("/api/admin/user-detail/" + encodeURIComponent("fusao.conflito@test.com"))).json?.user;
-    check("🚚 v144: CONFLITO — perfil vencedor é o da conta criada por ÚLTIMO (nome do B); 💎 REAIS somados (5+2) e bônus RECALCULADO das missões (0 — v154: bônus nunca soma na fusão)",
-      _uCon?.name === "Conflito Novo" && _uCon?.diamonds?.real === 7 && _uCon?.diamonds?.bonus === 0,
-      JSON.stringify({ name: _uCon?.name, d: _uCon?.diamonds }).slice(0, 120));
+    check("🚚 v144: CONFLITO — perfil vencedor é o da conta criada por ÚLTIMO (nome do B)",
+      _uCon?.name === "Conflito Novo",
+      JSON.stringify({ name: _uCon?.name }).slice(0, 120));
     // Regra 8 (a mais sagrada): anti-duplicado UNIDO — nunca reenvia pra
     // empregador já contatado em QUALQUER um dos servidores.
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "fusao.conflito@test.com", name: "Conflito" });
@@ -1853,10 +1513,9 @@ async function testAuthWatchdogPush() {
     let fuSt2 = null;
     for (let i = 0; i < 40; i++) { await new Promise((r) => setTimeout(r, 400)); fuSt2 = (await get("/api/admin/fusao/status")).json; if (fuSt2 && !fuSt2.running && fuSt2.finishedAt) break; }
     const finCon2 = await get("/api/admin/financeiro-usuario/" + encodeURIComponent("fusao.conflito@test.com"));
-    check("🚚 v144: IDEMPOTÊNCIA — rodar a fusão DE NOVO não duplica nada (0 novos, 0 fundidos, dias e 💎 intactos)",
+    check("🚚 v144: IDEMPOTÊNCIA — rodar a fusão DE NOVO não duplica nada (0 novos, 0 fundidos, dias intactos)",
       fu2.json?.ok === true && fuSt2?.relatorio?.novos === 0 && fuSt2?.relatorio?.fundidos === 0 &&
-      finCon2.json?.plano?.manual?.diasRestantes === _mDias &&
-      (await get("/api/admin/user-detail/" + encodeURIComponent("fusao.conflito@test.com"))).json?.user?.diamonds?.real === 7,
+      finCon2.json?.plano?.manual?.diasRestantes === _mDias,
       JSON.stringify({ rel2: fuSt2?.relatorio, dias: finCon2.json?.plano?.manual?.diasRestantes }).slice(0, 220));
     // financeiro do B fundido no caixa local
     const finGlob = await get("/api/admin/financeiro");
@@ -1899,14 +1558,12 @@ async function testAuthWatchdogPush() {
       "fusao.arquivo@test.com": { email: "fusao.arquivo@test.com", name: "Arquivo Fusão", plan: "vipro",
         created_at: "2026-06-01T00:00:00.000Z", profiles: [],
         vip: { active: true, plan: "vipro", manualExpires: _cNow + 12 * 86400_000, autoExpires: _cNow + 12 * 86400_000, source: "payment" },
-        diamonds: { real: 4, bonus: 2 },
         cvs: [{ idx: 9101, name: "CV_Arquivo.pdf", size: 1500, cvType: "resume" }] },
       // conta que existe NOS DOIS — no C é MAIS VELHA (2026-07-01) que a local
       // (2026-08-01, vencedora da fusão do B) → local vence, dias/💎 SOMADOS.
       "fusao.conflito@test.com": { email: "fusao.conflito@test.com", name: "Conflito Velho C", plan: "vip",
         created_at: "2026-07-01T00:00:00.000Z", profiles: [],
-        vip: { active: true, plan: "vip", manualExpires: _cNow + 3 * 86400_000, autoExpires: _cNow + 2 * 86400_000, source: "payment" },
-        diamonds: { real: 1, bonus: 0 } },
+        vip: { active: true, plan: "vip", manualExpires: _cNow + 3 * 86400_000, autoExpires: _cNow + 2 * 86400_000, source: "payment" } },
       // o admin do teste precisa logar no C pra exportar — pré-semeado BEM
       // antigo pra, na importação, a conta local (mais nova) vencer sem ruído
       "smoke@test.com": { email: "smoke@test.com", name: "Smoke", plan: "free",
@@ -2004,9 +1661,9 @@ async function testAuthWatchdogPush() {
     const finCon3 = await get("/api/admin/financeiro-usuario/" + encodeURIComponent("fusao.conflito@test.com"));
     const _mDias3 = finCon3.json?.plano?.manual?.diasRestantes;
     const _uCon3 = (await get("/api/admin/user-detail/" + encodeURIComponent("fusao.conflito@test.com"))).json?.user;
-    check("📦 v148: CONFLITO via arquivo — conta local (mais nova) vence o perfil, mas os 3 dias e o 💎 do C são SOMADOS",
-      _mDias3 >= _mDias + 2 && _mDias3 <= _mDias + 3 && _uCon3?.name === "Conflito Novo" && _uCon3?.diamonds?.real === 8,
-      JSON.stringify({ dias: _mDias3, antes: _mDias, name: _uCon3?.name, real: _uCon3?.diamonds?.real }).slice(0, 140));
+    check("📦 v148: CONFLITO via arquivo — conta local (mais nova) vence o perfil, mas os 3 dias do C são SOMADOS",
+      _mDias3 >= _mDias + 2 && _mDias3 <= _mDias + 3 && _uCon3?.name === "Conflito Novo",
+      JSON.stringify({ dias: _mDias3, antes: _mDias, name: _uCon3?.name }).slice(0, 140));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "fusao.conflito@test.com", name: "Conflito" });
     const seC = await get("/api/sent-emails");
     check("📦 v148: REGRA 8 — anti-duplicado do arquivo UNIDO ao local (emp3-c@x.com bloqueado; 3 envios no total)",
@@ -2017,10 +1674,9 @@ async function testAuthWatchdogPush() {
     const imp2 = await _postBinA("/api/admin/fusao/importar", exC.buf);
     let impSt2 = null;
     for (let i = 0; i < 40; i++) { await new Promise((r) => setTimeout(r, 400)); impSt2 = (await get("/api/admin/fusao/status")).json; if (impSt2 && !impSt2.running && impSt2.finishedAt) break; }
-    check("📦 v148: IDEMPOTÊNCIA — importar o MESMO arquivo de novo não duplica nada (0 novos, 0 fundidos, dias e 💎 intactos)",
+    check("📦 v148: IDEMPOTÊNCIA — importar o MESMO arquivo de novo não duplica nada (0 novos, 0 fundidos, dias intactos)",
       imp2.json?.ok === true && impSt2?.relatorio?.novos === 0 && impSt2?.relatorio?.fundidos === 0 &&
-      (await get("/api/admin/financeiro-usuario/" + encodeURIComponent("fusao.conflito@test.com"))).json?.plano?.manual?.diasRestantes === _mDias3 &&
-      (await get("/api/admin/user-detail/" + encodeURIComponent("fusao.conflito@test.com"))).json?.user?.diamonds?.real === 8,
+      (await get("/api/admin/financeiro-usuario/" + encodeURIComponent("fusao.conflito@test.com"))).json?.plano?.manual?.diasRestantes === _mDias3,
       JSON.stringify({ rel2: impSt2?.relatorio }).slice(0, 200));
     const finGlobC = await get("/api/admin/financeiro");
     check("📦 v148: caixa do C fundido no caixa local SEM duplicar (pagamento pgC0001 presente exatamente 1 vez)",
@@ -2146,23 +1802,6 @@ async function testAuthWatchdogPush() {
       JSON.stringify({ unb: unb.json, depois: banLs2.json?.emails }).slice(0, 120));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
 
-    // 💎 v154: migração única do boot recalculou o bônus inflado pela fusão
-    // (fixture: 40 de bônus, mas 2 missões=5💎 e 2💎 já gastos → alvo 3),
-    // SEM tocar nos 50 reais — e deixou o carimbo pra nunca re-rodar.
-    const _udBB = (await get("/api/admin/user-detail/" + encodeURIComponent("bonusbug@test.com"))).json?.user;
-    check("💎 v154: boot corrigiu bônus inflado (40→3 = missões 5 − gasto 2) e NÃO tocou nos 💎 reais (50)",
-      _udBB?.diamonds?.real === 50 && _udBB?.diamonds?.bonus === 3 &&
-      (_udBB?.diamondLedger || []).some((l) => l.tipo === "ajuste" && /bônus recalculado/.test(l.nota || "")),
-      JSON.stringify(_udBB?.diamonds).slice(0, 100));
-    check("💎 v154: carimbo da correção existe no disco (rodada única — brinde de admin futuro nunca é apagado)",
-      fs.existsSync(path.join(DATA, "diamantes_fix_v154.json")));
-    check("💎 v154: (estrutural) reconciliação pula doação + aprovação normaliza pedido legado + criação nasce doação + fusão recalcula bônus",
-      _srvSrc.includes('if(ped.tipo==="doacao"||String(ped.plano||"").toLowerCase()==="doacao")continue;') &&
-      _srvSrc.includes("normalizado pra DOAÇÃO na aprovação") &&
-      _srvSrc.includes("nasce como DOAÇÃO") &&
-      _srvSrc.includes("_bonusLegitimoCalc(missoesFund,ledgerFund)"),
-      "alguma das 4 defesas do v154 sumiu do server.js");
-
     // ═══ 💼 MC4 — PARTE 3 (28/08): DRE MENSAL + RELATÓRIO EXECUTIVO ════════
     // Receita/gastos/resultado MÊS A MÊS com quebra por sócio (mesma régua
     // de dono do Acerto — _finDonoDe, fonte única), por plano e categoria;
@@ -2270,7 +1909,7 @@ async function testAuthWatchdogPush() {
     // agora ENXERGA a leitura do robô e o comprovante repetido ANTES de
     // creditar; doação real nunca mais é engolida pelo dedup.
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5a@test.com", name: "MC5 A" });
-    const mc5p1 = await req2("POST", "/api/pedido", { tipo: "doacao", valorTotal: 150, userName: "MC5 A", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:100:E2EMC5AAA1:Pagador MC5", comprovante: Buffer.from("comp-mc5-a").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    const mc5p1 = await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, consentimento: true, userName: "MC5 A", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:100:E2EMC5AAA1:Pagador MC5", comprovante: Buffer.from("comp-mc5-a").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     await new Promise((r) => setTimeout(r, 400)); // preCheck roda em background
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     const mc5Ap1 = await req2("PATCH", "/api/pedido/" + mc5p1.json?.pedidoId, { status: "ativo", recebidoPor: "andrio" });
@@ -2281,7 +1920,7 @@ async function testAuthWatchdogPush() {
       mc5Ap2.json?.ok === true,
       JSON.stringify({ a: mc5Ap1.status, div: mc5Ap1.json?.divergencia, lido: mc5Ap1.json?.valorLido, b: mc5Ap2.json?.ok }).slice(0, 140));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5b@test.com", name: "MC5 B" });
-    const mc5p2 = await req2("POST", "/api/pedido", { tipo: "doacao", valorTotal: 150, userName: "MC5 B", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:150:E2EMC5AAA1:Pagador MC5", comprovante: Buffer.from("comp-mc5-b-refoto").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    const mc5p2 = await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, consentimento: true, userName: "MC5 B", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:150:E2EMC5AAA1:Pagador MC5", comprovante: Buffer.from("comp-mc5-b-refoto").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     await new Promise((r) => setTimeout(r, 400));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     const mc5Ap3 = await req2("PATCH", "/api/pedido/" + mc5p2.json?.pedidoId, { status: "ativo", recebidoPor: "diego" });
@@ -2289,18 +1928,18 @@ async function testAuthWatchdogPush() {
       mc5Ap3.status === 409 && mc5Ap3.json?.comprovanteUsado === true && mc5Ap3.json?.pedidoDup === mc5p1.json?.pedidoId && mc5Ap3.json?.emailDup === "mc5a@test.com",
       JSON.stringify(mc5Ap3.json).slice(0, 180));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5c@test.com", name: "MC5 C" });
-    const mc5d1 = await req2("POST", "/api/pedido", { tipo: "doacao", valorTotal: 30, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-um").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
-    const mc5d2 = await req2("POST", "/api/pedido", { tipo: "doacao", valorTotal: 45, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-dois").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
-    const mc5d3 = await req2("POST", "/api/pedido", { tipo: "doacao", valorTotal: 60, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-tres").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
-    const mc5d4 = await req2("POST", "/api/pedido", { tipo: "doacao", valorTotal: 75, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-quatro").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
-    check("💼 MC5-P1: 2ª e 3ª doações com doação pendente NÃO são mais engolidas pelo dedup (o PIX já foi feito ANTES do envio — cada doação vira pedido próprio, comprovante preservado); a 4ª pendente é barrada com aviso claro (teto anti-abuso)",
+    const mc5d1 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-um").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    const mc5d2 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-dois").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    const mc5d3 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-tres").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    const mc5d4 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-quatro").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    check("💼 MC5-P1 → v170: 2º e 3º pedidos com pedido pendente NÃO são mais engolidos pelo dedup (o PIX já foi feito ANTES do envio — cada pedido é PRÓPRIO, comprovante preservado); o 4º pendente é barrado com aviso claro (teto anti-abuso)",
       mc5d1.json?.ok === true && !mc5d1.json?.duplicado &&
       mc5d2.json?.ok === true && !mc5d2.json?.duplicado && mc5d2.json?.pedidoId !== mc5d1.json?.pedidoId &&
       mc5d3.json?.ok === true && !mc5d3.json?.duplicado &&
-      mc5d4.status === 400 && /3 doações em análise/.test(mc5d4.json?.error || ""),
+      mc5d4.status === 400 && /3 pedidos em análise/.test(mc5d4.json?.error || ""),
       JSON.stringify({ d2dup: mc5d2.json?.duplicado, d4: mc5d4.status }).slice(0, 120));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5d@test.com", name: "MC5 D" });
-    const mc5inv = await req2("POST", "/api/pedido", { tipo: "doacao", valorTotal: 30, userName: "MC5 D", userWhatsapp: "11 9", userCity: "SP", comprovante: "!!!corrompido###", comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    const mc5inv = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 D", userWhatsapp: "11 9", userCity: "SP", comprovante: "!!!corrompido###", comprovanteType: "image/jpeg", pagoEm: Date.now() });
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     check("💼 MC5-P1: comprovante corrompido leva 400 com motivo claro em PT — NUNCA mais pedido criado 'ok' sem prova em silêncio (o usuário via 'recebemos seu comprovante' e o admin via 'NÃO enviado')",
       mc5inv.status === 400 && /corrompido/.test(mc5inv.json?.error || ""),
@@ -2347,14 +1986,11 @@ async function testAuthWatchdogPush() {
       _pdRe.comprovanteHash !== _pdRe.comprovanteAnteriorHash &&
       mc5re403.status === 403 && mc5re400.status === 400,
       JSON.stringify({ re: mc5re.status, h: !!_pdRe?.comprovanteHash, f403: mc5re403.status, f400: mc5re400.status }).slice(0, 140));
-    const mc5di = (await get("/api/diamonds")).json;
-    const _appSrc2 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
-    check("💼 MC5-P2: /api/diamonds entrega a mediana REAL de confirmação (promessa honesta no lugar do '24h' fixo) + front com packs derivados da tabela oficial (13c — hardcode morreu como fonte), extrato com 'ver todos'/saldo/rótulos novos, i18n das strings novas nas 3 línguas e 'Renove agora' (v66) extinto",
-      typeof mc5di?.medianaAprovacaoHoras === "number" &&
-      _appSrc2.includes("_renderPacksFromTable") && _appSrc2.includes("mpReenviarComprovante") &&
-      (_appSrc2.match(/"mc_13":/g) || []).length === 3 && (_appSrc2.match(/"mp_reenviar":/g) || []).length === 3 &&
-      !_appSrc2.includes("Renove agora") && _appSrc2.includes("_diamExtratoAll"),
-      JSON.stringify({ med: mc5di?.medianaAprovacaoHoras }).slice(0, 80));
+    const mc5pl = (await get("/api/planos")).json;
+    check("💼 MC5-P2 → v170: /api/planos entrega a mediana REAL de confirmação (promessa honesta no lugar do '24h' fixo) — fonte única de preço/limites pro checkout, nunca hardcoded",
+      mc5pl?.ok === true && (typeof mc5pl?.medianaAprovacaoHoras === "number" || mc5pl?.medianaAprovacaoHoras === null) &&
+      Array.isArray(mc5pl?.precos) && mc5pl.precos.length >= 9 && mc5pl?.limites?.vipro?.manual === 100,
+      JSON.stringify({ med: mc5pl?.medianaAprovacaoHoras, n: mc5pl?.precos?.length }).slice(0, 100));
 
     // ═══ 💼 MC5 — PARTE 3 (29/08): UMA RÉGUA SÓ NAS TELAS DO ADMIN ═════════
     const dr3 = (await get("/api/admin/dono-resumo")).json;
@@ -2399,7 +2035,7 @@ async function testAuthWatchdogPush() {
     // antigo — as peças reais e vivas são os dados/flags que a API expõe.)
     check("💼 MC5-P4: pedidos chegam marcados (ehAdmin pela lista real de e-mails de admin) — exclusão de teste de admin também vale no server (mesma régua da Conferência)",
       _rAdm4?.ehAdmin === true && _rUsr4?.ehAdmin === false &&
-      _srvSrc.includes('pd.status==="ativo"&&!isAdminEmail(pd.userEmail'),
+      _srvSrc.includes("if(isAdminEmail(pd.userEmail))continue;"),
       JSON.stringify({ adm: _rAdm4?.ehAdmin, usr: _rUsr4?.ehAdmin }).slice(0, 80));
     await req2("POST", "/api/admin/settings", { fgManual2: 0 });
     const fg4 = (await get("/api/admin/financeiro-global")).json;
@@ -2413,7 +2049,7 @@ async function testAuthWatchdogPush() {
     // mês) e em dólar; repasse com comprovante; entrada manual com prova
     // some do "sem comprovante"; corte de mês em horário de Brasília.
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5e@test.com", name: "MC5 E" });
-    const mc5p5 = await req2("POST", "/api/pedido", { tipo: "doacao", valorTotal: 83, userName: "MC5 E", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:83", comprovante: Buffer.from("comp-mc5-e-p5").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    const mc5p5 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 E", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:100", comprovante: Buffer.from("comp-mc5-e-p5").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     await new Promise((r) => setTimeout(r, 400));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "andrio.usa2026@gmail.com", name: "Dono", isAdmin: true });
     const mc5Ap5 = await req2("PATCH", "/api/pedido/" + mc5p5.json?.pedidoId, { status: "ativo" }); // SEM recebidoPor, de propósito
@@ -2421,7 +2057,7 @@ async function testAuthWatchdogPush() {
     const finP5 = (await get("/api/admin/financeiro")).json;
     const _rowP5 = (finP5?.pagamentos || []).find((x) => x.pedidoId === mc5p5.json?.pedidoId);
     const _csvP5 = (await _getBufA("/api/admin/financeiro/exportar")).buf.toString("utf8");
-    const _linP5 = _csvP5.split("\n").find((l) => l.includes("83,00"));
+    const _linP5 = _csvP5.split("\n").find((l) => l.includes("100,00"));
     check("💼 MC5-P5: aprovação SEM 'quem recebeu' não carimba mais um sócio na marra — o caixa nasce SEM recebidoPor e o dono sai da TRILHA (ativadoPorEmail do admin real → 'derivado', auditável no CSV)",
       mc5Ap5.json?.ok === true && _rowP5 && !("recebidoPor" in _rowP5) &&
       _rowP5.ativadoPorEmail === "andrio.usa2026@gmail.com" &&
@@ -2470,7 +2106,7 @@ async function testAuthWatchdogPush() {
     // dinheiro conferida, action desconhecida = 400 na cara, e os eventos
     // do tempo real sobrevivem a deploy (fila persistida + retomada no boot).
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5f@test.com", name: "MC5 F" });
-    const p6ped = await req2("POST", "/api/pedido", { tipo: "doacao", valorTotal: 66, userName: "MC5 F", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:66", comprovante: Buffer.from("comp-p6-f").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    const p6ped = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 F", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:100", comprovante: Buffer.from("comp-p6-f").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     await new Promise((r) => setTimeout(r, 400));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     const _janAntes6 = (await get("/api/admin/financeiro")).json?.entradas?.total;
@@ -2480,10 +2116,10 @@ async function testAuthWatchdogPush() {
     const finP6 = (await get("/api/admin/financeiro")).json;
     const _p6orig = (finP6?.pagamentos || []).find((x) => x.pedidoId === p6ped.json?.pedidoId && x.tipo !== "ajuste");
     const _p6aj = (finP6?.pagamentos || []).find((x) => x.tipo === "ajuste" && x.ajustaPedidoId === p6ped.json?.pedidoId);
-    check("💼 MC5-P6: cancelar doação APROVADA anula por AJUSTE− em vez de apagar — original preservado (anuladoPor com o motivo do admin), par de −66, e o líquido canônico volta EXATO ao de antes da aprovação (delta R$0)",
+    check("💼 MC5-P6: cancelar pedido APROVADO anula por AJUSTE− em vez de apagar — original preservado (anuladoPor com o motivo do admin), par de −100, e o líquido canônico volta EXATO ao de antes da aprovação (delta R$0)",
       p6canc.json?.ok === true && _p6orig && !!_p6orig.anuladoPor && /caixa nunca apaga/.test(_p6orig.anuladoPor.motivo || "") &&
-      _p6aj && _p6aj.valor === -66 && !_p6aj.pedidoId &&
-      Math.abs(_janMeio6 - _janAntes6 - 66) < 0.011 && Math.abs(finP6.entradas.total - _janAntes6) < 0.011,
+      _p6aj && _p6aj.valor === -100 && !_p6aj.pedidoId &&
+      Math.abs(_janMeio6 - _janAntes6 - 100) < 0.011 && Math.abs(finP6.entradas.total - _janAntes6) < 0.011,
       JSON.stringify({ antes: _janAntes6, meio: _janMeio6, fim: finP6?.entradas?.total, aj: _p6aj?.valor }).slice(0, 160));
     // (as checagens de RULE_CANCELLED_PAYMENT/lista de ajustes via
     // /api/admin/cerebro/* saíram — mod-cerebro.js não existe nesta
@@ -2574,8 +2210,11 @@ async function testAuthWatchdogPush() {
         "chaves tut_ ausentes em alguma língua");
       const _imgsRef = [...new Set((_frag160.match(/\/tut-img\/[a-z0-9-]+\.jpg/g) || []))];
       const _faltando = _imgsRef.filter((u2) => !fs.existsSync(path.join(__dirname, "tutorial-img", u2.split("/").pop())));
+      // v170 (09/09): 5 prints do fluxo antigo de diamante/doação/código saíram
+      // do tutorial (t21-planos/t22-doacao/t23-troca/t25-missoes/t25-codigo —
+      // telas que não existem mais) — piso recalibrado pra realidade atual.
       check("📖 v160: TODAS as fotos referenciadas nos tutoriais existem de verdade no disco (nenhum print quebrado)",
-        _imgsRef.length >= 15 && _faltando.length === 0,
+        _imgsRef.length >= 10 && _faltando.length === 0,
         JSON.stringify({ refs: _imgsRef.length, faltando: _faltando }).slice(0, 200));
       const _img160 = await _getBufA("/tut-img/t03-home.jpg");
       const _trav160 = await get("/tut-img/..%2Fserver.js");

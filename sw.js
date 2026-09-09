@@ -42,7 +42,13 @@
 //    completa (6 temporadas, vagas com e-mail) + reestruturação visual
 //    das abas (seção recolhível "Temporadas Anteriores", Manual+Automático).
 //
-const CACHE_NAME = "h2bapply-2026-v9"; // v9: reforço "ponte, não criador" + "doação, nunca venda" em todo o site — landing (hero/benefícios/como funciona/CTA/rodapé + nova seção "Como isso é possível"), editor de perfil, envio manual/automático, onboarding e SEO; aba "Planos" renomeada pra "💎 Diamantes" em header/sidebar/bottom-nav/atalhos; card "Seja VIP" reescrito sem linguagem de assinatura; removido cluster morto de textos "pagar via Pix"/"Hire via WhatsApp" (fluxo pré-diamante, zero uso no DOM)
+//  v2.9 — Bump de rotina (regra 6c, v170): sistema de diamantes retirado
+//    por completo — compra DIRETA de plano (preço em R$ sempre visível
+//    ANTES do pagamento, GET /api/planos como fonte única) + clickwrap de
+//    consentimento informado no checkout. index.html (view Planos + textos
+//    espalhados) e app.js (funções de compra) mudaram juntos.
+//
+const CACHE_NAME = "h2bapply-2026-v10"; // v10 (v170): sistema de diamantes removido — compra direta de plano (escolher plano+período → ver preço em R$ → consentimento → PIX → comprovante → confirmação do admin); aba "💎 Diamantes" renomeada pra "💎 Planos" em header/sidebar/bottom-nav/atalhos; "🧾 Minhas doações" virou "🧾 Meus pedidos"
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).
@@ -196,8 +202,8 @@ self.addEventListener("notificationclick", (e) => {
 
   const notifData = e.notification.data || {};
   // v72: sem aba Respostas, o destino padrão de push é a Home (cada push
-  // real — diamante creditado, missão cumprida, plano ativado — já manda
-  // sua própria url específica; isto é só o fallback genérico).
+  // real — pedido confirmado, plano ativado — já manda sua própria url
+  // específica; isto é só o fallback genérico).
   const targetUrl = notifData.url || "/";
   const sound = notifData.sound || "aviao";
   const appId = notifData.appId || null;

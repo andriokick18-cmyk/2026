@@ -344,7 +344,7 @@ tbody tr:hover{background:var(--glass2)}
             <div class="tbl-wrap">
               <table>
                 <thead>
-                  <tr><th>Usuário</th><th>Tipo</th><th>Valor</th><th>Plano / 💎</th><th>Pré-check</th><th>Data</th><th>Ações</th></tr>
+                  <tr><th>Usuário</th><th>Tipo</th><th>Valor</th><th>Plano</th><th>Pré-check</th><th>Data</th><th>Ações</th></tr>
                 </thead>
                 <tbody id="tbl-pendentes">
                   <tr><td colspan="7"><div class="spin"></div></td></tr>
@@ -823,9 +823,8 @@ function renderPendentes(lista){
   var html="";
   for(var i=0;i<lista.length;i++){
     var pd=lista[i];
-    var ehDoacao=(pd.tipo==="doacao"||pd.plano==="doacao");
-    var tipoBadge=ehDoacao?'<span class="badge purple">💎 Doação</span>':'<span class="badge blue">Plano</span>';
-    var planoTxt=ehDoacao?((pd.diamantes!=null?esc(pd.diamantes):"—")+" 💎"):(esc(pd.plano||"—")+(pd.dias?(" · "+esc(pd.dias)+"d"):""));
+    var tipoBadge='<span class="badge blue">Plano</span>';
+    var planoTxt=esc(pd.plano||"—")+(pd.dias?(" · "+esc(pd.dias)+"d"):"");
     var pc=pd.preCheck||null;
     var precheckHtml='<span class="badge gray">sem leitura</span>';
     if(pc&&pc.veredito){
@@ -903,7 +902,7 @@ async function verComprovante(id){
 }
 
 function confirmarAprovarPedido(id){
-  if(!confirm("Aprovar este pedido? Isso credita o pagamento/diamantes na hora.")){
+  if(!confirm("Aprovar este pedido? Isso ativa o plano do usuário na hora.")){
     return;
   }
   aprovarPedido(id);

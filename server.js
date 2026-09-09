@@ -547,76 +547,6 @@ function _vipSnapshot(u){
 // VIP. Preços em R$ — mudar aqui exige avisar o Andrio antes (dinheiro real).
 const PLANO_PRECO_TAB={vip:{30:100,60:190,90:270,365:960},vipro:{30:150,60:285,90:405,365:1440},doublepro:{30:250,60:475,90:675,365:2400}};
 
-// ══════════════════════ 💎 DIAMANTES (v64 — ORDEM DO DONO, 26/07/2026) ═════
-// Não existe mais COMPRA de plano. O caminho do dinheiro agora é:
-//   1. DOAÇÃO via PIX (mesmo fluxo de comprovante/pedido de sempre) →
-//      admin confirma → credita DIAMANTES REAIS (1 💎 = R$ 1,50);
-//   2. Plano é TROCADO por diamantes NA HORA, sem aprovação (o dinheiro já
-//      foi conferido na doação);
-//   3. 💎 REAL (de doação/transferência) pode ser doado a outro usuário do
-//      mesmo servidor; 💎 BÔNUS (brinde do admin) é pessoal e intransferível.
-// Na troca gasta-se o BÔNUS primeiro (o real, transferível, fica por último).
-// Preço em 💎 deriva SEMPRE da tabela oficial PLANO_PRECO_TAB (nunca
-// hardcoded em outro lugar — regra da casa de preço dinâmico).
-const DIAMOND_PRICE_BRL=Math.max(0.01,parseFloat(process.env.DIAMOND_PRICE_BRL||"1.5")||1.5);
-function planoPrecoDiamantes(plano,dias){const t=(PLANO_PRECO_TAB[plano]||{})[dias];return t?Math.round(t/DIAMOND_PRICE_BRL):null;}
-function _diamSaldo(u){const d=(u&&u.diamonds)||{};return{real:Math.max(0,parseInt(d.real,10)||0),bonus:Math.max(0,parseInt(d.bonus,10)||0)};}
-function _diamLedgerPush(u,entry){const l=Array.isArray(u&&u.diamondLedger)?u.diamondLedger:[];return[{ts:Date.now(),...entry},...l].slice(0,300);}
-function creditDiamonds(email,{real=0,bonus=0},meta){
-  const u=getUser(email);if(!u)return null;
-  const s0=_diamSaldo(u);
-  const novo={real:s0.real+Math.max(0,parseInt(real,10)||0),bonus:s0.bonus+Math.max(0,parseInt(bonus,10)||0)};
-  setUser(email,{diamonds:novo,diamondLedger:_diamLedgerPush(u,{tipo:(meta&&meta.tipo)||"credito",qtd:(novo.real-s0.real)+(novo.bonus-s0.bonus),real:novo.real-s0.real,bonus:novo.bonus-s0.bonus,saldoReal:novo.real,saldoBonus:novo.bonus,...(meta||{})})});
-  return novo;
-}
-// Débito de troca: gasta BÔNUS primeiro, depois REAL. Retorna saldo novo ou
-// null se insuficiente (nunca deixa negativo).
-// v81 (dono, 29/07/2026 — "eu e o Diego temos limite infinito"): conta
-// admin/DM NUNCA gasta diamante de verdade em troca/upgrade — é só pra
-// TESTAR a funcionalidade, sem afetar caixa nem estatística nenhuma do
-// site. Um único ponto de bypass (aqui, na função que TODA troca/upgrade
-// chama) em vez de checar isAdminVip espalhado — nunca sai do saldo real,
-// nunca gera lançamento no extrato, nunca soma em agregado nenhum.
-function debitDiamonds(email,qtd,meta){
-  const u=getUser(email);if(!u)return null;
-  if(isAdminVip(u))return _diamSaldo(u);
-  qtd=Math.max(0,parseInt(qtd,10)||0);
-  const s0=_diamSaldo(u);
-  if(s0.real+s0.bonus<qtd)return null;
-  const deBonus=Math.min(s0.bonus,qtd),deReal=qtd-deBonus;
-  const novo={real:s0.real-deReal,bonus:s0.bonus-deBonus};
-  setUser(email,{diamonds:novo,diamondLedger:_diamLedgerPush(u,{tipo:(meta&&meta.tipo)||"debito",qtd:-qtd,real:-deReal,bonus:-deBonus,saldoReal:novo.real,saldoBonus:novo.bonus,...(meta||{})})});
-  return novo;
-}
-// v77b (achado revisando o v77): corrigir o valor (R$) de uma DOAÇÃO já
-// aprovada atualizava o caixa mas NUNCA reajustava os diamantes já
-// creditados — o usuário ficava travado no valor de 💎 do valor ERRADO
-// antigo pra sempre, mesmo depois do admin corrigir o R$ certo. Mesma
-// classe de bug do 13f (arredondamento): duas verdades sobre o mesmo
-// dinheiro que podiam divergir. Chamada pelas 2 rotas que corrigem valor
-// de pedido (PATCH /api/pedido/:id corrigirValor E POST
-// /api/admin/pedido-set-valor) — uma função só, nunca duplicada.
-// Credita mais se corrigiu pra cima (nunca falha); remove o que der do
-// saldo REAL (nunca deixa negativo) se corrigiu pra baixo e a pessoa já
-// gastou — mesmo princípio do estorno de doação cancelada.
-function reconciliarDiamantesCorrecao(pd,valorAntes,adminEmail){
-  if(!((pd.tipo==="doacao"||pd.plano==="doacao")&&pd.ativadoEm&&(pd.diamantesCreditados||0)>0))return null;
-  const alvoNovo=Math.round(pd.valorTotal/DIAMOND_PRICE_BRL);
-  const diff=alvoNovo-(pd.diamantesCreditados||0); // >0 = precisa creditar mais; <0 = precisa remover
-  if(diff===0)return null;
-  const uD=getUser(pd.userEmail);
-  if(!uD)return null;
-  const sD=_diamSaldo(uD);
-  const aplicado=diff>0?diff:-Math.min(sD.real,-diff);
-  const faltou=diff<0?(-diff+aplicado):0; // quanto deveria ter sido removido e não coube no saldo
-  const novoD={real:sD.real+aplicado,bonus:sD.bonus};
-  setUser(pd.userEmail,{diamonds:novoD,diamondLedger:_diamLedgerPush(uD,{tipo:"correcao",qtd:aplicado,real:aplicado,bonus:0,saldoReal:novoD.real,saldoBonus:novoD.bonus,pedidoId:pd.id,por:adminEmail,nota:`Correção de valor: R$${valorAntes}→R$${pd.valorTotal} — diamantes ${aplicado>=0?"+":""}${aplicado}`})});
-  pd.diamantesCreditados=(pd.diamantesCreditados||0)+aplicado;
-  addLog(pd.userEmail,{status:"sistema",jobTitle:`💎 Valor da doação corrigido — ${aplicado>=0?"+":""}${aplicado} 💎${faltou>0?` (faltaram ${faltou} 💎 já gastos — cobrar por fora)`:""}`,company:"Pedido #"+pd.id.slice(-8).toUpperCase()});
-  console.log(`[diamonds] 💎 correção por valor: ${pd.userEmail} ${aplicado>=0?"+":""}${aplicado} 💎 (pedido ${pd.id}, R$${valorAntes}→R$${pd.valorTotal})${faltou>0?` — faltaram ${faltou}💎 já gastos`:""}`);
-  return{aplicado,faltou,saldoNovo:novoD};
-}
-
 // ══════════════════════════════════════════════════════════════════════════
 // 💰 CONTABILIDADE CANÔNICA — UMA função, UM número (dono, 15/07/2026)
 // O painel mostrava 4 receitas diferentes pro MESMO caixa:
@@ -1436,33 +1366,6 @@ function boot() {
     persist(BLOCKED_FILE,DB_BLOCKED);
     console.log(`[migração] 🔓 lista de banidos ZERADA — ${_qtd} e-mail(is) liberados (ordem do dono, 21/08/2026)`);
   }
-  // 💎 v154 (ordem do dono, 21/08/2026 — "a fusão juntou os diamantes das
-  // contas; resete os doados pelo site, não mexa nos reais"): correção
-  // ÚNICA do bônus de todo mundo. Bônus legítimo = missões pagas (1x cada)
-  // − bônus já gasto no extrato (_bonusLegitimoCalc, fonte única). 💎 REAIS
-  // (dinheiro de doação) NUNCA são tocados. O carimbo em arquivo garante 1
-  // rodada só — brinde de admin dado DEPOIS nunca é apagado por boot.
-  try{
-    const _fixStamp=path.join(DATA_DIR,"diamantes_fix_v154.json");
-    if(!fs.existsSync(_fixStamp)){
-      let _corr=0,_remov=0;
-      for(const u of Object.values(DB_USERS)){
-        if(!u)continue;
-        const s0=_diamSaldo(u);
-        const alvo=_bonusLegitimoCalc(u.missoes,u.diamondLedger);
-        if(s0.bonus===alvo)continue;
-        const delta=alvo-s0.bonus;
-        u.diamonds={real:s0.real,bonus:alvo};
-        u.diamondLedger=[{ts:Date.now(),tipo:"ajuste",qtd:delta,real:0,bonus:delta,saldoReal:s0.real,saldoBonus:alvo,
-          nota:"Correção pós-fusão: bônus recalculado (missões pagas − bônus gasto) — ordem do dono, 21/08/2026"},
-          ...(Array.isArray(u.diamondLedger)?u.diamondLedger:[])].slice(0,300);
-        _corr++;if(delta<0)_remov+=-delta;
-      }
-      if(_corr)persist(USERS_FILE,DB_USERS);
-      fs.writeFileSync(_fixStamp,JSON.stringify({em:new Date().toISOString(),contasCorrigidas:_corr,bonusRemovidoTotal:_remov}));
-      console.log(`[migração] 💎 bônus recalculado em ${_corr} conta(s) — ${_remov} 💎 bônus indevidos removidos, reais intocados (ordem do dono, 21/08/2026)`);
-    }
-  }catch(e){console.error("[migração] 💎 correção de bônus falhou:",e.message);}
   DB_TRIAL_USED = load(TRIAL_USED_FILE, {phones:{},ips:{},googleIds:{}});
   if(!DB_TRIAL_USED.phones) DB_TRIAL_USED.phones={};
   if(!DB_TRIAL_USED.ips) DB_TRIAL_USED.ips={};
@@ -2162,10 +2065,7 @@ const setUser    = (e,d) => {
   // de uma edição — infinitamente mais raro que travar todo mundo a cada
   // clique. Fica síncrono só o que É dinheiro/acesso: token OAuth, VIP,
   // admin, plano.
-  // v64: diamonds É dinheiro (saldo comprado com doação PIX) — entra no ramo
-  // síncrono junto de token/vip/admin/plan. Operações de diamante são raras
-  // (doação/troca/transferência), então o custo do write síncrono é ok.
-  const isCritical = !!(d.refresh_token || d.cached_access_token || d.vip || d.isAdmin || d.plan || d.diamonds);
+  const isCritical = !!(d.refresh_token || d.cached_access_token || d.vip || d.isAdmin || d.plan);
   if (isCritical) {
     persist(USERS_FILE, DB_USERS);
   } else {
@@ -3259,11 +3159,6 @@ function _fundirUsuario(em,inc,srcId,rel){
   if(!local){
     // Conta só existe no servidor de origem — entra inteira, sem conflito.
     DB_USERS[em]={...incU,_fusao:{de:srcId,em:Date.now(),conflito:false}};
-    // 💎 v154: bônus recalculado MESMO pra conta nova — o servidor de origem
-    // está congelado sem a correção, então o número importado não é confiável
-    // (real fica exatamente como veio: é dinheiro doado de verdade).
-    {const _sIn=_diamSaldo(incU);const _bIn=_bonusLegitimoCalc(incU.missoes,incU.diamondLedger);
-     if(_sIn.bonus!==_bIn)DB_USERS[em].diamonds={real:_sIn.real,bonus:_bIn};}
     DB_HIST[em]=inc.hist||[];
     DB_SENT[em]=new Set(inc.sent||[]);
     if(inc.notes&&Object.keys(inc.notes).length)DB_NOTES[em]=inc.notes;
@@ -3280,20 +3175,6 @@ function _fundirUsuario(em,inc,srcId,rel){
   const vencedorInc=tInc>tLocal;
   const W=vencedorInc?incU:local,L=vencedorInc?local:incU;
   const vip=_fundirVip(W.vip,L.vip,srcId);
-  const dw=(W.diamonds||{}),dl=(L.diamonds||{});
-  // 💎 v154 (ordem do dono, 21/08 — "vocês juntaram os diamantes das
-  // contas"): 💎 REAL soma sempre (cada lado é dinheiro doado de verdade);
-  // 💎 BÔNUS NUNCA soma — missão paga 1x por PESSOA, então o bônus da conta
-  // fundida é RECALCULADO da união das missões menos o gasto dos 2 extratos.
-  const missoesFund={...(L.missoes||{}),...(W.missoes||{})};
-  const ledgerFund=[...(Array.isArray(W.diamondLedger)?W.diamondLedger:[]),
-    ...(Array.isArray(L.diamondLedger)?L.diamondLedger:[])];
-  const diamonds={real:Math.max(0,parseInt(dw.real,10)||0)+Math.max(0,parseInt(dl.real,10)||0),
-    bonus:_bonusLegitimoCalc(missoesFund,ledgerFund)};
-  const somouDiam=Math.max(0,parseInt(dl.real,10)||0);
-  const diamondLedger=[
-    ...(somouDiam>0?[{ts:Date.now(),tipo:"credito",qtd:somouDiam,real:somouDiam,bonus:0,saldoReal:diamonds.real,saldoBonus:diamonds.bonus,nota:"Fusão de servidores — saldo REAL somado do Servidor "+srcId+" (bônus recalculado das missões)"}]:[]),
-    ...ledgerFund].slice(0,300);
   // cvs: os do vencedor entram como estão; os do perdedor entram com idx
   // remapeado se colidir (arquivos preservados — currículo é trabalho do usuário).
   const cvsW=Array.isArray(W.cvs)?[...W.cvs]:[];
@@ -3306,8 +3187,7 @@ function _fundirUsuario(em,inc,srcId,rel){
   }
   const cvs=[...cvsW,...cvsL];
   const fundido={...L,...W,
-    vip,diamonds,diamondLedger,cvs,
-    missoes:missoesFund,
+    vip,cvs,
     saved:[...new Set([...(W.saved||[]),...(L.saved||[])])],
     savedJobs:(()=>{const seen=new Set();const out=[];for(const j of [...(W.savedJobs||[]),...(L.savedJobs||[])]){const k=String(j.id||j.caseNum||"");if(seen.has(k))continue;seen.add(k);out.push(j);}return out.slice(0,500);})(),
     senderEmails:(()=>{const seen=new Set();const out=[];for(const se of [...(W.senderEmails||[]),...(L.senderEmails||[])]){const k=String(se.email||"").toLowerCase();if(!k||seen.has(k))continue;seen.add(k);out.push(se);}return out;})(),
@@ -3315,7 +3195,7 @@ function _fundirUsuario(em,inc,srcId,rel){
     plan:vip.plan||W.plan||L.plan||"free",
     isAdmin:!!(W.isAdmin||L.isAdmin),
     _fusao:{de:srcId,em:Date.now(),conflito:true,vencedor:vencedorInc?("srv"+srcId):"local",
-      somouDiasManual:Math.round((_vipRems(L.vip).remM)/86400_000),somouDiasAuto:Math.round((_vipRems(L.vip).remA)/86400_000),somouDiamantes:somouDiam}};
+      somouDiasManual:Math.round((_vipRems(L.vip).remM)/86400_000),somouDiasAuto:Math.round((_vipRems(L.vip).remA)/86400_000)}};
   DB_USERS[em]=fundido;
   // Envios: UNION por appId (regra 8 nunca falha; ranking soma os 2 lados).
   const histKey=h2=>String(h2.appId||((h2.to||"")+"|"+(h2.sentAt||h2.date||"")));
@@ -3330,7 +3210,7 @@ function _fundirUsuario(em,inc,srcId,rel){
   DB_APP_INDEX[em]={...(inc.appIndex||{}),...(DB_APP_INDEX[em]||{})};
   rel.pdfs+=gravaPdfs(inc.pdfs,vencedorInc?null:remapL);
   rel.conflitos.push({email:em,vencedor:vencedorInc?("Servidor "+srcId):"Servidor local",
-    somouDiasManual:fundido._fusao.somouDiasManual,somouDiasAuto:fundido._fusao.somouDiasAuto,somouDiamantes:somouDiam,
+    somouDiasManual:fundido._fusao.somouDiasManual,somouDiasAuto:fundido._fusao.somouDiasAuto,
     enviosSomados:novosH.length});
   rel.fundidos++;
 }
@@ -5105,7 +4985,7 @@ function scheduleAuto(email) {
 // usuário bateu o limite do plano ANTIGO e DEPOIS ativou/melhorou o plano,
 // o timer de "espera a meia-noite" não ficava sabendo do upgrade — pagante
 // esperando por um limite que não existe mais. Toda ativação de plano
-// (troca 💎, upgrade, set-plan do admin, código) chama isto: se o robô está
+// (compra direta aprovada, set-plan do admin, código) chama isto: se o robô está
 // dormindo por limite (waiting_limit — e SÓ nesse estado, nunca mexe no
 // ritmo de 7min de quem está enviando), acorda AGORA; o scheduleAuto
 // recalcula o limite do zero e, se ainda estiver estourado (ex.: renovou o
@@ -5535,52 +5415,6 @@ function translateGmailErrorMsg(msg, toEmailCtx) {
 // Cache em disco (positivo E negativo) — a mesma empresa NUNCA é pesquisada
 // duas vezes, e um teto diário global segura o custo. Fail-open: sem chave
 // Gemini, timeout ou resposta ruim = segue o fluxo antigo (pula a vaga).
-// ══ 🎁 v68 — MISSÕES/RECOMPENSAS EM DIAMANTES (edição mestra, 26/07) ══════
-// Fecha o ciclo da economia: o usuário GANHA 💎 de brinde usando o app —
-// prova o gostinho da moeda de graça, engaja (mais candidaturas) e cria o
-// desejo de completar pro plano. 💎 de missão é BÔNUS: intransferível e
-// gasto primeiro na troca (regra 13c). Cada missão paga UMA vez por conta.
-// Retroativo por desenho: /api/missions confere as condições reais a cada
-// abertura — usuário antigo que JÁ cumpriu recebe na hora (cura o passado).
-const MISSOES=[
-  {id:"primeiro_envio",emoji:"🚀",titulo:"Primeira candidatura",desc:"Envie sua 1ª candidatura (manual ou robô)",bonus:2},
-  {id:"perfil_completo",emoji:"📋",titulo:"Perfil completo",desc:"Salve seu perfil de e-mail e suba um currículo PDF",bonus:3},
-  {id:"envios_100",emoji:"💯",titulo:"100 candidaturas",desc:"Alcance 100 candidaturas enviadas",bonus:5},
-  {id:"envios_1000",emoji:"🏆",titulo:"1.000 candidaturas",desc:"Alcance 1.000 candidaturas enviadas",bonus:10},
-  {id:"avaliacao",emoji:"⭐",titulo:"Avaliação publicada",desc:"Tenha sua avaliação do H2BApply aprovada e publicada",bonus:3},
-];
-// 💎 v154 (ordem do dono, 21/08 — a fusão somou bônus de contas irmãs): o
-// BÔNUS legítimo de uma conta é sempre DERIVÁVEL: missões pagas (1x cada,
-// tabela MISSOES acima) menos o bônus já gasto (débitos do extrato).
-// Fonte única usada pela migração de correção E pela fusão de servidores —
-// nunca duplicar esta conta em outro lugar.
-function _bonusLegitimoCalc(missoesObj,ledgerArr){
-  let ganho=0;
-  for(const id of Object.keys(missoesObj||{})){const m=MISSOES.find(x=>x.id===id);if(m)ganho+=m.bonus;}
-  let gasto=0;
-  for(const l of (Array.isArray(ledgerArr)?ledgerArr:[])){const b=parseInt(l&&l.bonus,10)||0;if(b<0)gasto+=-b;}
-  return Math.max(0,ganho-gasto);
-}
-function grantMissao(email,id){
-  const m=MISSOES.find(x=>x.id===id);if(!m)return false;
-  const u=getUser(email);if(!u)return false;
-  const done=u.missoes||{};if(done[id])return false; // uma vez por conta
-  done[id]=Date.now();
-  setUser(email,{missoes:done});
-  creditDiamonds(email,{bonus:m.bonus},{tipo:"missao",nota:`${m.emoji} ${m.titulo}`});
-  addLog(email,{status:"sistema",jobTitle:`🎁 Missão cumprida: ${m.emoji} ${m.titulo} — +${m.bonus} 💎 de brinde`,company:"Recompensas"});
-  console.log(`[missoes] 🎁 ${email}: ${id} (+${m.bonus} 💎 bônus)`);
-  return true;
-}
-// Envio conta candidatura real (auto/manual) — nunca "reply".
-function checkMissoesEnvio(email){
-  try{
-    const n=(getHist(email)||[]).filter(x=>x.type!=="reply").length;
-    if(n>=1)grantMissao(email,"primeiro_envio");
-    if(n>=100)grantMissao(email,"envios_100");
-    if(n>=1000)grantMissao(email,"envios_1000");
-  }catch(e){}
-}
 
 
 async function _doAutoSendInner(email) {
@@ -6058,7 +5892,6 @@ async function _doAutoSendInner(email) {
       addHist(email, histEntry);
       indexApp(email, histEntry);
       invalidateUserStatsCache(email);
-      checkMissoesEnvio(email); // 🎁 v68: missões de envio (1ª/100/1000)
 
       if (gmBody?.id && accessToken && !GMAIL_SEND_ONLY) { // v55: ler headers exige gmail.readonly — pulado no modo só-envio
         const mid = gmBody.id;
@@ -7395,6 +7228,87 @@ const server=http.createServer(async(req,res)=>{
 </html>`);
   }
 
+  // Google API Services User Data Policy — Limited Use, página dedicada
+  // (checklist de verificação OAuth: reforça a mesma disclosure que já
+  // existe dentro de /privacidade, mas num link curto e fácil de achar
+  // pro revisor do Google, sem precisar ler a política inteira).
+  if(pathname==="/google-data-usage"){
+    res.writeHead(200,{"Content-Type":"text/html; charset=utf-8","Cache-Control":"public, max-age=86400"});
+    return res.end(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Google User Data Usage — H2BApply</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1e293b;background:#f8fafc;line-height:1.7}
+  .container{max-width:680px;margin:0 auto;padding:40px 20px}
+  .logo{display:flex;align-items:center;gap:12px;margin-bottom:32px}
+  .logo-icon{width:48px;height:48px;background:linear-gradient(135deg,#4f46e5,#0891b2);border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:24px;font-weight:800}
+  .logo-text{font-size:22px;font-weight:800;color:#1e293b}
+  h1{font-size:26px;font-weight:800;color:#1e293b;margin-bottom:8px}
+  .date{font-size:13px;color:#64748b;margin-bottom:28px}
+  h2{font-size:16px;font-weight:700;color:#1e293b;margin:22px 0 8px}
+  p{color:#475569;margin-bottom:12px;font-size:14.5px}
+  ul{color:#475569;margin:8px 0 12px 20px;font-size:14.5px}
+  li{margin-bottom:6px}
+  a{color:#4f46e5;text-decoration:none}
+  .card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:26px;margin-bottom:20px}
+  .scope-box{background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:14px 16px;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:#1e3a8a;margin:10px 0}
+  .no-box{background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:10px;padding:14px 16px;font-size:14px;color:#166534;margin:14px 0}
+  .back-btn{display:inline-flex;align-items:center;gap:6px;background:#4f46e5;color:#fff;padding:10px 20px;border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;margin-bottom:24px}
+  .footer{text-align:center;margin-top:40px;font-size:12px;color:#94a3b8}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="logo">
+    <div class="logo-icon">H</div>
+    <div class="logo-text">H2BApply</div>
+  </div>
+  <a href="/" class="back-btn">← Back to app</a>
+  <div class="card">
+    <h1>How H2BApply uses Google user data</h1>
+    <div class="date">Last updated: September 2026</div>
+
+    <h2>The only scope we request</h2>
+    <div class="scope-box">https://www.googleapis.com/auth/gmail.send</div>
+    <p>That's it. We never request <code>gmail.readonly</code>, <code>gmail.modify</code>, <code>gmail.metadata</code>, <code>gmail.insert</code>, <code>gmail.compose</code>, or <code>mail.google.com</code>.</p>
+
+    <h2>What we do with it</h2>
+    <p>H2BApply helps Brazilian workers apply to U.S. seasonal jobs (H-2B/H-2A visas) publicly listed by the U.S. Department of Labor. The user writes their own application e-mail (subject and body) and attaches their own resume. When the user clicks "Send" — manually, one job at a time, or through a queue they start and can pause/stop at any time — the app sends that exact e-mail <strong>from the user's own Gmail account</strong> to the employer the user selected.</p>
+
+    <h2>What we never do</h2>
+    <div class="no-box">
+      ✅ We do not read your inbox.<br>
+      ✅ We do not store the content of your e-mails.<br>
+      ✅ We do not access, search, or export any message you didn't send through the app.<br>
+      ✅ We do not use Gmail data for advertising.<br>
+      ✅ We do not sell Google user data, ever.<br>
+      ✅ No human reads your data, except with your explicit consent or as required for security/fraud investigation, as permitted by Google's policy.
+    </div>
+
+    <h2>Limited Use compliance</h2>
+    <p>H2BApply's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+
+    <h2>Revoke access anytime</h2>
+    <p>You can revoke H2BApply's access to your Google account at any time at <a href="https://myaccount.google.com/permissions" target="_blank">myaccount.google.com/permissions</a>. Deleting your H2BApply account (available in-app, or via <a href="/delete-account">/delete-account</a>) also revokes the underlying Google grant automatically.</p>
+
+    <h2>Full policy</h2>
+    <p>This page summarizes our Gmail data practices. For our complete privacy practices, see the <a href="/privacidade">Privacy Policy</a>.</p>
+  </div>
+  <div class="footer">
+    © 2026 H2BApply · <a href="/" style="color:#64748b">h2bapply.com</a>
+    &nbsp;|&nbsp; <a href="/privacidade" style="color:#64748b">Privacidade</a>
+    &nbsp;|&nbsp; <a href="/termos" style="color:#64748b">Termos</a>
+    <br><small style="color:#94a3b8">suporte@h2bapply.com</small>
+  </div>
+</div>
+</body>
+</html>`);
+  }
+
   // Termos de Uso
   if(pathname==="/termos"||pathname==="/terms"){
     res.writeHead(200,{"Content-Type":"text/html; charset=utf-8","Cache-Control":"public, max-age=86400"});
@@ -7433,12 +7347,12 @@ const server=http.createServer(async(req,res)=>{
   <a href="/" class="back-btn">← Voltar ao App</a>
   <div class="card">
     <h1>Termos de Uso</h1>
-    <div class="date">Última atualização: Junho de 2026 — Versão 3.0</div>
+    <div class="date">Última atualização: Setembro de 2026 — Versão 4.0</div>
 
-    <div class="warning">⚠️ <strong>Importante:</strong> O H2BApply é uma ferramenta de candidatura. Não garantimos contratação, aprovação de visto ou resposta de empregadores.</div>
+    <div class="warning">⚠️ <strong>Importante:</strong> O H2BApply é uma ferramenta de candidatura — um serviço digital de envio de e-mails. Não garantimos contratação, aprovação de visto ou resposta de empregadores.</div>
 
     <h2>1. Sobre o serviço</h2>
-    <p>O H2BApply é um aplicativo web brasileiro que automatiza o envio de candidaturas para vagas H-2B e H-2A publicadas no portal oficial do Departamento de Trabalho dos Estados Unidos (DOL). O serviço utiliza seu Gmail para enviar emails de candidatura para empregadores americanos.</p>
+    <p>O H2BApply é um serviço digital brasileiro, pago por assinatura, que automatiza o ENVIO de candidaturas para vagas H-2B e H-2A publicadas no portal oficial do Departamento de Trabalho dos Estados Unidos (DOL). O serviço usa a sua própria conta Gmail para mandar, em seu nome, exatamente o e-mail (assunto, corpo e currículo) que VOCÊ escreveu e escolheu enviar.</p>
 
     <h2>2. Elegibilidade</h2>
     <ul>
@@ -7454,48 +7368,71 @@ const server=http.createServer(async(req,res)=>{
       <li>Usar o serviço apenas para candidaturas legítimas a vagas H-2B/H-2A</li>
       <li>Não usar o app para envio de spam ou conteúdo enganoso</li>
       <li>Respeitar os limites de envio do seu plano</li>
+      <li>Ser o único responsável pelo conteúdo (assunto, corpo, currículo) que decide enviar</li>
     </ul>
 
-    <h2>4. Planos, diamantes e recompensas</h2>
+    <h2>4. O que o H2BApply faz — e o que ele NUNCA faz</h2>
+    <p><strong>Faz:</strong> envia, pela sua própria conta Gmail, o e-mail de candidatura que você escreveu, para o empregador que você escolheu, dentro do limite diário do seu plano (manual e/ou automático).</p>
+    <p><strong>Nunca faz:</strong> o H2BApply <strong>não escreve, não sugere e não preenche</strong> assunto, corpo de e-mail ou carta de apresentação por você — se você não escrever o texto, o envio é pulado com um aviso claro na tela. O H2BApply também <strong>nunca lê, abre, armazena ou monitora</strong> sua caixa de entrada (recebidos); a única permissão usada no Gmail é a de enviar. O H2BApply não é uma agência de emprego, não representa nenhum empregador e não tem qualquer vínculo com o governo dos Estados Unidos.</p>
+
+    <h2>5. Planos, preços e como funciona a doação/compra</h2>
+    <p>Os preços de cada plano e período são sempre os exibidos na tela antes do pagamento, calculados pelo próprio servidor — nunca um valor "combinado" ou digitado à mão. O fluxo de doação/compra funciona assim:</p>
     <ul>
-      <li><strong>Free:</strong> 20 envios manuais + 10 automáticos por dia, gratuito</li>
-      <li><strong>VIP:</strong> 100 envios manuais por dia (sem automático)</li>
-      <li><strong>VIPro:</strong> 100 manuais + 100 automáticos por dia</li>
-      <li><strong>DoublePro:</strong> 200 manuais + 200 automáticos por dia (2 contas Gmail)</li>
+      <li>Você escolhe o plano e o período e vê o valor exato a pagar via PIX</li>
+      <li>Você confirma que leu e entende este Termo (seção 12) antes de continuar</li>
+      <li>Você paga via PIX e envia o comprovante dentro do próprio app</li>
+      <li><strong>Você precisa continuar com a mesma conta cadastrada</strong> até a análise terminar — o comprovante é vinculado à sua conta, e sair ou excluir a conta no meio da análise pode impedir a confirmação</li>
+      <li>Se os dados do comprovante conferem automaticamente, o plano é liberado <strong>na hora, de forma PROVISÓRIA</strong> (por poucos dias), mas o pedido continua na fila para um administrador humano confirmar — nenhum plano fica ativo por muito tempo sem essa confirmação</li>
+      <li>Se o comprovante não confere, está ilegível ou incompleto, o pedido fica pendente de revisão manual e você é avisado</li>
     </ul>
-    <p>Os planos são trocados por diamantes (💎) dentro do app. Diamantes são creditados a partir de doações via PIX confirmadas pela administração ou de recompensas de uso. Não há reembolso após a troca por um plano. Quem ativou um plano antes de uma mudança de regras mantém os limites da ativação até o vencimento.</p>
+    <p>Quem ativou um plano antes de uma mudança de preços ou regras mantém os limites da própria ativação até o vencimento. Não há reembolso automático após o uso do plano, sem prejuízo do direito de arrependimento da seção 6.</p>
 
-    <h2>5. Limitação de responsabilidade</h2>
-    <p>O H2BApply <strong>não garante</strong>:</p>
+    <h2>6. Direito de arrependimento (Código de Defesa do Consumidor, art. 49)</h2>
+    <p>Como a contratação acontece fora de um estabelecimento físico (pela internet), você tem até <strong>7 (sete) dias corridos</strong> a partir da confirmação do pagamento para desistir da compra e pedir reembolso integral, bastando avisar pelo e-mail de suporte (seção 13). Se o plano já tiver sido efetivamente usado (por exemplo, envios automáticos ou manuais já realizados dentro do período pago), o reembolso pode ser proporcional ao que ainda não foi utilizado. Este direito não substitui, e não é substituído por, nenhuma outra garantia prevista em lei.</p>
+
+    <h2>7. Limitação de responsabilidade</h2>
+    <p>O H2BApply é uma ferramenta de envio de e-mails e <strong>não garante</strong>:</p>
     <ul>
       <li>Contratação por qualquer empresa americana</li>
       <li>Resposta de empregadores</li>
       <li>Aprovação de visto H-2B ou H-2A</li>
       <li>Entrada nos Estados Unidos</li>
     </ul>
-    <p>O resultado das candidaturas depende exclusivamente de empregadores, autoridades americanas e consulados. O H2BApply é apenas uma ferramenta de envio de emails.</p>
+    <p>O resultado das candidaturas depende exclusivamente de empregadores, autoridades americanas e consulados — fatores totalmente fora do controle do H2BApply.</p>
 
-    <h2>6. Conta e segurança</h2>
-    <p>Você é responsável por manter a segurança da sua conta Google. O H2BApply acessa seu Gmail apenas para enviar candidaturas e ler respostas de empregadores, conforme descrito na Política de Privacidade.</p>
+    <h2>8. Conta e segurança</h2>
+    <p>Você é responsável por manter a segurança da sua conta Google. O H2BApply acessa seu Gmail <strong>apenas para enviar</strong> as candidaturas que você mesmo escreve e autoriza — o app nunca lê, abre nem armazena o conteúdo da sua caixa de entrada, conforme descrito na Política de Privacidade.</p>
 
-    <h2>7. Cancelamento</h2>
+    <h2>9. Cancelamento</h2>
     <p>Você pode cancelar sua conta a qualquer momento pelo app. Também pode revogar o acesso ao Gmail em <a href="https://myaccount.google.com/permissions" target="_blank">myaccount.google.com/permissions</a>.</p>
 
-    <h2>8. Alterações nos termos</h2>
+    <h2>10. Alterações nos termos</h2>
     <p>Podemos atualizar estes termos periodicamente. Mudanças significativas serão comunicadas pelo app. O uso continuado após alterações implica aceitação dos novos termos.</p>
 
-    <h2 id="gmail-aviso">8. Aviso sobre uso do Gmail — Responsabilidade do Usuário</h2>
+    <h2 id="gmail-aviso">11. Aviso sobre uso do Gmail — um risco que é do Google, não do H2BApply</h2>
     <div class="warning">⚠️ <strong>Leia com atenção antes de usar o envio automático.</strong></div>
-    <p>O H2BApply utiliza sua conta Gmail para enviar candidaturas. O Google pode <strong>bloquear temporariamente</strong> contas Gmail que enviam muitos emails em curto período, especialmente quando:</p>
+    <p>O H2BApply utiliza sua conta Gmail para enviar candidaturas. O Google — empresa terceira, totalmente independente do H2BApply — pode <strong>limitar ou bloquear temporariamente</strong> contas Gmail que enviam muitos emails em curto período, especialmente quando:</p>
     <ul>
       <li>Você usa apenas <strong>1 conta Gmail</strong> para todos os envios</li>
       <li>O volume de emails é muito alto em um único dia</li>
       <li>Os emails são enviados para muitos destinatários desconhecidos</li>
     </ul>
-    <p><strong>Recomendação:</strong> Adicione 2 ou mais contas Gmail na aba Perfil → Gmail para distribuir os envios e reduzir o risco de bloqueio.</p>
-    <p><strong>Isenção de responsabilidade:</strong> O H2BApply não se responsabiliza por bloqueios, suspensões ou limitações impostas pelo Google às contas dos usuários. O risco de bloqueio do Gmail é de <strong>inteira responsabilidade do usuário</strong>. Ao usar o envio automático, você declara estar ciente deste risco e assume total responsabilidade pelo uso da sua conta Gmail.</p>
+    <p><strong>O que o H2BApply já faz para reduzir esse risco:</strong> aquecimento gradual de conta nova, intervalo humanizado entre envios automáticos e a opção de cadastrar 2 ou mais contas Gmail (aba Perfil → Gmail) para distribuir o volume.</p>
+    <p><strong>Isenção específica:</strong> mesmo com essas proteções, a decisão de limitar, suspender ou bloquear uma conta Gmail é tomada exclusivamente pelo Google, segundo critérios e políticas próprias que o H2BApply não controla nem pode garantir. Por isso, o H2BApply não se responsabiliza por bloqueios, suspensões ou limitações impostas pelo Google à sua conta Gmail. Ao ativar o envio automático, você declara estar ciente deste risco específico — que decorre de ato de terceiro (o Google), e não de falha do H2BApply.</p>
 
-    <h2>9. Contato</h2>
+    <h2>12. Consentimento informado ao comprar/doar um plano</h2>
+    <p>Antes de concluir o pagamento de qualquer plano, você confirma que leu e entende que:</p>
+    <ul>
+      <li>Está contratando um <strong>serviço digital pago</strong> de automação de envio de e-mails — não uma agência de emprego, consultoria de imigração ou qualquer garantia de resultado</li>
+      <li>O H2BApply <strong>nunca escreve texto por você</strong>; o conteúdo enviado é sempre de sua autoria e responsabilidade</li>
+      <li>O preço mostrado na tela, no momento da escolha do plano, é o valor final a pagar</li>
+      <li>Depois de pagar via PIX, é necessário enviar o comprovante e <strong>permanecer logado na mesma conta</strong> até a análise (automática e, sempre, humana) ser concluída</li>
+      <li>O risco de limitação/bloqueio da conta Gmail pelo Google é um risco de terceiro, nos termos da seção 11, e pode ser reduzido — mas não eliminado — usando mais de uma conta de envio</li>
+      <li>Tem direito de arrependimento de 7 dias corridos, nos termos da seção 6</li>
+      <li>Concorda integralmente com este Termo de Uso e com a Política de Privacidade</li>
+    </ul>
+
+    <h2>13. Contato</h2>
     <ul>
       <li>Email: <a href="mailto:suporte@h2bapply.com">suporte@h2bapply.com</a></li>
       <li>WhatsApp: +55 53 98145-3496</li>
@@ -7737,12 +7674,8 @@ ul li{margin-bottom:6px}
         if(!persistFinanceiro()){ finP.valor=finAntes; finSyncOk=false; console.error(`[pedido-set-valor] pedido ${pedidoId} salvo, mas SINCRONIZAÇÃO com financeiro falhou — valores podem divergir até nova tentativa.`); }
       }
     }catch(e){ finSyncOk=false; console.error('[pedido-set-valor] erro ao sincronizar financeiro:',e.message); }
-    // 💎 v77b: se for uma DOAÇÃO já aprovada, reconcilia os diamantes já
-    // creditados com o valor corrigido (ver reconciliarDiamantesCorrecao) —
-    // senão o usuário ficava travado no 💎 do valor ERRADO antigo pra sempre.
-    const diamCorrecao=reconciliarDiamantesCorrecao(pd,vAntes,s.user_email);
     console.log(`[pedido] valor corrigido: ${pedidoId} R$${vAntes}→R$${pd.valorTotal} por ${s.user_email}`);
-    return json(res,200,{ok:true,valorAntes:vAntes,valorNovo:pd.valorTotal,finSyncOk,diamCorrecao});
+    return json(res,200,{ok:true,valorAntes:vAntes,valorNovo:pd.valorTotal,finSyncOk});
   }
 
 
@@ -7863,6 +7796,10 @@ ul li{margin-bottom:6px}
       const r = j26ApplyGroupsToSheet();
       if(r.applied>0) console.log(`[grupos-j26] ✅ ${r.applied} grupo(s) já existente(s) aplicado(s) na planilha recém-publicada.`);
     }
+    // 📡 v134: vaga nova entrando no sistema tem que avisar quem tem radar
+    // ligado casando com ela — esse upload manual do admin é hoje o ÚNICO
+    // ponto de entrada de vaga nova nesta reconstrução (sem robô de coleta).
+    notificarRadares(valid,`upload:${safeKey}`).catch(e=>console.warn("[radar] notificar upload:",e.message));
     return json(res,200,{ok:true,key:safeKey,count:valid.length,total:vagas.length,duplicatesMerged});
   }
 
@@ -10257,6 +10194,28 @@ filtrar();
     return json(res,200,{ok:true,adminSettings:p.adminSettings||{}});
   }
 
+  // GET /api/planos — fonte única e PÚBLICA dos planos: preço oficial em R$
+  // (PLANO_PRECO_TAB) e limites manual/auto por plano (PLAN_LIMITS_NEW). A
+  // tela de compra NUNCA hardcoda esses números — deriva sempre daqui (regra
+  // 13o: mudança de tabela é mudança de código, nunca só de texto). Também
+  // devolve a mediana REAL das últimas confirmações de comprovante
+  // (createdAt→ativadoEm) — promessa honesta no checkout, no lugar de um
+  // prazo fixo inventado.
+  if(pathname==="/api/planos"&&req.method==="GET"){
+    const tabela=[];
+    for(const[pl,combos]of Object.entries(PLANO_PRECO_TAB))
+      for(const dk of Object.keys(combos))
+        tabela.push({plano:pl,dias:parseInt(dk,10),valorTotal:combos[dk]});
+    let medianaAprovacaoHoras=null;
+    try{
+      const hs=(DB_PEDIDOS||[]).filter(pp=>pp&&pp.ativadoEm&&pp.createdAt)
+        .sort((a,b)=>(b.ativadoEm||0)-(a.ativadoEm||0)).slice(0,30)
+        .map(pp=>(pp.ativadoEm-pp.createdAt)/3600000).filter(h=>h>0&&h<24*14).sort((a,b)=>a-b);
+      if(hs.length>=3)medianaAprovacaoHoras=Math.round(hs[Math.floor(hs.length/2)]*10)/10;
+    }catch(e){}
+    return json(res,200,{ok:true,precos:tabela,limites:PLAN_LIMITS_NEW,medianaAprovacaoHoras});
+  }
+
   // ── PEDIDOS DE PLANO ───────────────────────────────────────
   // POST /api/pedido — usuário cria pedido de plano
   if(pathname==="/api/pedido"&&req.method==="POST"){
@@ -10278,49 +10237,42 @@ filtrar();
           targetEmail=te;
         }
       }
-      // ── 💎 v64: pedido de DOAÇÃO (dono, 26/07 — não existe mais compra de
-      // plano). tipo:"doacao" + valorTotal → diamantes = floor(valor / 1,50).
-      // O resto do fluxo (comprovante, pré-check IA, aprovação, caixa) é o
-      // MESMO dos pedidos de sempre — só o que a aprovação credita muda.
-      let _ehDoacao=String(d.tipo||d.plano||"").toLowerCase()==="doacao";
-      // 💎 v154 (ordem do dono, 21/08): compra direta de plano NÃO existe
-      // (regra 13c) — mas front ANTIGO em cache (usuários vindos dos
-      // servidores 2/3) ainda mandava {plano:"vipro",dias:30}. Esse pedido
-      // agora NASCE como doação do mesmo valor: o R$ vira 💎 na aprovação e
-      // NENHUM dia de VIP é concedido. Exceção: admin criando pedido
-      // retroativo (Regularizar do Robô Contábil) mantém o formato de plano
-      // — é documentação contábil de compra antiga, protegida pela
-      // reconciliação de sempre.
-      if(!_ehDoacao&&!(isAdminVip(getUser(s.user_email))||isAdminEmail(s.user_email))){
-        d.planoOriginal=d.plano||null;
-        _ehDoacao=true;
-        console.log(`[pedido] 💎 v154: pedido de plano (front antigo) de ${targetEmail} nasce como DOAÇÃO de R$${parseFloat(d.valorTotal)||0}`);
+      // ── COMPRA DIRETA DE PLANO (v170 — dono, 09/09/2026: "retire todo
+      // sistema de diamantes... reestruture pra pessoa conseguir comprar"):
+      // sem moeda intermediária. O usuário escolhe plano+período, o SERVIDOR
+      // recalcula o preço em R$ pela tabela oficial (nunca confia no valor
+      // que o cliente mandou — trava contra manipulação), e o comprovante
+      // enviado é para ESSE valor exato. Aprovação ativa o plano DIRETO.
+      const planoKey={vip:"vip",vipro:"vipro",doublepro:"doublepro"}[String(d.plano||"").toLowerCase()];
+      const diasReq=parseInt(d.dias,10)||0;
+      const _isAdminCaller=isAdminVip(getUser(s.user_email))||isAdminEmail(s.user_email);
+      let valorOficial=null;
+      if(planoKey&&(PLANO_PRECO_TAB[planoKey]||{})[diasReq]!=null){
+        valorOficial=PLANO_PRECO_TAB[planoKey][diasReq];
+      }else if(!_isAdminCaller){
+        return json(res,400,{error:"Plano ou período inválido. Escolha um dos planos e prazos exibidos na tela."});
       }
-      if(_ehDoacao){
-        const _v=parseFloat(d.valorTotal)||0;
-        if(_v<DIAMOND_PRICE_BRL)return json(res,400,{error:`Valor mínimo da doação: R$ ${DIAMOND_PRICE_BRL.toFixed(2).replace(".",",")} (1 💎).`});
-        if(_v>50000)return json(res,400,{error:"Valor máximo por doação: R$ 50.000."});
+      // Admin (Regularizar/retroativo) pode registrar um valor histórico fora
+      // da tabela atual — documentação contábil de compra antiga.
+      if(valorOficial==null)valorOficial=parseFloat(d.valorTotal)||0;
+      // Consentimento informado é OBRIGATÓRIO pra pedido de usuário comum —
+      // pense como advogado (dono, 09/09/2026): a pessoa precisa confirmar
+      // que entende o que está comprando (serviço de envio, nunca garantia
+      // de emprego/visto) e o preço exato ANTES de o pedido ser criado.
+      if(!_isAdminCaller&&d.consentimento!==true){
+        return json(res,400,{error:"Você precisa marcar que leu e entende como o programa funciona antes de continuar."});
       }
-      // ── DEDUP (#3): se o próprio usuário já tem um pedido EM ANÁLISE, não cria
+      // ── DEDUP: se o próprio usuário já tem um pedido EM ANÁLISE, não cria
       // outro — devolve o pendente existente. Regularização do admin EM NOME de
       // outro usuário (targetEmail != quem chamou) passa direto, sem dedup.
       if(targetEmail===s.user_email){
-        // 💼 MC5-P1 item 4 (dinheiro real perdido, auditoria 29/08): DOAÇÃO
-        // nunca cai no dedup de pendente — o PIX é feito ANTES do envio do
-        // formulário; devolver o pendente antigo DESCARTAVA em silêncio o
-        // comprovante da 2ª doação real (dinheiro recebido sem rastro).
-        // Cada doação vira pedido próprio; a anti-fraude é o hash/E2E do
-        // comprovante + a trava de "comprovante já usado" na aprovação.
-        // Teto anti-abuso: 3 doações EM ANÁLISE por usuário.
-        const jaPendente=DB_PEDIDOS.find(x=>x.userEmail===targetEmail && x.status==="pendente");
-        if(jaPendente&&!_ehDoacao){
-          return json(res,200,{ok:true,duplicado:true,pedido:jaPendente,
-            message:"Você já tem um pedido em análise. Acompanhe o status do pedido existente."});
-        }
-        if(_ehDoacao){
-          const _nPend=DB_PEDIDOS.filter(x=>x&&x.userEmail===targetEmail&&x.status==="pendente"&&(x.tipo==="doacao"||x.plano==="doacao")).length;
-          if(_nPend>=3)return json(res,400,{error:"Você já tem 3 doações em análise — aguarde a confirmação delas antes de enviar outra. Dúvidas? Chame no WhatsApp."});
-        }
+        // 💼 MC5-P1 (29/08): o PIX já foi feito ANTES do envio do comprovante —
+        // engolir um 2º pedido pendente no dedup seria dinheiro real sem
+        // rastro. Cada pedido vira registro PRÓPRIO (a anti-fraude é o
+        // hash/transação E2E do comprovante + a trava de "comprovante já
+        // usado" na aprovação); só um TETO anti-abuso protege contra spam.
+        const _nPend=DB_PEDIDOS.filter(x=>x&&x.userEmail===targetEmail&&x.status==="pendente").length;
+        if(_nPend>=3)return json(res,400,{error:"Você já tem 3 pedidos em análise — aguarde a confirmação deles antes de enviar outro. Dúvidas? Chame no WhatsApp."});
         // DEDUP 2 (caso Wagner, 18/07/2026): o dedup acima só vê PENDENTE —
         // aprovado o 1º pedido, o cliente conseguia criar outro igual e o
         // editor aprovava de novo (3× no caso real). Se já existe pedido do
@@ -10328,10 +10280,7 @@ filtrar();
         // criar outro. Renovação de verdade (dias depois) passa normal, e o
         // admin (Regularizar) não passa por aqui.
         const _tsP=x=>{if(!x)return 0;if(typeof x==="number")return x;const t=Date.parse(x);return isNaN(t)?0:t;};
-        // v64: doação repetida em dias seguidos é LEGÍTIMA (a pessoa pode doar
-        // de novo quando quiser) — o dedup de "mesmo plano em 3 dias" só vale
-        // pra pedidos de plano; a anti-fraude da doação é o hash do comprovante.
-        const jaRecente=_ehDoacao?null:DB_PEDIDOS.find(x=>x.userEmail===targetEmail
+        const jaRecente=DB_PEDIDOS.find(x=>x.userEmail===targetEmail
           &&["pago","ativo"].includes(String(x.status||"").toLowerCase())
           &&String(x.plano||"")===String(d.plano||"")
           &&(Date.now()-(_tsP(x.ativadoEm)||_tsP(x.pagoEm)||x.createdAt||0))<=3*86400_000);
@@ -10359,22 +10308,14 @@ filtrar();
         userCity:d.userCity||"",
         userState:d.userState||"",
         userAddress:d.userAddress||"",
-        plano:_ehDoacao?"doacao":(d.plano||"vipro"), // vip | vipro | doublepro | doacao (v64)
-        dias:_ehDoacao?0:(parseInt(d.dias)||30),      // 30 | 60 | 90 | 365 (doação: 0)
-        tipo:_ehDoacao?"doacao":"plano",              // v64: doacao credita 💎, plano credita dias
-        // v77 (dono, 28/07: "usuário comprou R$250, não aparece que ele tem o
-        // DoublePro"): ERA Math.floor aqui mas planoPrecoDiamantes() usa
-        // Math.round — pra planos cujo preço em R$ não é múltiplo exato de
-        // DIAMOND_PRICE_BRL (ex.: DoublePro 30d = R$250 = 166,67💎), doar
-        // EXATAMENTE o preço de tabela em R$ arredondava o crédito PRA BAIXO
-        // (166💎) mas o preço do plano exigia o arredondamento normal
-        // (167💎) — 1💎 curto, na cara, sem nenhuma explicação clara pro
-        // usuário nem pro admin. Usar a MESMA regra (round) nos dois lados
-        // garante que doar o valor de tabela de qualquer plano sempre cobre
-        // exatamente aquele plano.
-        diamantes:_ehDoacao?Math.round((parseFloat(d.valorTotal)||0)/DIAMOND_PRICE_BRL):0,
-        valorTotal:parseFloat(d.valorTotal)||0,
+        plano:planoKey||d.plano||"vipro", // vip | vipro | doublepro
+        dias:planoKey?diasReq:(parseInt(d.dias)||30),
+        tipo:"plano",
+        valorTotal:valorOficial,
         desconto:parseFloat(d.desconto)||0,
+        // Trilha de consentimento informado — carimba o que a pessoa
+        // confirmou entender no momento da compra (auditável depois).
+        consentimento:_isAdminCaller?null:{em:Date.now(),versaoTermos:"2026-09"},
         comprovante:(()=>{
           const c=d.comprovante;
           if(!c) return null;
@@ -10498,320 +10439,6 @@ ${pedido.criadoPor&&pedido.criadoPor!==pedido.userEmail?`\n🛠️ Registrado re
     }catch(e){return json(res,500,{error:e.message});}
   }
   // GET /api/pedidos — lista todos os pedidos (admin) ou só do usuário
-  // 🎁 GET /api/missions — lista as missões com progresso E confere as
-  // condições reais na hora (retroativo: usuário antigo que já cumpriu
-  // recebe os 💎 ao abrir a tela — migração automática, regra da casa).
-  if(pathname==="/api/missions"&&req.method==="GET"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    const p0=getUser(s.user_email);if(!p0)return json(res,401,{error:"Conta não encontrada."});
-    const h=getHist(s.user_email)||[];
-    const nEnvios=h.filter(x=>x.type!=="reply").length;
-    if(nEnvios>=1)grantMissao(s.user_email,"primeiro_envio");
-    if(nEnvios>=100)grantMissao(s.user_email,"envios_100");
-    if(nEnvios>=1000)grantMissao(s.user_email,"envios_1000");
-    if((p0.profiles||[]).length>0&&(p0.cvs||[]).length>0)grantMissao(s.user_email,"perfil_completo");
-    if((DB_REVIEWS||[]).some(r=>String(r.email||"").toLowerCase()===s.user_email&&r.status==="approved"))grantMissao(s.user_email,"avaliacao");
-    const done=(getUser(s.user_email)||{}).missoes||{};
-    return json(res,200,{ok:true,progresso:{envios:nEnvios},
-      missoes:MISSOES.map(m=>({id:m.id,emoji:m.emoji,titulo:m.titulo,desc:m.desc,bonus:m.bonus,done:!!done[m.id],at:done[m.id]||null}))});
-  }
-
-  // ══════════════════════ 💎 ROTAS DE DIAMANTES (v64) ══════════════════════
-  // GET /api/diamonds — saldo, extrato e tabela de preços dos planos em 💎.
-  if(pathname==="/api/diamonds"&&req.method==="GET"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    const p=getUser(s.user_email);if(!p)return json(res,401,{error:"Conta não encontrada."});
-    const tabela=[];
-    for(const[pl,combos]of Object.entries(PLANO_PRECO_TAB))
-      for(const dk of Object.keys(combos))
-        tabela.push({plano:pl,dias:parseInt(dk,10),brl:combos[dk],diamantes:planoPrecoDiamantes(pl,parseInt(dk,10))});
-    // 💼 MC5-P2: promessa HONESTA — mediana REAL das últimas confirmações de
-    // doação (createdAt→ativadoEm), no lugar do "24h" fixo dos textos.
-    let medianaAprovacaoHoras=null;
-    try{
-      const hs=(DB_PEDIDOS||[]).filter(pp=>pp&&(pp.tipo==="doacao"||pp.plano==="doacao")&&pp.ativadoEm&&pp.createdAt)
-        .sort((a,b)=>(b.ativadoEm||0)-(a.ativadoEm||0)).slice(0,30)
-        .map(pp=>(pp.ativadoEm-pp.createdAt)/3600000).filter(h=>h>0&&h<24*14).sort((a,b)=>a-b);
-      if(hs.length>=3)medianaAprovacaoHoras=Math.round(hs[Math.floor(hs.length/2)]*10)/10;
-    }catch(e){}
-    // v168 (RISCO real, auditoria 08/09/2026): a descrição de limites (manual/
-    // auto por plano) na tela "Trocar diamantes por plano" era um texto
-    // HARDCODED em app.js, separado da fonte única PLAN_LIMITS_NEW — hoje os
-    // números batiam, mas nada os mantinha em sincronia se a tabela mudasse
-    // de novo (regra 13o já previu isso acontecer). Expõe a tabela aqui,
-    // igual já é feito com o preço em 💎 (campo "planos"), pro front derivar
-    // o texto sempre da mesma fonte que o servidor realmente usa.
-    return json(res,200,{ok:true,price:DIAMOND_PRICE_BRL,saldo:_diamSaldo(p),diamantesInfinitos:isAdminVip(p),
-      medianaAprovacaoHoras,
-      ledger:(Array.isArray(p.diamondLedger)?p.diamondLedger:[]).slice(0,60),planos:tabela,limites:PLAN_LIMITS_NEW});
-  }
-  // POST /api/diamonds/trocar {plano,dias} — troca 💎 por plano, ativação NA
-  // HORA (o dinheiro já foi conferido na doação; não lança caixa de novo).
-  if(pathname==="/api/diamonds/trocar"&&req.method==="POST"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    try{
-      const b=JSON.parse(await readBody(req));
-      const planoKey={vip:"vip",vipro:"vipro",doublepro:"doublepro"}[String(b.plano||"").toLowerCase()];
-      const dias=parseInt(b.dias,10)||0;
-      const preco=planoKey?planoPrecoDiamantes(planoKey,dias):null;
-      if(!preco)return json(res,400,{error:"Plano/período inválido."});
-      const p=getUser(s.user_email);if(!p)return json(res,401,{error:"Conta não encontrada."});
-      const s0=_diamSaldo(p);
-      // v81: admin/DM tem diamante infinito — pula a checagem de saldo (debitDiamonds já não desconta nada dele).
-      if(!isAdminVip(p)&&s0.real+s0.bonus<preco)return json(res,402,{error:`Saldo insuficiente: você tem ${s0.real+s0.bonus} 💎 e o ${planoKey.toUpperCase()} ${dias} dias custa ${preco} 💎.`,saldo:s0,preco});
-      const novo=debitDiamonds(s.user_email,preco,{tipo:"troca",plano:planoKey,dias});
-      if(!novo)return json(res,402,{error:"Saldo insuficiente."});
-      // Mesmas regras de empilhamento da ativação por pedido (uma regra só):
-      // trial/provisório não empilham; renovação soma sobre a expiração atual.
-      const now=Date.now(),DAY=86400_000;
-      const tgt=getUser(s.user_email)||{};
-      const _ehTrial=["trial","auto-provisorio"].includes(String(tgt.vip?.source||""));
-      const _mStack=(tgt.vip?.manualExpires||0)>now&&!_ehTrial;
-      const _aStack=(tgt.vip?.autoExpires||0)>now&&!_ehTrial;
-      const isAuto=["vipro","doublepro"].includes(planoKey);
-      const manualExpires=Math.max(now,(_mStack?tgt.vip.manualExpires:now)+dias*DAY);
-      const autoExpires=isAuto?Math.max(now,(_aStack?tgt.vip.autoExpires:now)+dias*DAY):(tgt.vip?.autoExpires||0);
-      setUser(s.user_email,{plan:planoKey,vip:{...(tgt.vip||{}),active:true,plan:planoKey,source:"payment",
-        manualExpires,autoExpires,activatedAt:now,activatedBy:"Troca por diamantes",
-        note:`💎 Troca: ${preco} diamantes → ${planoKey} ${dias}d`,days:dias,autoDays:isAuto?dias:0,limits:limitesDoPlanoNovo(planoKey)}});
-      addCredito(s.user_email,{dias,tipo:"pago",origem:"diamantes",motivo:`Troca de ${preco} 💎 — ${planoKey} ${dias}d`,dadoPor:"Sistema (💎)"});
-      addLog(s.user_email,{status:"sistema",jobTitle:`💎 Plano ${planoKey.toUpperCase()} ativado por ${preco} diamantes (${dias}d)`,company:"Troca de diamantes"});
-      trackJourney(s.user_email,'plan_activated',{detail:`Troca 💎: ${planoKey} ${dias}d por ${preco}`});
-      console.log(`[diamonds] 💎 troca: ${s.user_email} ${preco}💎 → ${planoKey} ${dias}d`);
-      acordarRoboAposPlano(s.user_email); // v125: robô dormindo por limite antigo acorda já
-      return json(res,200,{ok:true,plano:planoKey,dias,preco,saldo:novo});
-    }catch(e){return json(res,400,{error:"Dados inválidos: "+e.message});}
-  }
-  // POST /api/plans/upgrade {novoPlano} — v80 (ordem do dono, 29/07/2026):
-  // upgrade de tier PRA QUEM JÁ TEM plano pago ativo. Paga só a DIFERENÇA
-  // de diamantes entre o plano atual e o novo (mesmo período/dias da
-  // assinatura atual) — NUNCA reinicia nem soma dias. Quem tinha 20 dias
-  // restantes continua com 20 dias restantes, só que num tier melhor.
-  // Exceção única: se o upgrade destrava AUTOMÁTICO pela 1ª vez (vinha de
-  // VIP só-manual), o automático passa a valer até a MESMA data que o
-  // manual já tinha — nunca estende o prazo geral, só habilita a parte
-  // nova até quando a assinatura já ia até.
-  if(pathname==="/api/plans/upgrade"&&req.method==="POST"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    try{
-      const b=JSON.parse(await readBody(req));
-      const novoPlano=String(b.novoPlano||"").toLowerCase();
-      if(!["vipro","doublepro"].includes(novoPlano))return json(res,400,{error:"Plano de destino inválido."});
-      const p=getUser(s.user_email);if(!p)return json(res,401,{error:"Conta não encontrada."});
-      const now=Date.now();
-      // 🔒 v84 (achado em auditoria de segurança, 29/07/2026): "code" (código
-      // resgatado — trial/cortesia, NUNCA gera pagamento real, regra 13c/KB)
-      // faltava nesta lista. Sem isso, quem resgatasse um código grátis de
-      // VIP/VIPro podia chamar upgrade e pagar só a DIFERENÇA de diamantes
-      // pra virar DoublePro — descontando o preço todo de um plano que nunca
-      // foi pago. Mesma convenção usada em TODO o resto do financeiro
-      // (computeEntradasJanelas, dono-resumo): trial E code NUNCA contam
-      // como plano pago.
-      const _ehTrial=["trial","auto-provisorio","code"].includes(String(p.vip?.source||""));
-      if(!isVipActive(p)||_ehTrial)return json(res,400,{error:"Upgrade é só pra quem já tem um plano PAGO ativo. Sem plano ativo, troque diamantes pelo plano direto (abaixo)."});
-      const ORDEM=["vip","vipro","doublepro"];
-      const planoAtual=p.plan||"free";
-      const idxAtual=ORDEM.indexOf(planoAtual),idxNovo=ORDEM.indexOf(novoPlano);
-      if(idxAtual<0||idxNovo<=idxAtual)return json(res,400,{error:`Só dá pra fazer upgrade pra um plano SUPERIOR ao atual (você está em ${planoAtual.toUpperCase()}).`});
-      const dias=parseInt(p.vip?.days,10)||30;
-      const precoAtual=planoPrecoDiamantes(planoAtual,dias);
-      const precoNovo=planoPrecoDiamantes(novoPlano,dias);
-      if(precoAtual==null||precoNovo==null)return json(res,400,{error:`Não existe combinação de ${dias} dias pra esse upgrade — fale com o suporte.`});
-      const diferenca=precoNovo-precoAtual;
-      if(diferenca<=0)return json(res,400,{error:"Upgrade inválido para essa combinação de planos."});
-      const s0=_diamSaldo(p);
-      // v81: admin/DM tem diamante infinito — pula a checagem de saldo (debitDiamonds já não desconta nada dele).
-      if(!isAdminVip(p)&&s0.real+s0.bonus<diferenca)return json(res,402,{error:`Saldo insuficiente pro upgrade: você tem ${s0.real+s0.bonus} 💎 e falta pagar ${diferenca} 💎 de diferença (${planoAtual.toUpperCase()}→${novoPlano.toUpperCase()}, ${dias}d). Faltam ${diferenca-(s0.real+s0.bonus)} 💎.`,saldo:s0,diferenca});
-      const novoSaldo=debitDiamonds(s.user_email,diferenca,{tipo:"upgrade",planoDe:planoAtual,planoPara:novoPlano,dias});
-      if(!novoSaldo)return json(res,402,{error:"Saldo insuficiente."});
-      // v80 (regra 13j): relê FRESCO — debitDiamonds acima já mudou o
-      // usuário (diamonds/diamondLedger); nunca reaproveitar o `p` de cima.
-      const pFresh=getUser(s.user_email)||p;
-      const vipFresh=pFresh.vip||{};
-      const novoVip={...vipFresh,plan:novoPlano};
-      // Destrava automático pela 1ª vez → mesma data do manual, NUNCA estende.
-      if(!(vipFresh.autoExpires>now)) novoVip.autoExpires=vipFresh.manualExpires||now;
-      novoVip.note=`⬆️ Upgrade: ${planoAtual.toUpperCase()} → ${novoPlano.toUpperCase()} (${diferenca} 💎) — dias preservados, não reiniciaram`;
-      novoVip.limits=limitesDoPlanoNovo(novoPlano); // v118: upgrade = contrato novo (regras novas)
-      setUser(s.user_email,{plan:novoPlano,vip:novoVip});
-      addLog(s.user_email,{status:"sistema",jobTitle:`⬆️ Upgrade de plano: ${planoAtual.toUpperCase()} → ${novoPlano.toUpperCase()}`,company:`Custou ${diferenca} 💎 — seus dias continuam os mesmos de quando você assinou (não reiniciaram).`});
-      trackJourney(s.user_email,'plan_upgraded',{detail:`${planoAtual}→${novoPlano} por ${diferenca}💎, dias preservados`});
-      console.log(`[upgrade] ⬆️ ${s.user_email}: ${planoAtual}→${novoPlano} por ${diferenca}💎 (dias preservados, período=${dias}d)`);
-      acordarRoboAposPlano(s.user_email); // v125: robô dormindo por limite antigo acorda já
-      return json(res,200,{ok:true,planoAnterior:planoAtual,planoNovo:novoPlano,diferenca,saldo:novoSaldo});
-    }catch(e){return json(res,400,{error:"Dados inválidos: "+e.message});}
-  }
-  // POST /api/diamonds/transfer {para,qtd} — doar 💎 REAIS a outro usuário
-  // DESTE servidor. Bônus é intransferível (regra do dono: "se estiver com
-  // diamantes reais"). Rate limit anti-abuso.
-  if(pathname==="/api/diamonds/transfer"&&req.method==="POST"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    if(rateLimit(s.user_email+"_diamtx",10,600_000))return json(res,429,{error:"Muitas transferências seguidas. Aguarde alguns minutos."});
-    try{
-      const b=JSON.parse(await readBody(req));
-      const para=String(b.para||"").toLowerCase().trim();
-      const qtd=parseInt(b.qtd,10)||0;
-      if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(para))return json(res,400,{error:"E-mail do destinatário inválido."});
-      if(para===s.user_email)return json(res,400,{error:"Você não pode doar diamantes para si mesmo."});
-      if(qtd<1)return json(res,400,{error:"Quantidade mínima: 1 💎."});
-      const de=getUser(s.user_email),dest=getUser(para);
-      if(!de)return json(res,401,{error:"Conta não encontrada."});
-      if(!dest)return json(res,404,{error:"Esse e-mail não tem conta NESTE servidor. Confira com a pessoa o e-mail e o servidor que ela usa."});
-      const s0=_diamSaldo(de);
-      // v81 (dono, 29/07/2026): admin/DM (eu e o Diego) tem diamante infinito
-      // — pode doar pra qualquer usuário sem ter saldo real, e a doação NUNCA
-      // sai do saldo dele (não tem de onde tirar — é o "poço infinito"). Mas
-      // ISSO AQUI, diferente da troca/upgrade acima, CONTA de verdade: o
-      // destinatário recebe 💎 REAIS de verdade (pode gastar/repassar), e o
-      // extrato mostra a doação certinho ("recebeu de admin@..."), entrando
-      // nos agregados do site — só o lado do admin que não desconta nada.
-      const _admDe=isAdminVip(de);
-      if(!_admDe&&s0.real<qtd)return json(res,402,{error:`Você tem ${s0.real} 💎 REAIS (só diamante de doação pode ser doado — o de brinde não). Faltam ${qtd-s0.real}.`,saldo:s0});
-      // Débito SÓ do real (não usa debitDiamonds, que gastaria bônus primeiro)
-      const novoDe=_admDe?{real:s0.real,bonus:s0.bonus}:{real:s0.real-qtd,bonus:s0.bonus};
-      setUser(s.user_email,{diamonds:novoDe,diamondLedger:_diamLedgerPush(de,{tipo:"transfer_out",qtd:-qtd,real:_admDe?0:-qtd,bonus:0,saldoReal:novoDe.real,saldoBonus:novoDe.bonus,para,...(_admDe?{origemInfinita:true}:{})})});
-      creditDiamonds(para,{real:qtd},{tipo:"transfer_in",de:s.user_email});
-      addLog(s.user_email,{status:"sistema",jobTitle:`💎 Você doou ${qtd} diamantes para ${para}`,company:"Transferência de diamantes"});
-      addLog(para,{status:"sistema",jobTitle:`💎 Você recebeu ${qtd} diamantes de ${s.user_email}`,company:"Transferência de diamantes"});
-      console.log(`[diamonds] 💎 transferência: ${s.user_email} → ${para} (${qtd})`);
-      return json(res,200,{ok:true,saldo:novoDe});
-    }catch(e){return json(res,400,{error:"Dados inválidos: "+e.message});}
-  }
-  // POST /api/admin/diamonds {email,real,bonus,nota} — ajuste manual do admin
-  // (negativo remove; nunca deixa saldo negativo). Tudo com trilha no extrato.
-  if(pathname==="/api/admin/diamonds"&&req.method==="POST"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    const adm=getUser(s.user_email);
-    if(!(adm?.isAdmin||isAdminEmail(s.user_email)))return json(res,403,{error:"Só admin."});
-    try{
-      const b=JSON.parse(await readBody(req));
-      const email=String(b.email||"").toLowerCase().trim();
-      const real=parseInt(b.real,10)||0,bonus=parseInt(b.bonus,10)||0;
-      const u0=getUser(email);
-      if(!u0)return json(res,404,{error:"Usuário não encontrado neste servidor."});
-      if(!real&&!bonus)return json(res,400,{error:"Informe real e/ou bonus (negativo remove)."});
-      const s0=_diamSaldo(u0);
-      const novo={real:Math.max(0,s0.real+real),bonus:Math.max(0,s0.bonus+bonus)};
-      setUser(email,{diamonds:novo,diamondLedger:_diamLedgerPush(u0,{tipo:"admin",qtd:(novo.real-s0.real)+(novo.bonus-s0.bonus),real:novo.real-s0.real,bonus:novo.bonus-s0.bonus,saldoReal:novo.real,saldoBonus:novo.bonus,por:s.user_email,nota:String(b.nota||"").slice(0,140)})});
-      addLog(email,{status:"sistema",jobTitle:`💎 Ajuste do admin: ${real>=0?"+":""}${real} reais, ${bonus>=0?"+":""}${bonus} bônus`,company:"Diamantes (admin)"});
-      console.log(`[diamonds] 💎 admin ${s.user_email}: ${email} real ${real>=0?"+":""}${real}, bonus ${bonus>=0?"+":""}${bonus}`);
-      return json(res,200,{ok:true,saldo:novo});
-    }catch(e){return json(res,400,{error:"Dados inválidos: "+e.message});}
-  }
-
-  // ══════════════════════════════════════════════════════════
-  //  💎 v77 — PAINEL COMPLETO DE DIAMANTES (ordem do dono, 28/07/2026:
-  //  "quero um ranking de diamantes... quem tem mais... o que qualquer
-  //  usuário comprou com os diamantes, como foi usado, 20+ informações")
-  // ══════════════════════════════════════════════════════════
-  if(pathname==="/api/admin/diamonds/overview"&&req.method==="GET"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    const adm=getUser(s.user_email);
-    if(!(adm?.isAdmin||isAdminEmail(s.user_email)))return json(res,403,{error:"Só admin."});
-    try{
-      const users=Object.values(DB_USERS);
-      let totalReal=0,totalBonus=0,totalRealHistCredit=0,totalBonusHistCredit=0;
-      let totalGastoTrocas=0,totalTransferido=0,totalEstornado=0,totalBonusMissao=0;
-      let totalAjustesAdminQtd=0,ajustesAdminCount=0;
-      const trocasPorPlano={vip:{count:0,diamantes:0},vipro:{count:0,diamantes:0},doublepro:{count:0,diamantes:0}};
-      const planoAtualCount={free:0,vip:0,vipro:0,doublepro:0};
-      const ranking=[];
-      const doadoresMap={}; // email -> total real de doações (lifetime)
-      const atividade=[]; // feed unificado de todos os ledgers
-      let comSaldo=0,semSaldo=0;
-      for(const u of users){
-        const sal=_diamSaldo(u);
-        totalReal+=sal.real; totalBonus+=sal.bonus;
-        if(sal.real+sal.bonus>0)comSaldo++; else semSaldo++;
-        const plano=getPlan(u);
-        planoAtualCount[plano]=(planoAtualCount[plano]||0)+1;
-        if(sal.real+sal.bonus>0||((u.diamondLedger||[]).length>0)){
-          ranking.push({email:u.email,name:u.name||u.email,real:sal.real,bonus:sal.bonus,total:sal.real+sal.bonus,plano});
-        }
-        const led=Array.isArray(u.diamondLedger)?u.diamondLedger:[];
-        for(const e of led){
-          atividade.push({...e,email:u.email,name:u.name||u.email});
-          const qtd=parseInt(e.qtd,10)||0;
-          if(e.tipo==="doacao"&&qtd>0){
-            totalRealHistCredit+=qtd;
-            doadoresMap[u.email]=(doadoresMap[u.email]||0)+qtd;
-          }
-          else if(e.tipo==="missao"&&qtd>0) totalBonusMissao+=qtd;
-          else if(e.tipo==="admin"){ ajustesAdminCount++; totalAjustesAdminQtd+=qtd; }
-          else if(e.tipo==="troca"&&qtd<0){
-            totalGastoTrocas+=-qtd;
-            if(e.plano&&trocasPorPlano[e.plano]){trocasPorPlano[e.plano].count++;trocasPorPlano[e.plano].diamantes+=-qtd;}
-          }
-          else if(e.tipo==="transfer_out"&&qtd<0) totalTransferido+=-qtd;
-          else if(e.tipo==="estorno"&&qtd<0) totalEstornado+=-qtd;
-          else if(e.tipo==="credito"&&qtd>0) totalBonusHistCredit+=qtd;
-        }
-      }
-      ranking.sort((a,b)=>b.total-a.total);
-      atividade.sort((a,b)=>(b.ts||0)-(a.ts||0));
-      const topDoadores=Object.entries(doadoresMap).map(([email,qtd])=>{
-        const u=users.find(x=>x.email===email);
-        return{email,name:u?.name||email,realDoado:qtd};
-      }).sort((a,b)=>b.realDoado-a.realDoado).slice(0,15);
-      // Pedidos de DOAÇÃO aprovados — fonte única do R$ que virou 💎 (mesma
-      // base que a Conferência usa, nunca uma segunda verdade separada)
-      // 💼 MC5-P4: admin nunca é receita (v53) — doação de teste de admin
-      // inflava o "Total já doado" do painel 💎.
-      const pedidosDoacao=(DB_PEDIDOS||[]).filter(pd=>(pd.tipo==="doacao"||pd.plano==="doacao")&&pd.status==="ativo"&&!isAdminEmail(pd.userEmail||""));
-      const totalReaisDoados=pedidosDoacao.reduce((a,pd)=>a+(pd.valorTotal||0),0);
-      const rankingTop=ranking.slice(0,20);
-      const semSaldoLista=ranking.filter(r=>r.total===0).length; // dentro de quem já teve ledger
-      return json(res,200,{
-        ok:true,
-        priceReaisPerDiamond:DIAMOND_PRICE_BRL,
-        totals:{
-          usuariosComSaldo:comSaldo,
-          usuariosSemSaldo:semSaldo,
-          usuariosTotal:users.length,
-          totalRealEmCirculacao:totalReal,
-          totalBonusEmCirculacao:totalBonus,
-          totalDiamantesEmCirculacao:totalReal+totalBonus,
-          totalRealHistoricoCreditadoViaDoacao:totalRealHistCredit,
-          totalBonusHistoricoCreditado:totalBonusHistCredit+totalBonusMissao,
-          totalGastoEmTrocasPorPlano:totalGastoTrocas,
-          totalTransferidoEntreUsuarios:totalTransferido,
-          totalEstornado:totalEstornado,
-          totalBonusDeMissoes:totalBonusMissao,
-          ajustesAdmin:{count:ajustesAdminCount,qtdLiquida:totalAjustesAdminQtd},
-          totalReaisDoados,
-          totalPedidosDoacaoAprovados:pedidosDoacao.length,
-          ticketMedioDoacao:pedidosDoacao.length?Math.round((totalReaisDoados/pedidosDoacao.length)*100)/100:0,
-          mediaSaldoPorUsuarioComSaldo:comSaldo?Math.round(((totalReal+totalBonus)/comSaldo)*10)/10:0,
-          maiorSaldoIndividual:rankingTop[0]?.total||0,
-          usuariosSemSaldoComHistorico:semSaldoLista,
-        },
-        trocasPorPlano,
-        planoAtualCount,
-        ranking:rankingTop,
-        topDoadores,
-        atividadeRecente:atividade.slice(0,40),
-      });
-    }catch(e){return json(res,500,{error:"Erro: "+e.message});}
-  }
-
-  // GET /api/admin/diamonds/user/:email — ficha completa de diamantes de UM
-  // usuário: saldo, plano efetivo, e o extrato INTEIRO (até 300 lançamentos).
-  if(/^\/api\/admin\/diamonds\/user\/[^/]+$/.test(pathname)&&req.method==="GET"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    const adm=getUser(s.user_email);
-    if(!(adm?.isAdmin||isAdminEmail(s.user_email)))return json(res,403,{error:"Só admin."});
-    const email=decodeURIComponent(pathname.split("/").pop()).toLowerCase().trim();
-    const u=getUser(email);
-    if(!u)return json(res,404,{error:"Usuário não encontrado neste servidor."});
-    return json(res,200,{
-      ok:true,email:u.email,name:u.name||u.email,
-      saldo:_diamSaldo(u),
-      plano:getPlan(u),
-      vip:u.vip?{active:isVipActive(u),plan:u.vip.plan,manualExpires:u.vip.manualExpires||0,autoExpires:u.vip.autoExpires||0,source:u.vip.source||null,note:u.vip.note||null}:null,
-      ledger:Array.isArray(u.diamondLedger)?u.diamondLedger:[],
-    });
-  }
-
   if(pathname==="/api/pedidos"&&req.method==="GET"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
     const p=getUser(s.user_email);
@@ -10835,7 +10462,7 @@ ${pedido.criadoPor&&pedido.criadoPor!==pedido.userEmail?`\n🛠️ Registrado re
         const v=String((pd.preCheck||{}).veredito||"").toUpperCase();
         const comprovanteStatus=!pd.comprovante?"sem":(v==="CONFERE"?"ok":(v==="ILEGIVEL"||v==="ERRO")?"ilegivel":v?"analise":"aguardando");
         return {id:pd.id,createdAt:pd.createdAt,status:pd.status,tipo:pd.tipo,plano:pd.plano,dias:pd.dias,
-          valorTotal:pd.valorTotal,diamantes:pd.diamantes,diamantesCreditados:pd.diamantesCreditados,
+          valorTotal:pd.valorTotal,
           autoAtivado:!!pd.autoAtivado,ativadoEm:pd.ativadoEm||null,pagoEm:pd.pagoEm||null,canceladoEm:pd.canceladoEm||null,
           userEmail:pd.userEmail,comprovante:pd.comprovante?true:false,comprovanteStatus,
           motivoCancelamento:(pd.status==="cancelado"&&pd.notaAdmin)?String(pd.notaAdmin).slice(0,200):null};
@@ -10940,12 +10567,8 @@ ${pedido.criadoPor&&pedido.criadoPor!==pedido.userEmail?`\n🛠️ Registrado re
           persistFinanceiro();
         }
         persistPedidos();
-        // 💎 v77b: mesma reconciliação da rota /api/admin/pedido-set-valor —
-        // corrigir o valor de uma DOAÇÃO já aprovada tem que reajustar os
-        // diamantes já creditados junto (ver reconciliarDiamantesCorrecao).
-        const diamCorrecao=reconciliarDiamantesCorrecao(pd,antes,s.user_email);
         console.log(`[conferencia] valor do pedido ${pd.id}: R$${antes} → R$${nv} (${s.user_email})`);
-        return json(res,200,{ok:true,pedido:pd,caixaCorrigido:!!_pgC,diamCorrecao});
+        return json(res,200,{ok:true,pedido:pd,caixaCorrigido:!!_pgC});
       }
 
       // Validar senha de editor ao ativar
@@ -10969,12 +10592,9 @@ ${pedido.criadoPor&&pedido.criadoPor!==pedido.userEmail?`\n🛠️ Registrado re
         if(!d.confirmarDuplicado){
           const _3d=3*86400_000,_agr=Date.now();
           const _ts=x=>{if(!x)return 0;if(typeof x==="number")return x;const t=Date.parse(x);return isNaN(t)?0:t;};
-          // v64: doações repetidas são normais — só acusa duplicado de doação
-          // quando o VALOR também é idêntico (mesmo pagamento aprovado 2x).
           const _dup=DB_PEDIDOS.find(x=>x&&x.id!==pd.id&&x.userEmail===pd.userEmail
             &&["pago","ativo"].includes(String(x.status||"").toLowerCase())
             &&String(x.plano||"")===String(pd.plano||"")
-            &&(pd.tipo!=="doacao"||Math.abs((x.valorTotal||0)-(pd.valorTotal||0))<0.01)
             &&(_agr-(_ts(x.ativadoEm)||_ts(x.pagoEm)||_ts(x.criadoEm)))<=_3d);
           if(_dup){
             console.log(`[pedido] ⚠️ possível duplicado: ${pd.id} × ${_dup.id} (${pd.userEmail})`);
@@ -11033,71 +10653,64 @@ ${pedido.criadoPor&&pedido.criadoPor!==pedido.userEmail?`\n🛠️ Registrado re
       if(d.status==="ativo"&&!pd.ativadoEm){
         pd.ativadoPor=s.user_email;
         pd.ativadoEm=Date.now();
-        // ── 💎 v64: aprovar DOAÇÃO credita DIAMANTES REAIS (não ativa plano).
-        // O caixa recebe a entrada igual a qualquer pedido (o dinheiro entrou
-        // AQUI — a troca por plano depois NÃO lança caixa de novo, senão a
-        // mesma grana contaria 2x na Visão do Dono).
-        // 💎 v154 (ordem do dono, 21/08: "na hora que eu aceitar a doação a
-        // pessoa não ganha NADA além dos diamantes. Simples."): TODO pedido
-        // aprovado é DOAÇÃO. O caminho legado (pré-v64) que ativava plano com
-        // 30 dias foi REMOVIDO — pedido antigo/importado que chegue com plano
-        // de compra é normalizado pra doação (o R$ vira 💎 na tabela oficial)
-        // e o formato original fica na trilha. Dias de VIP agora só nascem
-        // de: troca 💎, upgrade 💎, código promo e concessão manual do admin.
-        if(!(pd.tipo==="doacao"||pd.plano==="doacao")){
-          pd.planoOriginal=pd.plano||null;pd.diasOriginal=pd.dias||null;
-          pd.tipo="doacao";pd.plano="doacao";pd.dias=0;
-          console.log(`[pedido] 💎 v154: pedido legado ${pd.id} (${pd.planoOriginal||"?"}) normalizado pra DOAÇÃO na aprovação — nenhum dia de VIP concedido`);
+        // ── COMPRA DIRETA DE PLANO (v170 — dono, 09/09/2026): aprovar o
+        // pedido ativa o plano NA HORA, sem etapa intermediária. O caixa
+        // recebe a entrada normal (mesma fonte única que Sócios/DRE leem).
+        const planoKey={vip:"vip",vipro:"vipro",doublepro:"doublepro"}[String(pd.plano||"").toLowerCase()]||"vip";
+        const dias=parseInt(pd.dias,10)||30;
+        pd.diasTotal=dias; // ⚠️ estorno-de-dias no cancelamento (abaixo) e a reconciliação do boot leem ESTE campo — sem ele, cancelar um pedido não devolve os dias
+        const isAuto=["vipro","doublepro"].includes(planoKey);
+        addManualVipDays(pd.userEmail,dias);
+        if(isAuto)addAutoVipDays(pd.userEmail,dias);
+        const uFresh=getUser(pd.userEmail)||{}; // relê fresco — os helpers acima já gravaram
+        setUser(pd.userEmail,{plan:planoKey,vip:{...(uFresh.vip||{}),plan:planoKey,source:"payment",
+          activatedAt:pd.ativadoEm,activatedBy:pd._ativadoEditor||"Admin",
+          note:`Plano ${planoKey.toUpperCase()} ${dias}d — pedido #${pd.id.slice(-8).toUpperCase()}`,
+          days:dias,autoDays:isAuto?dias:0,limits:limitesDoPlanoNovo(planoKey)}});
+        addCredito(pd.userEmail,{dias,tipo:"pago",origem:"pagamento",
+          motivo:`Plano ${planoKey.toUpperCase()} ${dias}d — pedido #${pd.id.slice(-8).toUpperCase()}`,
+          dadoPor:pd._ativadoEditor||"Admin",pedidoId:pd.id,valor:pd.valorTotal||0});
+        if(!DB_FINANCEIRO.pagamentos)DB_FINANCEIRO.pagamentos=[];
+        if(!DB_FINANCEIRO.pagamentos.some(x=>x.pedidoId===pd.id)){
+          DB_FINANCEIRO.pagamentos.unshift({
+            id:"fin_"+Date.now().toString(36),email:pd.userEmail,
+            nome:pd.userName||pd.userEmail,plano:planoKey,
+            dias,valor:pd.valorTotal||0,desconto:0,
+            nota:`Plano ${planoKey.toUpperCase()} ${dias}d — pedido #${pd.id.slice(-8).toUpperCase()}`,
+            data:new Date().toISOString(),
+            dataPagamento:pd.pagoEm?new Date(pd.pagoEm).toISOString():new Date().toISOString(),
+            pedidoId:pd.id,source:"pedido_automatico",
+            ativadoPor:pd._ativadoEditor||"Admin",ativadoPorEmail:s.user_email,
+            // 💼 MC5-P5: dono do dinheiro só entra se veio EXPLÍCITO no enum.
+            // Sem ele, o campo é OMITIDO — computeSocios deriva honestamente
+            // da trilha (ativadoPorEmail) e conta como "derivado", em vez de
+            // carimbar um sócio na marra sem ninguém ter dito quem recebeu.
+            ...((["andrio","diego"].includes((d.recebidoPor||"").toLowerCase()))
+              ?{recebidoPor:(d.recebidoPor||"").toLowerCase()}:{}),
+            whatsapp:pd.userWhatsapp||""
+          });
+          _persistFinConferido("aprovação do pedido #"+pd.id.slice(-8).toUpperCase()); // MC5-P6: gravação conferida
+          console.log("[financeiro] plano ativado:",pd.userEmail,"R$",pd.valorTotal,"→",planoKey,dias+"d");
         }
-        if(pd.tipo==="doacao"||pd.plano==="doacao"){
-          // v77: mesma correção do floor→round da criação do pedido (fallback
-          // só entra se pd.diamantes não foi salvo — pedidos antigos).
-          const qtd=Math.max(1,parseInt(pd.diamantes,10)||Math.round((pd.valorTotal||0)/DIAMOND_PRICE_BRL));
-          creditDiamonds(pd.userEmail,{real:qtd},{tipo:"doacao",pedidoId:pd.id,por:pd._ativadoEditor||s.user_email,nota:`Doação R$${(pd.valorTotal||0).toFixed(2)}`});
-          pd.diamantesCreditados=qtd;
-          if(!DB_FINANCEIRO.pagamentos)DB_FINANCEIRO.pagamentos=[];
-          if(!DB_FINANCEIRO.pagamentos.some(x=>x.pedidoId===pd.id)){
-            DB_FINANCEIRO.pagamentos.unshift({
-              id:"fin_"+Date.now().toString(36),email:pd.userEmail,
-              nome:pd.userName||pd.userEmail,plano:"doacao",
-              dias:0,valor:pd.valorTotal||0,desconto:0,
-              nota:`💎 Doação #${pd.id.slice(-8).toUpperCase()} → ${qtd} diamantes`,
-              data:new Date().toISOString(),
-              dataPagamento:pd.pagoEm?new Date(pd.pagoEm).toISOString():new Date().toISOString(),
-              pedidoId:pd.id,source:"pedido_automatico",
-              ativadoPor:pd._ativadoEditor||"Admin",ativadoPorEmail:s.user_email,
-              // 💼 MC5-P5: dono do dinheiro só entra se veio EXPLÍCITO no enum.
-              // Sem ele, o campo é OMITIDO — computeSocios deriva honestamente
-              // da trilha (ativadoPorEmail) e conta como "derivado", em vez de
-              // carimbar um sócio na marra sem ninguém ter dito quem recebeu.
-              ...((["andrio","diego"].includes((d.recebidoPor||"").toLowerCase()))
-                ?{recebidoPor:(d.recebidoPor||"").toLowerCase()}:{}),
-              whatsapp:pd.userWhatsapp||""
-            });
-            _persistFinConferido("aprovação da doação #"+pd.id.slice(-8).toUpperCase()); // MC5-P6: gravação conferida
-            console.log("[financeiro] 💎 doação registrada:",pd.userEmail,"R$",pd.valorTotal,"→",qtd,"💎");
-          }
-          addLog(pd.userEmail,{status:"sistema",jobTitle:`💎 Doação confirmada: +${qtd} diamantes (R$${(pd.valorTotal||0).toFixed(2)})`,company:"Pedido #"+pd.id.slice(-8).toUpperCase()});
-          persistPedidos();
-          return json(res,200,{ok:true,pedido:(()=>{const{comprovante,..._l}=pd;return _l;})(),diamantes:qtd});
-        }
-        // (💎 v154: o caminho legado de ativação de plano que vivia aqui foi
-        // removido — toda aprovação vira doação lá em cima e retorna antes.)
+        addLog(pd.userEmail,{status:"sistema",jobTitle:`✅ Plano ${planoKey.toUpperCase()} ativado (${dias}d) — pedido #${pd.id.slice(-8).toUpperCase()} confirmado`,company:"Pedido #"+pd.id.slice(-8).toUpperCase()});
+        persistPedidos();
+        acordarRoboAposPlano(pd.userEmail); // v125: robô dormindo por limite antigo acorda já
+        return json(res,200,{ok:true,pedido:(()=>{const{comprovante,..._l}=pd;return _l;})(),plano:planoKey,dias});
       }
 
       if(d.status==="cancelado"){
         // GUARD DUPLO CANCELAMENTO (mesma classe de bug da guarda de dupla
         // ativação acima): sem isso, clicar cancelar 2x no mesmo pedido —
-        // ou dois admins cancelando quase junto — estornava diamantes e dias
-        // de VIP DUAS VEZES (pd.diamantesCreditados/diasTotal nunca zeram),
-        // descontando dinheiro/dias do usuário que não têm relação com este
-        // pedido. _anularNoCaixa já era idempotente (filtra !anuladoPor);
-        // faltava a mesma trava pros estornos de 💎 e dias.
+        // ou dois admins cancelando quase junto — estornava dias de VIP
+        // DUAS VEZES (pd.diasTotal nunca zera), descontando dias do usuário
+        // que não têm relação com este pedido. _anularNoCaixa já era
+        // idempotente (filtra !anuladoPor); faltava a mesma trava pro
+        // estorno de dias.
         if(pd.canceladoEm){
           const quemC=pd.canceladoPor||"o outro editor";
           const quandoC=new Date(pd.canceladoEm).toLocaleString("pt-BR");
           console.log(`[pedido] ⛔ duplo cancelamento barrado: ${pd.id} (já cancelado por ${quemC})`);
-          return json(res,409,{error:`⛔ Este pedido JÁ FOI CANCELADO por ${quemC} em ${quandoC}. Não dá pra cancelar de novo (evita estornar diamantes/dias duas vezes).`,jaCancelado:true,canceladoPor:quemC,canceladoEm:pd.canceladoEm});
+          return json(res,409,{error:`⛔ Este pedido JÁ FOI CANCELADO por ${quemC} em ${quandoC}. Não dá pra cancelar de novo (evita estornar os dias duas vezes).`,jaCancelado:true,canceladoPor:quemC,canceladoEm:pd.canceladoEm});
         }
         pd.canceladoPor=s.user_email;pd.canceladoEm=Date.now();
         // 💼 MC5-P2 item 1: a notícia RUIM também avisa — era o ÚNICO evento
@@ -11120,24 +10733,6 @@ ${pedido.criadoPor&&pedido.criadoPor!==pedido.userEmail?`\n🛠️ Registrado re
               "Pedido #"+pd.id.slice(-8).toUpperCase()+" cancelado"+(d.notaAdmin?" — "+String(d.notaAdmin).slice(0,120):"")+" (entrada anulada por AJUSTE — o caixa nunca apaga)");
             console.log(`[financeiro] pedido ${pd.id} cancelado — ${_nAnul} entrada(s) ANULADA(S) por AJUSTE− (original preservado no caixa)`);
           }catch(eA){console.error("[financeiro] anular caixa do cancelado:",eA.message);}
-        }
-        // ── 💎 v64: estorno de DIAMANTES da doação cancelada ─────────────
-        // Doação aprovada e depois cancelada (fraude/engano) → remove os 💎
-        // que ela creditou. Se o usuário já GASTOU parte, remove o que der
-        // (nunca deixa saldo negativo) e o log acusa a diferença pro admin
-        // cobrar por fora. Bônus não é tocado (não veio desta doação).
-        if((pd.tipo==="doacao"||pd.plano==="doacao")&&pd.ativadoEm&&(pd.diamantesCreditados||0)>0){
-          const uD=getUser(pd.userEmail);
-          if(uD){
-            const sD=_diamSaldo(uD);
-            const alvo=pd.diamantesCreditados||0;
-            const tira=Math.min(sD.real,alvo);
-            const novoD={real:sD.real-tira,bonus:sD.bonus};
-            setUser(pd.userEmail,{diamonds:novoD,diamondLedger:_diamLedgerPush(uD,{tipo:"estorno",qtd:-tira,real:-tira,bonus:0,saldoReal:novoD.real,saldoBonus:novoD.bonus,pedidoId:pd.id,por:s.user_email,nota:`Doação #${pd.id.slice(-8).toUpperCase()} cancelada`})});
-            addLog(pd.userEmail,{status:"sistema",jobTitle:`⛔ Doação cancelada — ${tira} 💎 estornados${tira<alvo?` (faltaram ${alvo-tira} 💎 já gastos)`:""}`,company:"Pedido #"+pd.id.slice(-8).toUpperCase()});
-            if(tira<alvo)console.warn(`[diamonds] ⚠️ estorno parcial: ${pd.userEmail} devia devolver ${alvo} 💎 mas só tinha ${tira} reais no saldo (pedido ${pd.id})`);
-            else console.log(`[diamonds] estorno ok: ${pd.userEmail} -${tira} 💎 (pedido ${pd.id} cancelado)`);
-          }
         }
         // ── Estorno de DIAS (dono, 18/07/2026): os dias SEGUEM o pedido ──
         // A ativação credita pd.diasTotal a partir da data do pagamento (ou
@@ -11383,7 +10978,7 @@ ${pedido.criadoPor&&pedido.criadoPor!==pedido.userEmail?`\n🛠️ Registrado re
     // o plano atual está garantido até vencer com os limites de hoje.
     const _prNotice=(vipOk&&p.vip&&!p.vip.limits&&!["trial","auto-provisorio"].includes(String(p.vip.source||"")))?
       `📢 As regras dos planos mudaram! O seu plano atual está garantido até ${new Date(Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0)).toLocaleDateString("pt-BR")} com seus limites de hoje (${manualLimit} manual${autoLimit>10?` / ${autoLimit} automático`:""} por dia). Na próxima troca por plano valem os limites novos.`:null;
-    return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,planRulesNotice:_prNotice,manualCdOff:p.manualCdOff===true,diamonds:_diamSaldo(p),diamondPrice:DIAMOND_PRICE_BRL,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",language:p.language||"pt-BR",h2bProfile:p.h2bProfile||{},serverId:_resolveServerId(req),age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||180),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
+    return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,planRulesNotice:_prNotice,manualCdOff:p.manualCdOff===true,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",language:p.language||"pt-BR",h2bProfile:p.h2bProfile||{},serverId:_resolveServerId(req),age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||180),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
   }
 
   if(pathname==="/api/onboard"&&req.method==="POST"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});setUser(s.user_email,{onboarded:true});return json(res,200,{ok:true});}
@@ -11690,7 +11285,6 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
           ...((isAdminVip(p)||isAdminEmail(s.user_email)) ? { subjectSent: String(d.subject||"").slice(0,500), bodySent: String(d.message||"").slice(0,3000) } : {}),
         };
         addHist(s.user_email, histEntry);
-        checkMissoesEnvio(s.user_email); // 🎁 v68: missões de envio (1ª/100/1000)
         // v18-FIX: libera a reserva do limite AQUI — o histórico real (addHist)
         // já reflete este envio a partir de agora, então countManualToday() já
         // conta com ele; manter a reserva depois disso contaria em dobro.
@@ -12013,7 +11607,20 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
       const d=JSON.parse(await readBody(req)||"{}");
       if(d.confirm!==true)return json(res,400,{error:"Confirmação obrigatória."});
       const email=s.user_email;
-      setUser(email,{accountDeleted:true,deletedAt:Date.now()});
+      // Revoga o próprio grant no Google (best-effort, não bloqueia a exclusão).
+      // Diferente do caso do v165 (remover EXTRA que também é login de alguém),
+      // aqui é a PRÓPRIA pessoa pedindo pra sair — revogar é exatamente o
+      // esperado, não um efeito colateral acidental. Limpa o token local
+      // também, pra nenhum código futuro poder reusar credencial de conta
+      // deletada por engano.
+      const u=getUser(email);
+      const _tok=u?.refresh_token||u?.cached_access_token;
+      if(_tok){
+        httpsReq({hostname:"oauth2.googleapis.com",path:"/revoke?token="+encodeURIComponent(_tok),method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"}})
+          .then(r=>console.log(`[account] 🔒 token de ${email} revogado no Google (status ${r.status})`))
+          .catch(e=>console.warn(`[account] revoke falhou (${email}):`,e.message));
+      }
+      setUser(email,{accountDeleted:true,deletedAt:Date.now(),refresh_token:null,cached_access_token:null});
       // Para o automático imediatamente, se estiver rodando.
       const job=getAutoJob(email);
       if(job){
@@ -13242,7 +12849,7 @@ if(pathname==="/api/admin/contabilidade/pagamento"&&req.method==="POST"){
 // quem editou, quando pagou, histórico completo, dias restantes, quem
 // ativou e como, e um comparativo "bate ou não bate". Fonte única: NENHUM
 // dado novo é armazenado aqui, só agregação do que já existe (getUser,
-// DB_PEDIDOS, DB_ADMIN_AUDIT, vip.creditos, diamondLedger).
+// DB_PEDIDOS, DB_ADMIN_AUDIT, vip.creditos).
 if(pathname.startsWith("/api/admin/financeiro-usuario/")&&req.method==="GET"){try{
   const email=decodeURIComponent(pathname.replace("/api/admin/financeiro-usuario/","")).toLowerCase().trim();
   const u=getUser(email);
@@ -13260,8 +12867,7 @@ if(pathname.startsWith("/api/admin/financeiro-usuario/")&&req.method==="GET"){tr
       temComprovante:!!pd.comprovante,comprovanteHash:pd.comprovanteHash||null,
       createdAt:pd.createdAt,pagoEm:pd.pagoEm,ativadoEm:pd.ativadoEm,
       ativadoPor:pd._ativadoEditor||pd.ativadoPor||null,notaAdmin:pd.notaAdmin||null,
-      valorCorrigidoPor:pd.valorCorrigidoPor||null,valorCorrigidoEm:pd.valorCorrigidoEm||null,
-      diamantesCreditados:pd.diamantesCreditados||0}))
+      valorCorrigidoPor:pd.valorCorrigidoPor||null,valorCorrigidoEm:pd.valorCorrigidoEm||null}))
     .sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   const totalPagoHistorico=pedidos.filter(p=>["pago","ativo"].includes(p.status)).reduce((s2,p)=>s2+(p.valorTotal||0),0);
 
@@ -13282,9 +12888,6 @@ if(pathname.startsWith("/api/admin/financeiro-usuario/")&&req.method==="GET"){tr
   const diasPagosLedger=creditos.filter(c=>c.tipo==="pago").reduce((s2,c)=>s2+(c.dias||0),0);
   const diasGratisLedger=creditos.filter(c=>c.tipo==="gratis").reduce((s2,c)=>s2+(c.dias||0),0);
 
-  // Diamantes.
-  const diamondLedger=Array.isArray(u.diamondLedger)?[...u.diamondLedger]:[];
-
   // Uso real do plano — está usando o que paga?
   const todayManual=countManualToday(hist),todayAuto=countAutoToday(hist);
   const ultimoEnvio=hist[0]||null;
@@ -13292,7 +12895,6 @@ if(pathname.startsWith("/api/admin/financeiro-usuario/")&&req.method==="GET"){tr
 
   // Sinais de risco.
   const gmailsBloqueados=(u.senderEmails||[]).filter(se=>se.blocked).map(se=>({email:se.email,motivo:se.blockedReason||null}));
-  const missoesPagas=Object.keys(u.missoes||{});
 
   return json(res,200,{ok:true,
     usuario:{email:u.email,name:u.name||u.email,createdAt:u.created_at||null,serverId:_resolveServerId(req),
@@ -13311,14 +12913,14 @@ if(pathname.startsWith("/api/admin/financeiro-usuario/")&&req.method==="GET"){tr
       comprovantesReusados,
     },
     pedidos,
-    creditos,giftHistory,auditoria,diamondLedger,
+    creditos,giftHistory,auditoria,
     uso:{
       todayManual,manualLimit:getManualLimit(u),todayAuto,autoLimit:getAutoLimit(u),
       totalHistorico:hist.length,ultimoEnvio:ultimoEnvio?{empresa:ultimoEnvio.company,quando:ultimoEnvio.sentAt,tipo:ultimoEnvio.type}:null,
       autoJobStatus:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0}:null,
       perfisCurriculo:(u.profiles||[]).length,cvs:(u.cvs||[]).length,
     },
-    risco:{gmailsBloqueados,missoesPagas,comprovanteReusadoCount:comprovantesReusados.length},
+    risco:{gmailsBloqueados,comprovanteReusadoCount:comprovantesReusados.length},
     // 🔐 v165: raio-X de autenticação — separa "nós derrubamos" de "o
     // Google da conta derrubou" (caso real: usuário desconectando sempre).
     auth:{
@@ -14507,7 +14109,6 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}if(DB_APP_INDEX[te]){delete DB
       rev.reviewedAt=new Date().toISOString();
       rev.reviewedBy=s.user_email;
       persist(REVIEWS_FILE, DB_REVIEWS);
-      if(d.status==="approved"&&rev.email)grantMissao(rev.email,"avaliacao"); // 🎁 v68
       return json(res,200,{ok:true});
     }catch(e){return json(res,500,{error:e.message});}
   }
