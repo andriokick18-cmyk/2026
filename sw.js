@@ -42,7 +42,7 @@
 //    completa (6 temporadas, vagas com e-mail) + reestruturação visual
 //    das abas (seção recolhível "Temporadas Anteriores", Manual+Automático).
 //
-const CACHE_NAME = "h2bapply-2026-v8"; // v8: foto do hero da landing trocada por uma vertical feita sob medida (dono) + caixa da imagem agora estica pra acompanhar a altura real da coluna de texto (era 4:3 fixo, sobrava fundo vazio embaixo)
+const CACHE_NAME = "h2bapply-2026-v9"; // v9: reforço "ponte, não criador" + "doação, nunca venda" em todo o site — landing (hero/benefícios/como funciona/CTA/rodapé + nova seção "Como isso é possível"), editor de perfil, envio manual/automático, onboarding e SEO; aba "Planos" renomeada pra "💎 Diamantes" em header/sidebar/bottom-nav/atalhos; card "Seja VIP" reescrito sem linguagem de assinatura; removido cluster morto de textos "pagar via Pix"/"Hire via WhatsApp" (fluxo pré-diamante, zero uso no DOM)
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).

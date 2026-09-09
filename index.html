@@ -384,11 +384,6 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 @media(min-width:600px){.future-grid{grid-template-columns:repeat(3,1fr)}}
 .future-card{background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.1);border-radius:var(--rl);padding:14px;text-align:center;transition:all .18s;color:#fff}
 .future-card:hover{border-color:rgba(37,99,235,.5);transform:translateY(-2px);box-shadow:0 8px 20px rgba(37,99,235,.15)}
-/* Pix */
-.pix-box{background:var(--greenl);border:1.5px solid var(--greenb);border-radius:var(--rl);padding:16px}
-.pix-key{text-align:center;font-size:20px;font-weight:800;color:var(--green);margin:5px 0 2px}
-.pix-name{text-align:center;font-size:13px;color:var(--t2)}
-.pix-step{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--t2);margin-bottom:6px}
 .pix-n{width:20px;height:20px;background:var(--green);color:#fff;border-radius:50%;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
 .pix-code{background:var(--sf2);border:1.5px solid var(--border);border-radius:var(--r);padding:9px;font-family:monospace;font-size:10px;word-break:break-all;line-height:1.6;color:var(--text);margin-bottom:10px;cursor:pointer;max-height:70px;overflow:auto}
 /* Instagram */
@@ -1085,7 +1080,7 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 /* Cards / surfaces — força light */
 .hcard,.jcard,.dcard,.lcard,.scard,.acard,.rcard,
 .home-shortcut,.home-reply-item,.cv-slot,
-.plan-card,.future-card,.step-card,.pix-box{
+.plan-card,.future-card,.step-card{
   background:#ffffff!important;
   border-color:rgba(99,102,241,.15)!important;
   color:#1e1b4b!important;
@@ -1175,12 +1170,6 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 .lc-pro{background:rgba(99,102,241,.12);color:#4f46e5;border-color:rgba(99,102,241,.25)}
 .lc-warn{background:rgba(245,158,11,.12);color:#b45309;border-color:rgba(245,158,11,.25)}
 .lc-err{background:rgba(239,68,68,.12);color:#dc2626;border-color:rgba(239,68,68,.22)}
-
-/* Pix box */
-.pix-box{background:rgba(16,185,129,.06)!important;border:1.5px solid rgba(16,185,129,.25)!important}
-.pix-key{color:#047857!important}
-.pix-name{color:#4c4f82!important}
-.pix-step{color:#4c4f82!important}
 .pix-code{background:#f0fdf4!important;color:#1e1b4b!important;border-color:rgba(16,185,129,.2)!important}
 
 /* Inputs em modals */
@@ -1833,7 +1822,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
     "@type": "Offer",
     "price": "0",
     "priceCurrency": "BRL",
-    "description": "Plano gratuito com envios manuais e automáticos diários limitados; planos pagos VIP disponíveis."
+    "description": "Uso gratuito com envios manuais e automáticos diários limitados; mais envios são obtidos trocando diamantes recebidos por doação — nunca por compra."
   },
   "publisher": {
     "@type": "Organization",
@@ -2086,9 +2075,15 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       <div class="ln-hero-copy">
         <div class="ln-vip-pill"><i class="ti ti-gift"></i> 🎁 <strong>1 dia VIP GRÁTIS</strong> para novos usuários!</div>
         <h1 class="ln-hero-title">Trabalhe nos<br><span class="ln-title-usa">Estados Unidos</span></h1>
-        <p class="ln-hero-sub">Candidate-se automaticamente a centenas de vagas H-2B e H-2A. Envio automático pelo seu Gmail, currículo salvo e anti-spam inteligente — tudo no piloto automático.</p>
+        <!-- v170 (dono, 09/09/2026 — "revise o que tá escrito, explique melhor que não
+             criamos nada, apenas somos uma ponte"): a landing inteira só falava em
+             "currículo salvo" sem nunca dizer que o CURRÍCULO E OS TEXTOS DO E-MAIL
+             são escritos pelo próprio usuário — plantado aqui, na 1ª frase que a
+             pessoa lê, pra nunca dar margem de achar que o H2BApply cria conteúdo. -->
+        <p class="ln-hero-sub">Você escreve seu currículo e os textos do e-mail — o H2BApply só entrega, automaticamente, pelo seu próprio Gmail, com anti-spam inteligente. Somos a ponte até o empregador, nunca o autor da sua candidatura.</p>
         <div class="ln-feats">
           <div class="ln-feat"><i class="ti ti-robot"></i> Envio automático 24/7</div>
+          <div class="ln-feat"><i class="ti ti-pencil"></i> Você escreve, o robô entrega</div>
           <div class="ln-feat"><i class="ti ti-shield-check"></i> Anti-duplicata</div>
           <div class="ln-feat"><i class="ti ti-lock"></i> Só envia — nunca lê seu Gmail</div>
         </div>
@@ -2184,7 +2179,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
         <div class="ln-benefit-card">
           <div class="ln-benefit-icon" style="background:rgba(59,130,246,.15);color:#3b82f6">🤖</div>
           <div class="ln-benefit-title">Robô automático 24/7</div>
-          <div class="ln-benefit-desc">Candidata enquanto você dorme. O sistema envia pelo seu Gmail de forma contínua, sem precisar abrir o app.</div>
+          <div class="ln-benefit-desc">Entrega suas candidaturas enquanto você dorme — o robô envia pelo seu Gmail os textos que você mesmo escreveu, de forma contínua, sem precisar abrir o app.</div>
         </div>
         <div class="ln-benefit-card">
           <div class="ln-benefit-icon" style="background:rgba(16,185,129,.15);color:#10b981">🛡️</div>
@@ -2198,13 +2193,16 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
         </div>
         <div class="ln-benefit-card">
           <div class="ln-benefit-icon" style="background:rgba(6,182,212,.15);color:#06b6d4">📋</div>
-          <div class="ln-benefit-title">Currículo salvo</div>
-          <div class="ln-benefit-desc">Anexa seu CV automaticamente em cada candidatura, aumentando suas chances de ser chamado.</div>
+          <div class="ln-benefit-title">Seu currículo, sua carta</div>
+          <div class="ln-benefit-desc">Você sobe o SEU currículo (PDF) e escreve os SEUS textos de e-mail — o H2BApply guarda tudo e anexa automaticamente em cada candidatura. Nunca escrevemos nada por você.</div>
         </div>
+        <!-- v170 (dono, 09/09/2026): card antigo dizia "Planos pagos" 2x, contradizendo
+             o card de Diamantes ao lado — reescrito pra usar a MESMA linguagem de
+             doação+troca, nunca "comprar"/"pagar". -->
         <div class="ln-benefit-card ln-benefit-vip">
           <div class="ln-benefit-icon" style="background:rgba(251,191,36,.15);color:#fbbf24">👑</div>
-          <div class="ln-benefit-title">Planos pagos — mais poder</div>
-          <div class="ln-benefit-desc">Planos pagos aumentam seu limite diário e dão prioridade máxima na fila. Nos planos com automático incluso, o robô roda 24h e chega a até 400 candidaturas/dia. Veja o comparativo completo na aba Planos.</div>
+          <div class="ln-benefit-title">Mais poder, trocando 💎</div>
+          <div class="ln-benefit-desc">Trocando seus diamantes por um plano, você aumenta seu limite diário e ganha prioridade máxima na fila. Nos planos com automático incluso, o robô roda 24h e chega a até 400 candidaturas/dia. Veja como funciona na aba 💎 Diamantes.</div>
         </div>
       </div>
     </div>
@@ -2225,7 +2223,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
         <div class="ln-step">
           <div class="ln-step-ico" style="background:#0d1635;border-color:rgba(139,92,246,.35)"><i class="ti ti-file-cv" style="font-size:28px;color:#8b5cf6"></i></div>
           <div class="ln-step-title">2. Configure seu perfil</div>
-          <div class="ln-step-desc">Envie seu currículo e escolha sua área de interesse.</div>
+          <div class="ln-step-desc">Envie seu currículo e escreva você mesmo os textos do e-mail — o robô só entrega, nunca cria nada por você.</div>
         </div>
         <div class="ln-step-arrow">→</div>
         <div class="ln-step ln-step-highlight">
@@ -2240,6 +2238,35 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <div class="ln-step-desc">A resposta cai direto na caixa de entrada do seu próprio Gmail.</div>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- ══ v170 (dono, 09/09/2026): "revise o que tá escrito, explique melhor
+       todo o funcionamento do programa, que não criamos nada, apenas somos
+       uma ponte" + "não fazemos o programa pra ganhar dinheiro, precisamos
+       de doações pra manter o site online". Seção nova, bem visível, antes
+       de apresentar os criadores reais (sem equipe/funcionários por trás —
+       é literalmente só o Andrio e o Diego), deixando as DUAS ideias
+       explícitas juntas: somos ponte (nunca autores) e vivemos de doação
+       (nunca venda). ══ -->
+  <section class="ln-section" style="background:linear-gradient(135deg,#0a1024,#0d1530)">
+    <div class="ln-section-inner">
+      <div class="ln-sec-label">Como isso é possível</div>
+      <h2 class="ln-sec-title">Somos uma ponte — não os autores da sua candidatura</h2>
+      <p class="ln-sec-sub" style="margin:0 auto 32px">O H2BApply não escreve seu currículo, não escreve sua carta de apresentação e não inventa nenhum texto por você. Tudo isso é seu — nós só levamos até o empregador, automaticamente, pelo seu próprio Gmail.</p>
+      <div style="max-width:820px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div style="background:rgba(255,255,255,.04);border:1.5px solid rgba(139,92,246,.25);border-radius:18px;padding:22px">
+          <div style="font-size:30px;margin-bottom:10px">🌉</div>
+          <div style="font-size:15px;font-weight:800;color:#fff;margin-bottom:8px">Somos a ponte, não o autor</div>
+          <div style="font-size:13px;color:rgba(255,255,255,.7);line-height:1.7">Você escreve seu currículo e os textos do e-mail. O H2BApply só entrega — nunca cria, nunca inventa, nunca decide o que falar por você. Isso é regra fixa do sistema.</div>
+        </div>
+        <div style="background:rgba(255,255,255,.04);border:1.5px solid rgba(245,158,11,.25);border-radius:18px;padding:22px">
+          <div style="font-size:30px;margin-bottom:10px">💙</div>
+          <div style="font-size:15px;font-weight:800;color:#fff;margin-bottom:8px">Mantido por doação, não por venda</div>
+          <div style="font-size:13px;color:rgba(255,255,255,.7);line-height:1.7">Não temos funcionários nem equipe de manutenção — é só um projeto de brasileiros ajudando brasileiros. Não vendemos nada aqui: quem quiser ajudar a manter o site no ar <strong style="color:#fbbf24">doa via PIX</strong> e recebe 💎 diamantes, que podem ser trocados por mais envios quando quiser.</div>
+        </div>
+      </div>
+      <div style="max-width:820px;margin:24px auto 0;text-align:center;font-size:12.5px;color:rgba(255,255,255,.55);line-height:1.6" data-i18n="h_faq_visa"><strong>Isso garante emprego ou visto? Não.</strong> O H2BApply é uma ferramenta que envia e-mails para você. A decisão de te contratar é do empregador. A decisão do visto é do consulado americano. Quanto mais candidaturas você enviar, maiores as chances de receber uma oferta.</div>
     </div>
   </section>
 
@@ -2384,7 +2411,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
     <div class="ln-cta-section-inner">
       <div style="font-size:48px;margin-bottom:16px">🇧🇷 ✈️ 🇺🇸</div>
       <h2 class="ln-cta-section-title">Sua oportunidade nos EUA começa agora</h2>
-      <p class="ln-cta-section-sub">Entre grátis, configure em 1 minuto e deixe o robô trabalhar por você. Centenas de vagas H-2B e H-2A esperando sua candidatura.</p>
+      <p class="ln-cta-section-sub">Entre grátis, configure em 1 minuto e deixe o robô entregar, automaticamente, as candidaturas que você mesmo escreveu. Centenas de vagas H-2B e H-2A esperando você.</p>
       <button class="ln-cta-btn" onclick="openAuthGate('email','signup')" style="margin:0 auto 16px;max-width:380px">
         <svg width="20" height="20" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
         Começar Grátis com Google
@@ -2427,7 +2454,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       <img src="/img/promo-vagas-lighthouse.jpg" alt="Exemplo de vagas H2BApply: Bartender, Housekeeping e Kitchen Helper" loading="lazy">
       <div class="ln-showcase-copy">
         <div class="ln-showcase-title">Vagas de verdade, todos os dias</div>
-        <div class="ln-showcase-sub">Empresas reais nos EUA — Martha's Vineyard, Cape Cod, Nantucket e centenas de outras cidades — publicando vagas H-2B e H-2A o tempo todo. O H2BApply candidata você automaticamente, direto do seu Gmail.</div>
+        <div class="ln-showcase-sub">Empresas reais nos EUA — Martha's Vineyard, Cape Cod, Nantucket e centenas de outras cidades — publicando vagas H-2B e H-2A o tempo todo. O H2BApply entrega sua candidatura automaticamente, direto do seu Gmail.</div>
       </div>
     </div>
   </section>
@@ -2460,6 +2487,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.994 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
         </a>
       </div>
+      <div class="ln-footer-copy">💙 Projeto mantido por doações da comunidade — nunca por venda.</div>
       <div class="ln-footer-copy">© 2026 H2BApply · suporte@h2bapply.com</div>
     </div>
   </footer>
@@ -2498,7 +2526,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       <!-- Botão Planos — destaque -->
       <button id="hdr-plans-btn" onclick="sv('plans')" style="display:none;align-items:center;gap:5px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;border-radius:20px;padding:6px 13px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0">
         <i class="ti ti-diamond" style="font-size:13px"></i>
-        <span id="hdr-plans-label">Planos</span>
+        <span id="hdr-plans-label">💎 Diamantes</span>
       </button>
     </div>
   </div>
@@ -2521,7 +2549,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
         <button class="sb-item" id="sb-auto-btn" onclick="openAutoModal()"><i class="ti ti-robot"></i>Envio Automático</button>
         <button class="sb-item" id="si-jobs" onclick="sv('jobs')"><i class="ti ti-send"></i>Envio Manual</button>
         <button class="sb-item" id="si-hist" onclick="sv('hist')"><i class="ti ti-history"></i><span data-i18n="sent_tab">Enviadas</span><span class="sb-badge sb-badge-g" id="sib-hist" style="display:none"></span></button>
-        <button class="sb-item" id="si-plans" onclick="sv('plans')"><i class="ti ti-diamond"></i>Planos</button>
+        <button class="sb-item" id="si-plans" onclick="sv('plans')"><i class="ti ti-diamond"></i>💎 Diamantes</button>
       </div>
 
       <!-- v166: Admin colado no Planos (era uma seção isolada lá embaixo, perto do rodapé) -->
@@ -2540,11 +2568,11 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
 
       <!-- "Seja VIP" — upsell no rodapé, só aparece pra quem é free (renderSidebar toggla) -->
       <div id="sb-vip-card" style="display:none">
-        <div class="sbv-title">👑 Seja VIP</div>
-        <div class="sbv-item"><i class="ti ti-check"></i>Mais vagas</div>
-        <div class="sbv-item"><i class="ti ti-check"></i>Envios ilimitados</div>
-        <div class="sbv-item"><i class="ti ti-check"></i>Suporte prioritário</div>
-        <button onclick="sv('plans')">Ver Planos</button>
+        <div class="sbv-title">💎 Troque por mais poder</div>
+        <div class="sbv-item"><i class="ti ti-check"></i>Mais envios por dia</div>
+        <div class="sbv-item"><i class="ti ti-check"></i>Automático 24h incluso</div>
+        <div class="sbv-item"><i class="ti ti-check"></i>Prioridade máxima na fila</div>
+        <button onclick="sv('plans')">💎 Diamantes</button>
       </div>
 
       <!-- Painel decorativo — Estátua da Liberdade em SVG -->
@@ -2642,7 +2670,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
                 <div aria-hidden="true" style="position:absolute;right:-14px;bottom:-16px;font-size:80px;line-height:1;opacity:.16;transform:rotate(8deg);pointer-events:none">💎</div>
                 <div style="position:relative;z-index:1">
                   <div style="width:52px;height:52px;border-radius:16px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:12px">💎</div>
-                  <div style="font-size:16px;font-weight:900;color:#fff" data-i18n="plans_send_title">Planos</div>
+                  <div style="font-size:16px;font-weight:900;color:#fff" data-i18n="plans_send_title">💎 Diamantes</div>
                   <div style="font-size:11.5px;color:rgba(255,255,255,.85);margin-top:4px;line-height:1.4" data-i18n="plans_send_sub">Turbine seus envios com diamantes</div>
                   <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;margin-top:14px">
                     <i class="ti ti-arrow-right" style="font-size:17px;color:#fff"></i>
@@ -2984,7 +3012,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
             </div>
             <div id="profile-sender-free" style="background:rgba(245,158,11,.06);border:1.5px solid rgba(245,158,11,.25);border-radius:16px;padding:14px 16px;display:none">
               <div style="font-size:11px;font-weight:800;color:var(--amber);text-transform:uppercase;margin-bottom:5px">🔒 Gmail Extra — VIP Exclusivo</div>
-              <div style="font-size:12px;color:var(--t2)"><span data-i18n="g_178">Usuários pagantes podem conectar um Gmail extra para reduzir risco de spam.</span> <strong style="color:var(--amber)" data-i18n="upgrade_to_enable">Faça upgrade para ativar.</strong></div>
+              <div style="font-size:12px;color:var(--t2)"><span data-i18n="g_178">Quem já trocou 💎 diamantes por um plano pode conectar um Gmail extra para reduzir risco de spam.</span> <strong style="color:var(--amber)" data-i18n="upgrade_to_enable">Troque diamantes para ativar.</strong></div>
             </div>
 
             </div><!-- fim padding container -->
@@ -3377,6 +3405,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
               <div style="font-weight:700;margin-bottom:5px" data-i18n="g_50">🎯 Seu perfil será usado em todos os envios:</div>
 <div id="pf-profiles-list" style="display:flex;flex-direction:column;gap:4px"></div>
               <div style="font-size:11px;color:#374151;margin-top:8px" data-i18n="g_262">O sistema rotaciona entre os assuntos e corpos de e-mail cadastrados para evitar parecer spam. Quer ajustar algo? Toque em "Trocar" acima.</div>
+              <div style="font-size:11px;color:#374151;margin-top:6px;font-weight:700">O robô só envia os textos que você mesmo escreveu no seu perfil — nunca escreve nada novo.</div>
             </div>
 
             <!-- Servidor continua mesmo offline -->
@@ -3765,10 +3794,10 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       <i class="ti ti-user"></i>
       <span>Perfil</span>
     </button>
-    <!-- 3: Planos (diamantes) -->
+    <!-- 3: Diamantes (planos) -->
     <button class="bn" id="bn-plans" onclick="sv('plans')">
       <i class="ti ti-diamond"></i>
-      <span>Planos</span>
+      <span>💎 Diamantes</span>
     </button>
   </nav>
 </div>
@@ -3926,7 +3955,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <select class="mf-select" id="mf-dol-status" onchange="mfOnChange()"><option value="">Todos os status</option></select>
           <div id="mf-dp-lock" style="display:none;background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(217,119,6,.05));border:1.5px solid rgba(245,158,11,.35);border-radius:10px;padding:10px 13px;font-size:12px;color:#92400e;line-height:1.5">
             🔒 Filtrar por <strong data-i18n="g_141">Grupo de Randomização</strong> e <strong>Status DOL</strong> <span data-i18n="g_248">é exclusivo do plano</span> <strong>💎 Double Pro</strong>.
-            <span onclick="closeMasterFilters();sv('plans')" style="color:var(--blue);cursor:pointer;font-weight:800;text-decoration:underline">Fazer upgrade →</span>
+            <span onclick="closeMasterFilters();sv('plans')" style="color:var(--blue);cursor:pointer;font-weight:800;text-decoration:underline">Trocar diamantes →</span>
           </div>
         </div>
       </div>
@@ -3966,7 +3995,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
     <!-- Explicação rápida -->
     <div style="background:rgba(99,102,241,.07);border-bottom:1px solid var(--border);padding:10px 18px;font-size:12px;color:var(--t2);line-height:1.5">
       <i class="ti ti-info-circle" style="color:var(--blue);margin-right:4px"></i>
-      Um perfil reúne seu <strong data-i18n="g_151">currículo (PDF)</strong> + os assuntos e corpos do e-mail. Na hora de enviar — manual ou automático — você escolhe qual perfil usar. Simples assim.
+      Um perfil reúne seu <strong data-i18n="g_151">currículo (PDF)</strong> + os assuntos e corpos do e-mail. Na hora de enviar — manual ou automático — você escolhe qual perfil usar. Simples assim. <strong data-i18n="g_270">Você escreve os textos — o H2BApply nunca preenche isso por você, só entrega.</strong>
     </div>
 
     <div class="mbody" style="padding:0">
@@ -4145,7 +4174,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       <!-- ══ SEÇÃO: ASSUNTOS ══ -->
       <div style="padding:16px 18px 12px;border-bottom:1px solid var(--border)">
         <div style="font-size:12px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px" data-i18n="g_164">③ Assuntos do E-mail</div>
-        <div style="font-size:11px;color:var(--t3);margin-bottom:8px">Sistema rotaciona automaticamente. <strong style="color:var(--red)" data-i18n="g_165">Mínimo 3</strong> <span data-i18n="g_253">para evitar bloqueio por spam.</span></div>
+        <div style="font-size:11px;color:var(--t3);margin-bottom:8px">Sistema rotaciona automaticamente entre os textos <strong data-i18n="g_271">escritos por você</strong>. <strong style="color:var(--red)" data-i18n="g_165">Mínimo 3</strong> <span data-i18n="g_253">para evitar bloqueio por spam.</span></div>
 
         <!-- Variáveis rápidas -->
         <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">
@@ -4182,7 +4211,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       <!-- ══ SEÇÃO: MENSAGENS ══ -->
       <div style="padding:16px 18px 12px;border-bottom:1px solid var(--border)">
         <div style="font-size:12px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px" data-i18n="g_167">④ Corpos de E-mail</div>
-        <div style="font-size:11px;color:var(--t3);margin-bottom:8px"><span data-i18n="g_254">Versões diferentes que o sistema alterna.</span> <strong style="color:var(--red)">Mínimo 3</strong> <span data-i18n="g_255">para evitar spam.</span></div>
+        <div style="font-size:11px;color:var(--t3);margin-bottom:8px">O sistema alterna entre <strong data-i18n="g_272">as suas versões, escritas por você</strong>. <strong style="color:var(--red)">Mínimo 3</strong> <span data-i18n="g_255">para evitar spam.</span></div>
 
         <!-- Variáveis -->
         <div style="background:var(--purplel);border:1.5px solid var(--purpleb);border-radius:var(--r);padding:8px 10px;margin-bottom:8px;font-size:11px">
@@ -4361,6 +4390,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       </div>
     </div>
     <div id="m-cd-pill" style="padding:4px 18px 0;font-size:11.5px;color:var(--t3);cursor:pointer;display:flex;align-items:center;gap:5px" onclick="manualCdModal()"></div>
+    <div style="padding:6px 18px 0;font-size:10.5px;color:var(--t3);display:flex;align-items:center;gap:5px"><i class="ti ti-info-circle" style="flex-shrink:0"></i>Este é o e-mail do seu perfil — o H2BApply só entrega, nunca reescreve nada.</div>
     <div class="mfoot">
       <div style="display:none;align-items:center;gap:6px;font-size:12px;color:var(--t2)" id="m-sending"><span class="spin spin-sm"></span><span data-i18n="sending">Enviando...</span></div>
       <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
@@ -5634,7 +5664,7 @@ html, body, #app, .bottom-nav, .sidebar, .drawer{
         O sistema substitui sozinho: <code style="background:var(--sf3);padding:1px 4px;border-radius:4px">{nome}</code> <code style="background:var(--sf3);padding:1px 4px;border-radius:4px">{vaga}</code> <code style="background:var(--sf3);padding:1px 4px;border-radius:4px">{empresa}</code> <code style="background:var(--sf3);padding:1px 4px;border-radius:4px">{pais}</code> <code style="background:var(--sf3);padding:1px 4px;border-radius:4px">{telefone}</code>. É só deixar no texto.
       </div>
       <div class="field" style="margin-bottom:14px">
-        <label>Assuntos do email <span style="font-weight:500;color:var(--t3)">— mínimo 3, cada envio usa um diferente</span></label>
+        <label>Assuntos do email <span style="font-weight:500;color:var(--t3)">— mínimo 3, escritos por você, cada envio usa um diferente</span></label>
         <div id="ob-h2b-subjects-list" style="display:flex;flex-direction:column;gap:6px;margin-top:6px"></div>
         <button type="button" onclick="obAddVtSubject('h2b')" style="margin-top:8px;font-size:12px;color:var(--blue);font-weight:700;background:none;border:none;cursor:pointer;font-family:inherit;padding:0">+ Adicionar outro assunto</button>
         <div id="ob-h2b-subjects-warn" style="display:none;align-items:center;gap:7px;background:var(--redl);border:1.5px solid var(--redb);border-radius:var(--r);padding:8px 11px;font-size:12px;color:var(--red);font-weight:600;margin-top:8px">
@@ -5704,7 +5734,7 @@ html, body, #app, .bottom-nav, .sidebar, .drawer{
         O sistema substitui sozinho: <code style="background:var(--sf3);padding:1px 4px;border-radius:4px">{nome}</code> <code style="background:var(--sf3);padding:1px 4px;border-radius:4px">{vaga}</code> <code style="background:var(--sf3);padding:1px 4px;border-radius:4px">{empresa}</code> <code style="background:var(--sf3);padding:1px 4px;border-radius:4px">{pais}</code> <code style="background:var(--sf3);padding:1px 4px;border-radius:4px">{telefone}</code>. É só deixar no texto.
       </div>
       <div class="field" style="margin-bottom:14px">
-        <label>Assuntos do email <span style="font-weight:500;color:var(--t3)">— mínimo 3, cada envio usa um diferente</span></label>
+        <label>Assuntos do email <span style="font-weight:500;color:var(--t3)">— mínimo 3, escritos por você, cada envio usa um diferente</span></label>
         <div id="ob-h2a-subjects-list" style="display:flex;flex-direction:column;gap:6px;margin-top:6px"></div>
         <button type="button" onclick="obAddVtSubject('h2a')" style="margin-top:8px;font-size:12px;color:#059669;font-weight:700;background:none;border:none;cursor:pointer;font-family:inherit;padding:0">+ Adicionar outro assunto</button>
         <div id="ob-h2a-subjects-warn" style="display:none;align-items:center;gap:7px;background:var(--redl);border:1.5px solid var(--redb);border-radius:var(--r);padding:8px 11px;font-size:12px;color:var(--red);font-weight:600;margin-top:8px">
@@ -5769,7 +5799,7 @@ html, body, #app, .bottom-nav, .sidebar, .drawer{
     <div id="ob-step-5" style="padding:20px 24px 24px;display:none;text-align:center">
       <div style="font-size:48px;margin-bottom:16px">🎉</div>
       <div style="font-size:22px;font-weight:800;margin-bottom:8px;color:var(--navy)">Tudo pronto!</div>
-      <div style="font-size:13px;color:var(--t2);margin-bottom:6px;line-height:1.6">Você ganhou <strong style="color:var(--blue)">1 dia de VIP Manual grátis</strong> — pode enviar até <strong>200 candidaturas manuais</strong> hoje! <span style="color:var(--t3)">(O envio automático 24/7 é exclusivo dos planos pagos.)</span></div>
+      <div style="font-size:13px;color:var(--t2);margin-bottom:6px;line-height:1.6">Você ganhou <strong style="color:var(--blue)">1 dia de VIP Manual grátis</strong> — pode enviar até <strong>200 candidaturas manuais</strong> hoje! <span style="color:var(--t3)">(O envio automático 24/7 é exclusivo de quem trocou 💎 diamantes por um plano com automático.)</span></div>
       <div style="background:linear-gradient(135deg,#eff6ff,#f5f3ff);border:1.5px solid rgba(99,102,241,.2);border-radius:12px;padding:14px;margin-bottom:20px">
         <div style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:8px">O que fazer agora:</div>
         <div style="font-size:13px;text-align:left;display:flex;flex-direction:column;gap:6px">
