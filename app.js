@@ -21,7 +21,6 @@ const g = s => document.querySelector(s);
 
 const fmt = b => b>1048576?(b/1048576).toFixed(1)+" MB":Math.round(b/1024)+" KB";
 const toB64 = f => new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=()=>rej(new Error("Erro"));r.readAsDataURL(f);});
-const PIX = "00020126360014br.gov.bcb.pix0114+55539814534965204000053039865802BR5916ANDRIO KICKHOFEL6009Sao Paulo62290525REC6A01509D25E099580108226304BB33";
 
 let U={connected:false,email:"",name:"",picture:"",isAdmin:false,plan:"free",vip:null,todaySentManual:0,manualLimit:20,manualRemaining:20,todaySentAuto:0,autoLimit:10,autoRemaining:10,autoEnabled:true,autoJob:null,autoStats:{sent:0,failed:0},onboarded:false};
 let CFG={name:"",country:"Brazil",phone:"",city:"",language:"pt-BR",subject:"",body:""};
@@ -5062,7 +5061,6 @@ async function confirmDeleteAccount(){
     if(btn){ btn.disabled=false; btn.textContent="Sim, deletar"; }
   }
 }
-function copyPix(){navigator.clipboard.writeText(PIX).then(()=>toast("Pix copiado ✓","g")).catch(()=>toast("Copie manualmente","r"));}
 
 
 // ═══════════════════════════════════════════
