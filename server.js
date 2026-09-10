@@ -6564,7 +6564,8 @@ const server=http.createServer(async(req,res)=>{
       <li>Acessar seus dados pessoais armazenados</li>
       <li>Corrigir informações incorretas</li>
       <li>Excluir/desativar sua conta a qualquer momento (ver "Retenção de dados" acima)</li>
-      <li>Solicitar a portabilidade ou eliminação definitiva dos seus dados pelo canal de contato, respeitada a guarda legal de registros financeiros</li>
+      <li>Baixar uma cópia de todos os seus dados a qualquer momento, direto no app (Configurações → "Baixar meus dados") — sem precisar pedir a ninguém</li>
+      <li>Solicitar a eliminação definitiva dos seus dados pelo canal de contato, respeitada a guarda legal de registros financeiros</li>
       <li>Revogar o acesso ao Gmail a qualquer momento em <a href="https://myaccount.google.com/permissions" target="_blank">myaccount.google.com/permissions</a></li>
     </ul>
 
@@ -10998,6 +10999,45 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
       const sid=getSessId(req);if(sid&&sessions[sid]){delete sessions[sid];persistSessionsDebounced(500);}
       res.writeHead(200,{"Content-Type":"application/json","Set-Cookie":clearCookieStr()});
       return res.end('{"ok":true}');
+    }catch(e){return json(res,500,{error:e.message});}
+  }
+
+  // ── GET /api/account/export — portabilidade de dados (LGPD art. 18, V) ──
+  // Auditoria de 10/09/2026: a Política de Privacidade já listava esse
+  // direito, mas só existia por pedido manual ao suporte. Autoatendimento:
+  // o próprio usuário baixa TUDO que escreveu, na hora, sem depender de
+  // ninguém. Só os dados DELE (nunca de outro usuário) e NUNCA nada
+  // sensível de acesso (token OAuth, hash de comprovante de terceiro) —
+  // é portabilidade de dados pessoais, não um dump de segurança.
+  if(pathname==="/api/account/export"&&req.method==="GET"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
+    try{
+      const email=s.user_email;
+      const p=getUser(email)||{};
+      const h=getHist(email);
+      const meusPedidos=(DB_PEDIDOS||[]).filter(pd=>pd&&pd.userEmail===email).map(pd=>({
+        id:pd.id,criadoEm:pd.createdAt,status:pd.status,plano:pd.plano,dias:pd.dias,
+        valorTotal:pd.valorTotal,ativadoEm:pd.ativadoEm||null,pagoEm:pd.pagoEm||null,
+        canceladoEm:pd.canceladoEm||null,temComprovante:!!pd.comprovante}));
+      const exportado={
+        geradoEm:new Date().toISOString(),
+        aviso:"Seus dados pessoais no H2BApply, conforme a LGPD (Lei 13.709/2018, art. 18). Nunca inclui senha (o login é só Google) nem token de acesso.",
+        conta:{email,nome:p.name||"",telefone:p.phone||"",whatsapp:p.whatsapp||"",cidade:p.city||"",
+          pais:p.country||"",idade:p.age||null,idioma:p.language||"",criadaEm:p.created_at||null,
+          plano:getPlan(p),vip:p.vip?{ativo:isVipActive(p),manualExpira:p.vip.manualExpires||null,autoExpira:p.vip.autoExpires||null}:null},
+        h2bProfile:p.h2bProfile||{},
+        perfisDeVaga:(p.profiles||[]).map(pr=>({nome:pr.name,estado:pr.state||null,categorias:pr.categories||[],
+          assuntos:pr.subjects||[],corpos:pr.emailBodies||[]})),
+        curriculos:(p.cvs||[]).map(c=>({nome:c.name,tamanho:c.size,data:c.date,tipo:c.cvType||"resume"})),
+        contasGmailExtras:(p.senderEmails||[]).map(sm=>({email:sm.email,rotulo:sm.label||""})),
+        historicoDeCandidaturas:h.map(x=>({empresa:x.company||"",vaga:x.job||"",para:x.to||"",data:x.date||"",
+          tipo:x.type||"",categoria:x.category||"",estado:x.state||""})),
+        totalCandidaturasEnviadas:h.length,
+        meusPedidos,
+      };
+      const fname=`h2bapply-meus-dados-${new Date().toISOString().slice(0,10)}.json`;
+      res.writeHead(200,{"Content-Type":"application/json; charset=utf-8","Content-Disposition":`attachment; filename="${fname}"`});
+      return res.end(JSON.stringify(exportado,null,2));
     }catch(e){return json(res,500,{error:e.message});}
   }
 

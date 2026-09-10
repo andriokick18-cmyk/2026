@@ -3485,6 +3485,15 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
             </div>
           </div>
 
+          <!-- Privacidade e dados (LGPD) -->
+          <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:16px;padding:16px">
+            <div style="font-size:13px;font-weight:800;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;display:flex;align-items:center;gap:6px"><i class="ti ti-shield-lock"></i> Privacidade e dados</div>
+            <div style="font-size:12.5px;color:var(--t2);line-height:1.55;margin-bottom:12px">
+              Pela LGPD, você tem direito a baixar uma cópia de tudo que escreveu aqui — perfil, currículos (nome/data, não o PDF), candidaturas enviadas e pedidos de plano.
+            </div>
+            <button onclick="downloadMyData()" id="btn-baixar-dados" style="width:100%;background:var(--sf2);border:1.5px solid var(--border2);color:var(--text);border-radius:12px;padding:12px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px"><i class="ti ti-download"></i> Baixar meus dados</button>
+          </div>
+
           <!-- Zona de perigo -->
           <div style="background:rgba(239,68,68,.05);border:1.5px solid rgba(239,68,68,.25);border-radius:16px;padding:16px">
             <div style="font-size:13px;font-weight:800;color:var(--red);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;display:flex;align-items:center;gap:6px"><i class="ti ti-alert-triangle"></i> <span data-i18n="g_241">Zona de perigo</span></div>

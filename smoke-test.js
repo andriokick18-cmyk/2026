@@ -394,6 +394,27 @@ async function testAuthWatchdogPush() {
     check("🔏 /privacidade existe com a declaração Limited Use (exigência da verificação Google)",
       priv.status === 200 && priv.body.includes("Limited Use requirements") && priv.body.includes("gmail.send"),
       `status=${priv.status}`);
+
+    // 🧪 AUDITORIA 10/09/2026 (LGPD art. 18, V — portabilidade): o usuário
+    // baixa os próprios dados sem precisar pedir a ninguém.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "exportmeudados@test.com", name: "Export Teste" });
+    await req2("POST", "/api/settings", { phone: "11988887777", city: "São Paulo" });
+    const expCvB64 = Buffer.from("%PDF-1.4 " + "export ".repeat(300)).toString("base64");
+    const expCv = await req2("POST", "/api/cv/upload", { base64: expCvB64, name: "Curriculo_Export.pdf", cvType: "resume" });
+    await req2("POST", "/api/profiles/save", { name: "Perfil Export Teste", visaType: "h2b", subjects: ["assunto export 1", "assunto export 2", "assunto export 3"], emailBodies: ["corpo export 1", "corpo export 2", "corpo export 3"], resumeIdx: expCv.json?.cv?.idx });
+    const exp = await get("/api/account/export");
+    let expJson = null; try { expJson = JSON.parse(exp.body); } catch {}
+    check("🔒 export LGPD: GET /api/account/export exige login (401 sem sessão)",
+      (await (async () => { const savedCookie = COOKIE; COOKIE = ""; const r = await get("/api/account/export"); COOKIE = savedCookie; return r; })()).status === 401,
+      "sem sessão deveria dar 401");
+    check("📦 export LGPD: baixa os PRÓPRIOS dados (conta+perfil+h2bProfile) como anexo baixável, nunca token/senha",
+      exp.status === 200 &&
+      (exp.headers["content-disposition"] || "").includes("attachment") &&
+      (exp.headers["content-disposition"] || "").includes(".json") &&
+      expJson?.conta?.email === "exportmeudados@test.com" && expJson?.conta?.telefone === "11988887777" &&
+      Array.isArray(expJson?.perfisDeVaga) && expJson.perfisDeVaga.some((pr) => pr.nome === "Perfil Export Teste") &&
+      !JSON.stringify(expJson).includes("refresh_token") && !("senha" in (expJson?.conta || {})),
+      JSON.stringify({ status: exp.status, cd: exp.headers["content-disposition"], email: expJson?.conta?.email }).slice(0, 200));
     // v40: fonte de ícones é BUILT-IN — nunca mais some por CDN bloqueada
     const appJs = await get("/app.js");
     check("⚡ v116: /app.js servido (JS do index extraído — carregamento rápido)", appJs.status===200 && appJs.body.length>100_000, "status="+appJs.status);

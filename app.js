@@ -4990,6 +4990,28 @@ function _populateSettingsView(){
     else { avEl.textContent=(U.name||U.email||"?")[0].toUpperCase(); }
   }
 }
+// ── Configurações: baixar meus dados (LGPD art. 18, V — portabilidade) ──
+async function downloadMyData(){
+  const btn=g("#btn-baixar-dados");
+  if(btn){ btn.disabled=true; btn.dataset.orig=btn.innerHTML; btn.innerHTML=`<span class="spin spin-sm"></span> Preparando...`; }
+  try{
+    const r=await fetch("/api/account/export",{credentials:"include"});
+    if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.error||("HTTP "+r.status)); }
+    const blob=await r.blob();
+    const cd=r.headers.get("Content-Disposition")||"";
+    const m=cd.match(/filename="([^"]+)"/);
+    const fname=m?m[1]:`h2bapply-meus-dados-${new Date().toISOString().slice(0,10)}.json`;
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;a.download=fname;document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    toast("Seus dados foram baixados ✓","g");
+  }catch(e){
+    toast("Erro ao baixar: "+e.message,"r");
+  }finally{
+    if(btn){ btn.disabled=false; btn.innerHTML=btn.dataset.orig||`<i class="ti ti-download"></i> Baixar meus dados`; }
+  }
+}
 function openDeleteAccountModal(){ g("#del-acc-m")?.classList.remove("gone"); }
 function closeDeleteAccountModal(){ g("#del-acc-m")?.classList.add("gone"); }
 async function confirmDeleteAccount(){

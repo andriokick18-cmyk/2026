@@ -22,6 +22,17 @@
    ═══════════════════════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
+const crypto = require("crypto");
+
+// Assinatura ESTÁVEL do conteúdo da instrução (espaços colapsados + sha256
+// curto) — NUNCA o número de linha: uma linha nova inserida em qualquer
+// lugar do arquivo desloca toda linha abaixo dela, e uma allowlist por
+// linha quebra silenciosamente toda vez (aconteceu de verdade escrevendo
+// esta guarda — uma função nova acrescentada mais acima invalidou 14
+// entradas da allowlist na hora). Por conteúdo, só uma edição de VERDADE
+// na própria instrução invalida a entrada — o que é o comportamento certo
+// (força reler o trecho mudado).
+const sigOf = (stmt) => crypto.createHash("sha256").update(stmt.replace(/\s+/g, " ").trim()).digest("hex").slice(0, 12);
 
 // Troca tudo fora de <script>...</script> por espaços (preservando as
 // quebras de linha reais, nunca removendo caractere nenhum) — só o miolo
@@ -50,40 +61,43 @@ const ALVOS = [
   ["h2b-extras-user.js", fs.readFileSync("h2b-extras-user.js", "utf8")],
 ];
 
-// Cada entrada: "arquivo:linha" confirmado manualmente como seguro
-// (interpola só número/ícone/texto fixo — nada vindo de fora), com o
-// motivo registrado aqui em vez de espalhar comentário no meio do código.
+// Cada entrada: "arquivo:assinatura" (sigOf do texto da instrução, NUNCA
+// linha — ver comentário acima) confirmado manualmente como seguro
+// (interpola só número/ícone/texto fixo — nada vindo de fora). Motivo
+// registrado aqui em vez de espalhar comentário no meio do código.
 // Revisão de 10/09/2026 (auditoria de segurança) — os 46 achados originais
 // desta guarda foram lidos 1 a 1: 6 interpolavam dado real do usuário e
 // ganharam esc() de verdade no app.js (email/rótulo de Gmail extra, foto
 // de perfil do Google, nome de perfil de vaga, template de corpo de
-// e-mail salvo) — os 40 abaixo foram confirmados seguros:
+// e-mail salvo) — os 40 abaixo foram confirmados seguros. Pra adicionar
+// uma entrada nova: rode `node check-xss-guard.js`, copie a assinatura que
+// aparece na falha (não invente uma).
 const ALLOWLIST = new Set([
   // Só número (contagem/limite/dias/score) interpolado — nada de texto:
-  "app.js:585", "app.js:588", "app.js:766", "app.js:800", "app.js:843",
-  "app.js:1177", "app.js:1434", "app.js:1458", "app.js:1497", "app.js:1520",
-  "app.js:1527", "app.js:3603", "app.js:3635", "app.js:3684", "app.js:4284",
-  "app.js:4447", "app.js:4455", "app.js:4648", "app.js:4730", "app.js:4733",
-  "app.js:4736", "app.js:5389", "app.js:5394", "app.js:5399", "app.js:5428",
-  "app.js:6288", "app.js:7090", "app.js:7117",
+  "app.js:98b41cf16bcb", "app.js:b53d107f68e1", "app.js:2b7dd6f1e9f8", "app.js:a8c376c9c226", "app.js:65087d84f8fe",
+  "app.js:480178d813df", "app.js:39fb917ed5c4", "app.js:e0c3e8be68bb", "app.js:dc811363e8a2", "app.js:f384dc715f29",
+  "app.js:09ce6f37c941", "app.js:8c3e83eb18e0", "app.js:03f1c9fdd571", "app.js:bec1a605c6d4", "app.js:755e1aeff07d",
+  "app.js:a4361d354957", "app.js:a0477b4280d4", "app.js:1002f7586e81", "app.js:31544df75aa5", "app.js:7a6d66aafffa",
+  "app.js:9de316c2d76c", "app.js:70c36d55e956", "app.js:b9649532e42f", "app.js:caaa4d3f7604", "app.js:aae8a8e4e135",
+  "app.js:5084ad234267", "app.js:316f7a6a8b90", "app.js:c9a8ca4d8df9",
   // Só ícone/cor/rótulo de um mapa INTERNO fixo (categorias, planos, sons,
   // estado de visto) indexado por chave — nunca texto livre de fora:
-  "app.js:1644", "app.js:2394", "app.js:5672",
+  "app.js:515a1087ca52", "app.js:ca018fab6d78", "app.js:3f1ea2b0702e",
   // Nome/emoji de PLANILHA — só admin cria/nomeia planilha (coleta/
   // publish), nunca usuário comum; mesmo padrão de confiança que o resto
   // do painel admin já usa sem esc() pra dado que só o admin escreve:
-  "app.js:3970", "app.js:3988",
+  "app.js:2560ebdd2120", "app.js:548f87170d4f",
   // Texto 100% estático hardcoded no próprio call site (confirmado lendo
   // TODOS os call sites da função) — nenhum caminho de código hoje passa
   // dado dinâmico por aqui:
-  "app.js:3909", "app.js:5052", "app.js:5230",
+  "app.js:0d8902f0867a", "app.js:3e7fbdeb7fbd", "app.js:57e78b86fe9c",
   // Preço/plano/chave Pix — vêm de PLANO_PRECO_TAB/PIX_KEY (constantes do
   // servidor, nunca texto do usuário) via NOME[]/brl():
-  "app.js:8333", "app.js:8341",
+  "app.js:30d315c9b1e7", "app.js:ea351ac57b38",
   // Demo estático da landing (ticker de exemplo, array hardcoded) e valor
   // de atributo já escapado à mão pro contexto de atributo (troca só a
   // aspa, que é o único caractere que quebraria esse atributo):
-  "app.js:6044", "app.js:6853",
+  "app.js:ba4553714a88", "app.js:39a9b3b1c3d0",
 ]);
 
 function extractInnerHTMLStatements(src) {
@@ -131,10 +145,10 @@ for (const [nome, src] of ALVOS) {
     const temInterpolacaoDinamica = /\$\{/.test(stmt);
     const temEsc = /\besc\s*\(/.test(stmt);
     if (temInterpolacaoDinamica && !temEsc) {
-      const chave = `${nome}:${line}`;
+      const chave = `${nome}:${sigOf(stmt)}`;
       if (ALLOWLIST.has(chave)) continue;
       falhas++;
-      console.error(`❌ ${chave}: .innerHTML= interpola \${...} mas NENHUM esc() aparece na instrução inteira`);
+      console.error(`❌ ${chave} (linha ${line}): .innerHTML= interpola \${...} mas NENHUM esc() aparece na instrução inteira`);
       console.error(`   ${stmt.slice(0, 160).replace(/\s+/g, " ")}${stmt.length > 160 ? "…" : ""}`);
     }
   }

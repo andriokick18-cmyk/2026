@@ -70,7 +70,11 @@
 //    extra, nome de perfil de vaga, corpo de template salvo) — guarda
 //    nova check-xss-guard.js impede um innerHTML novo de esquecer o esc().
 //
-const CACHE_NAME = "h2bapply-2026-v13"; // v13: 6 innerHTML do app.js ganharam esc() (auditoria de segurança) + guarda estrutural nova contra regressão
+//  v2.13 — Bump de rotina (LGPD art. 18-V, 10/09/2026): botão novo
+//    "Baixar meus dados" em Configurações (index.html) + downloadMyData()
+//    (app.js) — portabilidade self-service, sem precisar pedir a ninguém.
+//
+const CACHE_NAME = "h2bapply-2026-v14"; // v14: botão "Baixar meus dados" (LGPD art. 18-V) em Configurações
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).
