@@ -415,6 +415,28 @@ async function testAuthWatchdogPush() {
       Array.isArray(expJson?.perfisDeVaga) && expJson.perfisDeVaga.some((pr) => pr.nome === "Perfil Export Teste") &&
       !JSON.stringify(expJson).includes("refresh_token") && !("senha" in (expJson?.conta || {})),
       JSON.stringify({ status: exp.status, cd: exp.headers["content-disposition"], email: expJson?.conta?.email }).slice(0, 200));
+
+    // 🧪 AUDITORIA 10/09/2026: POST /api/account/delete NUNCA tinha teste
+    // nenhum (rota real que descarta sessão + revoga token + soft-delete).
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "deletemeconta@test.com", name: "Delete Teste" });
+    const delSemConfirm = await req2("POST", "/api/account/delete", {});
+    check("🗑️ account/delete: sem confirm:true explícito leva 400 (nunca deleta por engano)",
+      delSemConfirm.status === 400, "status=" + delSemConfirm.status);
+    const delOk = await req2("POST", "/api/account/delete", { confirm: true });
+    check("🗑️ account/delete: com confirm:true deleta (soft — accountDeleted:true) e derruba a sessão (cookie limpo)",
+      delOk.status === 200 && delOk.json?.ok === true && !!(delOk.headers["set-cookie"] || [])[0]?.includes("h2b_session=;"),
+      JSON.stringify({ status: delOk.status, sc: delOk.headers["set-cookie"] }).slice(0, 160));
+    const statusPosDelete = await get("/api/status");
+    check("🗑️ account/delete: /api/status pós-exclusão mostra deslogado de verdade (sessão realmente destruída, não só marcada)",
+      statusPosDelete.json?.connected === false, JSON.stringify(statusPosDelete.json).slice(0, 120));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const liveAfterDel = await get("/api/admin/live");
+    const delUserRow = (liveAfterDel.json?.users || []).find((u) => u.email === "deletemeconta@test.com");
+    check("🗑️ account/delete: SOFT-DELETE de verdade — o admin ainda enxerga a conta marcada (nada foi apagado)",
+      !!delUserRow && delUserRow.accountDeleted === true,
+      JSON.stringify(delUserRow).slice(0, 160));
+    COOKIE = ""; // este bloco termina logado como admin — limpa pra não vazar sessão pros testes seguintes que assumem "sem sessão"
+
     // v40: fonte de ícones é BUILT-IN — nunca mais some por CDN bloqueada
     const appJs = await get("/app.js");
     check("⚡ v116: /app.js servido (JS do index extraído — carregamento rápido)", appJs.status===200 && appJs.body.length>100_000, "status="+appJs.status);
