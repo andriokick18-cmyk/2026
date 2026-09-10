@@ -11092,11 +11092,18 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
     if(DATA_DIR==="/tmp")return json(res,503,{error:"⚠️ Servidor sem volume persistente (/tmp). O perfil seria salvo agora, mas some no próximo reinício. Configure DATA_DIR=/data com volume persistente antes de continuar.",diskVolatile:true});
     try{const d=JSON.parse(await readBody(req));if(!d.name)return json(res,400,{error:"name obrigatório"});const p=getUser(s.user_email)||{};let prfs=p.profiles||[];
     // Validate and normalize subjects (up to 10, no duplicates, no empty)
+    // Auditoria 10/09/2026: MAX_BODY_SIZE aceita corpo de até 50MB (pensado
+    // pra PDF em base64 em outras rotas) — sem corte de TAMANHO por item
+    // aqui, um perfil podia gravar assuntos/corpos de megabytes cada,
+    // inflando DB_USERS pra sempre (o próprio setUser serializa o banco
+    // INTEIRO a cada save — é a mesma classe de lentidão do v43-FIX,
+    // só que essa porta de entrada não tinha trava nenhuma). Mesmo
+    // padrão de corte já usado em /api/templates/save.
     const rawSubjs=Array.isArray(d.subjects)?d.subjects:[];
-    const subjects=[...new Set(rawSubjs.map(s=>String(s).trim()).filter(Boolean))].slice(0,10);
-    // Validate and normalize email bodies (no empty)
+    const subjects=[...new Set(rawSubjs.map(s=>String(s).trim().slice(0,300)).filter(Boolean))].slice(0,10);
+    // Validate and normalize email bodies (no empty, com corte de tamanho E de quantidade)
     const rawBodies=Array.isArray(d.emailBodies)?d.emailBodies:[];
-    const emailBodies=rawBodies.map(b=>String(b).trim()).filter(Boolean);
+    const emailBodies=rawBodies.map(b=>String(b).trim().slice(0,5000)).filter(Boolean).slice(0,10);
     // ── PERFIL ÚNICO (2026-07, pedido do dono): mínimo 3 assuntos e 3 corpos
     // diferentes, escritos pelo próprio usuário — sem isso a candidatura sai
     // com texto padrão igual à de milhares de outros usuários. Antes só o
