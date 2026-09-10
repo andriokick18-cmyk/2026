@@ -74,7 +74,14 @@
 //    "Baixar meus dados" em Configurações (index.html) + downloadMyData()
 //    (app.js) — portabilidade self-service, sem precisar pedir a ninguém.
 //
-const CACHE_NAME = "h2bapply-2026-v14"; // v14: botão "Baixar meus dados" (LGPD art. 18-V) em Configurações
+//  v2.14 — Bump de rotina (auditoria em background, 10/09/2026): limite de
+//    tamanho de currículo/carta mostrado ao usuário (10MB) não batia com o
+//    que o servidor realmente aceita (5MB/3MB) — corrigido nas 3 telas de
+//    upload + guarda i18n atualizada. Removida também uma tela inteira
+//    "Documentos" morta (uploadDoc/renderDocs/showSessionExpiredModal e
+//    companhia — zero chamador real, confirmado antes de apagar).
+//
+const CACHE_NAME = "h2bapply-2026-v15"; // v15: limite de PDF 5MB/3MB corrigido nas 3 telas + remoção de "Documentos" (código morto)
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).
