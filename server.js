@@ -11011,6 +11011,7 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
   // é portabilidade de dados pessoais, não um dump de segurança.
   if(pathname==="/api/account/export"&&req.method==="GET"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
+    if(rateLimit(s.user_email+"_export",10,3600_000))return json(res,429,{error:"Muitos pedidos de exportação. Tente de novo em 1 hora."});
     try{
       const email=s.user_email;
       const p=getUser(email)||{};
