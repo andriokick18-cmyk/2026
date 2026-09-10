@@ -690,7 +690,11 @@ function renderLinhasUsuarios(lista){
   for(var i=0;i<lista.length;i++){
     var u=lista[i];
     var temDias=(u.daysLeft!==null&&u.daysLeft!==undefined);
-    var dias=temDias?(u.daysLeft+" dia"+(u.daysLeft===1?"":"s")):"—";
+    // Auditoria 10/09/2026: daysLeft é Math.ceil((expira-agora)/dia), sem
+    // Math.max(0,...) — plano vencido (caso normal, não erro) chegava
+    // negativo aqui e virava "-5 dias" na tela, ilegível. "Vencido" deixa
+    // claro sem mudar nada no servidor (mesmo daysLeft que já chegava).
+    var dias=!temDias?"—":(u.daysLeft<=0?"Vencido":(u.daysLeft+" dia"+(u.daysLeft===1?"":"s")));
     var creditados=u.diasCreditadosPagos!=null?u.diasCreditadosPagos:0;
     html+='<tr>'
       +'<td><div class="cell-main">'+esc(u.nome||u.email)+'</div><div class="cell-sub">'+esc(u.email)+'</div></td>'
