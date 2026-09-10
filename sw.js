@@ -64,7 +64,13 @@
 //    mudança visual pra quem usa o app hoje (provado com Playwright antes
 //    e depois: telas idênticas).
 //
-const CACHE_NAME = "h2bapply-2026-v12"; // v12: limpeza de CSS/JS morto (ranking, chat/respostas, home-shortcut antigo, drawer) — zero mudança visual
+//  v2.12 — Bump de rotina (auditoria de segurança, 10/09/2026): 6 innerHTML
+//    do app.js passaram a escapar com esc() dado que vinha de fora sem
+//    escape nenhum (foto de perfil do Google, e-mail/rótulo de Gmail
+//    extra, nome de perfil de vaga, corpo de template salvo) — guarda
+//    nova check-xss-guard.js impede um innerHTML novo de esquecer o esc().
+//
+const CACHE_NAME = "h2bapply-2026-v13"; // v13: 6 innerHTML do app.js ganharam esc() (auditoria de segurança) + guarda estrutural nova contra regressão
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).

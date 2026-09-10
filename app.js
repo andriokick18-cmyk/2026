@@ -1855,7 +1855,7 @@ async function openModal(jobId){
       if(extras.length){
         const saved=(()=>{try{return localStorage.getItem("h2b_manual_sender")}catch(e){return null}})();
         const opts=[{email:U.email,lbl:U.email+" (principal)"},...extras.map(x=>({email:x.email,lbl:x.email}))];
-        sSel.innerHTML=opts.map(o=>`<option value="${o.email}" ${saved===o.email?"selected":""}>${o.lbl}</option>`).join("");
+        sSel.innerHTML=opts.map(o=>`<option value="${esc(o.email)}" ${saved===o.email?"selected":""}>${esc(o.lbl)}</option>`).join("");
         sBox.style.display="block";
       } else { sBox.style.display="none"; }
     }
@@ -4986,7 +4986,7 @@ function _populateSettingsView(){
   if(nameEl) nameEl.textContent=U.name||"–";
   if(emailEl) emailEl.textContent=U.email||"–";
   if(avEl){
-    if(U.picture){ avEl.innerHTML=`<img alt="" referrerpolicy="no-referrer" src="${U.picture}" style="width:100%;height:100%;object-fit:cover">`; }
+    if(U.picture){ avEl.innerHTML=`<img alt="" referrerpolicy="no-referrer" src="${esc(U.picture)}" style="width:100%;height:100%;object-fit:cover">`; }
     else { avEl.textContent=(U.name||U.email||"?")[0].toUpperCase(); }
   }
 }
@@ -5264,8 +5264,8 @@ function renderAutoSenders(){
   box.style.display="block";
   list.innerHTML=all.map((s,i)=>`
     <label style="display:flex;align-items:center;gap:9px;background:var(--sf);border:1px solid var(--border2);border-radius:9px;padding:9px 11px;cursor:pointer">
-      <input type="checkbox" class="auto-sender-chk" value="${s.email}" ${s.tokenExpired?"":"checked"} style="width:16px;height:16px;accent-color:#7c3aed">
-      <span style="flex:1;min-width:0;font-size:12.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.email}</span>
+      <input type="checkbox" class="auto-sender-chk" value="${esc(s.email)}" ${s.tokenExpired?"":"checked"} style="width:16px;height:16px;accent-color:#7c3aed">
+      <span style="flex:1;min-width:0;font-size:12.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.email)}</span>
       ${s.principal?'<span style="font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px;background:rgba(124,58,237,.15);color:#a78bfa">PRINCIPAL</span>':''}
       ${s.tokenExpired?'<span style="font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px;background:rgba(239,68,68,.15);color:#f87171">RECONECTAR</span>':''}
     </label>`).join("");
@@ -5520,7 +5520,7 @@ function renderHome(){
   // Avatar
   const av=g("#home-avatar");if(av){if(U.picture){av.innerHTML=`<img alt="" referrerpolicy="no-referrer" src="${esc(U.picture)}" style="width:100%;height:100%;object-fit:cover">`;}else{av.textContent=(U.name||"?")[0].toUpperCase();}}
   // Atualizar avatar na bottom nav
-  const bnAv=g("#bn-av");if(bnAv){if(U.picture){bnAv.innerHTML=`<img alt="" referrerpolicy="no-referrer" src="${esc(U.picture)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;}else{bnAv.innerHTML=`<span style="font-size:13px;font-weight:800;color:#fff">${(U.name||"?")[0].toUpperCase()}</span>`;}}
+  const bnAv=g("#bn-av");if(bnAv){if(U.picture){bnAv.innerHTML=`<img alt="" referrerpolicy="no-referrer" src="${esc(U.picture)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;}else{bnAv.innerHTML=`<span style="font-size:13px;font-weight:800;color:#fff">${esc((U.name||"?")[0].toUpperCase())}</span>`;}}
   // Badge do plano
   const planRow=g("#home-plan-row");if(planRow){
     let badges=planBadgeHTML();
@@ -6865,7 +6865,7 @@ function obRenderVtBodies(vt){
       <span style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase">Versão ${i+1}</span>
       ${arr.length>3?`<button type="button" onclick="obRemoveVtBody('${vt}',${i})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:11px;font-weight:700;font-family:inherit">Remover</button>`:""}
     </div>
-    <textarea class="input" style="min-height:70px;font-size:12px" placeholder="${_OB_BODY_HINTS[i%_OB_BODY_HINTS.length]}" oninput="_obPrf['${vt}'].bodies[${i}]=this.value;_obScheduleDraft('${vt}')">${v||""}</textarea>
+    <textarea class="input" style="min-height:70px;font-size:12px" placeholder="${_OB_BODY_HINTS[i%_OB_BODY_HINTS.length]}" oninput="_obPrf['${vt}'].bodies[${i}]=this.value;_obScheduleDraft('${vt}')">${esc(v||"")}</textarea>
   </div>`).join("");
 }
 function obAddVtBody(vt){if(_obPrf[vt].bodies.length>=10){toast("Máximo 10 corpos de email","r");return;}_obPrf[vt].bodies.push("");obRenderVtBodies(vt);}
@@ -7058,7 +7058,7 @@ function showAutoPreview(){
         <div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 0;border-bottom:1px solid var(--border)"><span style="color:var(--t3)">Categorias</span><strong>${cats}</strong></div>
         <div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 0;border-bottom:1px solid var(--border)"><span style="color:var(--t3)">Estado</span><strong>${state}</strong></div>
         <div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 0;border-bottom:1px solid var(--border)"><span style="color:var(--t3)">Salário mínimo</span><strong>${minW?("$"+minW+"/h"):"Qualquer"}</strong></div>
-        <div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 0"><span style="color:var(--t3)">Perfil</span><strong>${profile?profile.name:"–"}</strong></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 0"><span style="color:var(--t3)">Perfil</span><strong>${profile?esc(profile.name):"–"}</strong></div>
       </div>
       <div style="background:var(--bluel);border:1px solid var(--blueb);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--blue);margin-bottom:14px;display:flex;gap:7px;align-items:flex-start">
         <i class="ti ti-info-circle" style="flex-shrink:0;margin-top:1px"></i>
