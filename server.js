@@ -5532,6 +5532,12 @@ async function reactivateAutoJobs(){
 // bem nessa janela (ex.: Render "acordando"), não queremos quebrar esse
 // fluxo específico.
 const SESS_TTL =7*24*60*60*1000;
+// Auditoria de segurança (10/09/2026): sessão de admin abre dados financeiros
+// sensíveis (Pendentes, valores, comprovantes) e usava o MESMO prazo de 7 dias
+// de um usuário comum — sem trava adicional. TTL bem mais curto só pra sessão
+// de admin (a sessão já cai por completo a cada deploy — isto cobre o admin
+// ficando logado por dias entre deploys, hipótese real no Render).
+const ADMIN_SESS_TTL =24*60*60*1000;
 function _loadSessionsFromDisk(){
   const box=Object.create(null);
   try{
@@ -13466,7 +13472,7 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}if(DB_APP_INDEX[te]){delete DB
 });
 
 // ── Cleanup ───────────────────────────────────────────────
-setInterval(()=>{const n=Date.now();let c=0;Object.keys(sessions).forEach(k=>{const s=sessions[k],a=n-(s.ts||s.created_at||0);if((s.pending&&a>600_000)||(!s.pending&&a>SESS_TTL)){delete sessions[k];c++;}});if(c)console.log(`[cleanup] ${c} sessão(ões)`);persistSessionsDebounced(1000); // V955: snapshot periódico (captura refresh de tokens)
+setInterval(()=>{const n=Date.now();let c=0;Object.keys(sessions).forEach(k=>{const s=sessions[k],a=n-(s.ts||s.created_at||0),ttl=(!s.pending&&isAdminEmail(s.user_email))?ADMIN_SESS_TTL:SESS_TTL;if((s.pending&&a>600_000)||(!s.pending&&a>ttl)){delete sessions[k];c++;}});if(c)console.log(`[cleanup] ${c} sessão(ões)`);persistSessionsDebounced(1000); // V955: snapshot periódico (captura refresh de tokens)
 // v21-FIX: a limpeza do rateMap abaixo estava GRUDADA no comentário da linha
 // acima desde a V955 — virou comentário e NUNCA rodou: o mapa de rate-limit
 // acumulava uma entrada por usuário×ação pra sempre (vazamento lento de RAM).
