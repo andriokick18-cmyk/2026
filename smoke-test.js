@@ -1954,6 +1954,43 @@ async function testAuthWatchdogPush() {
       fs.readFileSync(path.join(__dirname, "app.js"), "utf8").includes("_compComprovante"),
       "_compComprovante não encontrado no app.js");
 
+    // 🧪 AUDITORIA 10/09/2026: PLANO_PRECO_TAB tem 3 planos × 4 prazos = 12
+    // combinações, mas só vip/vipro de 30 dias tinham sido exercidos pela
+    // APROVAÇÃO REAL (PATCH /api/pedido/:id {status:"ativo"}) nos testes
+    // acima — doublepro só aparecia via /api/admin/set-plan (concessão
+    // manual do admin, caminho de código diferente) e nenhum prazo de
+    // 60/90/365 dias nunca passou pela aprovação de pedido de verdade.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "combo-dp@test.com", name: "Combo DoublePro" });
+    const comboDp = await req2("POST", "/api/pedido", { plano: "doublepro", dias: 30, consentimento: true, userName: "Combo DoublePro", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:250", comprovante: Buffer.from("combo-dp").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    await new Promise((r) => setTimeout(r, 400));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const comboDpAp = await req2("PATCH", "/api/pedido/" + comboDp.json?.pedidoId, { status: "ativo", recebidoPor: "andrio" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "combo-dp@test.com" });
+    const comboDpSt = (await get("/api/status")).json;
+    check("🧪 combo plano×prazo: DoublePro 30d aprovado por PEDIDO REAL (não só set-plan do admin) ativa manual+auto com os limites 200/200 da tabela nova — combinação nunca exercida antes pela aprovação",
+      comboDpAp.json?.ok === true && comboDpAp.json?.plano === "doublepro" &&
+      comboDpSt?.plan === "doublepro" && comboDpSt?.manualLimit === 200 && comboDpSt?.autoLimit === 200 &&
+      comboDpSt?.vip?.autoActive === true && comboDpSt?.vip?.manualActive === true,
+      JSON.stringify({ ap: comboDpAp.json?.plano, plan: comboDpSt?.plan, ml: comboDpSt?.manualLimit, al: comboDpSt?.autoLimit }).slice(0, 160));
+
+    // Sem nota "TESTE_COMPROVANTE:" de propósito: com ela, o robô leria
+    // CONFERE e a ativação PROVISÓRIA automática (intencional — ver
+    // autoAtivarProvisorio) somaria +AUTO_ATIVA_DIAS por cima dos 90 da
+    // aprovação, misturando dois comportamentos num teste só. Sem precheck
+    // nenhum, a aprovação do admin é a ÚNICA fonte de dias — matemática limpa.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "combo-90@test.com", name: "Combo 90 Dias" });
+    const combo90 = await req2("POST", "/api/pedido", { plano: "vip", dias: 90, consentimento: true, userName: "Combo 90 Dias", userWhatsapp: "11 9", userCity: "SP", valorTotal: 270, comprovante: Buffer.from("combo-90").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const combo90Ap = await req2("PATCH", "/api/pedido/" + combo90.json?.pedidoId, { status: "ativo", recebidoPor: "diego" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "combo-90@test.com" });
+    const combo90St = (await get("/api/status")).json;
+    const _diasRestantes90 = combo90St?.vip?.manualExpires ? Math.round((combo90St.vip.manualExpires - Date.now()) / 86400000) : 0;
+    check("🧪 combo plano×prazo: VIP de 90 dias (não o padrão de 30) aprovado por pedido real estende a validade ~90 dias e NÃO libera automático (VIP puro é só manual) — prazo 60/90/365 nunca tinha sido exercido pela aprovação",
+      combo90Ap.json?.ok === true && combo90St?.plan === "vip" &&
+      _diasRestantes90 >= 88 && _diasRestantes90 <= 91 &&
+      combo90St?.vip?.autoActive === false && combo90St?.manualLimit === 100,
+      JSON.stringify({ ap: combo90Ap.status, plan: combo90St?.plan, diasRestantes: _diasRestantes90, auto: combo90St?.vip?.autoActive }).slice(0, 180));
+
     // ═══ 💼 MC5 — PARTE 2 (29/08): O USUÁRIO VÊ TUDO ═══════════════════════
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5a@test.com", name: "MC5 A" });
     const mc5vis = (await get("/api/pedidos")).json;
