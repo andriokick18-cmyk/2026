@@ -9571,6 +9571,11 @@ filtrar();
   // POST /api/pedido — usuário cria pedido de plano
   if(pathname==="/api/pedido"&&req.method==="POST"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
+    // Rate-limit (auditoria 10/09/2026): era a única rota de dinheiro sem
+    // trava de rajada — o teto de 3 pendentes barra abuso sustentado, mas
+    // não impede rajada de requisições (ex.: criar+cancelar em loop). Mesmo
+    // padrão das outras rotas sensíveis (rateLimit por e-mail da sessão).
+    if(rateLimit(s.user_email+"_pedido",15,60_000))return json(res,429,{error:"Muitas tentativas em pouco tempo. Aguarde um minuto e tente de novo."});
     try{
       const d=JSON.parse(await readBody(req));
       // Por padrão, o pedido pertence a quem está logado (fluxo normal: usuário comprando seu próprio plano).
