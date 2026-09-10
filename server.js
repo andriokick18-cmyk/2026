@@ -6550,13 +6550,15 @@ const server=http.createServer(async(req,res)=>{
     <p>Seus dados são armazenados em servidores seguros com acesso restrito. Utilizamos criptografia para proteger tokens de acesso. Você pode excluir sua conta e todos os dados a qualquer momento acessando seu perfil no app.</p>
 
     <h2>6. Retenção de dados</h2>
-    <p>Mantemos seus dados enquanto sua conta estiver ativa. Ao excluir sua conta, todos os dados pessoais são removidos permanentemente em até 30 dias.</p>
+    <p>Mantemos seus dados enquanto sua conta estiver ativa. Ao excluir sua conta em <a href="/delete-account">/excluir-conta</a>, seu acesso ao Gmail é revogado imediatamente no Google, sua sessão é encerrada e a conta é <strong>desativada</strong> (some do app e de qualquer lista pública, o envio automático para). Seu histórico de candidaturas e seus registros de pagamento/pedido são <strong>mantidos</strong> mesmo após a exclusão — não por opção comercial, mas porque a legislação brasileira (Código Civil e normas fiscais) exige guarda de registros financeiros/contábeis por prazo determinado, e porque preservar seu histórico permite restaurar sua conta automaticamente caso você entre novamente com o mesmo email. Se quiser a remoção definitiva dos seus dados em vez da desativação, use o canal de contato abaixo — atendemos o pedido dentro do prazo legal, respeitada a guarda obrigatória de registros financeiros.</p>
 
-    <h2>7. Seus direitos</h2>
+    <h2>7. Seus direitos (LGPD — Lei 13.709/2018)</h2>
+    <p>Nos termos da <strong>Lei Geral de Proteção de Dados (LGPD, Lei 13.709/2018)</strong>, você tem direito a:</p>
     <ul>
       <li>Acessar seus dados pessoais armazenados</li>
       <li>Corrigir informações incorretas</li>
-      <li>Excluir sua conta e todos os dados</li>
+      <li>Excluir/desativar sua conta a qualquer momento (ver "Retenção de dados" acima)</li>
+      <li>Solicitar a portabilidade ou eliminação definitiva dos seus dados pelo canal de contato, respeitada a guarda legal de registros financeiros</li>
       <li>Revogar o acesso ao Gmail a qualquer momento em <a href="https://myaccount.google.com/permissions" target="_blank">myaccount.google.com/permissions</a></li>
     </ul>
 
