@@ -6740,15 +6740,18 @@ const server=http.createServer(async(req,res)=>{
     <p>Os preços de cada plano e período são sempre os exibidos na tela antes do pagamento, calculados pelo próprio servidor — nunca um valor "combinado" ou digitado à mão. O fluxo de doação/compra funciona assim:</p>
     <ul>
       <li>Você escolhe o plano e o período e vê o valor exato a pagar via PIX</li>
-      <li>Você confirma que leu e entende este Termo (seção 11) antes de continuar</li>
+      <li>Você confirma que leu e entende este Termo (seção 12) antes de continuar</li>
       <li>Você paga via PIX e envia o comprovante dentro do próprio app</li>
       <li><strong>Você precisa continuar com a mesma conta cadastrada</strong> até a análise terminar — o comprovante é vinculado à sua conta, e sair ou excluir a conta no meio da análise pode impedir a confirmação</li>
       <li>Se os dados do comprovante conferem automaticamente, o plano é liberado <strong>na hora, de forma PROVISÓRIA</strong> (por poucos dias), mas o pedido continua na fila para um administrador humano confirmar — nenhum plano fica ativo por muito tempo sem essa confirmação</li>
       <li>Se o comprovante não confere, está ilegível ou incompleto, o pedido fica pendente de revisão manual e você é avisado</li>
     </ul>
-    <p>Quem ativou um plano antes de uma mudança de preços ou regras mantém os limites da própria ativação até o vencimento. Não há reembolso automático após o uso do plano. Um pedido ainda pendente (comprovante enviado, aguardando confirmação) pode ser cancelado — fale pelo canal de contato (seção 12) antes da confirmação.</p>
+    <p>Quem ativou um plano antes de uma mudança de preços ou regras mantém os limites da própria ativação até o vencimento. Não há reembolso automático após o uso do plano, sem prejuízo do direito de arrependimento da seção 6.</p>
 
-    <h2>6. Limitação de responsabilidade</h2>
+    <h2>6. Direito de arrependimento (Código de Defesa do Consumidor, art. 49)</h2>
+    <p>Como a contratação acontece fora de um estabelecimento físico (pela internet), você tem até <strong>7 (sete) dias corridos</strong> a partir da confirmação do pagamento para desistir da compra e pedir reembolso integral, bastando avisar pelo e-mail de suporte (seção 13). Se o plano já tiver sido efetivamente usado (por exemplo, envios automáticos ou manuais já realizados dentro do período pago), o reembolso pode ser proporcional ao que ainda não foi utilizado. Este direito não substitui, e não é substituído por, nenhuma outra garantia prevista em lei.</p>
+
+    <h2>7. Limitação de responsabilidade</h2>
     <p>O H2BApply é uma ferramenta de envio de e-mails e <strong>não garante</strong>:</p>
     <ul>
       <li>Contratação por qualquer empresa americana</li>
@@ -6758,16 +6761,16 @@ const server=http.createServer(async(req,res)=>{
     </ul>
     <p>O resultado das candidaturas depende exclusivamente de empregadores, autoridades americanas e consulados — fatores totalmente fora do controle do H2BApply.</p>
 
-    <h2>7. Conta e segurança</h2>
+    <h2>8. Conta e segurança</h2>
     <p>Você é responsável por manter a segurança da sua conta Google. O H2BApply acessa seu Gmail <strong>apenas para enviar</strong> as candidaturas que você mesmo escreve e autoriza — o app nunca lê, abre nem armazena o conteúdo da sua caixa de entrada, conforme descrito na Política de Privacidade.</p>
 
-    <h2>8. Cancelamento</h2>
+    <h2>9. Cancelamento</h2>
     <p>Você pode cancelar sua conta a qualquer momento pelo app. Também pode revogar o acesso ao Gmail em <a href="https://myaccount.google.com/permissions" target="_blank">myaccount.google.com/permissions</a>.</p>
 
-    <h2>9. Alterações nos termos</h2>
+    <h2>10. Alterações nos termos</h2>
     <p>Podemos atualizar estes termos periodicamente. Mudanças significativas serão comunicadas pelo app. O uso continuado após alterações implica aceitação dos novos termos.</p>
 
-    <h2 id="gmail-aviso">10. Aviso sobre uso do Gmail — um risco que é do Google, não do H2BApply</h2>
+    <h2 id="gmail-aviso">11. Aviso sobre uso do Gmail — um risco que é do Google, não do H2BApply</h2>
     <div class="warning">⚠️ <strong>Leia com atenção antes de usar o envio automático.</strong></div>
     <p>O H2BApply utiliza sua conta Gmail para enviar candidaturas. O Google — empresa terceira, totalmente independente do H2BApply — pode <strong>limitar ou bloquear temporariamente</strong> contas Gmail que enviam muitos emails em curto período, especialmente quando:</p>
     <ul>
@@ -6778,18 +6781,19 @@ const server=http.createServer(async(req,res)=>{
     <p><strong>O que o H2BApply já faz para reduzir esse risco:</strong> aquecimento gradual de conta nova, intervalo humanizado entre envios automáticos e a opção de cadastrar 2 ou mais contas Gmail (aba Perfil → Gmail) para distribuir o volume.</p>
     <p><strong>Isenção específica:</strong> mesmo com essas proteções, a decisão de limitar, suspender ou bloquear uma conta Gmail é tomada exclusivamente pelo Google, segundo critérios e políticas próprias que o H2BApply não controla nem pode garantir. Por isso, o H2BApply não se responsabiliza por bloqueios, suspensões ou limitações impostas pelo Google à sua conta Gmail. Ao ativar o envio automático, você declara estar ciente deste risco específico — que decorre de ato de terceiro (o Google), e não de falha do H2BApply.</p>
 
-    <h2>11. Consentimento informado ao comprar/doar um plano</h2>
+    <h2>12. Consentimento informado ao comprar/doar um plano</h2>
     <p>Antes de concluir o pagamento de qualquer plano, você confirma que leu e entende que:</p>
     <ul>
       <li>Está contratando um <strong>serviço digital pago</strong> de automação de envio de e-mails — não uma agência de emprego, consultoria de imigração ou qualquer garantia de resultado</li>
       <li>O H2BApply <strong>nunca escreve texto por você</strong>; o conteúdo enviado é sempre de sua autoria e responsabilidade</li>
       <li>O preço mostrado na tela, no momento da escolha do plano, é o valor final a pagar</li>
       <li>Depois de pagar via PIX, é necessário enviar o comprovante e <strong>permanecer logado na mesma conta</strong> até a análise (automática e, sempre, humana) ser concluída</li>
-      <li>O risco de limitação/bloqueio da conta Gmail pelo Google é um risco de terceiro, nos termos da seção 10, e pode ser reduzido — mas não eliminado — usando mais de uma conta de envio</li>
+      <li>O risco de limitação/bloqueio da conta Gmail pelo Google é um risco de terceiro, nos termos da seção 11, e pode ser reduzido — mas não eliminado — usando mais de uma conta de envio</li>
+      <li>Tem direito de arrependimento de 7 dias corridos, nos termos da seção 6</li>
       <li>Concorda integralmente com este Termo de Uso e com a Política de Privacidade</li>
     </ul>
 
-    <h2>12. Contato</h2>
+    <h2>13. Contato</h2>
     <ul>
       <li>Email: <a href="mailto:suporte@h2bapply.com">suporte@h2bapply.com</a></li>
       <li>WhatsApp: +55 53 98145-3496</li>
