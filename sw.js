@@ -86,7 +86,7 @@
 //    promessa de "direito de arrependimento de 7 dias" (removida também dos
 //    Termos — seção renumerada 1-12).
 //
-const CACHE_NAME = "h2bapply-2026-v17"; // v17: auditoria QA 11/09 — filtros (Limpar tudo)/perfil (cover-only, exclusão de PDF)/tour (vt-chooser)/hero mobile/overflow do filters-row
+const CACHE_NAME = "h2bapply-2026-v18"; // v18: paywall real — login só identidade (LOGIN_SCOPES), gmail.send só via /oauth/connect-send com plano pago ativo, fim do trial grátis
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).

@@ -135,6 +135,16 @@ if(!process.env.SERVER_ID){
 const GMAIL_SEND_ONLY = true;
 const OAUTH_SCOPES = "openid email profile https://www.googleapis.com/auth/gmail.send";
 console.log("[oauth] ✉️ Modo só-envio (permanente, v72): escopo único gmail.send — nunca lê caixa de entrada. Aba Respostas removida.");
+// v172 (ORDEM DO DONO, 11/09/2026 — "ninguém vai poder logar e fazer a
+// autenticação [do Gmail] antes de comprar... o login do Google normal hoje
+// vai ser simplesmente só um login... não pode ocupar o Google nosso lá"):
+// LOGIN (entrar no site, navegar, ver planos) e CONECTAR O GMAIL PRA ENVIAR
+// (escopo sensível gmail.send) viraram dois pedidos SEPARADOS ao Google.
+// LOGIN_SCOPES nunca inclui gmail.send — é fisicamente impossível enviar
+// e-mail com o token que sai dessa tela, o Google recusa por escopo
+// insuficiente mesmo se o código tentasse. Só /oauth/connect-send (gated
+// por plano pago ativo — isVipActive) pede OAUTH_SCOPES completo.
+const LOGIN_SCOPES = "openid email profile";
 const REDIRECT_URI        = APP_URL + "/oauth/callback";
 const REDIRECT_URI_SENDER = APP_URL + "/oauth/add-sender/callback";
 
@@ -397,7 +407,12 @@ let DB_CODES  = {};   // NEW: promo codes { code → { manualDays, autoDays, cre
 let DB_PUSH   = {};   // NEW: push subscriptions { userEmail → PushSubscription[] }
 // NEW v13: índice de candidaturas — { userEmail → { byThread:{tid:appId}, byMsgId:{mid:appId}, byTo:{email:[appId,...]} } }
 let DB_APP_INDEX = {};
-let DB_ADMIN_SETTINGS = { emailNotificationsEnabled: false, newUserTrialEnabled: true, newUserTrialDays: 1, newUserTrialAutoDays: 0, newUserTrialPlan: "vip",
+let DB_ADMIN_SETTINGS = { emailNotificationsEnabled: false,
+  // v172 (ORDEM DO DONO, 11/09/2026): newUserTrialEnabled/newUserTrialDays/
+  // newUserTrialAutoDays/newUserTrialPlan foram REMOVIDOS — trial grátis de
+  // usuário novo não existe mais (só quem paga envia). newUserTrialDays/
+  // AutoDays/Plan já eram código morto antes disso (a concessão real
+  // hardcodeava "1 dia MANUAL apenas", nunca lia esses 3 campos).
   // 💼 MC4-P1 (dono, 28/08/2026): divisão societária do LUCRO — padrão 50/50,
   // editável na seção "Sócios & Acerto" da aba 🧠 (computeSocios usa isto).
   sociosSplit: { andrio: 50, diego: 50 },
@@ -2852,17 +2867,23 @@ function limitesDoPlanoNovo(planKey){
   const t=PLAN_LIMITS_NEW[planKey]||PLAN_LIMITS_NEW.vip;
   return { manual:t.manual, auto:t.auto };
 }
+// ⚠️ v172 (auditoria 11/09/2026): os `|| 20`/`|| 10` daqui escondiam ZERO
+// como se fosse "sem valor" (0 é falsy em JS) — com o plano free virando
+// {manual:0,auto:0} (regra "só quem paga usa"), esses fallbacks
+// RESSUSCITAVAM 20 manuais/10 automáticos grátis por trás das costas.
+// `??` só cai no fallback se o valor for null/undefined de verdade (plano
+// desconhecido, nunca deveria acontecer — todos os planos estão na tabela).
 const getManualLimit = u => {
   if (u?.vip?.limits && typeof u.vip.limits.manual==="number" && isManualVipActive(u)) return u.vip.limits.manual;
-  return PLAN_LIMITS[getPlan(u)]?.manual || 20;
+  return PLAN_LIMITS[getPlan(u)]?.manual ?? 0;
 };
 const getAutoLimit   = u => {
   if (isAdminVip(u)) {
     // Admin: respeita senderLimits se configurado, senão 9999
     return 9999;
   }
-  if (u?.vip?.limits && typeof u.vip.limits.auto==="number" && isAutoVipActive(u)) return u.vip.limits.auto || PLAN_LIMITS.free.auto;
-  return PLAN_LIMITS[getPlan(u)]?.auto || 10;
+  if (u?.vip?.limits && typeof u.vip.limits.auto==="number" && isAutoVipActive(u)) return u.vip.limits.auto ?? PLAN_LIMITS.free.auto;
+  return PLAN_LIMITS[getPlan(u)]?.auto ?? 0;
 };
 
 // Adiciona dias de manual VIP ao stack
@@ -5916,12 +5937,35 @@ async function getSenderToken(ownerEmail, requestedSender, allowedSenders) {
 
 function buildMime(opts){ return _buildMimeMod(opts); } // corpo em src/gmail.js (Fase 1 · Módulo 2)
 
-async function gmailSend(sid,opts){const s=sessions[sid];if(!s?.access_token)throw new Error("Sessão expirada.");if(s.expires_at&&Date.now()>s.expires_at-120_000){try{await refreshToken(sid);}catch{}}const raw=buildMime({...opts,fromEmail:s.user_email});const{status,body}=await httpsReq({hostname:"gmail.googleapis.com",path:"/gmail/v1/users/me/messages/send",method:"POST",headers:{"Authorization":"Bearer "+s.access_token,"Content-Type":"application/json"}},{raw});if(body?.error){const msg=body.error.message||JSON.stringify(body.error);throw new Error(msg);}if(status!==200)throw new Error("Gmail HTTP "+status);return body;}
+// 🔒 v172 (ORDEM DO DONO, 11/09/2026): desde que login parou de trazer um
+// access_token gmail.send-capaz (é só identidade agora), a sessão CHEGA aqui
+// sem access_token no caso comum (usuário conectou o Gmail em ALGUM momento
+// via /oauth/connect-send, e a sessão atual é de um relogin posterior que
+// não repassou o token, ou de outro aparelho). O código ANTIGO só tentava
+// refreshToken(sid) quando JÁ HAVIA um access_token perto de expirar — sem
+// nenhum, batia direto em "Sessão expirada." mesmo com um refresh_token
+// perfeitamente válido no banco (getUser().refresh_token), porque
+// refreshToken() nunca era chamado. Agora tenta refresh SEMPRE que falta
+// (ou está vencendo) — refreshToken() já sabe cair pro refresh_token
+// persistido (ver função refreshToken acima) mesmo sem um na sessão.
+async function _ensureSendToken(sid){
+  const s=sessions[sid];
+  if(!s)throw new Error("Sessão expirada.");
+  const stale=!s.access_token||(s.expires_at&&Date.now()>s.expires_at-120_000);
+  if(stale){
+    try{await refreshToken(sid);}
+    catch(e){
+      if(!s.access_token)throw new Error("Conecte seu Gmail pra enviar candidaturas (Automático ou Manual → Conectar Gmail).");
+    }
+  }
+  if(!s.access_token)throw new Error("Conecte seu Gmail pra enviar candidaturas (Automático ou Manual → Conectar Gmail).");
+  return s;
+}
+async function gmailSend(sid,opts){const s=await _ensureSendToken(sid);const raw=buildMime({...opts,fromEmail:s.user_email});const{status,body}=await httpsReq({hostname:"gmail.googleapis.com",path:"/gmail/v1/users/me/messages/send",method:"POST",headers:{"Authorization":"Bearer "+s.access_token,"Content-Type":"application/json"}},{raw});if(body?.error){const msg=body.error.message||JSON.stringify(body.error);throw new Error(msg);}if(status!==200)throw new Error("Gmail HTTP "+status);return body;}
 
 // Envio com suporte a threading (respostas na mesma conversa)
 async function gmailSendWithThread(sid,opts){
-  const s=sessions[sid];if(!s?.access_token)throw new Error("Sessão expirada.");
-  if(s.expires_at&&Date.now()>s.expires_at-120_000){try{await refreshToken(sid);}catch{}}
+  const s=await _ensureSendToken(sid);
   const raw=buildMimeWithHeaders({...opts,fromEmail:s.user_email});
   const payload={raw};
   // threadId vincula a mensagem ao thread correto no Gmail
@@ -7944,35 +7988,20 @@ filtrar();
   // ── OAuth ─────────────────────────────────────────────
   if(pathname==="/oauth/start"){if(rateLimit((req.headers["x-forwarded-for"]||"anon")+"_oauth",30,900_000)){res.writeHead(302,{Location:"/?err="+encodeURIComponent("Muitas tentativas de login. Aguarde 15 minutos e tente novamente.")});return res.end();}if(!CONFIGURED){res.writeHead(302,{Location:"/?err="+encodeURIComponent("Configure GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET.")});return res.end();}const st=crypto.randomBytes(20).toString("hex");
   sessions["__p__"+st]={pending:true,ts:Date.now()};
-  // 🔒 v149 (dono, 20/08): o e-mail digitado no card de entrada vira um
-  // CONTRATO — vai pro Google como login_hint (pré-seleciona a conta certa)
-  // e fica guardado no state pra callback BARRAR se a pessoa autenticar
-  // outra conta (cada conta autenticada consome 1 das 100 vagas do OAuth).
+  // 🔒 v172 (ORDEM DO DONO, 11/09/2026): LOGIN é SEMPRE só identidade —
+  // LOGIN_SCOPES (openid+email+profile), NUNCA gmail.send. Não existe mais
+  // um "1º passo" que emenda numa 2ª tela pedindo a caixinha do Gmail — este
+  // pedido sozinho já basta pra entrar e navegar no site. Enviar candidatura
+  // (manual ou automático) exige plano pago ativo + /oauth/connect-send à
+  // parte (abaixo). E-mail digitado no card ainda vira "contrato" — vai como
+  // login_hint (pré-seleciona a conta) e o callback ainda barra se a pessoa
+  // escolher outra — mas como não há escopo sensível em jogo aqui, errar a
+  // conta só significa logar como a pessoa errada, sem custo de revoke.
   {const _h=(u.searchParams.get("login_hint")||"").trim().toLowerCase();
    if(/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(_h))sessions["__p__"+st].hint=_h;}
-  // 🔒 v149b (dono, 20/08: "revogar o token não adianta — se escolher o
-  // e-mail errado ela NÃO PODE marcar a caixinha e seguir em frente"): com
-  // e-mail digitado, a 1ª ida ao Google pede SÓ IDENTIDADE (openid email —
-  // escopo básico, que NÃO conta nas 100 vagas do OAuth). Escolheu o e-mail
-  // errado? Barra ali, ANTES da tela de permissão do gmail.send existir.
-  // Só com o e-mail certo comprovado é que a 2ª etapa (a caixinha) acontece.
-  if(sessions["__p__"+st].hint){
-    sessions["__p__"+st].fase="identidade";
-    const qsId=new URLSearchParams({client_id:CLIENT_ID,redirect_uri:_oauthBase(req)+"/oauth/callback",response_type:"code",scope:"openid email",state:st,login_hint:sessions["__p__"+st].hint});
-    res.writeHead(302,{Location:"https://accounts.google.com/o/oauth2/v2/auth?"+qsId});return res.end();
-  }
-  // Se o usuário já tem refresh_token salvo, não força consent (login silencioso).
-  // Se é a primeira vez (sem refresh_token), exige consent para obter o refresh_token.
-  // FIX v2: se usuário não tem scopeVersion>=2 (novos escopos gmail.readonly+modify), força consent
-  const _loginHint=(u.searchParams.get("login_hint")||"").trim().toLowerCase();
-  const _hintUser=_loginHint?getUser(_loginHint):null;
-  const _hasRt=!!(_hintUser?.refresh_token);
-  const _hasNewScopes=(_hintUser?.scopeVersion||0)>=2;
-  // U1 (11/07): token marcado como morto (invalid_grant) NÃO conta como "tem token" —
-  // força consent para o Google emitir um refresh_token NOVO neste login.
-  const _rtUsable=_hasRt&&!_hintUser?.rtInvalid;
-  const _promptVal=(_rtUsable&&_hasNewScopes)?"select_account":"consent select_account";
-  const qs=new URLSearchParams({client_id:CLIENT_ID,redirect_uri:_oauthBase(req)+"/oauth/callback",response_type:"code",scope:OAUTH_SCOPES,access_type:"offline",prompt:_promptVal,state:st});res.writeHead(302,{Location:"https://accounts.google.com/o/oauth2/v2/auth?"+qs});return res.end();}
+  const qs=new URLSearchParams({client_id:CLIENT_ID,redirect_uri:_oauthBase(req)+"/oauth/callback",response_type:"code",scope:LOGIN_SCOPES,state:st});
+  if(sessions["__p__"+st].hint){qs.set("login_hint",sessions["__p__"+st].hint);qs.set("prompt","select_account");}
+  res.writeHead(302,{Location:"https://accounts.google.com/o/oauth2/v2/auth?"+qs});return res.end();}
 
   if(pathname==="/oauth/callback"){
     const code=u.searchParams.get("code"),error=u.searchParams.get("error");
@@ -8021,6 +8050,62 @@ filtrar();
         res.writeHead(200,{"Content-Type":"text/html; charset=utf-8","Content-Length":Buffer.byteLength(page2),"Cache-Control":"no-cache"});return res.end(page2);
       }catch(e2){return fail2("Erro ao adicionar email: "+e2.message);}
     }
+    // ── CONECTAR GMAIL PRA ENVIAR (v172) — callback ──────────────────────
+    if(sessions["__connectsend__"+_st]){
+      const pendingCS=sessions["__connectsend__"+_st];
+      const failCS=m=>{res.writeHead(302,{Location:"/?err="+encodeURIComponent(m)+"&tab="+encodeURIComponent(pendingCS.fromTab||"plans")});res.end();};
+      if(Date.now()-pendingCS.created>600_000){delete sessions["__connectsend__"+_st];return failCS("Sessão expirada. Tente conectar de novo.");}
+      const ownerEmailCS=pendingCS.ownerEmail;
+      delete sessions["__connectsend__"+_st];
+      try{
+        // Defesa em profundidade: o plano pode ter expirado nos ~segundos
+        // que a pessoa levou na tela do Google — confere de novo, igual a
+        // rota /oauth/connect-send já conferiu antes de redirecionar.
+        const ownerCS=getUser(ownerEmailCS);
+        if(!ownerCS||!isVipActive(ownerCS)){
+          return failCS("Seu plano não está mais ativo. Assine um plano pra conectar o Gmail e enviar candidaturas.");
+        }
+        const tbCS=new URLSearchParams({code,client_id:CLIENT_ID,client_secret:CLIENT_SECRET,redirect_uri:_oauthBase(req)+"/oauth/callback",grant_type:"authorization_code"}).toString();
+        const{body:tkCS}=await httpsReq({hostname:"oauth2.googleapis.com",path:"/token",method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded","Content-Length":Buffer.byteLength(tbCS)}},tbCS);
+        if(tkCS.error)return failCS(tkCS.error_description||tkCS.error);
+        if(!tkCS.access_token)return failCS("Token não recebido.");
+        const{body:uiCS}=await httpsReq({hostname:"www.googleapis.com",path:"/oauth2/v2/userinfo",method:"GET",headers:{"Authorization":"Bearer "+tkCS.access_token}});
+        const _emailCS=String(uiCS.email||"").toLowerCase().trim();
+        if(!_emailCS)return failCS("E-mail não obtido.");
+        // A conta autorizada TEM que ser a mesma já logada — isto não é
+        // trocar de conta, é dar permissão de envio pra ELA mesma. Diferente
+        // = revoga (aqui SIM vale a pena — é escopo sensível de verdade) e
+        // barra, mesmo padrão de proteção que o login já usava antes do v172.
+        if(_emailCS!==ownerEmailCS){
+          try{
+            const _rvBCS="token="+encodeURIComponent(tkCS.refresh_token||tkCS.access_token);
+            await httpsReq({hostname:"oauth2.googleapis.com",path:"/revoke",method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded","Content-Length":Buffer.byteLength(_rvBCS)}},_rvBCS);
+            _authEvent(_emailCS,"revoke_mismatch","Conectar-Gmail-pra-enviar revogado: logada como "+ownerEmailCS+", autenticou "+_emailCS);
+          }catch(eRvCS){console.warn("[oauth] revoke pós-mismatch (connect-send) falhou:",eRvCS.message);}
+          return failCS(`Você precisa autorizar com a MESMA conta que já está logada (${ownerEmailCS}), não com ${_emailCS}.`);
+        }
+        if(!tkCS.refresh_token && !ownerCS.refresh_token){
+          // Google só manda refresh_token com prompt=consent (sempre pedido
+          // acima) — mas se por algum motivo não veio E nunca existiu um
+          // antes, não dá pra enviar sem sessão ativa; melhor avisar do que
+          // fingir que conectou.
+          return failCS("O Google não devolveu a permissão de envio. Tente conectar de novo.");
+        }
+        setUser(ownerEmailCS,{
+          refresh_token: tkCS.refresh_token || ownerCS.refresh_token,
+          cached_access_token: tkCS.access_token,
+          cached_token_expiry: Date.now()+(tkCS.expires_in||3600)*1000,
+          rtInvalid:false, rtInvalidAt:null,
+          lastConsentAt:Date.now(), scopeVersion:2,
+        });
+        // A sessão ATUAL (se existir) já sai pronta pra enviar sem precisar de outro round-trip.
+        for(const sid2 of Object.keys(sessions)){const ss2=sessions[sid2];if(ss2.user_email===ownerEmailCS){ss2.access_token=tkCS.access_token;ss2.expires_at=Date.now()+(tkCS.expires_in||3600)*1000;ss2.refresh_token=tkCS.refresh_token||ownerCS.refresh_token;}}
+        _authEvent(ownerEmailCS,"login_consent","Conectou Gmail pra enviar (plano pago ativo — v172)");
+        console.log(`[oauth] ✅ ${ownerEmailCS} conectou o Gmail pra enviar (plano ${getPlan(ownerCS)})`);
+        addLog(ownerEmailCS,{status:"sistema",jobTitle:"✅ Gmail conectado — já pode enviar candidaturas",company:"Conectar Gmail"});
+        res.writeHead(302,{Location:"/?gmailConnected=1&tab="+encodeURIComponent(pendingCS.fromTab||"plans")});return res.end();
+      }catch(eCS){return failCS("Erro ao conectar o Gmail: "+eCS.message);}
+    }
     // v18-SEC: validação de CSRF do fluxo de LOGIN principal — faltava por completo.
     // /oauth/start grava sessions["__p__"+st] (state aleatório de 20 bytes) mas o
     // callback nunca conferia esse state de volta antes de trocar o code. Sem isso,
@@ -8029,40 +8114,18 @@ filtrar();
     // (login CSRF) — a vítima ficaria logada na conta do atacante e poderia enviar
     // dados sensíveis (currículo, PII) para uma conta que o atacante controla.
     // Mesmo padrão de validação/consumo já usado no fluxo __sender__ acima.
-    let _expectedHint=null,_oauthFase=null; // 🔒 v149: e-mail DIGITADO + fase do fluxo
+    // 🔒 v172 (ORDEM DO DONO, 11/09/2026): a antiga fase="identidade" que
+    // emendava direto numa 2ª ida ao Google pedindo gmail.send FOI REMOVIDA —
+    // /oauth/start agora só pede LOGIN_SCOPES (identidade), ponto final. Não
+    // existe mais "fase" nenhuma pra checar aqui: este callback do prefixo
+    // __p__ SEMPRE é login puro, nunca escala pra permissão de Gmail sozinho.
+    let _expectedHint=null; // 🔒 v149: e-mail DIGITADO no card, contrato de conta
     {
       const pendingLogin=sessions["__p__"+_st];
       if(!pendingLogin){return fail("Sessão de login inválida ou expirada. Tente entrar novamente.");}
       delete sessions["__p__"+_st]; // uso único — nunca reaproveitar o state
       if(Date.now()-pendingLogin.ts>600_000){return fail("Sessão de login expirada. Tente entrar novamente.");}
       _expectedHint=pendingLogin.hint||null;
-      _oauthFase=pendingLogin.fase||null;
-    }
-    // 🔒 v149b — FASE 1 (identidade): o code aqui é do escopo BÁSICO (openid
-    // email — não conta nas 100 vagas). Confere o e-mail escolhido: errado =
-    // barrado AGORA, sem nunca ver a tela de permissão do Gmail; certo =
-    // segue pra 2ª etapa (a caixinha) com a conta já cravada no login_hint.
-    if(_oauthFase==="identidade"){
-      try{
-        const tbI=new URLSearchParams({code,client_id:CLIENT_ID,client_secret:CLIENT_SECRET,redirect_uri:_oauthBase(req)+"/oauth/callback",grant_type:"authorization_code"}).toString();
-        const{body:tkI}=await httpsReq({hostname:"oauth2.googleapis.com",path:"/token",method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded","Content-Length":Buffer.byteLength(tbI)}},tbI);
-        if(tkI.error)return fail(tkI.error_description||tkI.error);
-        if(!tkI.access_token)return fail("Token não recebido.");
-        const{body:uiI}=await httpsReq({hostname:"www.googleapis.com",path:"/oauth2/v2/userinfo",method:"GET",headers:{"Authorization":"Bearer "+tkI.access_token}});
-        const _idEmail=String(uiI.email||"").toLowerCase().trim();
-        if(!_idEmail)return fail("E-mail não obtido.");
-        if(_expectedHint&&_idEmail!==_expectedHint){
-          console.log(`[oauth] 🔒 fase identidade barrou: digitou ${_expectedHint}, escolheu ${_idEmail} — nem chegou na tela de permissão do Gmail`);
-          return fail(`Você digitou ${_expectedHint}, mas escolheu ${_idEmail} na tela do Google — a entrada foi cancelada ANTES de qualquer permissão. Toque em Entrar de novo e escolha EXATAMENTE o e-mail que você digitou.`);
-        }
-        const st2=crypto.randomBytes(20).toString("hex");
-        sessions["__p__"+st2]={pending:true,ts:Date.now(),hint:_expectedHint,fase:"gmail"};
-        const _hu=getUser(_expectedHint);
-        const _rtOk=!!(_hu?.refresh_token)&&!_hu?.rtInvalid&&(_hu?.scopeVersion||0)>=2;
-        const q2={client_id:CLIENT_ID,redirect_uri:_oauthBase(req)+"/oauth/callback",response_type:"code",scope:OAUTH_SCOPES,access_type:"offline",state:st2,login_hint:_expectedHint};
-        if(!_rtOk)q2.prompt="consent"; // 1ª vez/token morto: mostra a caixinha (conta já fixa); veterano: login silencioso
-        res.writeHead(302,{Location:"https://accounts.google.com/o/oauth2/v2/auth?"+new URLSearchParams(q2)});return res.end();
-      }catch(eI){return fail("Erro ao verificar o e-mail: "+eI.message);}
     }
     try{
       const tb=new URLSearchParams({code,client_id:CLIENT_ID,client_secret:CLIENT_SECRET,redirect_uri:_oauthBase(req)+"/oauth/callback",grant_type:"authorization_code"}).toString();
@@ -8070,20 +8133,15 @@ filtrar();
       if(tk.error)return fail(tk.error_description||tk.error);if(!tk.access_token)return fail("Token não recebido.");
       const{body:ui}=await httpsReq({hostname:"www.googleapis.com",path:"/oauth2/v2/userinfo",method:"GET",headers:{"Authorization":"Bearer "+tk.access_token}});
       if(!ui.email)return fail("E-mail não obtido.");
-      // 🔒 v149 (dono, 20/08: "se a pessoa digitar andrio.kick18@gmail.com e
-      // na autenticação clicar em outro e-mail, deve barrar"): o e-mail
-      // digitado no card é um contrato. Autenticou OUTRO? Cancela na hora e
-      // REVOGA o token no Google — a autorização errada não fica pendurada
-      // consumindo 1 das 100 vagas do OAuth não-verificado.
+      // 🔒 v149/v172 (dono, 20/08 e 11/09/2026): o e-mail digitado no card é
+      // um contrato. Autenticou OUTRO? Barra na hora — mas login é escopo
+      // BÁSICO agora (openid+email+profile, nunca gmail.send), então não há
+      // "vaga" do OAuth não-verificado pra devolver com revoke — só cancela
+      // e pede pra tentar de novo com a conta certa.
       {
         const _authedEmail=String(ui.email||"").toLowerCase().trim();
         if(_expectedHint&&_authedEmail!==_expectedHint){
-          try{
-            const _rvB="token="+encodeURIComponent(tk.refresh_token||tk.access_token);
-            await httpsReq({hostname:"oauth2.googleapis.com",path:"/revoke",method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded","Content-Length":Buffer.byteLength(_rvB)}},_rvB);
-            console.log(`[oauth] 🔒 barrado: digitou ${_expectedHint}, autenticou ${_authedEmail} — token revogado, vaga devolvida`);
-            _authEvent(_authedEmail,"revoke_mismatch","Autorização revogada por segurança: digitou "+_expectedHint+" mas autenticou "+_authedEmail); // 🔐 v165: fica no raio-X
-          }catch(eRv){console.warn("[oauth] revoke pós-mismatch falhou:",eRv.message);}
+          console.log(`[oauth] 🔒 login barrado: digitou ${_expectedHint}, autenticou ${_authedEmail}`);
           return fail(`Você digitou ${_expectedHint}, mas escolheu ${_authedEmail} na tela do Google — a entrada foi cancelada por segurança. Toque em Entrar de novo e escolha EXATAMENTE o e-mail que você digitou.`);
         }
       }
@@ -8092,27 +8150,22 @@ filtrar();
         return fail("Conta suspensa permanentemente. Contate o suporte.");
       }
       const sid="sess_"+crypto.randomBytes(24).toString("hex");
-      // FIX: preserva o refresh_token existente no banco se o Google não mandou um novo
-      // O Google só envia refresh_token na primeira autenticação; re-logins omitem.
+      // 🔒 v172 (ORDEM DO DONO, 11/09/2026): LOGIN NUNCA grava/mexe em
+      // refresh_token, cached_access_token, cached_token_expiry, rtInvalid
+      // ou scopeVersion — esses campos são a capacidade de ENVIAR (gmail.send)
+      // e só nascem em /oauth/connect-send (abaixo), gated por plano pago
+      // ativo. tk.access_token aqui é IDENTIDADE só (LOGIN_SCOPES, sem
+      // access_type=offline — o Google nem costuma devolver refresh_token
+      // pra esse pedido); mesmo que devolvesse, gravar por cima do
+      // cached_access_token de alguém JÁ conectado apagaria a capacidade de
+      // enviar de um cliente pagante só por ele ter deslogado/logado de novo.
+      // A sessão carrega o refresh_token JÁ EXISTENTE do usuário (se houver)
+      // — não um novo — pra gmailSend()/refreshToken() acharem de primeira;
+      // sem access_token/expires_at: gmailSend() tenta refresh() sozinho na
+      // hora de enviar (nunca usa um token de identidade pra chamar Gmail).
       const _existingRt = getUser(ui.email)?.refresh_token || null;
-      const _rtToUse = tk.refresh_token || _existingRt;
-      sessions[sid]={access_token:tk.access_token,refresh_token:_rtToUse,expires_at:Date.now()+(tk.expires_in||3600)*1000,user_email:ui.email,user_name:ui.name||ui.email,picture:ui.picture||"",created_at:Date.now()};
+      sessions[sid]={refresh_token:_existingRt,user_email:ui.email,user_name:ui.name||ui.email,picture:ui.picture||"",created_at:Date.now()};
       persistSessionsDebounced(500); // V955: login sobrevive a restart imediato
-      // Salva refresh_token e access_token no banco para uso pelo automático sem sessão
-      const tokenData={cached_access_token:tk.access_token,cached_token_expiry:Date.now()+(tk.expires_in||3600)*1000};
-      // CRÍTICO: nunca sobrescrever refresh_token existente com null.
-      // O Google só envia refresh_token na 1a autenticação (prompt=consent).
-      // Em re-logins, tk.refresh_token vem undefined — usa o do banco.
-      if(tk.refresh_token){
-        tokenData.refresh_token=tk.refresh_token;
-        tokenData.rtInvalid=false;tokenData.rtInvalidAt=null; // U1: token novo e saudável
-        tokenData.lastConsentAt=Date.now(); // 🔐 v165: base do detector de "queda rápida" (invalid_grant minutos após consent = Google da conta derrubando)
-        _authEvent(ui.email,"login_consent","Login com permissão NOVA do Google (refresh token novo)");
-      } else {
-        const _existingUser = getUser(ui.email);
-        if(_existingUser?.refresh_token) tokenData.refresh_token = _existingUser.refresh_token;
-        _authEvent(ui.email,"login_relogin","Relogin sem refresh token novo (permissão existente reaproveitada pelo Google)");
-      }
       const ex=getUser(ui.email);
       // ══ MULTI-SERVIDOR: TRAVA DE CONTA ÚNICA (só para conta NOVA) ══════
       // Login de quem já existe AQUI segue 100% normal — as travas abaixo
@@ -8126,40 +8179,25 @@ filtrar();
       // ainda no ar com dado velho nunca mais é motivo pra recusar ninguém.
       if(!ex)console.log(`[servers] 🆕 Cadastro novo aceito no Servidor ${_resolveServerId(req)}: ${ui.email} (v156: era de 1 servidor só — sem trava de lotado, sem consulta a irmãos)`);
       if(!ex){
-        const now=Date.now();
-        // ── Anti-abuse: verificar se este IP ou Google ID já recebeu trial ────
+        // 🔒 v172 (ORDEM DO DONO, 11/09/2026): NENHUM trial grátis mais —
+        // "o site vai ser só pra pessoas pagantes usarem". Conta nova nasce
+        // 100% free (0 manual/0 auto, PLAN_LIMITS.free) — dá pra logar, ver
+        // vagas e planos, mas só ENVIA depois de pagar + conectar o Gmail
+        // (/oauth/connect-send). O registro de googleId/IP CONTINUA — não é
+        // só anti-abuso de trial, alimenta a detecção de conta duplicada
+        // (rota /api/admin/duplicates) mesmo sem trial nenhum pra abusar.
         const _clientIp = (req.headers["x-forwarded-for"]||req.socket?.remoteAddress||"").split(",")[0].trim();
         const _googleId = String(ui.id||"").trim(); // ID único da conta Google
-        const _ipPrevEmails = DB_TRIAL_USED.ips[_clientIp]||[];
-        const _ipAbuse = _ipPrevEmails.length >= 4; // mesmo IP, 4+ contas (CGNAT/redes móveis compartilham IP; googleId é a regra forte)
-        const _googleAbuse = _googleId && !!DB_TRIAL_USED.googleIds[_googleId]; // mesma conta Google reativada
-        const _trialBlocked = _ipAbuse || _googleAbuse;
-        if(_trialBlocked){
-          console.log(`[trial] ⚠️ Trial bloqueado para ${ui.email} — IP abuse:${_ipAbuse} googleId abuse:${_googleAbuse}`);
-        }
-        // NOVA REGRA: 1 dia MANUAL apenas (sem automático no trial)
-        const trialDays = (DB_ADMIN_SETTINGS.newUserTrialEnabled && !_trialBlocked) ? 1 : 0;
-        const newUserVip = trialDays > 0
-          ? {manualExpires:now+trialDays*86400_000,autoExpires:0,active:true,activatedAt:now,plan:"vip",note:`Trial boas-vindas 1d VIP Manual`,source:'trial',days:trialDays,autoDays:0}
-          : null;
-        // Registrar IP e Google ID no histórico de trial
-        if(trialDays>0){
-          if(!DB_TRIAL_USED.ips[_clientIp]) DB_TRIAL_USED.ips[_clientIp]=[];
-          if(!DB_TRIAL_USED.ips[_clientIp].includes(ui.email)) DB_TRIAL_USED.ips[_clientIp].push(ui.email);
-          if(_googleId) DB_TRIAL_USED.googleIds[_googleId] = ui.email;
-          try{fs.writeFileSync(TRIAL_USED_FILE,JSON.stringify(DB_TRIAL_USED,null,2));}catch{}
-        } else if(_googleId && !DB_TRIAL_USED.googleIds[_googleId]) {
-          // Mesmo sem trial, registra o Google ID para futuras verificações
-          DB_TRIAL_USED.googleIds[_googleId] = ui.email;
-          try{fs.writeFileSync(TRIAL_USED_FILE,JSON.stringify(DB_TRIAL_USED,null,2));}catch{}
-        }
-        setUser(ui.email,{...tokenData,email:ui.email,name:ui.name||ui.email,picture:ui.picture||"",country:"Brazil",phone:"",cc:"",city:"",language:"pt-BR",cvs:[],created_at:new Date().toISOString(),plan:newUserVip?"vip":"free",vip:newUserVip||null,googleId:_googleId||undefined,saved:[],onboarded:false,isAdmin:isAdminEmail(ui.email),scopeVersion:2,lastLoginAt:Date.now(),_trialBlockedByIp:_ipAbuse||undefined,_trialBlockedByGoogleId:_googleAbuse||undefined,settings:{}});
+        if(!DB_TRIAL_USED.ips[_clientIp]) DB_TRIAL_USED.ips[_clientIp]=[];
+        if(!DB_TRIAL_USED.ips[_clientIp].includes(ui.email)) DB_TRIAL_USED.ips[_clientIp].push(ui.email);
+        if(_googleId && !DB_TRIAL_USED.googleIds[_googleId]) DB_TRIAL_USED.googleIds[_googleId] = ui.email;
+        try{fs.writeFileSync(TRIAL_USED_FILE,JSON.stringify(DB_TRIAL_USED,null,2));}catch{}
+        setUser(ui.email,{email:ui.email,name:ui.name||ui.email,picture:ui.picture||"",country:"Brazil",phone:"",cc:"",city:"",language:"pt-BR",cvs:[],created_at:new Date().toISOString(),plan:"free",vip:null,googleId:_googleId||undefined,saved:[],onboarded:false,isAdmin:isAdminEmail(ui.email),lastLoginAt:Date.now(),settings:{}});
         // v22 (ORDEM DO DONO, 21/07/2026): NENHUM texto padrão pré-preenchido,
         // em lugar NENHUM. Todo assunto/corpo é escrito pelo próprio usuário —
         // o app não assume responsabilidade por conteúdo de candidatura.
-        if(trialDays>0) addCredito(ui.email,{dias:trialDays,tipo:"gratis",origem:"trial",motivo:"Trial boas-vindas",dadoPor:"sistema"});
-        console.log("[oauth] ✅ Novo:",ui.email,"| trial:",trialDays,"d VIP Manual (sem auto)");
-        trackJourney(ui.email,'first_login',{detail:`Novo. Trial:${trialDays}d Manual`,meta:{name:ui.name}});
+        console.log("[oauth] ✅ Novo:",ui.email,"| free (sem trial — plano pago necessário pra enviar)");
+        trackJourney(ui.email,'first_login',{detail:`Novo. Sem trial (v172)`,meta:{name:ui.name}});
         pushGlobalEvent('new_user',ui.email,`Novo: ${ui.name||ui.email}`,"info");
         // (Sistema de indicação removido definitivamente em 2026-07-03 — ver KB-059)
       }
@@ -8170,16 +8208,17 @@ filtrar();
         const vipDowngrade = ex.vip?.active && !vipStillActive ? {vip:{...ex.vip,active:false},plan:"free"} : {};
         // ── Conta deletada pelo próprio usuário: relogar RESTAURA automaticamente ──
         // "a conta simplesmente volta ao normal" — mesmos dados, mesmo VIP, sem
-        // recriar nada e SEM re-conceder trial (ex já existe, não passa pelo
-        // ramo de usuário novo). Só limpa a flag e registra o retorno.
+        // recriar nada. Só limpa a flag e registra o retorno.
         const wasDeleted = !!ex.accountDeleted;
         const restoreFields = wasDeleted ? {accountDeleted:false, deletedAt:null} : {};
-        setUser(ui.email,{...tokenData,picture:ui.picture||ex.picture,isAdmin:isAdminEmail(ui.email),...vipDowngrade,...restoreFields,scopeVersion:2,lastLoginAt:Date.now()});
+        // 🔒 v172: login NUNCA mexe em refresh_token/cached_access_token/
+        // scopeVersion (ver comentário acima da sessão) — só perfil.
+        setUser(ui.email,{picture:ui.picture||ex.picture,isAdmin:isAdminEmail(ui.email),...vipDowngrade,...restoreFields,lastLoginAt:Date.now()});
         if(wasDeleted){
           console.log("[account] ♻️ Conta restaurada ao relogar:",ui.email);
           try{ trackJourney(ui.email,'account_restored',{detail:'Usuário relogou após deletar a própria conta — restaurada automaticamente'}); }catch{}
         }
-        console.log("[oauth] Login:",ui.email,"| refresh_token salvo:",!!tokenData.refresh_token,"| vip:",vipStillActive?"ativo":"inativo","| Total:",Object.keys(DB_USERS).length);
+        console.log("[oauth] Login:",ui.email,"| gmail conectado:",!!ex.refresh_token,"| vip:",vipStillActive?"ativo":"inativo","| Total:",Object.keys(DB_USERS).length);
 
         // ── FIX: re-login DEVE retomar o automático pausado por erro de auth/token ──
         // O banner de erro promete "Faça login novamente no H2BApply para o automático
@@ -8233,6 +8272,39 @@ filtrar();
     sessions["__sender__"+st]={ownerEmail:s.user_email,created:Date.now()};
     persistSessions(); // grava no disco (ver ajuste em persistSessions: __sender__ agora sobrevive a restart)
     const qs=new URLSearchParams({client_id:CLIENT_ID,redirect_uri:_oauthBase(req)+"/oauth/callback",response_type:"code",scope:OAUTH_SCOPES,access_type:"offline",prompt:"consent select_account",state:st});
+    res.writeHead(302,{Location:"https://accounts.google.com/o/oauth2/v2/auth?"+qs});return res.end();
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  CONECTAR GMAIL PRA ENVIAR (v172, ORDEM DO DONO, 11/09/2026)
+  //  "ninguém vai poder logar e fazer a autenticação [do Gmail] antes de
+  //  comprar... depois que ela pagar sim, aí sim ela faz a autenticação
+  //  dentro do automático ou dentro do manual" — o gmail.send da conta
+  //  PRINCIPAL só é pedido AQUI, nunca no login, e só com plano pago ATIVO
+  //  (isVipActive) — checado nesta rota E de novo no callback (defesa em
+  //  profundidade contra o plano expirar no meio da ida-e-volta do Google).
+  // ══════════════════════════════════════════════════════════
+  if(pathname==="/oauth/connect-send"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
+    // 🔒 v172: o plano pago é checado ANTES de "o servidor está configurado" —
+    // é uma regra de NEGÓCIO (por usuário), não uma falha operacional; sem
+    // essa ordem, um servidor mal configurado mascarava se o gate de plano
+    // estava funcionando (o teste automatizado depende dessa ordem pra provar
+    // as duas coisas separadamente, já que o ambiente de teste não tem
+    // GOOGLE_CLIENT_ID/SECRET reais).
+    const p=getUser(s.user_email)||{};
+    if(!isVipActive(p)){
+      res.writeHead(302,{Location:"/?err="+encodeURIComponent("Você precisa de um plano ativo pra conectar seu Gmail e começar a enviar candidaturas.")+"&tab=plans"});return res.end();
+    }
+    if(!CONFIGURED){res.writeHead(302,{Location:"/?err="+encodeURIComponent("OAuth não configurado.")});return res.end();}
+    const st=crypto.randomBytes(20).toString("hex");
+    // Guarda de onde a pessoa veio (aba) pra devolver ela lá depois de conectar.
+    const _fromTab=String(u.searchParams.get("from")||"").replace(/[^a-z0-9_-]/gi,"").slice(0,30)||"plans";
+    sessions["__connectsend__"+st]={ownerEmail:s.user_email,created:Date.now(),fromTab:_fromTab};
+    persistSessions(); // sobrevive a restart, mesmo padrão do __sender__
+    // login_hint = o PRÓPRIO e-mail já logado — não é escolha de conta nova,
+    // é autorizar a MESMA conta a mandar e-mail em nome dela mesma.
+    const qs=new URLSearchParams({client_id:CLIENT_ID,redirect_uri:_oauthBase(req)+"/oauth/callback",response_type:"code",scope:OAUTH_SCOPES,access_type:"offline",prompt:"consent",state:st,login_hint:s.user_email});
     res.writeHead(302,{Location:"https://accounts.google.com/o/oauth2/v2/auth?"+qs});return res.end();
   }
 
@@ -10360,7 +10432,12 @@ ${pedido.criadoPor&&pedido.criadoPor!==pedido.userEmail?`\n🛠️ Registrado re
     // o plano atual está garantido até vencer com os limites de hoje.
     const _prNotice=(vipOk&&p.vip&&!p.vip.limits&&!["trial","auto-provisorio"].includes(String(p.vip.source||"")))?
       `📢 As regras dos planos mudaram! O seu plano atual está garantido até ${new Date(Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0)).toLocaleDateString("pt-BR")} com seus limites de hoje (${manualLimit} manual${autoLimit>10?` / ${autoLimit} automático`:""} por dia). Na próxima troca por plano valem os limites novos.`:null;
-    return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,planRulesNotice:_prNotice,manualCdOff:p.manualCdOff===true,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",language:p.language||"pt-BR",h2bProfile:p.h2bProfile||{},serverId:_resolveServerId(req),age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||180),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
+    // 🔒 v172 (ORDEM DO DONO, 11/09/2026): o front usa isto pra decidir qual
+    // CTA mostrar em Automático/Manual — "assine um plano" (sem plano pago)
+    // vs "conecte seu Gmail" (tem plano, mas nunca passou por
+    // /oauth/connect-send). Admin sempre gmailConnected:true (isento).
+    const gmailConnected = isAdminVip(p) || !!p.refresh_token;
+    return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,planRulesNotice:_prNotice,manualCdOff:p.manualCdOff===true,gmailConnected,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",language:p.language||"pt-BR",h2bProfile:p.h2bProfile||{},serverId:_resolveServerId(req),age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||180),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
   }
 
   if(pathname==="/api/onboard"&&req.method==="POST"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});setUser(s.user_email,{onboarded:true});return json(res,200,{ok:true});}
@@ -10448,8 +10525,17 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
 
   if(pathname==="/api/send"&&req.method==="POST"){
     const _sendT0=Date.now(); // DIAGNÓSTICO (2026-07-09): mede onde o tempo vai num envio manual — relato de "180 envios em 3h" sem causa óbvia no código; até achar a causa definitiva, loga se demorar muito, pra próxima vez ter dado real em vez de suposição.
-    const s=getSess(req);if(!s?.access_token)return json(res,401,{error:"Sessão expirada."});
+    // 🔒 v172 (ORDEM DO DONO, 11/09/2026): o check antigo (!s?.access_token)
+    // confundia "está autenticado" com "tem permissão de Gmail" — desde que
+    // login parou de trazer um access_token gmail.send-capaz, TODA sessão
+    // logada batia aqui em "Sessão expirada." mesmo pra quem só queria
+    // NAVEGAR (e nem estava tentando enviar ainda). Autenticação de verdade
+    // é só user_email; a capacidade de ENVIAR é checada embaixo, em 2
+    // camadas: plano pago ativo (isVipActive) e Gmail conectado (refresh_token).
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Sessão expirada."});
     const p=getUser(s.user_email)||{};
+    if(!isAdminVip(p)&&!isVipActive(p))return json(res,402,{error:"Você precisa de um plano ativo pra enviar candidaturas.",needsPlan:true});
+    if(!isAdminVip(p)&&!p.refresh_token)return json(res,403,{error:"Conecte seu Gmail pra começar a enviar candidaturas.",needsGmailConnect:true});
     let dedupKey = null; // declarado fora do try para que o catch possa acessar
     let _reservedManualSlot=false; // idem — precisa ser liberada mesmo se o catch pegar um erro
     let _toEmailForErr=null; // idem — usado só pra dar contexto numa mensagem de erro amigável
@@ -11077,6 +11163,13 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
       // 🔐 v165 (só teste): semeia e-mails extras pra provar a guarda do
       // revoke na remoção de sender (conta de login nunca sofre revoke).
       if(Array.isArray(d.senderEmails))setUser(email,{senderEmails:d.senderEmails});
+      // 🔒 v172 (só teste): desde que login parou de conceder gmail.send
+      // sozinho, testes que precisam simular "plano pago + Gmail conectado"
+      // (pra chegar na parte que realmente querem testar, não no gate novo)
+      // semeiam isso explicitamente aqui — nunca em produção (TEST_LOGIN_TOKEN
+      // só existe no ambiente de teste, checado no topo desta rota).
+      if(d.refreshToken)setUser(email,{refresh_token:String(d.refreshToken),cached_access_token:"test-token",cached_token_expiry:Date.now()+3600_000});
+      if(d.vip)setUser(email,{vip:d.vip,plan:d.plan||getUser(email)?.plan});
       const sid="test_"+crypto.randomBytes(16).toString("hex");
       sessions[sid]={user_email:email,user_name:String(d.name||"Test"),created_at:Date.now(),access_token:"test-token",expires_at:Date.now()+3600_000};
       res.writeHead(200,{"Content-Type":"application/json","Set-Cookie":makeCookieStr(sid)});
@@ -11248,7 +11341,12 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
       return json(res,409,{error:"Envio automático já está em andamento. Pause ou pare antes de iniciar novamente.",alreadyRunning:true,queueSize:existingJob.queue?.length||0});
     }
     const p=getUser(s.user_email)||{};const h=getHist(s.user_email);const todayAuto=countAutoToday(h);const autoLimit=getAutoLimit(p);
+    // 🔒 v172 (ORDEM DO DONO, 11/09/2026): autoLimit=0 é o caso NOVO (plano
+    // free não manda mais nada) — merece mensagem própria, "atingiu 0/dia"
+    // confundiria quem nunca teve chance de mandar nenhum.
+    if(!isAdminVip(p)&&autoLimit<=0)return json(res,402,{error:"Você precisa de um plano com envio automático (VIPro ou DoublePro) pra usar o robô.",needsPlan:true});
     if(!isAdminVip(p)&&todayAuto>=autoLimit)return json(res,429,{error:`Limite de ${autoLimit} automáticos/dia atingido.`,limitReached:true});
+    if(!isAdminVip(p)&&!p.refresh_token)return json(res,403,{error:"Conecte seu Gmail antes de ligar o envio automático.",needsGmailConnect:true});
     try{
       const d=JSON.parse(await readBody(req));
       // ── Validação: perfil válido ──────────────────────────
@@ -13373,7 +13471,7 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}if(DB_APP_INDEX[te]){delete DB
     const todaySent=_todayManual+todayAuto;
     const totalSent=allHist.reduce((n,a)=>n+a.filter(h=>h.type!=="reply").length,0);
     const totalAuto=allHist.reduce((n,a)=>n+a.filter(h=>h.type==="auto").length,0);
-    const out={totalUsers,vipUsers,todaySent,todayAuto,totalSent,totalAuto,trialEnabled:!!DB_ADMIN_SETTINGS.newUserTrialEnabled,trialDays:1,
+    const out={totalUsers,vipUsers,todaySent,todayAuto,totalSent,totalAuto,
       avisoResetLogin:!!DB_ADMIN_SETTINGS.avisoResetLogin, // 📢 v144: aviso do reset de OAuth na landing (toggle do admin)
       serversVisiveis:_getServersConfig().filter(sv=>sv.status!=="oculto").length}; // 🙈 v147: com 1 só, a pill 🌐 some da landing
     // 🌍 v129 (ORDEM DO DONO, 13/08): a landing mostra o negócio INTEIRO —

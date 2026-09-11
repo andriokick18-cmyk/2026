@@ -708,12 +708,53 @@ async function testAuthWatchdogPush() {
     const st2 = await get("/api/status");
     check("sessão vale: /api/status connected:true", st2.json?.connected === true);
 
+    // ═══ 🔒 v172 (ORDEM DO DONO, 11/09/2026): "ninguém vai poder logar e
+    // fazer a autenticação antes de comprar... o site vai ser só pra pessoas
+    // pagantes usarem" — prova de ponta a ponta com um usuário 100% NOVO
+    // (nunca visto antes), do jeito que a régua tem que valer pra sempre. ═══
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "naopode@test.com", name: "Nao Pode" });
+    const npStatus = await get("/api/status");
+    check("🔒 v172: usuário NOVO nasce SEM trial nenhum — plan:free, vip:null, manualLimit:0, autoLimit:0, gmailConnected:false, needsPlan:true",
+      npStatus.json?.plan === "free" && npStatus.json?.vip === null &&
+      npStatus.json?.manualLimit === 0 && npStatus.json?.autoLimit === 0 &&
+      npStatus.json?.gmailConnected === false && npStatus.json?.needsPlan === true,
+      JSON.stringify({ plan: npStatus.json?.plan, vip: npStatus.json?.vip, ml: npStatus.json?.manualLimit, al: npStatus.json?.autoLimit, gc: npStatus.json?.gmailConnected, np: npStatus.json?.needsPlan }));
+    const npSend = await req2("POST", "/api/send", { to: "empresa@teste-naopode.com", subject: "Oi", message: "corpo escrito pelo usuário" });
+    check("🔒 v172: /api/send SEM plano pago → 402 needsPlan (nunca deixa enviar de graça)",
+      npSend.status === 402 && npSend.json?.needsPlan === true, `status=${npSend.status} body=${npSend.body.slice(0, 140)}`);
+    const npAuto = await req2("POST", "/api/auto/start", { queue: [{ to: "a@teste-naopode.com", title: "x", company: "y" }], subjects: ["x"], emailBodies: ["y"] });
+    check("🔒 v172: /api/auto/start SEM plano com automático → 402 needsPlan (mensagem própria, não '0/dia atingido')",
+      npAuto.status === 402 && npAuto.json?.needsPlan === true, `status=${npAuto.status} body=${npAuto.body.slice(0, 140)}`);
+    const npConnect = await get("/oauth/connect-send");
+    check("🔒 v172: /oauth/connect-send SEM plano pago → NUNCA chega no Google (redireciona de volta com erro, location não é accounts.google.com)",
+      npConnect.status === 302 && !String(npConnect.headers?.location || "").includes("accounts.google.com") && String(npConnect.headers?.location || "").includes("plano"),
+      `status=${npConnect.status} location=${npConnect.headers?.location || ""}`);
+    // Agora dá plano pago (sem dar Gmail ainda) — outro gate tem que segurar.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "naopode@test.com", vip: { manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000, active: true, plan: "doublepro" }, plan: "doublepro" });
+    const npSend2 = await req2("POST", "/api/send", { to: "empresa2@teste-naopode.com", subject: "Oi", message: "corpo escrito pelo usuário" });
+    check("🔒 v172: COM plano pago mas SEM Gmail conectado → 403 needsGmailConnect (nunca envia sem o Gmail conectado)",
+      npSend2.status === 403 && npSend2.json?.needsGmailConnect === true, `status=${npSend2.status} body=${npSend2.body.slice(0, 140)}`);
+    const npConnect2 = await get("/oauth/connect-send");
+    // O ambiente de teste não tem GOOGLE_CLIENT_ID/SECRET reais (CONFIGURED
+    // fica false) — não dá pra chegar de verdade no accounts.google.com aqui.
+    // O que prova o gate de plano funcionando é justamente NÃO cair mais no
+    // erro de "plano ativo" (passou dessa trava) — sobra só a trava seguinte
+    // (configuração do servidor), que é auditada pelo teste estrutural acima
+    // (isVipActive(p) ANTES de scope:OAUTH_SCOPES no código-fonte).
+    check("🔒 v172: COM plano pago ATIVO → /oauth/connect-send passa da trava de plano (erro deixa de ser 'plano ativo' — só falta configurar o Google no ambiente)",
+      npConnect2.status === 302 && !String(npConnect2.headers?.location || "").includes("plano"),
+      `status=${npConnect2.status} location=${(npConnect2.headers?.location || "").slice(0, 160)}`);
+
     // ═══ ⏳ v118 (ORDEM DO DONO, 02/08): 1 envio MANUAL por minuto ═══
     // O fixture gravou um envio manual "agora" pro cooldown@test.com — a
     // tentativa seguinte dentro de 60s TEM que levar 429 com cooldownLeft.
     // Fica AQUI (primeiro teste autenticado) de propósito: a janela de 60s
     // do fixture não pode fechar antes do teste rodar.
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cooldown@test.com", name: "Cooldown" });
+    // 🔒 v172: login parou de conceder gmail.send sozinho — este teste é SOBRE
+    // o cooldown do manual, não sobre o gate novo, então semeia plano pago +
+    // Gmail "conectado" (refreshToken de teste) pra passar dos 2 gates antes
+    // de chegar na parte que realmente quer testar.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cooldown@test.com", name: "Cooldown", refreshToken: "rt-cooldown-test", vip: { manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000, active: true, plan: "doublepro" }, plan: "doublepro" });
     const _cdElapsed = Date.now() - COOLDOWN_FIX_TS;
     const cdSend = await req2("POST", "/api/send", { to: "outra@teste-cooldown.com", subject: "Oi", message: "corpo escrito pelo usuário" });
     check("⏳ v118: 2º envio manual dentro de 60s → 429 com cooldownLeft (regra: 1 por minuto)",
@@ -744,7 +785,8 @@ async function testAuthWatchdogPush() {
     // Cliente monta fila nova de 3 vagas e clica iniciar: tem que COMEÇAR A
     // NOVA (nunca "reiniciei — 0 vagas", nunca 409). Roda AQUI (logo após o
     // boot) pra pegar o zumbi ainda intacto, antes do reaproveitamento dos 6s.
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "zumbi@test.com", name: "Zumbi" });
+    // 🔒 v172: idem — este teste é sobre o job zumbi, não sobre o gate novo.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "zumbi@test.com", name: "Zumbi", refreshToken: "rt-zumbi-test", vip: { manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000, active: true, plan: "doublepro" }, plan: "doublepro" });
     const pdfZ = Buffer.from("%PDF-1.4 " + "zumbi ".repeat(300)).toString("base64");
     const upZ = await req2("POST", "/api/cv/upload", { base64: pdfZ, name: "CV_Zumbi.pdf", cvType: "resume" });
     const zQueue = [1, 2, 3].map((i) => ({ to: `vaga${i}@zumbitest.com`, title: "Cook", company: `Empresa Z${i}`, category: "food", state: "FL" }));
@@ -894,14 +936,28 @@ async function testAuthWatchdogPush() {
     const _scopeUses = (_srvSrc.match(/scope:OAUTH_SCOPES/g) || []).length;
     const _sendOnlyConst = (_srvSrc.match(/const GMAIL_SEND_ONLY\s*=\s*(true|false)\s*;/) || [])[1] || "";
     const _scopesLine = (_srvSrc.match(/const OAUTH_SCOPES\s*=\s*"([^"]+)"/) || [])[1] || "";
-    // v149b: a fase de IDENTIDADE do login usa escopo básico literal — o único
-    // literal permitido é "openid email"; qualquer outro (principalmente com
-    // gmail) tem que passar por OAUTH_SCOPES, senão a regra 13d fura por fora.
-    const _scopeLiterais = [..._srvSrc.matchAll(/scope:"([^"]+)"/g)].map((m) => m[1]);
-    check("✉️ OAuth usa OAUTH_SCOPES nos 3 pontos (v149b somou a 2ª fase do login), GMAIL_SEND_ONLY=true fixo, escopo é SÓ gmail.send (nunca readonly/modify) e o único escopo literal é o básico da fase identidade",
-      _scopeUses === 3 && _sendOnlyConst === "true" && _scopesLine.includes("gmail.send") && !_scopesLine.includes("readonly") && !_scopesLine.includes("modify") &&
-      _scopeLiterais.every((s) => s === "openid email"),
-      `usos=${_scopeUses} | GMAIL_SEND_ONLY=${_sendOnlyConst} | literais=${JSON.stringify(_scopeLiterais)} | escopos="${_scopesLine.slice(0, 90)}"`);
+    // v172 (ORDEM DO DONO, 11/09/2026): LOGIN nunca mais pede gmail.send —
+    // scope:OAUTH_SCOPES só aparece em /oauth/add-sender (extra) e
+    // /oauth/connect-send (principal, gated por plano pago), NUNCA em
+    // /oauth/start (login = scope:LOGIN_SCOPES, sem gmail.send). Regressão
+    // aqui faria login voltar a pedir permissão de Gmail sem pagamento.
+    const _loginScopesConst = (_srvSrc.match(/const LOGIN_SCOPES\s*=\s*"([^"]+)"/) || [])[1] || "";
+    check("✉️ v172: OAUTH_SCOPES (com gmail.send) só é usado em /oauth/add-sender e /oauth/connect-send — NUNCA em /oauth/start (login = LOGIN_SCOPES, sem gmail.send)",
+      _scopeUses === 2 && _sendOnlyConst === "true" && _scopesLine.includes("gmail.send") && !_scopesLine.includes("readonly") && !_scopesLine.includes("modify") &&
+      _loginScopesConst === "openid email profile" && !_loginScopesConst.includes("gmail"),
+      `usos=${_scopeUses} | GMAIL_SEND_ONLY=${_sendOnlyConst} | LOGIN_SCOPES="${_loginScopesConst}" | OAUTH_SCOPES="${_scopesLine.slice(0, 90)}"`);
+    // v172: /oauth/start (login) tem que usar scope:LOGIN_SCOPES, nunca OAUTH_SCOPES.
+    const _startBlock = (_srvSrc.match(/if\(pathname==="\/oauth\/start"\)\{[\s\S]*?\n  \}/) || [""])[0];
+    check("✉️ v172: /oauth/start usa scope:LOGIN_SCOPES (nunca OAUTH_SCOPES) — login é só identidade",
+      _startBlock.includes("scope:LOGIN_SCOPES") && !_startBlock.includes("scope:OAUTH_SCOPES"),
+      _startBlock ? "" : "/oauth/start não encontrado no server.js");
+    // v172: /oauth/connect-send (o único lugar que pede gmail.send pra conta
+    // PRINCIPAL) tem que checar isVipActive ANTES de redirecionar pro Google —
+    // essa é a trava real de "ninguém autentica sem pagar".
+    const _csBlock = (_srvSrc.match(/if\(pathname==="\/oauth\/connect-send"\)\{[\s\S]*?\n  \}/) || [""])[0];
+    check("✉️ v172: /oauth/connect-send exige isVipActive (plano pago ativo) ANTES de pedir gmail.send ao Google",
+      _csBlock.includes("isVipActive(p)") && _csBlock.includes("scope:OAUTH_SCOPES"),
+      _csBlock ? "" : "/oauth/connect-send não encontrado no server.js");
 
     // (Códigos Promocionais removidos por completo nesta reconstrução —
     // README: fora do escopo.)
@@ -1223,7 +1279,9 @@ async function testAuthWatchdogPush() {
     // vaga pelo encaixe com o perfil do candidato (categoria preferida,
     // estado do perfil, texto batendo com experiência/inglês) — na busca
     // manual (/api/sheet-meta) E na fila automática (/api/auto/start). ═══
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "matchtest@test.com", name: "Match Test" });
+    // 🔒 v172: este bloco é sobre matchScore na fila automática, não sobre o
+    // gate de plano/Gmail novo — semeia os 2 pra chegar na parte testada.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "matchtest@test.com", name: "Match Test", refreshToken: "rt-matchtest-test", vip: { manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000, active: true, plan: "doublepro" }, plan: "doublepro" });
     // Sem preferência ainda: pega a categoria do 1º resultado de uma planilha real.
     const smBase = await get("/api/sheet-meta?sheet=jan2026&top=5");
     const _jobsBase = smBase.json?.jobs || [];
@@ -1378,7 +1436,9 @@ async function testAuthWatchdogPush() {
     // O ranking é cacheado 10min por usuário, mas o corte da regra 8
     // (enviado OU na fila nunca reaparece) roda FRESCO em toda resposta —
     // o teste prova exatamente isso pondo o empregador nº1 na fila.
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "pravoce@test.com", name: "PraVoce" });
+    // 🔒 v172: este bloco é sobre a prateleira "Pra Você", não sobre o gate
+    // novo — semeia plano+Gmail pra chegar no /api/auto/start testado.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "pravoce@test.com", name: "PraVoce", refreshToken: "rt-pravoce-test", vip: { manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000, active: true, plan: "doublepro" }, plan: "doublepro" });
     await req2("POST", "/api/settings", { h2bProfile: { preferredArea: "landscape", englishLevel: "basic", experiencedH2B: false, h2bSeasons: 0 } });
     const pv1 = await get("/api/jobs/pra-voce");
     const _pvJobs1 = pv1.json?.jobs || [];
@@ -1781,11 +1841,16 @@ async function testAuthWatchdogPush() {
     // das 100 é devolvida), e a landing avisa: 2ª conta = risco de ban.
     // (ranking removido por completo nesta reconstrução — sem /api/ranking
     // nem dedupe de peers por uid; README confirma ranking fora do escopo.)
-    check("🛡️ v149b: (estrutural) login em 2 FASES — identidade primeiro (openid email, fora das 100 vagas) barra e-mail errado ANTES da caixinha; a 2ª fase ainda revalida com revoke de backup",
-      _srvSrc.includes('scope:"openid email"') && _srvSrc.includes('_oauthFase==="identidade"') &&
-      _srvSrc.includes("login_hint:_expectedHint") && _srvSrc.includes("_expectedHint&&_authedEmail!==_expectedHint") &&
-      _srvSrc.includes('path:"/revoke"'),
-      "fluxo de 2 fases (identidade → gmail) não encontrado no server.js");
+    // v172 (ORDEM DO DONO, 11/09/2026): o fluxo de 2 FASES morreu — login
+    // agora é 1 pedido só (LOGIN_SCOPES, identidade), e a permissão sensível
+    // (gmail.send) virou uma rota TOTALMENTE separada (/oauth/connect-send),
+    // gated por plano pago, com a MESMA proteção de "e-mail digitado é
+    // contrato" + revoke em caso de conta errada — só que agora protegendo
+    // um pedido que de fato carrega escopo sensível (login não carrega mais).
+    check("🛡️ v172: (estrutural) login é 1 pedido SÓ (LOGIN_SCOPES) — barra e-mail errado sem precisar de 2ª ida ao Google; /oauth/connect-send (gmail.send) tem a MESMA proteção + revoke NO CALLBACK, porque é ali que a permissão sensível de verdade é pedida",
+      _startBlock.includes("qs.set(\"login_hint\"") && _srvSrc.includes("_expectedHint&&_authedEmail!==_expectedHint") &&
+      _csBlock.includes("login_hint:s.user_email") && _srvSrc.includes("_emailCS!==ownerEmailCS") && _srvSrc.includes('path:"/revoke"'),
+      "login de 1 fase + connect-send protegido não encontrados no server.js");
     check("🛡️ v149: (estrutural) o front manda o e-mail digitado como login_hint (só o desta visita, nunca um antigo do aparelho)",
       appJs.body.includes("login_hint=") && appJs.body.includes("_agEmail"),
       "login_hint não encontrado no app.js");

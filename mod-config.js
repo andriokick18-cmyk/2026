@@ -29,7 +29,7 @@ const VAPID_SUBJECT     = process.env.VAPID_SUBJECT || `mailto:${ADMIN_EMAIL}`;
 const PUSH_ENABLED      = !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
 
 // ── Planos ───────────────────────────────────────────────────────────────
-//   free      → 20 manual  + 10 auto   /dia (Grátis)
+//   free      → 0 manual   + 0 auto   /dia (SEM envio — só navegar/ver como funciona)
 //   vip       → 200 manual + 10 auto   /dia (só manual pago)
 //   vipro     → 200 manual + 200 auto  /dia (manual + automático)
 //   doublepro → 400 manual + 400 auto  /dia (2 contas Gmail)
@@ -39,15 +39,20 @@ const PUSH_ENABLED      = !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
 // CONTRATAÇÕES a partir da mudança (troca 💎, upgrade, código, set-plan do
 // admin). Quem já tinha plano ativo mantém a tabela antiga até vencer
 // (contrato congelado em vip.limits — ver getManualLimit/getAutoLimit).
+// v172 (ORDEM DO DONO, 11/09/2026 — "o site vai ser só pra pessoas pagantes
+// usarem... ela não pode usar [antes de pagar]"): o plano free NUNCA mais
+// manda e-mail — 0 manual + 0 auto. Free só serve pra logar e ver o site
+// (vagas, planos) antes de decidir pagar. getManualLimit/getAutoLimit têm
+// fallback `|| N` que escondia zero como falsy — CORRIGIDO junto (ver lá).
 const PLAN_LIMITS_NEW = {
-  free:      { manual: 20,  auto: 10  },
+  free:      { manual: 0,   auto: 0   },
   vip:       { manual: 100, auto: 0   }, // R$100 — 100 manuais/dia
   pro:       { manual: 0,   auto: 100 }, // legado
   vipro:     { manual: 100, auto: 100 }, // R$150 — 100 + 100
   doublepro: { manual: 200, auto: 200 }, // R$250 — 200 + 200
 };
 const PLAN_LIMITS = {
-  free:      { manual: 20,  auto: 10  },
+  free:      { manual: 0,   auto: 0   },
   vip:       { manual: 200, auto: 10  }, // VIP = só manual 200/dia
   pro:       { manual: 0,   auto: 200 }, // só auto — legado
   vipro:     { manual: 200, auto: 200 }, // manual + auto 200 cada

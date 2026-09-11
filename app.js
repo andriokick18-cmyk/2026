@@ -138,6 +138,16 @@ addEventListener("DOMContentLoaded",async()=>{
     history.replaceState({},"","/");
   }
   if(ps.get("ok"))history.replaceState({},"","/");
+  // 🔒 v172 (ORDEM DO DONO, 11/09/2026): volta do /oauth/connect-send (sucesso
+  // ou erro) sempre carrega &tab=, pra devolver a pessoa exatamente onde ela
+  // estava tentando enviar (Automático/Manual/Planos), nunca perdida na Home.
+  const _csTab=ps.get("tab");
+  const _gmailConnected=ps.get("gmailConnected")==="1";
+  if(_csTab||_gmailConnected){
+    history.replaceState({},"","/");
+    window._pendingTab=_csTab||null;
+    window._pendingGmailConnected=_gmailConnected;
+  }
   await checkStatus();
   setInterval(function(){fetch("/api/warmup",{credentials:"include"}).catch(function(){});},4*60*1000);
 });
@@ -151,7 +161,10 @@ async function checkStatus(){
     if(d.connected){
       U={connected:true,email:d.email,name:d.name||d.email,picture:d.picture||"",isAdmin:!!d.isAdmin,plan:d.plan||"free",vip:d.vip||null,todaySentManual:d.todaySentManual||0,manualLimit:d.manualLimit||20,manualRemaining:(d.manualRemaining??20),todaySentAuto:d.todaySentAuto||0,autoLimit:d.autoLimit||10,autoRemaining:(d.autoRemaining??10),autoEnabled:true,autoJob:d.autoJob||null,autoStats:d.autoStats||{sent:0,failed:0},onboarded:!!d.onboarded,profiles:d.profiles||[],senderEmails:d.senderEmails||[],senderMax:d.senderMax||1,adminSettings:d.adminSettings||null,totalSent:d.totalSent||0,totalManual:d.totalManual||0,totalAutoHist:d.totalAutoHist||0,totalReplies:d.totalReplies||0,
   // Novos campos
-  whatsapp:d.whatsapp||"",rankName:d.rankName||"",appAvatarId:d.appAvatarId||"",h2bProfile:d.h2bProfile||{},phone:d.phone||"",serverId:d.serverId||1,publicProfile:d.publicProfile||{}};
+  whatsapp:d.whatsapp||"",rankName:d.rankName||"",appAvatarId:d.appAvatarId||"",h2bProfile:d.h2bProfile||{},phone:d.phone||"",serverId:d.serverId||1,publicProfile:d.publicProfile||{},
+  // 🔒 v172 (ORDEM DO DONO, 11/09/2026): gate de envio — plano pago ativo E
+  // Gmail conectado (/oauth/connect-send), nunca antes disso.
+  gmailConnected:!!d.gmailConnected,needsPlan:!!d.needsPlan};
       // 🌐 v149c (dono, 20/08: "tira aquele negócio de qual servidor você
       // está, agora só tem 1 server!") — os selos "Servidor N" do drawer e
       // do perfil foram removidos junto com a era multi-servidor.
@@ -194,9 +207,20 @@ async function checkStatus(){
         const _pe=window._pendingErrMsg; window._pendingErrMsg=null;
         const _isSender=/gmail|email|sender|limite de \d+ e?-?mails/i.test(_pe);
         setTimeout(()=>{
-          if(_isSender){sv("profile");}
+          if(window._pendingTab){sv(window._pendingTab);window._pendingTab=null;}
+          else if(_isSender){sv("profile");}
           toast("⚠️ "+_pe,"r",9000);
           try{alert("⚠️ "+_pe);}catch(e){}
+        },600);
+      }
+      // 🔒 v172: voltou de /oauth/connect-send com sucesso — devolve a pessoa
+      // pra aba de onde ela tentou enviar, já pronta pra mandar candidaturas.
+      if(window._pendingGmailConnected){
+        window._pendingGmailConnected=false;
+        const _pt=window._pendingTab;window._pendingTab=null;
+        setTimeout(()=>{
+          if(_pt)sv(_pt);
+          toast("✅ Gmail conectado — já pode enviar candidaturas!","g",6000);
         },600);
       }
       // Apply language AFTER showApp so all elements exist
@@ -663,7 +687,7 @@ function sv(v,...args){
   // NUNCA podia ficar "active" — forçar isso agora apagaria o destaque do
   // item certo assim que o loop abaixo o marcasse ativo).
   VIEWS.forEach(id=>{const ve=g("#v-"+id);if(ve)ve.classList.toggle("gone",id!==v);const si=g("#si-"+id);if(si)si.classList.toggle("active",id===v);const bn=g("#bn-"+id);if(bn)bn.classList.toggle("active",id===v);});const bnMore=g("#bn-more");if(bnMore)bnMore.classList.toggle("active",BN_MORE_VIEWS.includes(v));
-  if(v==="jobs"){setTimeout(loadLugares,400);}if(v==="plans"){try{loadPlanos();}catch(e){}}if(v==="profile"){loadProfile();loadTplView();setTimeout(()=>{_loadSoundPref();renderSoundSelector();},100);}
+  if(v==="jobs"){setTimeout(loadLugares,400);updateManualSendGate();}if(v==="plans"){try{loadPlanos();}catch(e){}}if(v==="profile"){loadProfile();loadTplView();setTimeout(()=>{_loadSoundPref();renderSoundSelector();},100);}
 
   if(v==="auto"){loadAutoView();if(U.autoJob?.active)startAutoPolling();}
   if(v==="logs"){logSkip=0;logTotal=0;logDone=false;loadLogs();}
@@ -1811,7 +1835,15 @@ function closeMobDetail(){g("#mob-detail")?.classList.remove("show");}
 async function openModal(jobId){
   const j=JOBS.find(x=>x.id===String(jobId))||sCache[jobId]||null;
   if(!j)return;
+  // 🔒 v172 (ORDEM DO DONO, 11/09/2026): "o site vai ser só pra pessoas
+  // pagantes usarem" — plano ativo primeiro (senão manualLimit é 0 e cai
+  // aqui igual a quem já esgotou o limite do dia, mas a mensagem certa é
+  // outra), Gmail conectado depois. Servidor confere tudo de novo em
+  // /api/send de qualquer forma — isto é só pra não deixar a pessoa se
+  // perder escrevendo o e-mail inteiro pra descobrir só no fim que não pode.
+  if(!U.isAdmin&&U.needsPlan){sv("plans");toast("⚠️ Você precisa de um plano ativo pra enviar candidaturas.","r",7000);return;}
   if(U.manualRemaining<=0){sv("plans");toast("Limite diário atingido. Assine um plano para mais envios.","r");return;}
+  if(!U.isAdmin&&!U.gmailConnected){toast("⚠️ Conecte seu Gmail antes de enviar candidaturas.","r",7000);connectGmailForSending("jobs");return;}
   // Verifica se tem perfil (busca fresca para evitar falso negativo)
   let _profiles=(UPROFILES.length?UPROFILES:U.profiles||[]).filter(p=>p.active!==false);
   if(!_profiles.length){
@@ -3755,7 +3787,7 @@ async function clearLogs(){if(!confirm("Limpar todos os logs?"))return;try{const
 //  AUTO SEND — WIZARD
 // ═══════════════════════════════════════════
 function loadAutoView(){
-  updateAutoUI();buildAutoDocSlots();
+  updateAutoUI();_updateAutoFreeBanner();buildAutoDocSlots();
   loadTabCounts();
   if(autoSelectedSrc)renderWizardCats(autoSelectedSrc);
   recalcInterval();
@@ -4170,6 +4202,18 @@ function recalcInterval(){
 //  MODAL PRÉ-INÍCIO
 // ══════════════════════════════════════════════════════
 function openPreflightModal(){
+  // 🔒 v172 (ORDEM DO DONO, 11/09/2026): "o site vai ser só pra pessoas
+  // pagantes usarem" — checagem client-side ANTES do preflight (o servidor
+  // recusa de qualquer forma em /api/auto/start, isto é só pra não fazer a
+  // pessoa preencher o wizard inteiro pra descobrir na hora H que não pode).
+  if(!U.isAdmin&&(U.autoLimit||0)<=0){
+    toast("⚠️ Você precisa de um plano com envio automático (VIPro ou DoublePro) pra usar o robô.","r",7000);
+    sv("plans");return;
+  }
+  if(!U.isAdmin&&!U.gmailConnected){
+    toast("⚠️ Conecte seu Gmail antes de ligar o envio automático.","r",7000);
+    connectGmailForSending("auto");return;
+  }
   if(!autoSelectedSrc){toast("Escolha a fonte das vagas! (Passo 1)","r");g("#ws-1")?.scrollIntoView({behavior:"smooth"});return;}
   const activeProfiles=(UPROFILES.length?UPROFILES:U.profiles||[]).filter(p=>p.active!==false);
   if(!activeProfiles.length){toast("Crie pelo menos 1 perfil ativo antes de iniciar!","r");sv('profile');return;}
@@ -4651,20 +4695,43 @@ async function loadAutoLogs(){
 }
 
 // Atualiza o banner de limite na tela auto conforme o plano do usuário
+// 🔒 v172 (ORDEM DO DONO, 11/09/2026): mesmo gate do automático, só que pra
+// aba de envio Manual — mesma régua, "a pessoa não pode se perder".
+function updateManualSendGate(){
+  const el=g("#manual-send-gate");if(!el)return;
+  if(U.isAdmin||(!U.needsPlan&&U.gmailConnected)){el.style.display="none";return;}
+  el.style.display="flex";
+  if(U.needsPlan){
+    el.innerHTML='<i class="ti ti-lock"></i> Você precisa de um plano ativo pra enviar candidaturas <button onclick="sv(\'plans\')" style="margin-left:auto;background:#fff;border:1.5px solid currentColor;border-radius:8px;padding:3px 10px;font-size:12px;font-weight:800;cursor:pointer;color:inherit">Ver planos</button>';
+    el.style.background="rgba(239,68,68,.1)";el.style.border="1.5px solid rgba(239,68,68,.35)";el.style.color="#dc2626";
+  } else {
+    el.innerHTML='<i class="ti ti-mail-exclamation"></i> Conecte seu Gmail pra começar a enviar <button onclick="connectGmailForSending(\'jobs\')" style="margin-left:auto;background:#fff;border:1.5px solid currentColor;border-radius:8px;padding:3px 10px;font-size:12px;font-weight:800;cursor:pointer;color:inherit">Conectar Gmail</button>';
+    el.style.background="rgba(245,158,11,.12)";el.style.border="1.5px solid rgba(245,158,11,.4)";el.style.color="#b45309";
+  }
+}
+
+// 🔒 v172 (ORDEM DO DONO, 11/09/2026): "não vai ter mais essa de dez envio
+// manual e dez automático grátis" — 3 estados possíveis, nesta ordem:
+// (1) sem plano com automático → assinar; (2) tem plano mas nunca conectou
+// o Gmail → conectar (só aqui, gmail.send é pedido); (3) tudo certo → mostra
+// o limite normal do plano.
 function _updateAutoFreeBanner(){
   const lbl=g("#auto-free-note-lbl");if(!lbl)return;
   if(U.isAdmin){
     lbl.innerHTML='<i class="ti ti-shield"></i> <strong>Admin</strong> — Envios ilimitados · Intervalo personalizado';
     lbl.style.background="rgba(245,158,11,.15)";lbl.style.borderColor="rgba(245,158,11,.4)";lbl.style.color="#d97706";
+  } else if((U.autoLimit||0)<=0){
+    lbl.innerHTML='<i class="ti ti-lock"></i> <strong>Plano necessário</strong> — assine VIPro ou DoublePro pra usar o automático <button onclick="sv(\'plans\')" style="margin-left:6px;background:#fff;border:1.5px solid currentColor;border-radius:8px;padding:2px 8px;font-size:11px;font-weight:800;cursor:pointer;color:inherit">Ver planos</button>';
+    lbl.style.background="rgba(239,68,68,.1)";lbl.style.borderColor="rgba(239,68,68,.35)";lbl.style.color="#dc2626";
+  } else if(!U.gmailConnected){
+    lbl.innerHTML='<i class="ti ti-mail-exclamation"></i> <strong>Conecte seu Gmail</strong> pra começar a enviar <button onclick="connectGmailForSending(\'auto\')" style="margin-left:6px;background:#fff;border:1.5px solid currentColor;border-radius:8px;padding:2px 8px;font-size:11px;font-weight:800;cursor:pointer;color:inherit">Conectar Gmail</button>';
+    lbl.style.background="rgba(245,158,11,.12)";lbl.style.borderColor="rgba(245,158,11,.4)";lbl.style.color="#b45309";
   } else if(U.plan==="doublepro"){
     lbl.innerHTML=`<i class="ti ti-crown"></i> <strong>DoublePro</strong> — ${U.autoLimit} envios/dia com 2 Gmails`;
     lbl.style.background="rgba(99,102,241,.1)";lbl.style.borderColor="rgba(99,102,241,.3)";lbl.style.color="#4f46e5";
-  } else if(U.plan==="vipro"){
+  } else {
     lbl.innerHTML=`<i class="ti ti-star"></i> <strong>VIPro</strong> — ${U.autoLimit} envios/dia automático`;
     lbl.style.background="rgba(139,92,246,.1)";lbl.style.borderColor="rgba(139,92,246,.3)";lbl.style.color="#7c3aed";
-  } else {
-    lbl.innerHTML=`<i class="ti ti-gift"></i> ${U.autoLimit} envios automáticos GRÁTIS/dia`;
-    lbl.style.cssText="";
   }
 }
 
@@ -4820,6 +4887,12 @@ function _getOAuthURL(){
   return '/oauth/start'+(/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(hint)?('?login_hint='+encodeURIComponent(hint)):'');
 }
 function connectGmail(){location.href=_getOAuthURL();}
+// 🔒 v172 (ORDEM DO DONO, 11/09/2026): pedido SEPARADO do login — só existe
+// pra quem JÁ tem plano pago ativo (o servidor confere de novo e barra quem
+// não tem). fromTab devolve a pessoa pra onde ela estava tentando enviar.
+function connectGmailForSending(fromTab){
+  location.href="/oauth/connect-send?from="+encodeURIComponent(fromTab||"plans");
+}
 function closeLoginWarn(){const ov=document.getElementById("login-warn-overlay");if(ov)ov.style.display="none";}
 function showLoginWarning(){location.href=_getOAuthURL();}
 async function loadPublicStats(){
@@ -4828,9 +4901,6 @@ async function loadPublicStats(){
     const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=(v||0).toLocaleString("pt-BR");};
     set("ps-users",d.totalUsers);set("ps-today",d.todaySent);set("ps-auto-today",d.todayAuto);
     set("ps-total",d.totalSent);set("ps-total-auto",d.totalAuto);set("ps-vip",d.vipUsers);
-    // Update trial badge
-    const tb=document.getElementById("trial-badge-txt");
-    if(tb)tb.textContent=d.trialEnabled?`${d.trialDays||1} dia de VIP Manual GRÁTIS`:"10 envios automáticos GRÁTIS";
     // 📢 v144: aviso do reset de login (OAuth novo) — o admin liga na virada
     const _rst=document.getElementById("aviso-reset-banner");
     if(_rst)_rst.style.display=d.avisoResetLogin?"block":"none";
@@ -7970,9 +8040,10 @@ function applyLang(){
   document.querySelectorAll('.auto-hero-sub').forEach(el=>{
     el.textContent=t('auto_hero_sub');
   });
-  document.querySelectorAll('.auto-free-note').forEach(el=>{
-    const ic=el.querySelector('i'); el.textContent=' '+t('auto_free'); if(ic)el.prepend(ic);
-  });
+  // 🔒 v172: .auto-free-note deixou de ser rótulo estático (i18n) — agora é
+  // dinâmico (_updateAutoFreeBanner: plano/Gmail/limite), então NÃO
+  // sobrescreve mais aqui (isto apagaria o botão Ver planos/Conectar Gmail).
+  _updateAutoFreeBanner();
   // Wizard steps
   document.querySelectorAll('.wizard-step-title').forEach((el,i)=>{
     if(i===0) el.textContent=t('ws1_title');
