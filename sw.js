@@ -81,7 +81,12 @@
 //    "Documentos" morta (uploadDoc/renderDocs/showSessionExpiredModal e
 //    companhia — zero chamador real, confirmado antes de apagar).
 //
-const CACHE_NAME = "h2bapply-2026-v15"; // v15: limite de PDF 5MB/3MB corrigido nas 3 telas + remoção de "Documentos" (código morto)
+//  v2.15 — Bump de rotina (dono, 11/09/2026): checklist de consentimento da
+//    compra reescrito pra falar com o cliente (não com o admin) e sem a
+//    promessa de "direito de arrependimento de 7 dias" (removida também dos
+//    Termos — seção renumerada 1-12).
+//
+const CACHE_NAME = "h2bapply-2026-v16"; // v16: checklist de compra reescrito + remoção do "arrependimento de 7 dias"
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).
