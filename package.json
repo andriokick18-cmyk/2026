@@ -6,9 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "reset": "node reset_h2bapply.js",
-    "check": "node --check server.js && node --check storage.js && node --check restaurar_backup_irmao.js && for f in mod-*.js; do node --check \"$f\" || exit 1; done && node check-duplicates.js && node check-xss-guard.js",
-    "test": "npm run check && node smoke-test.js",
-    "restaurar-irmao": "node restaurar_backup_irmao.js"
+    "check": "node --check server.js && node --check storage.js && for f in mod-*.js; do node --check \"$f\" || exit 1; done && node check-duplicates.js && node check-xss-guard.js",
+    "test": "npm run check && node smoke-test.js"
   },
   "engines": {
     "node": ">=18"

@@ -2846,6 +2846,24 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
               </div>
             </div>
 
+            <!-- 🔒 v172 (ORDEM DO DONO, 12/09/2026): admin também passou a
+                 depender de /oauth/connect-send pra ter gmail.send (login
+                 virou só identidade pra TODO MUNDO, admin incluso) — sem
+                 isto, o aviso de "pedido novo" por e-mail pro admin ficava
+                 dependendo de conectar sem ter onde clicar. Some sozinho
+                 quando já está conectado (adm-mygmail-status). -->
+            <div id="adm-mygmail-card" style="background:var(--surface);border:1.5px solid rgba(220,38,38,.4);border-radius:12px;padding:14px;margin-bottom:12px;display:none">
+              <div style="font-size:12px;font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+                <i class="ti ti-alert-triangle" style="font-size:13px"></i> Meu Gmail (admin) — não conectado
+              </div>
+              <div style="font-size:11.5px;color:var(--t2);margin-bottom:10px;line-height:1.5">
+                Sem isto, você não recebe o e-mail de "pedido novo" quando um cliente quer comprar um plano, e nem consegue enviar candidaturas você mesmo. É um pedido SEPARADO do login — o login não pede mais essa permissão pra ninguém, admin incluso.
+              </div>
+              <button class="btn btn-primary btn-sm w100" onclick="connectGmailForSending('profile')">
+                <i class="ti ti-plug"></i> Conectar meu Gmail agora
+              </button>
+            </div>
+
             <!-- Emails extras (senders) -->
             <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px">
               <div style="font-size:12px;font-weight:700;color:var(--t3);text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:6px">

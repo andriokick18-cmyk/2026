@@ -86,7 +86,7 @@
 //    promessa de "direito de arrependimento de 7 dias" (removida também dos
 //    Termos — seção renumerada 1-12).
 //
-const CACHE_NAME = "h2bapply-2026-v18"; // v18: paywall real — login só identidade (LOGIN_SCOPES), gmail.send só via /oauth/connect-send com plano pago ativo, fim do trial grátis
+const CACHE_NAME = "h2bapply-2026-v19"; // v19: card "Meu Gmail (admin)" + trava de Gmail conectado corrigida pra também valer pro admin (v18 exemptava admin até do Gmail, não só do plano) + limpeza da arquitetura multi-servidor
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).

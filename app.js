@@ -1843,7 +1843,7 @@ async function openModal(jobId){
   // perder escrevendo o e-mail inteiro pra descobrir só no fim que não pode.
   if(!U.isAdmin&&U.needsPlan){sv("plans");toast("⚠️ Você precisa de um plano ativo pra enviar candidaturas.","r",7000);return;}
   if(U.manualRemaining<=0){sv("plans");toast("Limite diário atingido. Assine um plano para mais envios.","r");return;}
-  if(!U.isAdmin&&!U.gmailConnected){toast("⚠️ Conecte seu Gmail antes de enviar candidaturas.","r",7000);connectGmailForSending("jobs");return;}
+  if(!U.gmailConnected){toast("⚠️ Conecte seu Gmail antes de enviar candidaturas.","r",7000);connectGmailForSending("jobs");return;}
   // Verifica se tem perfil (busca fresca para evitar falso negativo)
   let _profiles=(UPROFILES.length?UPROFILES:U.profiles||[]).filter(p=>p.active!==false);
   if(!_profiles.length){
@@ -4210,7 +4210,7 @@ function openPreflightModal(){
     toast("⚠️ Você precisa de um plano com envio automático (VIPro ou DoublePro) pra usar o robô.","r",7000);
     sv("plans");return;
   }
-  if(!U.isAdmin&&!U.gmailConnected){
+  if(!U.gmailConnected){
     toast("⚠️ Conecte seu Gmail antes de ligar o envio automático.","r",7000);
     connectGmailForSending("auto");return;
   }
@@ -4699,9 +4699,13 @@ async function loadAutoLogs(){
 // aba de envio Manual — mesma régua, "a pessoa não pode se perder".
 function updateManualSendGate(){
   const el=g("#manual-send-gate");if(!el)return;
-  if(U.isAdmin||(!U.needsPlan&&U.gmailConnected)){el.style.display="none";return;}
+  // 🔒 v172: admin pula a trava de PLANO (isVipActive(admin)=true sempre),
+  // mas NÃO pula a de Gmail conectado — sem isso o admin ficava sem CTA
+  // nenhum caso nunca tivesse passado por /oauth/connect-send (login não
+  // dá mais gmail.send de graça pra ninguém, admin incluso).
+  if((!U.isAdmin&&!U.needsPlan&&U.gmailConnected)||(U.isAdmin&&U.gmailConnected)){el.style.display="none";return;}
   el.style.display="flex";
-  if(U.needsPlan){
+  if(!U.isAdmin&&U.needsPlan){
     el.innerHTML='<i class="ti ti-lock"></i> Você precisa de um plano ativo pra enviar candidaturas <button onclick="sv(\'plans\')" style="margin-left:auto;background:#fff;border:1.5px solid currentColor;border-radius:8px;padding:3px 10px;font-size:12px;font-weight:800;cursor:pointer;color:inherit">Ver planos</button>';
     el.style.background="rgba(239,68,68,.1)";el.style.border="1.5px solid rgba(239,68,68,.35)";el.style.color="#dc2626";
   } else {
@@ -4717,7 +4721,12 @@ function updateManualSendGate(){
 // o limite normal do plano.
 function _updateAutoFreeBanner(){
   const lbl=g("#auto-free-note-lbl");if(!lbl)return;
-  if(U.isAdmin){
+  // 🔒 v172: admin pula a trava de PLANO, mas NÃO a de Gmail conectado —
+  // mesmo motivo do updateManualSendGate acima.
+  if(U.isAdmin&&!U.gmailConnected){
+    lbl.innerHTML='<i class="ti ti-mail-exclamation"></i> <strong>Conecte seu Gmail</strong> (Perfil → Admin) pra poder enviar <button onclick="connectGmailForSending(\'auto\')" style="margin-left:6px;background:#fff;border:1.5px solid currentColor;border-radius:8px;padding:2px 8px;font-size:11px;font-weight:800;cursor:pointer;color:inherit">Conectar Gmail</button>';
+    lbl.style.background="rgba(245,158,11,.12)";lbl.style.borderColor="rgba(245,158,11,.4)";lbl.style.color="#b45309";
+  } else if(U.isAdmin){
     lbl.innerHTML='<i class="ti ti-shield"></i> <strong>Admin</strong> — Envios ilimitados · Intervalo personalizado';
     lbl.style.background="rgba(245,158,11,.15)";lbl.style.borderColor="rgba(245,158,11,.4)";lbl.style.color="#d97706";
   } else if((U.autoLimit||0)<=0){
@@ -6431,6 +6440,12 @@ function renderAdminTab(){
   // Mostrar a seção (v168: virou seção da tela única, não mais aba)
   const sec=g("#pf-sec-admin");
   if(sec)sec.style.display="";
+  // 🔒 v172: admin também precisa de /oauth/connect-send pra ter gmail.send —
+  // login parou de conceder isso automaticamente pra TODO MUNDO. Sem card
+  // visível aqui, o admin não teria como saber que precisa conectar (e o
+  // aviso de "pedido novo" por e-mail simplesmente nunca sairia).
+  const mgCard=g("#adm-mygmail-card");
+  if(mgCard)mgCard.style.display=U.gmailConnected?"none":"block";
   // Carregar settings do servidor se ainda não carregamos
   _loadAdminSettings();
 }

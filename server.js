@@ -105,24 +105,6 @@ function sendHtmlCompressed(req, res, html, cacheControl){
 const CLIENT_ID     = (process.env.GOOGLE_CLIENT_ID     || "").trim();
 const CLIENT_SECRET = (process.env.GOOGLE_CLIENT_SECRET || "").trim();
 const APP_URL       = (process.env.APP_URL || "http://localhost:3000").replace(/\/+$/, "");
-// ── MULTI-SERVIDOR: identidade deste servidor ─────────────────────────────
-// Cada deploy define SERVER_ID no ambiente: h2bapply.com = 1,
-// h2b-teste.onrender.com = 2, applyh2b.com = 3. O MESMO código roda nos três
-// (fonte única: repo Applyh2b.com — ver README_SERVIDORES.txt); só as envs
-// mudam. Default 1 (produção). Se a env estiver errada, a identidade pelo
-// HOST (_selfId) corrige em runtime — mas o certo é definir a env.
-const SERVER_ID     = parseInt(process.env.SERVER_ID || "1", 10) || 1;
-// 💸 v151 (dono, 21/08 — fatura do Render: 38,6GB de banda, 85% "Service-
-// Initiated", gerada pelos PRÓPRIOS servidores): servidor APOSENTADO (env
-// REDIRECT_ALL_TO ligada depois da fusão) vira uma casca de redirecionamento
-// — NENHUM robô de coleta/planilha/notícias, backup entre irmãos, sentinela
-// ou envio automático roda nele. Os dados já moram no Servidor 1; rodar tudo
-// em triplicata era o que inflava banda e CPU da fatura.
-const MODO_APOSENTADO=/^https?:\/\//.test(String(process.env.REDIRECT_ALL_TO||"").trim());
-if(MODO_APOSENTADO)console.log("[servers] 🪦 MODO APOSENTADO: REDIRECT_ALL_TO ligado — robôs, backups entre irmãos, sentinela e automático DESLIGADOS neste servidor (fica só o redirect e as rotas peer/fusão).");
-if(!process.env.SERVER_ID){
-  console.warn("⚠️⚠️⚠️ [servers] Env SERVER_ID NÃO DEFINIDA — assumindo 1 (produção). DEFINA no Render: 1 = h2bapply.com, 2 = h2b-teste, 3 = applyh2b.com — senão a trava de 'lotado' pode bloquear os cadastros deste servidor! ⚠️⚠️⚠️");
-}
 // ── v72 — SÓ-ENVIO PERMANENTE E UNIVERSAL (ordem do dono, 26/07/2026) ──────
 // Antes era um toggle por servidor (GMAIL_SEND_ONLY=1, só no Servidor 3).
 // Agora é a arquitetura DEFINITIVA dos 3: o app pede ao Google SOMENTE o
@@ -173,7 +155,6 @@ function _oauthBase(req){
     // Cinto e suspensório: o Render também define RENDER_EXTERNAL_HOSTNAME
     // (só o host, sem protocolo) — cobre o caso de a _URL vir vazia/mudada.
     if(process.env.RENDER_EXTERNAL_HOSTNAME) ok.add(String(process.env.RENDER_EXTERNAL_HOSTNAME).toLowerCase().trim());
-    try{ for(const sv of _getServersConfig()){ if(sv&&sv.url){ const h=norm(sv.url); if(h){ ok.add(h); ok.add("www."+h); } } } }catch(e){}
     ok.delete("");
     if(!ok.has(host)) return APP_URL;
     const proto=(host.startsWith("localhost")||host.startsWith("127."))?"http":"https";
@@ -416,21 +397,6 @@ let DB_ADMIN_SETTINGS = { emailNotificationsEnabled: false,
   // 💼 MC4-P1 (dono, 28/08/2026): divisão societária do LUCRO — padrão 50/50,
   // editável na seção "Sócios & Acerto" da aba 🧠 (computeSocios usa isto).
   sociosSplit: { andrio: 50, diego: 50 },
-  // MULTI-SERVIDOR: lista de servidores exibida no seletor da landing.
-  // status "lotado" = fechado p/ contas novas (só login); "aberto" = cadastro liberado.
-  // maxExibido é o teto MOSTRADO na barra (pode ser menor que o real p/ marcar lotação).
-  // Editável em Admin → Configurações → 🌐 Servidores (sem deploy).
-  // 🚨 v156 (ORDEM DO DONO, 22/08/2026 — pessoa real barrada: "tem uma pessoa
-  // tentando criar conta e o site está jogando pro server três... não existe
-  // mais server dois e server três. Qualquer conta nova, qualquer login que
-  // já existe é tudo no server um"): a era multi-servidor ACABOU. O padrão é
-  // Servidor 1 ABERTO e 2/3 OCULTOS (fora do seletor; ninguém é mandado pra
-  // lá). As URLs dos irmãos ficam na lista só pras rotas de fusão/peers.
-  servers: [
-    { id: 1, nome: "Servidor 1", url: "https://h2bapply.com",              maxExibido: 100, status: "aberto" },
-    { id: 2, nome: "Servidor 2", url: "https://h2b-teste.onrender.com",    maxExibido: 100, status: "oculto" },
-    { id: 3, nome: "Servidor 3", url: "https://h2b-server-3.onrender.com", maxExibido: 100, status: "oculto" }
-  ]
 }; // v9: trial = 1d VIP Manual apenas (sem auto)
 // v57/v171 (ORDEM DO DONO): administrador não tem senha nenhuma — só é
 // admin quem entra com o e-mail cadastrado (ADMIN_EMAIL/ADMIN_EMAIL_2/
@@ -607,15 +573,11 @@ function computeFinanceCanonico(){
   let valorPedidos=0;for(const e in pedBy)for(const x of pedBy[e])valorPedidos+=x.valor;
   return {receitaTotal,receitaMes,receitaAvulsa,qtdPagantes,novosMes,vencendo7,vencendo7Valor,vencidos,trials,gift,giftDias,porPlano,porPlanoQtd,topPagantes,finBy,pedBy,avulsas,monthStart,valorPedidos};
 }
-// 💰 v83 (dono, 29/07/2026 — fila futura "consolidar telas financeiras do
-// admin"): a Visão do Dono (1ª tela que o admin vê, regra 15) e o resumo
-// usado no Faturamento Global/rota peer (/api/servers/financeiro)
-// reimplementavam CADA UM sua própria cópia do cálculo de janelas
-// hoje/7d/30d/total — a MESMA classe de bug do v77b (2 verdades sobre o
-// mesmo dinheiro que podem divergir), só que no caixa em vez de diamantes.
-// Uma função só agora, com a MESMA correção que computeFinanceCanonico já
-// aplica pras outras telas: se o pedido foi corrigido depois (Conferência/
-// pedido-set-valor) e por algum motivo o lançamento cru do caixa ainda não
+// 💰 Fonte única das janelas hoje/7d/30d/total de receita — todas as telas
+// (Visão do Dono, Sócios & Acerto, DRE) chamam esta função, nunca uma cópia
+// própria (2 verdades sobre o mesmo dinheiro podem divergir). Mesma correção
+// que computeFinanceCanonico aplica: se o pedido foi corrigido depois
+// (Conferência/pedido-set-valor) e o lançamento cru do caixa ainda não
 // reflete isso, o valor do PEDIDO vence — nunca duas fontes divergentes.
 function computeEntradasJanelas(){
   const now=Date.now(),DAY=86400_000;
@@ -1246,57 +1208,6 @@ function boot() {
   const savedAdminSettings = load(ADMIN_SETTINGS_FILE, null);
   if(savedAdminSettings) Object.assign(DB_ADMIN_SETTINGS, savedAdminSettings);
   DB_DIVERGENCIAS_OK = load(DIVERGENCIAS_OK_FILE, {});
-  // v58-MIGRAÇÃO (one-shot, dono 25/07: "1 e 2 bloqueados, cadastro só no 3"):
-  // servidores que JÁ têm lista salva em disco ganham o Servidor 3 automatica-
-  // mente e têm 1/2 marcados como lotado — UMA vez só (_migSrv3), pra edição
-  // futura do dono pelo painel valer sem ser revertida a cada boot.
-  try{
-    if(!DB_ADMIN_SETTINGS._migSrv3 && Array.isArray(DB_ADMIN_SETTINGS.servers) && DB_ADMIN_SETTINGS.servers.length){
-      const svs=DB_ADMIN_SETTINGS.servers;
-      for(const sv of svs){ if([1,2].includes(parseInt(sv.id))) sv.status="lotado"; }
-      if(!svs.some(sv=>parseInt(sv.id)===3)){
-        svs.push({ id:3, nome:"Servidor 3", url:"https://h2b-server-3.onrender.com", maxExibido:100, status:"aberto" });
-      }
-      DB_ADMIN_SETTINGS._migSrv3=true;
-      persist(ADMIN_SETTINGS_FILE, DB_ADMIN_SETTINGS);
-      console.log("[migrate] 🌐 v58: Servidores 1/2 marcados LOTADOS e Servidor 3 adicionado à lista — cadastro novo só no 3.");
-    }
-  }catch(e){ console.warn("[migrate] v58 servers:", e.message); }
-  // v66b-MIGRAÇÃO (one-shot, bug real 26/07): listas salvas ANTES desta versão
-  // guardam o Servidor 3 como https://applyh2b.com — domínio ainda no parking
-  // da Namecheap (sem DNS). Consequência real: o seletor do Servidor 1
-  // redirecionava cadastros pro endereço morto e o ranking/faturamento GLOBAL
-  // não alcançava o Servidor 3 (timeout). Cura: reescreve a URL pro endereço
-  // vivo do Render. UMA vez só (_migSrv3Url) — quando o DNS for corrigido, o
-  // dono troca pelo painel e o boot NUNCA mais reverte.
-  try{
-    if(!DB_ADMIN_SETTINGS._migSrv3Url && Array.isArray(DB_ADMIN_SETTINGS.servers)){
-      const s3=DB_ADMIN_SETTINGS.servers.find(sv=>sv&&parseInt(sv.id)===3);
-      if(s3&&/applyh2b\.com/i.test(String(s3.url||""))){
-        s3.url="https://h2b-server-3.onrender.com";
-        console.log("[migrate] 🌐 v66b: URL do Servidor 3 curada (applyh2b.com sem DNS → h2b-server-3.onrender.com) — seletor e ranking global voltam a alcançar o 3.");
-      }
-      DB_ADMIN_SETTINGS._migSrv3Url=true;
-      persist(ADMIN_SETTINGS_FILE, DB_ADMIN_SETTINGS);
-    }
-  }catch(e){ console.warn("[migrate] v66b servers:", e.message); }
-  // 🚨 v156-MIGRAÇÃO (one-shot, URGENTE — dono 22/08: "tem uma pessoa tentando
-  // criar conta e o site está jogando pro server três. Não existe mais server
-  // dois e server três — é tudo no server um"): a lista salva em produção
-  // ainda tinha o Servidor 1 "lotado" e o 3 "aberto" (regra v58, morta com a
-  // fusão) — cadastro novo era REJEITADO aqui e redirecionado pro 3. Cura de
-  // uma vez: 1 vira ABERTO e 2/3 viram OCULTOS. One-shot (_migMonoSrv): se o
-  // dono editar depois pelo painel, o boot nunca mais reverte.
-  try{
-    if(!DB_ADMIN_SETTINGS._migMonoSrv && Array.isArray(DB_ADMIN_SETTINGS.servers) && DB_ADMIN_SETTINGS.servers.length){
-      for(const sv of DB_ADMIN_SETTINGS.servers){
-        sv.status = parseInt(sv.id)===1 ? "aberto" : "oculto";
-      }
-      DB_ADMIN_SETTINGS._migMonoSrv=true;
-      persist(ADMIN_SETTINGS_FILE, DB_ADMIN_SETTINGS);
-      console.log("[migrate] 🌐 v156: ERA DE 1 SERVIDOR SÓ — Servidor 1 ABERTO, 2/3 OCULTOS (cadastro e login são sempre aqui; ninguém mais é mandado pros irmãos).");
-    }
-  }catch(e){ console.warn("[migrate] v156 mono-servidor:", e.message); }
   DB_NOTIF    = load(NOTIF_FILE,    { notifications: [] });
   DB_SUGGESTIONS = load(SUGGESTIONS_FILE, []);
   if(!Array.isArray(DB_SUGGESTIONS)) DB_SUGGESTIONS = [];
@@ -2095,77 +2006,11 @@ setInterval(()=>{ try{persist(path.join(DATA_DIR,"backup.json"),{ts:new Date().t
 // visitar uma página que ninguém visita. Agora roda sozinho, todo dia, sem
 // precisar de ninguém clicar em nada, e fica visível/restaurável também no
 // painel principal (ver aba Configurações em admin.html).
-// ══ v69 — BACKUP ENTRE IRMÃOS (edição mestra, 26/07/2026) ═════════════════
-// O backup completo abaixo mora NO MESMO disco dos dados — protege contra
-// erro/corrupção, NÃO contra o disco morrer. Agora que o banco guarda
-// DINHEIRO (saldos 💎, caixa, doações), cada servidor manda 1x/dia (04h BRT)
-// um pacote gzip dos arquivos críticos pros 2 irmãos, pelo canal autenticado
-// que já existe (_peerFinToken, o mesmo do Faturamento Global). Disco de um
-// morre → a cópia de ontem está nos outros dois (/data/backups_peers/srvN/).
-// users.json viaja como está NO DISCO (tokens já cifrados com DATA_ENC_KEY)
-// — o irmão só GUARDA o blob, nunca abre. Restauração: README_SERVIDORES
-// (Caso 3). Fail-open: sem chave/irmão fora = loga e segue.
-const BACKUP_PEERS_DIR=path.join(DATA_DIR,"backups_peers");
-const BACKUP_PEERS_RETENCAO=2;            // cópias guardadas POR irmão
-const BACKUP_PEERS_MAX=85*1024*1024;      // teto do pacote (85MB)
-let _peerBackupInfo={ultimoEnvio:null,resultados:[]};
-function _bundleBackupPeers(){
-  const alvos=[USERS_FILE,FINANCEIRO_FILE,PEDIDOS_FILE,ADMIN_SETTINGS_FILE,CODES_FILE,REVIEWS_FILE,TRIAL_USED_FILE,HIST_FILE];
-  const files={};
-  for(const f of alvos){
-    try{
-      if(!fs.existsSync(f))continue;
-      const st=fs.statSync(f);
-      if(st.size>60*1024*1024){console.warn(`[backup-peers] ${path.basename(f)} grande demais (${Math.round(st.size/1048576)}MB) — fora do pacote de hoje`);continue;}
-      files[path.basename(f)]=fs.readFileSync(f,"utf8");
-    }catch(e){}
-  }
-  return zlib.gzipSync(JSON.stringify({v:1,ts:Date.now(),serverId:SERVER_ID,files}));
-}
-async function enviarBackupPeers(motivo){
-  const tok=_peerFinToken();
-  if(!tok)return{ok:false,error:"sem DATA_ENC_KEY (recurso desligado)"};
-  if(process.env.TEST_LOGIN_TOKEN)return{ok:false,error:"desligado no ambiente de teste"};
-  const buf=_bundleBackupPeers();
-  if(buf.length>BACKUP_PEERS_MAX)return{ok:false,error:`pacote acima do teto (${Math.round(buf.length/1048576)}MB)`};
-  const stamp=new Date().toISOString().slice(0,10);
-  const resultados=[];
-  for(const sv of _getServersConfig()){
-    if(sv.id===SERVER_ID||!sv.url)continue;
-    if(sv.status==="oculto")continue; // v156: irmão aposentado/desligado não recebe mais 85MB/dia (dado congelado; serviço pode nem existir mais)
-    try{
-      const hurl=new URL(sv.url);
-      const r=await new Promise((rs,rj)=>{
-        const rq=https.request({hostname:hurl.hostname,port:hurl.port||443,path:"/api/servers/backup-receive",method:"POST",headers:{"x-peer-fin":tok,"x-backup-from":String(SERVER_ID),"x-backup-stamp":stamp,"Content-Type":"application/gzip","Content-Length":buf.length}},resp=>{const ch=[];resp.on("data",c=>ch.push(c));resp.on("end",()=>rs({status:resp.statusCode}));});
-        rq.on("error",rj);rq.setTimeout(120000,()=>{rq.destroy();rj(new Error("timeout"));});rq.write(buf);rq.end();
-      });
-      resultados.push({peer:sv.id,ok:r.status===200,status:r.status});
-      console.log(`[backup-peers] ${r.status===200?"✅":"⛔"} pacote (${Math.round(buf.length/1024)}KB) → Servidor ${sv.id} — HTTP ${r.status} (${motivo})`);
-    }catch(e){resultados.push({peer:sv.id,ok:false,error:e.message});console.warn(`[backup-peers] ⛔ Servidor ${sv.id}: ${e.message}`);}
-  }
-  _peerBackupInfo={ultimoEnvio:Date.now(),motivo,bytes:buf.length,resultados};
-  return{ok:resultados.some(x=>x.ok),bytes:buf.length,resultados};
-}
-let _peerBackupDia=null;
-setInterval(()=>{ // 04h BRT, uma vez por dia (horário calmo)
-  try{
-    if(process.env.TEST_LOGIN_TOKEN)return;
-    if(MODO_APOSENTADO)return; // 💸 v151: dado congelado pós-fusão — 85MB×2/dia de banda à toa
-    const brt=new Date(Date.now()-3*3600000);
-    const dia=brt.toISOString().slice(0,10);
-    if(brt.getUTCHours()===4&&_peerBackupDia!==dia){_peerBackupDia=dia;enviarBackupPeers("agendado 04h").catch(()=>{});}
-  }catch(e){}
-},10*60*1000);
-
-// ══ v70 — SENTINELA DOS IRMÃOS (ninguém vigia os vigias — até agora) ═════
-// Caso real (26/07 de manhã): servidor fora do ar e o dono descobriu por
-// PRINT DE USUÁRIO. Agora cada servidor checa os 2 irmãos a cada 15 min;
-// 3 falhas seguidas (~45 min) → PUSH pros admins ("🚨 Servidor N não
-// responde"), e outro push quando voltar. Aviso pode chegar em dobro (os
-// 2 irmãos vigiam) — melhor duas vezes do que nenhuma. De quebra, vigia o
-// PRÓPRIO disco: <200MB livres → push 1x/dia (antes do ENOSPC derrubar).
-const SENTINELA_FALHAS_ALERTA=3;
-let _sentinelaEstado={}; // {peerId:{falhas,avisado,desde}}
+// ══ v70 — VIGIA DE DISCO (edição única, sem irmãos pra vigiar) ═══════════
+// Caso real (26/07 de manhã): confirma que o disco não está enchendo antes
+// do ENOSPC derrubar o servidor — checa a cada 15 min; <200MB livres →
+// avisa no log 1x/dia (a versão que vigiava servidores-irmãos foi removida,
+// esta arquitetura é single-server).
 let _diskAvisoDia=null;
 function _checarDiscoProprio(){
   try{
@@ -2175,38 +2020,12 @@ function _checarDiscoProprio(){
     const dia=todayStrBRT();
     if(freeMB<200&&_diskAvisoDia!==dia){
       _diskAvisoDia=dia;
-      console.warn(`[sentinela] ⚠️ disco do Servidor ${SERVER_ID} com só ${freeMB}MB livres!`);
+      console.warn(`[disco] ⚠️ servidor com só ${freeMB}MB livres!`);
     }
   }catch(e){}
 }
-async function sentinelaIrmaos(){
-  try{
-    if(process.env.TEST_LOGIN_TOKEN)return; // npm test não tem rede externa
-    if(MODO_APOSENTADO)return; // 💸 v151: casca de redirect não vigia ninguém
-    _checarDiscoProprio();
-    for(const sv of _getServersConfig()){
-      if(sv.id===SERVER_ID||!sv.url)continue;
-      if(sv.status==="oculto")continue; // v156: servidor aposentado vai ser desligado de vez — vigiá-lo só geraria alarme falso "não responde" pro dono
-      const st=_sentinelaEstado[sv.id]=_sentinelaEstado[sv.id]||{falhas:0,avisado:false,desde:null};
-      const pi=await _fetchPeerJson(sv.url,"/api/servers/self");
-      const vivo=!!(pi&&(pi.ok===true||typeof pi.users==="number"||typeof pi.id==="number"));
-      if(vivo){
-        if(st.avisado){
-          console.log(`[sentinela] ✅ Servidor ${sv.id} recuperou`);
-        }
-        st.falhas=0;st.avisado=false;st.desde=null;
-      }else{
-        st.falhas++;if(!st.desde)st.desde=Date.now();
-        if(st.falhas>=SENTINELA_FALHAS_ALERTA&&!st.avisado){
-          st.avisado=true;
-          console.warn(`[sentinela] 🚨 Servidor ${sv.id} FORA DO AR (${st.falhas} checagens falhas seguidas)`);
-        }
-      }
-    }
-  }catch(e){}
-}
-setInterval(sentinelaIrmaos,15*60*1000);
-setTimeout(()=>{sentinelaIrmaos().catch(()=>{});},90*1000); // 1ª checagem logo após o boot
+setInterval(_checarDiscoProprio,15*60*1000);
+setTimeout(()=>{try{_checarDiscoProprio();}catch(e){}},90*1000); // 1ª checagem logo após o boot
 
 const BACKUP_DIR = path.join(DATA_DIR, "backups");
 const BACKUP_RETENCAO = 3; // 11/07: era 20 — com history/auto_jobs/logs de 30MB+ cada, 20 dias de cópias ENCHERAM o disco do Render (ENOSPC real em produção). 3 dias cobre recuperação sem afogar o disco.
@@ -2400,368 +2219,6 @@ setTimeout(()=>{try{
   const r=reconciliarPlanosComPedidos(true);
   console.log(`[reconciliar] boot: ${r.length} correção(ões)${r.length?" → "+r.map(x=>x.email).join(", "):""}`);
 }catch(e){console.error("[reconciliar] falha no boot:",e.message);}},120_000);
-
-// ══ 🚚 v144 — MOTOR DE FUSÃO DE SERVIDORES (lado PUXADOR, roda no Srv 1) ════
-// Contexto (dono, 15/08/2026): OAuth do Google limita app não-verificado a
-// 100 usuários. O dono cria um OAuth NOVO só pro Servidor 1 e desliga o 2 e
-// o 3 — mas NADA pode se perder: dias de VIP pagos, comprovantes, envios,
-// ranking, diamantes. O Servidor 1 PUXA tudo dos irmãos (paginado, com os
-// PDFs do disco) e FUNDE. Regra de conflito de e-mail APROVADA pelo dono:
-// vence a conta criada por ÚLTIMO (perfil/currículos/textos dela valem),
-// MAS envios + anti-duplicado (regra 8!) + dias de VIP restantes + diamantes
-// + missões são SOMADOS das outras contas. Idempotente: e-mail já fundido
-// daquele servidor não soma de novo (fusao_state.json), então rodar 2x nunca
-// duplica dia nem diamante. Backup completo automático ANTES de fundir.
-const FUSAO_FILE=path.join(DATA_DIR,"fusao_state.json");
-let DB_FUSAO={};try{DB_FUSAO=JSON.parse(fs.readFileSync(FUSAO_FILE,"utf8"))||{};}catch{}
-// 📦 v148b: varre uploads de importação abandonados (celular fechou no meio)
-try{for(const f of fs.readdirSync(DATA_DIR))if(f.startsWith("fusao_upload_")&&f.endsWith(".part")&&Date.now()-fs.statSync(path.join(DATA_DIR,f)).mtimeMs>86400_000)fs.unlinkSync(path.join(DATA_DIR,f));}catch{}
-const _fusaoJob={running:false,serverId:null,modo:null,progress:0,total:0,log:[],startedAt:0,finishedAt:0,error:null,relatorio:null};
-function _fLog(msg,type){_fusaoJob.log.push({t:Date.now(),msg:String(msg).slice(0,300),type:type||"info"});if(_fusaoJob.log.length>400)_fusaoJob.log.shift();console.log("[fusão]",msg);}
-function _fusaoTs(v){if(!v)return 0;if(typeof v==="number")return v;const t=Date.parse(v);return isNaN(t)?0:t;}
-// 📦 v148 — FONTE ÚNICA do formato de exportação (usada pelo user-batch peer
-// E pelo arquivo de exportação): se um dia o shape mudar, muda nos 2 juntos.
-// Tokens OAuth NUNCA viajam (morrem com o client antigo mesmo — regra 13u).
-function _fusaoStripTokens(u){
-  if(!u)return u;
-  const c=JSON.parse(JSON.stringify(u));
-  delete c.refresh_token;delete c.access_token;
-  if(Array.isArray(c.senderEmails))c.senderEmails=c.senderEmails.map(se=>{const{refresh_token,access_token,tokens,...rest}=se||{};return rest;});
-  return c;
-}
-function _fusaoUserPayload(em){
-  const u2=DB_USERS[em];if(!u2)return null;
-  const pdfs=[];
-  for(const cvm of (u2.cvs||[])){
-    try{
-      const fp=cvPath(em,cvm.idx);
-      if(fs.existsSync(fp))pdfs.push({idx:cvm.idx,name:cvm.name||"cv.pdf",cvType:cvm.cvType||"resume",b64:fs.readFileSync(fp).toString("base64")});
-    }catch(e){}
-  }
-  return{user:_fusaoStripTokens(u2),hist:DB_HIST[em]||[],sent:[...(DB_SENT[em]||[])],
-    notes:DB_NOTES[em]||{},alerts:DB_ALERTS[em]||[],journey:DB_JOURNEY[em]||[],
-    push:DB_PUSH[em]||[],appIndex:DB_APP_INDEX[em]||{},pdfs};
-}
-function _fusaoGlobaisPayload(){
-  return{financeiro:{pagamentos:DB_FINANCEIRO.pagamentos||[],gastos:DB_FINANCEIRO.gastos||[],
-      repasses:DB_FINANCEIRO.repasses||[],alteracoes:DB_FINANCEIRO.alteracoes||[]},
-    codes:DB_CODES,reviews:DB_REVIEWS,trialUsed:DB_TRIAL_USED,
-    adminAudit:DB_ADMIN_AUDIT.slice(0,2000)};
-}
-// Requisição peer da fusão: timeout LONGO (batches carregam PDFs) e, SÓ em
-// ambiente de teste, aceita http local (produção continua exigindo https).
-function _peerFusaoReq(baseUrl,apiPath,bodyObj){
-  return new Promise((resolve)=>{
-    let u2;try{u2=new URL(baseUrl);}catch{return resolve(null);}
-    const ehTeste=!!process.env.TEST_LOGIN_TOKEN;
-    if(u2.protocol!=="https:"&&!ehTeste)return resolve(null);
-    const mod=u2.protocol==="https:"?https:http;
-    const body=bodyObj?JSON.stringify(bodyObj):null;
-    const rq=mod.request({hostname:u2.hostname,port:u2.port||(u2.protocol==="https:"?443:80),
-      path:apiPath,method:body?"POST":"GET",
-      headers:{"Content-Type":"application/json","Accept":"application/json","Accept-Encoding":"gzip",
-        "x-peer-fin":_peerFinToken()||"","User-Agent":"H2BApply-Fusao/"+SERVER_ID,
-        ...(body?{"Content-Length":Buffer.byteLength(body)}:{})}},resp=>{
-      const ch=[];resp.on("data",c=>ch.push(c));
-      resp.on("end",()=>{
-        let buf=Buffer.concat(ch);
-        try{const enc=String(resp.headers["content-encoding"]||"");if(enc.includes("gzip"))buf=zlib.gunzipSync(buf);}catch{}
-        try{resolve(JSON.parse(buf.toString()));}catch{resolve(null);}
-      });
-    });
-    rq.on("error",()=>resolve(null));
-    rq.setTimeout(120_000,()=>{rq.destroy();resolve(null);});
-    if(body)rq.write(body);rq.end();
-  });
-}
-// Restante de VIP em ms, cobrindo o stack novo E o legado (vip.expiresAt).
-function _vipRems(vip){
-  const now=Date.now();const v=vip||{};
-  let remM=Math.max(0,(v.manualExpires||0)-now);
-  let remA=Math.max(0,(v.autoExpires||0)-now);
-  if(v.active&&(v.expiresAt||0)>now){
-    const legado=(v.expiresAt)-now;const pl=String(v.plan||"vip");
-    if(["vip","vipro"].includes(pl))remM=Math.max(remM,legado);
-    if(["pro","vipro","doublepro"].includes(pl))remA=Math.max(remA,legado);
-    if(pl==="doublepro")remM=Math.max(remM,legado);
-  }
-  return{remM,remA};
-}
-// Funde o VIP: datas do vencedor + SOMA do restante do perdedor (dias pagos
-// nunca se perdem); plano final = o de maior tier entre os ativos.
-function _fundirVip(vipW,vipL,srcId){
-  const now=Date.now();
-  const w=vipW||{};const l=vipL||{};
-  const rw=_vipRems(w);const rl=_vipRems(l);
-  const manualExpires=(rw.remM+rl.remM)>0?now+rw.remM+rl.remM:Math.max(w.manualExpires||0,l.manualExpires||0);
-  const autoExpires=(rw.remA+rl.remA)>0?now+rw.remA+rl.remA:Math.max(w.autoExpires||0,l.autoExpires||0);
-  const ativoW=(rw.remM+rw.remA)>0,ativoL=(rl.remM+rl.remA)>0;
-  let plan=w.plan||l.plan||"vip";
-  if(ativoW&&ativoL)plan=(_PLAN_RANK[String(l.plan||"").toLowerCase()]||0)>(_PLAN_RANK[String(w.plan||"").toLowerCase()]||0)?l.plan:w.plan;
-  else if(!ativoW&&ativoL)plan=l.plan||plan;
-  let limits=w.limits||l.limits||null;
-  if(w.limits&&l.limits)limits={manual:Math.max(w.limits.manual||0,l.limits.manual||0),auto:Math.max(w.limits.auto||0,l.limits.auto||0)};
-  const creditos=[...(Array.isArray(w.creditos)?w.creditos:[]),
-    ...(Array.isArray(l.creditos)?l.creditos:[]).map(c=>({...c,motivo:String(c.motivo||"")+" [srv"+srcId+"]"}))].slice(-300);
-  const giftHistory=[...(Array.isArray(w.giftHistory)?w.giftHistory:[]),...(Array.isArray(l.giftHistory)?l.giftHistory:[])];
-  return{...l,...w,active:(rw.remM+rw.remA+rl.remM+rl.remA)>0||w.active||l.active,
-    manualExpires,autoExpires,plan,limits,creditos,giftHistory,
-    fusao:{de:srcId,em:now,somouManualMs:rl.remM,somouAutoMs:rl.remA}};
-}
-// Funde UM usuário vindo do servidor srcId no banco local. rel = relatório.
-function _fundirUsuario(em,inc,srcId,rel){
-  const incU=inc.user;if(!incU||!incU.email)incU.email=em;
-  const local=DB_USERS[em];
-  const gravaPdfs=(pdfs,remap)=>{
-    let n=0;
-    for(const p2 of (pdfs||[])){
-      try{
-        const idx=remap&&remap[p2.idx]!=null?remap[p2.idx]:p2.idx;
-        const fp=cvPath(em,idx);
-        if(!fs.existsSync(fp)){fs.mkdirSync(CVS_DIR,{recursive:true});fs.writeFileSync(fp,Buffer.from(p2.b64,"base64"));n++;}
-      }catch(e){rel.erros.push(`pdf ${em} idx${p2.idx}: ${e.message}`);}
-    }
-    return n;
-  };
-  if(!local){
-    // Conta só existe no servidor de origem — entra inteira, sem conflito.
-    DB_USERS[em]={...incU,_fusao:{de:srcId,em:Date.now(),conflito:false}};
-    DB_HIST[em]=inc.hist||[];
-    DB_SENT[em]=new Set(inc.sent||[]);
-    if(inc.notes&&Object.keys(inc.notes).length)DB_NOTES[em]=inc.notes;
-    if(Array.isArray(inc.alerts)&&inc.alerts.length)DB_ALERTS[em]=inc.alerts;
-    if(Array.isArray(inc.journey)&&inc.journey.length)DB_JOURNEY[em]=inc.journey;
-    if(Array.isArray(inc.push)&&inc.push.length)DB_PUSH[em]=inc.push;
-    if(inc.appIndex&&Object.keys(inc.appIndex).length)DB_APP_INDEX[em]=inc.appIndex;
-    rel.pdfs+=gravaPdfs(inc.pdfs);
-    rel.novos++;
-    return;
-  }
-  // CONFLITO: mesmo e-mail nos dois — vence a conta criada por ÚLTIMO.
-  const tLocal=_fusaoTs(local.created_at),tInc=_fusaoTs(incU.created_at);
-  const vencedorInc=tInc>tLocal;
-  const W=vencedorInc?incU:local,L=vencedorInc?local:incU;
-  const vip=_fundirVip(W.vip,L.vip,srcId);
-  // cvs: os do vencedor entram como estão; os do perdedor entram com idx
-  // remapeado se colidir (arquivos preservados — currículo é trabalho do usuário).
-  const cvsW=Array.isArray(W.cvs)?[...W.cvs]:[];
-  const idxUsados=new Set(cvsW.map(c=>c.idx));
-  const remapL={};const cvsL=[];
-  for(const c of (Array.isArray(L.cvs)?L.cvs:[])){
-    let idx=c.idx;
-    if(idxUsados.has(idx)){idx=Date.now()+Math.floor(Math.random()*100000);remapL[c.idx]=idx;}
-    idxUsados.add(idx);cvsL.push({...c,idx});
-  }
-  const cvs=[...cvsW,...cvsL];
-  const fundido={...L,...W,
-    vip,cvs,
-    saved:[...new Set([...(W.saved||[]),...(L.saved||[])])],
-    savedJobs:(()=>{const seen=new Set();const out=[];for(const j of [...(W.savedJobs||[]),...(L.savedJobs||[])]){const k=String(j.id||j.caseNum||"");if(seen.has(k))continue;seen.add(k);out.push(j);}return out.slice(0,500);})(),
-    senderEmails:(()=>{const seen=new Set();const out=[];for(const se of [...(W.senderEmails||[]),...(L.senderEmails||[])]){const k=String(se.email||"").toLowerCase();if(!k||seen.has(k))continue;seen.add(k);out.push(se);}return out;})(),
-    adminEditHistory:[...(L.adminEditHistory||[]),...(W.adminEditHistory||[])],
-    plan:vip.plan||W.plan||L.plan||"free",
-    isAdmin:!!(W.isAdmin||L.isAdmin),
-    _fusao:{de:srcId,em:Date.now(),conflito:true,vencedor:vencedorInc?("srv"+srcId):"local",
-      somouDiasManual:Math.round((_vipRems(L.vip).remM)/86400_000),somouDiasAuto:Math.round((_vipRems(L.vip).remA)/86400_000)}};
-  DB_USERS[em]=fundido;
-  // Envios: UNION por appId (regra 8 nunca falha; ranking soma os 2 lados).
-  const histKey=h2=>String(h2.appId||((h2.to||"")+"|"+(h2.sentAt||h2.date||"")));
-  const seenH=new Set((DB_HIST[em]||[]).map(histKey));
-  const novosH=(inc.hist||[]).filter(h2=>!seenH.has(histKey(h2)));
-  DB_HIST[em]=[...(DB_HIST[em]||[]),...novosH].sort((a,b)=>_fusaoTs(b.sentAt||b.date)-_fusaoTs(a.sentAt||a.date));
-  DB_SENT[em]=new Set([...(DB_SENT[em]||[]),...(inc.sent||[])]);
-  DB_NOTES[em]={...(inc.notes||{}),...(DB_NOTES[em]||{})};
-  DB_ALERTS[em]=[...(DB_ALERTS[em]||[]),...(inc.alerts||[])];
-  DB_JOURNEY[em]=[...(DB_JOURNEY[em]||[]),...(inc.journey||[])].slice(0,300);
-  DB_PUSH[em]=(()=>{const seen=new Set();const out=[];for(const s2 of [...(DB_PUSH[em]||[]),...(inc.push||[])]){const k=String(s2.endpoint||JSON.stringify(s2));if(seen.has(k))continue;seen.add(k);out.push(s2);}return out;})();
-  DB_APP_INDEX[em]={...(inc.appIndex||{}),...(DB_APP_INDEX[em]||{})};
-  rel.pdfs+=gravaPdfs(inc.pdfs,vencedorInc?null:remapL);
-  rel.conflitos.push({email:em,vencedor:vencedorInc?("Servidor "+srcId):"Servidor local",
-    somouDiasManual:fundido._fusao.somouDiasManual,somouDiasAuto:fundido._fusao.somouDiasAuto,
-    enviosSomados:novosH.length});
-  rel.fundidos++;
-}
-async function _runFusao(serverId,quem){
-  const sv=_getServersConfig().find(x=>x.id===serverId);
-  if(!sv||!sv.url){_fusaoJob.error="Servidor "+serverId+" sem URL configurada";_fusaoJob.running=false;_fusaoJob.finishedAt=Date.now();return;}
-  const st=DB_FUSAO["srv"+serverId]=DB_FUSAO["srv"+serverId]||{doneEmails:{},donePedidos:{},globaisDone:false};
-  const rel={novos:0,fundidos:0,pulados:0,conflitos:[],pedidosImportados:0,pedidosPulados:0,pdfs:0,erros:[],
-    financeiro:{pagamentos:0,gastos:0,repasses:0},codes:0,reviews:0};
-  try{
-    _fLog(`🗄️ Backup completo do Servidor local ANTES da fusão...`);
-    const bk=criarBackupCompleto();
-    if(!bk||bk.ok===false)throw new Error("backup pré-fusão falhou: "+(bk&&bk.error||"?")+" — fusão ABORTADA (regra: nunca fundir sem ter como voltar)");
-    _fLog(`✅ Backup ok. Pedindo manifest ao ${sv.nome} (${sv.url})...`);
-    // v147b (caso real do dono na virada): servidor Free do Render DORME e
-    // demora ~1min pra acordar; e logo após um push o deploy ainda pode
-    // estar rodando (versão velha no ar, sem as rotas de fusão). Em vez de
-    // falhar na 1ª tentativa, insiste por ~2min explicando o que espera.
-    let man=null;
-    for(let tent=1;tent<=5;tent++){
-      man=await _peerFusaoReq(sv.url,"/api/servers/fusao/manifest");
-      if(man&&man.ok)break;
-      if(tent<5){_fLog(`⏳ ${sv.nome} não respondeu (tentativa ${tent}/5) — pode estar ACORDANDO (plano Free ≈1min) ou com deploy em andamento. Tentando de novo em 20s...`,"warn");await new Promise(r=>setTimeout(r,process.env.TEST_LOGIN_TOKEN?300:20_000));}
-    }
-    if(!man||!man.ok)throw new Error("manifest não respondeu após 5 tentativas (~2min) — confira no Render se o "+sv.nome+" está com o deploy NOVO (v144+) no estado Live, abra a URL dele numa aba pra acordar, e clique Puxar de novo");
-    const emailsPend=(man.emails||[]).filter(e2=>!st.doneEmails[e2]);
-    const pedidosPend=(man.pedidosIds||[]).filter(id=>!st.donePedidos[id]);
-    _fusaoJob.total=emailsPend.length+pedidosPend.length+1;
-    _fLog(`📋 ${man.counts.users} usuário(s) lá (${emailsPend.length} pendentes) · ${man.counts.pedidos} pedido(s) (${pedidosPend.length} pendentes)`);
-    rel.pulados=(man.emails||[]).length-emailsPend.length;
-    rel.pedidosPulados=(man.pedidosIds||[]).length-pedidosPend.length;
-    // usuários em lotes de 5 (PDFs a bordo — memória controlada)
-    for(let i=0;i<emailsPend.length;i+=5){
-      const lote=emailsPend.slice(i,i+5);
-      let rb=await _peerFusaoReq(sv.url,"/api/servers/fusao/user-batch",{emails:lote});
-      if(!rb||!rb.ok){await new Promise(r=>setTimeout(r,process.env.TEST_LOGIN_TOKEN?200:8000));rb=await _peerFusaoReq(sv.url,"/api/servers/fusao/user-batch",{emails:lote});} // v147b: 1 retry contra soluço de rede
-      if(!rb||!rb.ok){rel.erros.push("lote de usuários falhou: "+lote.join(","));_fLog(`⚠️ lote falhou (${lote.join(", ")}) — continua nos próximos (rode a fusão de novo no fim: só refaz o que faltou)`,"warn");continue;}
-      for(const [em,inc] of Object.entries(rb.users||{})){
-        try{_fundirUsuario(em,inc,serverId,rel);st.doneEmails[em]=Date.now();}
-        catch(e){rel.erros.push(em+": "+e.message);_fLog(`⚠️ ${em}: ${e.message}`,"warn");}
-      }
-      _fusaoJob.progress+=lote.length;
-      _fLog(`👤 ${Math.min(i+5,emailsPend.length)}/${emailsPend.length} usuários processados`);
-    }
-    // pedidos em lotes de 10 (comprovantes a bordo)
-    for(let i=0;i<pedidosPend.length;i+=10){
-      const lote=pedidosPend.slice(i,i+10);
-      const rb=await _peerFusaoReq(sv.url,"/api/servers/fusao/pedidos-batch",{ids:lote});
-      if(!rb||!rb.ok){rel.erros.push("lote de pedidos falhou");_fLog("⚠️ lote de pedidos falhou — continua","warn");continue;}
-      for(const pd of (rb.pedidos||[])){
-        if(!pd.id||DB_PEDIDOS.some(x=>x.id===pd.id)){st.donePedidos[pd.id]=1;continue;}
-        DB_PEDIDOS.push({...pd,origemServidor:serverId});
-        st.donePedidos[pd.id]=1;rel.pedidosImportados++;
-      }
-      _fusaoJob.progress+=lote.length;
-      _fLog(`🧾 ${Math.min(i+10,pedidosPend.length)}/${pedidosPend.length} pedidos processados`);
-    }
-    // globais (financeiro/códigos/reviews/anti-trial/auditoria) — 1 vez
-    if(!st.globaisDone){
-      const gl=await _peerFusaoReq(sv.url,"/api/servers/fusao/globais");
-      if(!gl||!gl.ok)throw new Error("globais não respondeu");
-      _fusaoAplicarGlobais(gl,serverId,rel);
-      st.globaisDone=true;
-      _fLog(`💰 Globais fundidos: +${rel.financeiro.pagamentos} pagamentos, +${rel.financeiro.gastos} gastos, +${rel.codes} códigos, +${rel.reviews} avaliações`);
-    }else _fLog("💰 Globais já tinham sido fundidos antes — pulando (idempotência)");
-    _fusaoJob.progress++;
-    // Persistência SÍNCRONA de tudo — dado de dinheiro nunca fica só na memória.
-    _fLog("💾 Gravando tudo no disco...");
-    _fusaoPersistTudo();
-    st.lastRunAt=Date.now();st.relatorio=rel;st.por=quem;
-    fs.writeFileSync(FUSAO_FILE,JSON.stringify(DB_FUSAO,null,2));
-    _fusaoJob.relatorio=rel;
-    _fLog(`✅ FUSÃO DO ${sv.nome} CONCLUÍDA: ${rel.novos} contas novas · ${rel.fundidos} fundidas (conflito) · ${rel.pulados} já feitas antes · ${rel.pedidosImportados} pedidos importados · ${rel.pdfs} PDFs gravados · ${rel.erros.length} erro(s)`,"ok");
-    logAdminAction(quem,"fusao_servidores",("srv"+serverId),null,null,`Fusão do Servidor ${serverId}: ${rel.novos} novos, ${rel.fundidos} fundidos, ${rel.pedidosImportados} pedidos, ${rel.pdfs} PDFs`);
-  }catch(e){
-    _fusaoJob.error=e.message;_fusaoJob.relatorio=rel;
-    _fLog("❌ "+e.message,"error");
-    try{fs.writeFileSync(FUSAO_FILE,JSON.stringify(DB_FUSAO,null,2));}catch{}
-  }
-  _fusaoJob.running=false;_fusaoJob.finishedAt=Date.now();
-}
-// Aplica os GLOBAIS (caixa/códigos/reviews/anti-trial/auditoria) de um irmão —
-// fonte única usada pela fusão por rede E pela importação por arquivo (v148).
-function _fusaoAplicarGlobais(gl,serverId,rel){
-  const addSemDup=(destino,itens,keyFn)=>{const seen=new Set(destino.map(keyFn));let n=0;for(const it of (itens||[])){const k=keyFn(it);if(k&&seen.has(k))continue;seen.add(k);destino.push({...it,origemServidor:serverId});n++;}return n;};
-  DB_FINANCEIRO.pagamentos=DB_FINANCEIRO.pagamentos||[];DB_FINANCEIRO.gastos=DB_FINANCEIRO.gastos||[];DB_FINANCEIRO.repasses=DB_FINANCEIRO.repasses||[];DB_FINANCEIRO.alteracoes=DB_FINANCEIRO.alteracoes||[];
-  rel.financeiro.pagamentos=addSemDup(DB_FINANCEIRO.pagamentos,gl.financeiro&&gl.financeiro.pagamentos,x=>x.id||((x.email||"")+"|"+(x.valor||0)+"|"+(x.dataPagamento||x.data||x.criadoEm||"")));
-  rel.financeiro.gastos=addSemDup(DB_FINANCEIRO.gastos,gl.financeiro&&gl.financeiro.gastos,x=>x.id||((x.descricao||x.nota||"")+"|"+(x.valor||0)+"|"+(x.data||x.criadoEm||"")));
-  rel.financeiro.repasses=addSemDup(DB_FINANCEIRO.repasses,gl.financeiro&&gl.financeiro.repasses,x=>x.id||JSON.stringify(x));
-  DB_FINANCEIRO.alteracoes.push(...((gl.financeiro&&gl.financeiro.alteracoes)||[]).map(a=>({...a,origemServidor:serverId})));
-  for(const [code,c] of Object.entries(gl.codes||{})){
-    if(!DB_CODES[code]){DB_CODES[code]={...c,origemServidor:serverId};rel.codes++;}
-    else DB_CODES[code]={...DB_CODES[code],usedBy:[...new Set([...(DB_CODES[code].usedBy||[]),...(c.usedBy||[])])]};
-  }
-  rel.reviews=addSemDup(DB_REVIEWS,gl.reviews,x=>x.id||((x.email||"")+"|"+(x.createdAt||"")));
-  DB_TRIAL_USED.phones={...(gl.trialUsed&&gl.trialUsed.phones||{}),...(DB_TRIAL_USED.phones||{})};
-  DB_TRIAL_USED.ips=(()=>{const o={...(gl.trialUsed&&gl.trialUsed.ips||{})};for(const [k,v] of Object.entries(DB_TRIAL_USED.ips||{}))o[k]=[...new Set([...(o[k]||[]),...(Array.isArray(v)?v:[v])])];return o;})();
-  DB_TRIAL_USED.googleIds={...(gl.trialUsed&&gl.trialUsed.googleIds||{}),...(DB_TRIAL_USED.googleIds||{})};
-  DB_ADMIN_AUDIT.push(...(gl.adminAudit||[]).map(a=>({...a,origemServidor:serverId})));
-  DB_ADMIN_AUDIT.sort((a,b)=>(b.ts||0)-(a.ts||0));if(DB_ADMIN_AUDIT.length>2000)DB_ADMIN_AUDIT.length=2000;
-}
-// Persistência SÍNCRONA de tudo que a fusão toca — dado de dinheiro nunca
-// fica só na memória. Lança erro se a gravação principal falhar (disco cheio).
-function _fusaoPersistTudo(){
-  const oks=[persist(USERS_FILE,DB_USERS),persist(HIST_FILE,DB_HIST)];
-  persistSent();persistPedidos();persistFinanceiro();persistCodes();persistPush();
-  persist(NOTES_FILE,DB_NOTES);persist(ALERTS_FILE,DB_ALERTS);persist(JOURNEY_FILE,DB_JOURNEY);
-  persist(APPIDX_FILE,DB_APP_INDEX);persist(REVIEWS_FILE,DB_REVIEWS);persist(TRIAL_USED_FILE,DB_TRIAL_USED);
-  persist(ADMIN_AUDIT_FILE,DB_ADMIN_AUDIT);
-  if(oks.includes(false))throw new Error("GRAVAÇÃO NO DISCO FALHOU (disco cheio?) — dados na memória; libere espaço e rode de novo ANTES de reiniciar");
-}
-// 📦 v148 (dono, 20/08/2026 — "já que a fusão não está dando certo... botão
-// de download de todas as informações... e no server 1 o importar"): mesma
-// fusão, mas a FONTE é um ARQUIVO exportado pelo admin no servidor de origem
-// (não depende dos dois servidores estarem no ar ao mesmo tempo). A regra de
-// conflito, a idempotência (fusao_state por servidor de origem) e o backup
-// prévio são EXATAMENTE os mesmos da fusão por rede — funções compartilhadas.
-async function _runFusaoArquivo(dados,quem){
-  const serverId=dados.serverId;
-  const st=DB_FUSAO["srv"+serverId]=DB_FUSAO["srv"+serverId]||{doneEmails:{},donePedidos:{},globaisDone:false};
-  const rel={novos:0,fundidos:0,pulados:0,conflitos:[],pedidosImportados:0,pedidosPulados:0,pdfs:0,erros:[],
-    financeiro:{pagamentos:0,gastos:0,repasses:0},codes:0,reviews:0};
-  try{
-    _fLog(`🗄️ Backup completo do Servidor local ANTES de importar...`);
-    const bk=criarBackupCompleto();
-    if(!bk||bk.ok===false)throw new Error("backup pré-importação falhou: "+(bk&&bk.error||"?")+" — importação ABORTADA (regra: nunca fundir sem ter como voltar)");
-    const usersObj=dados.users||{};
-    const todosEmails=Object.keys(usersObj);
-    const emailsPend=todosEmails.filter(e2=>!st.doneEmails[e2]);
-    const pedidos=Array.isArray(dados.pedidos)?dados.pedidos:[];
-    const pedidosPend=pedidos.filter(pd=>pd&&pd.id&&!st.donePedidos[pd.id]);
-    _fusaoJob.total=emailsPend.length+pedidosPend.length+1;
-    rel.pulados=todosEmails.length-emailsPend.length;
-    rel.pedidosPulados=pedidos.length-pedidosPend.length;
-    _fLog(`📦 Arquivo do Servidor ${serverId} (exportado em ${dados.exportadoEm?new Date(dados.exportadoEm).toLocaleString("pt-BR"):"?"}): ${todosEmails.length} usuário(s) (${emailsPend.length} pendentes) · ${pedidos.length} pedido(s) (${pedidosPend.length} pendentes)`);
-    for(const em of emailsPend){
-      try{_fundirUsuario(em,usersObj[em],serverId,rel);st.doneEmails[em]=Date.now();}
-      catch(e){rel.erros.push(em+": "+e.message);_fLog(`⚠️ ${em}: ${e.message}`,"warn");}
-      _fusaoJob.progress++;
-    }
-    if(emailsPend.length)_fLog(`👤 ${emailsPend.length}/${emailsPend.length} usuários processados`);
-    for(const pd of pedidosPend){
-      if(DB_PEDIDOS.some(x=>x.id===pd.id)){st.donePedidos[pd.id]=1;_fusaoJob.progress++;continue;}
-      DB_PEDIDOS.push({...pd,origemServidor:serverId});
-      st.donePedidos[pd.id]=1;rel.pedidosImportados++;_fusaoJob.progress++;
-    }
-    if(pedidosPend.length)_fLog(`🧾 ${pedidosPend.length}/${pedidosPend.length} pedidos processados`);
-    if(!st.globaisDone){
-      _fusaoAplicarGlobais(dados.globais||{},serverId,rel);
-      st.globaisDone=true;
-      _fLog(`💰 Globais fundidos: +${rel.financeiro.pagamentos} pagamentos, +${rel.financeiro.gastos} gastos, +${rel.codes} códigos, +${rel.reviews} avaliações`);
-    }else _fLog("💰 Globais já tinham sido fundidos antes — pulando (idempotência)");
-    _fusaoJob.progress++;
-    _fLog("💾 Gravando tudo no disco...");
-    _fusaoPersistTudo();
-    st.lastRunAt=Date.now();st.relatorio=rel;st.por=quem;
-    fs.writeFileSync(FUSAO_FILE,JSON.stringify(DB_FUSAO,null,2));
-    _fusaoJob.relatorio=rel;
-    _fLog(`✅ IMPORTAÇÃO DO SERVIDOR ${serverId} CONCLUÍDA: ${rel.novos} contas novas · ${rel.fundidos} fundidas (conflito) · ${rel.pulados} já feitas antes · ${rel.pedidosImportados} pedidos importados · ${rel.pdfs} PDFs gravados · ${rel.erros.length} erro(s)`,"ok");
-    logAdminAction(quem,"fusao_importar_arquivo",("srv"+serverId),null,null,`Importação por arquivo do Servidor ${serverId}: ${rel.novos} novos, ${rel.fundidos} fundidos, ${rel.pedidosImportados} pedidos, ${rel.pdfs} PDFs`);
-  }catch(e){
-    _fusaoJob.error=e.message;_fusaoJob.relatorio=rel;
-    _fLog("❌ "+e.message,"error");
-    try{fs.writeFileSync(FUSAO_FILE,JSON.stringify(DB_FUSAO,null,2));}catch{}
-  }
-  _fusaoJob.running=false;_fusaoJob.finishedAt=Date.now();
-}
-// 📦 v148b — valida o arquivo e dispara a importação em background. Fonte
-// única compartilhada pelo corpo único (curl/teste) E pelo upload em partes
-// (celular). Devolve {status,body} pra rota responder com json().
-function _fusaoImportStartFromBuf(buf,quem,selfId){
-  let txt;try{txt=zlib.gunzipSync(buf).toString("utf8");}catch{txt=buf.toString("utf8");}
-  let dados;try{dados=JSON.parse(txt);}catch{return{status:400,body:{error:"Arquivo inválido — não parece um arquivo de exportação do H2BApply. Baixe de novo no servidor de origem (botão ⬇️) e importe sem abrir/editar."}};}
-  if(dados.fmt!=="h2bapply-fusao-arquivo-v1")return{status:400,body:{error:"Formato desconhecido — use exatamente o arquivo gerado pelo botão ⬇️ Baixar do painel do servidor de origem."}};
-  const serverId=parseInt(dados.serverId,10)||0;
-  if(![1,2,3].includes(serverId))return{status:400,body:{error:"Arquivo sem identificação válida do servidor de origem."}};
-  if(serverId===selfId)return{status:400,body:{error:`Esse arquivo foi exportado DESTE mesmo servidor (${serverId}) — importar aqui duplicaria tudo. Baixe o arquivo no Servidor 2 ou 3 e importe aqui no que vai sobreviver.`}};
-  if(_fusaoJob.running)return{status:409,body:{error:"Uma fusão/importação já está rodando — acompanhe pelo log.",running:true}};
-  _fusaoJob.running=true;_fusaoJob.serverId=serverId;_fusaoJob.modo="arquivo";_fusaoJob.progress=0;_fusaoJob.total=0;
-  _fusaoJob.log=[];_fusaoJob.startedAt=Date.now();_fusaoJob.finishedAt=0;_fusaoJob.error=null;_fusaoJob.relatorio=null;
-  _runFusaoArquivo(dados,quem).catch(e=>{_fusaoJob.error=e.message;_fusaoJob.running=false;_fusaoJob.finishedAt=Date.now();});
-  return{status:200,body:{ok:true,started:true,serverId,modo:"arquivo",
-    users:Object.keys(dados.users||{}).length,pedidos:(dados.pedidos||[]).length}};
-}
 
 // FIX-BUG15 v2: limpeza inteligente de DB_SENT por data de envio
 // Remove apenas emails enviados há mais de 6 meses, preservando os recentes.
@@ -4280,10 +3737,6 @@ function updateAutoStats(email, delta) {
 }
 
 function scheduleAuto(email) {
-  // 💸 v151: servidor aposentado não envia — todo mundo já migrou pro
-  // Servidor 1 (mandar daqui em paralelo dobraria contato com empregador,
-  // furando a regra 8 entre servidores). Ponto único: sem timer, nada roda.
-  if(MODO_APOSENTADO)return;
   if(autoTimers.has(email))clearTimeout(autoTimers.get(email));
   const job=getAutoJob(email);
   if(!job||!job.active){autoTimers.delete(email);return;}
@@ -6331,20 +5784,6 @@ const server=http.createServer(async(req,res)=>{
   res.setHeader("Access-Control-Allow-Origin",ao);res.setHeader("Access-Control-Allow-Credentials","true");res.setHeader("Access-Control-Allow-Methods","GET,POST,DELETE,PATCH,OPTIONS");res.setHeader("Access-Control-Allow-Headers","Content-Type");
   if(req.method==="OPTIONS"){res.writeHead(204);return res.end();}
 
-  // ══ 🚚 v146 — MODO APOSENTADO (ordem do dono, 15/08): depois da fusão,
-  // quem tentar entrar no Servidor 2/3 é JOGADO pro Servidor 1. Liga com a
-  // env REDIRECT_ALL_TO=https://h2bapply.com no Render do servidor antigo.
-  // Exceção ÚNICA: as rotas peer /api/servers/* continuam respondendo (pra
-  // fusão/re-puxada continuar funcionando enquanto o servidor viver). O
-  // caminho é preservado no redirect (link antigo de /admin cai no /admin
-  // novo). 302 (temporário) de propósito — se um dia a env sair, os
-  // navegadores não ficam presos num 301 cacheado pra sempre.
-  const _redirAlvo=String(process.env.REDIRECT_ALL_TO||"").trim().replace(/\/+$/,"");
-  if(_redirAlvo&&/^https?:\/\//.test(_redirAlvo)&&!pathname.startsWith("/api/servers/")){
-    res.writeHead(302,{Location:_redirAlvo+pathname+(u.search||""),"Cache-Control":"no-store"});
-    return res.end("Este servidor foi unificado. Acesse: "+_redirAlvo);
-  }
-
   const serveHtml=f=>sendAsset(req,res,f,"text/html; charset=utf-8","no-cache"); // V951: brotli/gzip + ETag
   // v40 (reclamação real do dono, 22/07): os ícones Tabler vinham de CDN
   // (jsdelivr/unpkg) que MUITAS redes móveis brasileiras bloqueiam — app
@@ -8167,17 +7606,7 @@ filtrar();
       sessions[sid]={refresh_token:_existingRt,user_email:ui.email,user_name:ui.name||ui.email,picture:ui.picture||"",created_at:Date.now()};
       persistSessionsDebounced(500); // V955: login sobrevive a restart imediato
       const ex=getUser(ui.email);
-      // ══ MULTI-SERVIDOR: TRAVA DE CONTA ÚNICA (só para conta NOVA) ══════
-      // Login de quem já existe AQUI segue 100% normal — as travas abaixo
-      // valem apenas para cadastro novo. Bloqueio é feito ANTES de criar
-      // qualquer registro; a sessão pré-criada é descartada.
-      // 🚨 v156 (ORDEM DO DONO, 22/08 — pessoa real barrada tentando criar
-      // conta e sendo jogada pro Servidor 3): a era multi-servidor ACABOU.
-      // Cadastro novo e login acontecem SEMPRE aqui — a trava de "lotado" e a
-      // consulta de conta nos irmãos (v58/v63) foram REMOVIDAS de vez. As
-      // contas dos Servidores 2/3 já moram aqui via fusão (v148); um irmão
-      // ainda no ar com dado velho nunca mais é motivo pra recusar ninguém.
-      if(!ex)console.log(`[servers] 🆕 Cadastro novo aceito no Servidor ${_resolveServerId(req)}: ${ui.email} (v156: era de 1 servidor só — sem trava de lotado, sem consulta a irmãos)`);
+      if(!ex)console.log(`[auth] 🆕 Cadastro novo aceito: ${ui.email}`);
       if(!ex){
         // 🔒 v172 (ORDEM DO DONO, 11/09/2026): NENHUM trial grátis mais —
         // "o site vai ser só pra pessoas pagantes usarem". Conta nova nasce
@@ -8626,49 +8055,23 @@ filtrar();
     if(!isAdminEmail(s.user_email))return json(res,403,{error:"Apenas admins."});
     return json(res,200,{ok:true,emails:DB_BLOCKED.emails});
   }
-  // 🩺 v155 — Admin: POR QUE ESTE E-MAIL NÃO ENTRA? (ordem do dono, 22/08 —
-  // caso Esdras: o "ban" já tinha sido limpo e ele continuava barrado; a
-  // causa era OUTRA porta). Testa TODAS as portas de bloqueio de uma vez:
-  // ban local, conta existe?, servidor lotado (barra cadastro novo!), conta
-  // em servidor-irmão (e o status dele), flags de trial. Veredito mastigado.
+  // 🩺 v155 — Admin: POR QUE ESTE E-MAIL NÃO ENTRA? Testa as portas de
+  // bloqueio locais de uma vez: ban, conta existe?, flags de trial.
   if(pathname==="/api/admin/diagnostico-login"&&req.method==="GET"){
     const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
     if(!(adm?.isAdmin||isAdminEmail(s?.user_email||"")))return json(res,403,{error:"Só admin."});
     try{
       const email=String(u.searchParams.get("email")||"").toLowerCase().trim();
       if(!email.includes("@"))return json(res,400,{error:"email inválido"});
-      const _selfId=_resolveServerId(req);
-      const cfg=_getServersConfig();
-      const selfCfg=cfg.find(x=>x.id===_selfId)||{};
       const usr=getUser(email);
       const problemas=[];const info=[];
-      if(DB_BLOCKED.emails.includes(email))problemas.push("🚫 BANIDO neste servidor (lista de banidos) — desbanir na seção 🚫 abaixo");
-      else info.push("✅ NÃO está na lista de banidos deste servidor");
-      if(usr){info.push("✅ Conta EXISTE neste servidor ("+(usr.name||"sem nome")+", plano "+(usr.plan||"free")+") — login é liberado independente de lotação");}
-      else{
-        info.push("ℹ️ Conta NÃO existe neste servidor — a pessoa entraria como CADASTRO NOVO (desde o v156 o cadastro novo é SEMPRE aceito aqui: sem trava de lotado, sem redirecionar pra irmão)");
-        if(selfCfg.status==="lotado")info.push("ℹ️ O status 'lotado' na config é só decorativo desde o v156 — não recusa mais cadastro nenhum");
-      }
-      const peers=[];
-      for(const sv of cfg){
-        if(sv.id===_selfId||!sv.url)continue;
-        let tem=null;
-        try{
-          const hh=crypto.createHash("sha256").update(email).digest("hex");
-          const hurl=new URL(sv.url);
-          if(hurl.protocol==="https:"){
-            const call=httpsReq({hostname:hurl.hostname,port:hurl.port||443,path:"/api/servers/has-account?h="+hh,method:"GET",headers:{"Accept":"application/json","User-Agent":"H2BApply-Server/"+_selfId}});
-            const r=await Promise.race([call,new Promise(r2=>setTimeout(()=>r2(null),6000))]);
-            tem=r&&r.status===200?!!(r.body&&r.body.exists):null;
-          }
-        }catch(e){}
-        peers.push({id:sv.id,nome:sv.nome,status:sv.status,contaLa:tem});
-        if(tem===true&&sv.status!=="oculto")problemas.push(`⚠️ Conta encontrada no ${sv.nome} (status ${sv.status}) — a triagem manda a pessoa pra LÁ. Se esse servidor está aposentado, marque-o como 🙈 Oculto nas Configurações`);
-        if(tem===true&&sv.status==="oculto")info.push(`ℹ️ Conta existe no ${sv.nome}, mas ele está Oculto — desde o v155 o site NÃO manda mais ninguém pra lá (importe os dados dele pra cá, se ainda não importou)`);
-      }
+      if(DB_BLOCKED.emails.includes(email))problemas.push("🚫 BANIDO (lista de banidos) — desbanir na seção 🚫 abaixo");
+      else info.push("✅ NÃO está na lista de banidos");
+      if(usr){info.push("✅ Conta EXISTE ("+(usr.name||"sem nome")+", plano "+(usr.plan||"free")+") — login é liberado");}
+      else info.push("ℹ️ Conta NÃO existe — a pessoa entraria como CADASTRO NOVO (sempre aceito)");
       if(usr?._trialBlockedByIp||usr?._trialBlockedByGoogleId)info.push("ℹ️ Flag anti-abuso de TRIAL presente — não bloqueia login, só o teste grátis");
-      const veredito=problemas.length?("❌ "+problemas.length+" bloqueio(s) encontrado(s) — veja acima"):"✅ NENHUM bloqueio deste lado: se a pessoa ainda não entra, confira se ela está usando ESTE endereço (h2bapply.com) e não um link/app antigo do Servidor 2/3 (lá o código está congelado com as regras antigas — configure o REDIRECT_ALL_TO nesses serviços pra resolver de vez)";
-      return json(res,200,{ok:true,email,servidor:_selfId,statusServidor:selfCfg.status||"aberto",problemas,info,peers,veredito});
+      const veredito=problemas.length?("❌ "+problemas.length+" bloqueio(s) encontrado(s) — veja acima"):"✅ NENHUM bloqueio encontrado";
+      return json(res,200,{ok:true,email,problemas,info,veredito});
     }catch(e){return json(res,500,{error:e.message});}
   }
   // ── 💼 MC4-P1 (MASTER COMMAND 4, dono, 28/08/2026): SÓCIOS & ACERTO ────
@@ -8821,9 +8224,7 @@ filtrar();
       if(compMb>=30)dicas.push(`⚠️ ${compMb}MB de comprovantes base64 vivem PERMANENTEMENTE na RAM (${compN} arquivo(s)) — candidato nº1 a migrar pra disco com leitura sob demanda.`);
       const planMb=planilhas.reduce((s2,p2)=>s2+p2.mbEstimado,0);
       if(planMb>=100)dicas.push(`ℹ️ Planilhas extras somam ~${Math.round(planMb)}MB residentes (${planilhas.length} planilha(s)) — necessárias pra busca instantânea; histórica antiga pouco usada pode ser candidata a despublicar.`);
-      const bkp=arquivos.find(a=>a.nome==="backups_peers/");
-      if(bkp&&bkp.mb>=200)dicas.push(`ℹ️ backups_peers/ ocupa ${bkp.mb}MB em DISCO (não RAM) — só entra na memória durante backup/restauração.`);
-      if(MB(mu.rss)-MB(mu.heapUsed)>=300)dicas.push(`ℹ️ rss ${MB(mu.rss)}MB vs heap usado ${MB(mu.heapUsed)}MB: a diferença é buffer/nativo/fragmentação — picos transientes (coleta ZIP, backup gzip, importar fusão) contam aqui.`);
+      if(MB(mu.rss)-MB(mu.heapUsed)>=300)dicas.push(`ℹ️ rss ${MB(mu.rss)}MB vs heap usado ${MB(mu.heapUsed)}MB: a diferença é buffer/nativo/fragmentação — picos transientes (coleta ZIP, backup gzip) contam aqui.`);
       if(!dicas.length)dicas.push("✅ Nenhum ofensor óbvio de memória nos números medidos agora — se o rss estiver alto mesmo assim, o vilão é pico transiente (compare este raio-x logo após um deploy vs horas depois).");
       return json(res,200,{ok:true,
         processo:{rssMB:MB(mu.rss),heapUsadoMB:MB(mu.heapUsed),heapTotalMB:MB(mu.heapTotal),externosMB:MB(mu.external||0),buffersMB:MB(mu.arrayBuffers||0),uptimeHoras:Math.round(process.uptime()/360)/10,node:process.version},
@@ -9783,14 +9184,8 @@ filtrar();
       preCheckComprovante(pedido,{ativar:true}).catch(()=>{});
       // Log interno (registrado no histórico do usuário do plano, não de quem clicou)
       addLog(targetEmail,{status:"sistema",jobTitle:`💳 ${targetEmail!==s.user_email?"Pedido regularizado pelo admin":"Novo pedido de plano"}: ${pedido.plano} ${pedido.dias}d — R$${pedido.valorTotal}`,company:"Pedido #"+pedido.id.slice(-8).toUpperCase()});
-      // Push + Email para admins (em background)
+      // Email para admins (em background)
       ;(async()=>{
-        try{
-          const admins=[...ADMIN_EMAILS];
-          for(const ae of admins){
-          }
-        }catch(e){console.warn("[pedido] push err:",e.message);}
-        // Email para admins
         try{
           let adminToken=null, adminTokenFrom=null;
           // 1) Token de sessão ativa do admin principal
@@ -10437,7 +9832,7 @@ ${pedido.criadoPor&&pedido.criadoPor!==pedido.userEmail?`\n🛠️ Registrado re
     // vs "conecte seu Gmail" (tem plano, mas nunca passou por
     // /oauth/connect-send). Admin sempre gmailConnected:true (isento).
     const gmailConnected = isAdminVip(p) || !!p.refresh_token;
-    return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,planRulesNotice:_prNotice,manualCdOff:p.manualCdOff===true,gmailConnected,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",language:p.language||"pt-BR",h2bProfile:p.h2bProfile||{},serverId:_resolveServerId(req),age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||180),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
+    return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,planRulesNotice:_prNotice,manualCdOff:p.manualCdOff===true,gmailConnected,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",language:p.language||"pt-BR",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||180),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
   }
 
   if(pathname==="/api/onboard"&&req.method==="POST"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});setUser(s.user_email,{onboarded:true});return json(res,200,{ok:true});}
@@ -10535,7 +9930,11 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Sessão expirada."});
     const p=getUser(s.user_email)||{};
     if(!isAdminVip(p)&&!isVipActive(p))return json(res,402,{error:"Você precisa de um plano ativo pra enviar candidaturas.",needsPlan:true});
-    if(!isAdminVip(p)&&!p.refresh_token)return json(res,403,{error:"Conecte seu Gmail pra começar a enviar candidaturas.",needsGmailConnect:true});
+    // 🔒 v172: admin pula a trava de PLANO (isAdminVip já vale como plano
+    // máximo), mas NÃO pula a de Gmail conectado — sem token de verdade
+    // ninguém envia nada, admin incluso; bypassar aqui só trocaria um erro
+    // limpo (403 needsGmailConnect) por um erro cru lá na frente.
+    if(!p.refresh_token)return json(res,403,{error:"Conecte seu Gmail pra começar a enviar candidaturas.",needsGmailConnect:true});
     let dedupKey = null; // declarado fora do try para que o catch possa acessar
     let _reservedManualSlot=false; // idem — precisa ser liberada mesmo se o catch pegar um erro
     let _toEmailForErr=null; // idem — usado só pra dar contexto numa mensagem de erro amigável
@@ -11346,7 +10745,8 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
     // confundiria quem nunca teve chance de mandar nenhum.
     if(!isAdminVip(p)&&autoLimit<=0)return json(res,402,{error:"Você precisa de um plano com envio automático (VIPro ou DoublePro) pra usar o robô.",needsPlan:true});
     if(!isAdminVip(p)&&todayAuto>=autoLimit)return json(res,429,{error:`Limite de ${autoLimit} automáticos/dia atingido.`,limitReached:true});
-    if(!isAdminVip(p)&&!p.refresh_token)return json(res,403,{error:"Conecte seu Gmail antes de ligar o envio automático.",needsGmailConnect:true});
+    // 🔒 v172: mesma régua do /api/send — admin pula PLANO, nunca Gmail conectado.
+    if(!p.refresh_token)return json(res,403,{error:"Conecte seu Gmail antes de ligar o envio automático.",needsGmailConnect:true});
     try{
       const d=JSON.parse(await readBody(req));
       // ── Validação: perfil válido ──────────────────────────
@@ -11975,39 +11375,6 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
     // ── v28: 💰 VISÃO DO DONO — a 1ª tela do admin (ordem do dono: "o adm
     // precisa saber sobre valores, entradas, e tudo sobre isso"). Padrão dos
     // painéis de referência: 4-6 números de dinheiro/ação, zero ruído.
-    // ── v59 (dono): 🌍 FATURAMENTO GLOBAL — soma dos 3 servidores. O próprio
-    // entra na hora; os irmãos respondem pela rota autenticada (cache 10min).
-    // Servidor irmão em código antigo ainda não tem a rota → aparece como
-    // "aguardando atualização" em vez de quebrar a soma.
-    if(pathname==="/api/admin/financeiro-global"&&req.method==="GET"){
-      const selfId=_resolveServerId(req);
-      const list=_getServersConfig();
-      const tok=_peerFinToken();
-      const servidores=[];
-      for(const sv of list){
-        if(sv.id===selfId){servidores.push({id:sv.id,nome:sv.nome,self:true,ok:true,entradas:_entradasResumo()});continue;}
-        let ent=null;
-        const _svOculto=String(sv.status||"")==="oculto";
-        // (no npm test não busca irmão de verdade — rede externa não existe lá)
-        // 💼 MC5-P4 (era de 1 servidor, 13y + dieta 13w): servidor OCULTO
-        // nunca mais é consultado — sem rede pra serviço aposentado; o total
-        // informado manualmente (fgManual) continua valendo.
-        if(tok&&sv.url&&!process.env.TEST_LOGIN_TOKEN&&!_svOculto){const pi=await _fetchPeerJson(sv.url,"/api/servers/financeiro",{"x-peer-fin":tok});if(pi&&pi.ok&&pi.entradas)ent=pi.entradas;}
-        // v60 (ORDEM DO DONO: Servidores 1/2 ficam INTOCADOS — código antigo
-        // não tem a rota peer): sem resposta ao vivo, usa o total informado
-        // MANUALMENTE pelo dono no card (fgManual<ID> nas configurações).
-        const manual=parseFloat(DB_ADMIN_SETTINGS["fgManual"+sv.id]);
-        if(!ent&&Number.isFinite(manual)&&manual>0){
-          servidores.push({id:sv.id,nome:sv.nome,self:false,ok:true,manual:true,entradas:{hoje:0,dias7:0,dias30:0,total:manual,pagantes:0}});
-          continue;
-        }
-        servidores.push({id:sv.id,nome:sv.nome,self:false,ok:!!ent,entradas:ent,oculto:_svOculto});
-      }
-      const tot=k=>servidores.reduce((a,s2)=>a+((s2.entradas&&s2.entradas[k])||0),0);
-      return json(res,200,{ok:true,servidores,peerAuth:!!tok,
-        global:{hoje:tot("hoje"),dias7:tot("dias7"),dias30:tot("dias30"),total:tot("total"),pagantes:tot("pagantes"),
-          gastos30:tot("gastos30"),gastosTotal:tot("gastosTotal"),usuariosTotal:tot("usuariosTotal")}}); // 🌍 v129
-    }
     if(pathname==="/api/admin/dono-resumo"&&req.method==="GET"){
       const now=Date.now(),DAY=86400_000;
       // "hoje" em BRT: compara a data ISO (YYYY-MM-DD) do timestamp deslocado
@@ -12045,37 +11412,12 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
         if(c>=now-7*DAY)novos7++;
         if(c&&new Date(c-3*3600_000).toISOString().slice(0,10)===hojeISO)novosHoje++;
       }
-      // 🌍 v129 (ORDEM DO DONO, 13/08: "se eu entrar e for ver quanto já tem
-      // de pessoas com planos, quanto dinheiro entrou e quanto gastamos,
-      // quero nos 3 servers a info TOTAL"): a 1ª tela soma os 3 servidores —
-      // mesma fonte do Faturamento Global (rota peer + fallback manual),
-      // cache de 10min, peer fora do ar nunca quebra a tela.
-      let global=null;
-      if(!process.env.TEST_LOGIN_TOKEN){
-        try{
-          const selfId=_resolveServerId(req);const tok=_peerFinToken();
-          const soma={hoje:janelas.hoje,dias7:janelas.dias7,dias30:janelas.dias30,total:janelas.total,pagantes:janelas.pagantes,gastos30:g30,usuariosTotal:totalUsers};
-          const porServidor=[{id:selfId,self:true,ok:true,total:janelas.total,dias30:janelas.dias30,pagantes:janelas.pagantes,usuarios:totalUsers}];
-          let okN=1;
-          for(const sv of _getServersConfig()){
-            if(sv.id===selfId||!sv.url)continue;
-            let ent=null;
-            // 💼 MC5-P4: servidor oculto (era 1 servidor) não é consultado
-            if(tok&&String(sv.status||"")!=="oculto"){const pi=await _fetchPeerJson(sv.url,"/api/servers/financeiro",{"x-peer-fin":tok});if(pi&&pi.ok&&pi.entradas)ent=pi.entradas;}
-            const manual=parseFloat(DB_ADMIN_SETTINGS["fgManual"+sv.id]);
-            if(!ent&&Number.isFinite(manual)&&manual>0)ent={hoje:0,dias7:0,dias30:0,total:manual,pagantes:0,gastos30:0,usuariosTotal:0};
-            if(ent){okN++;for(const k of ["hoje","dias7","dias30","total","pagantes"])soma[k]+=parseFloat(ent[k])||0;soma.gastos30+=parseFloat(ent.gastos30)||0;soma.usuariosTotal+=parseInt(ent.usuariosTotal)||0;}
-            porServidor.push({id:sv.id,self:false,ok:!!ent,total:ent?Math.round(ent.total||0):0,dias30:ent?Math.round(ent.dias30||0):0,pagantes:ent?(ent.pagantes||0):0,usuarios:ent?(ent.usuariosTotal||0):0});
-          }
-          global={...soma,servidoresOk:okN,porServidor};
-        }catch(e){/* fail-open: tela local sempre funciona */}
-      }
       return json(res,200,{ok:true,
         entradas:{hoje:janelas.hoje,dias7:janelas.dias7,dias30:janelas.dias30,total:janelas.total,ticketMedio30:janelas.n30?Math.round(janelas.dias30/janelas.n30):0},
         gastos30:g30,liquido30:janelas.dias30-g30,
         pendentes:{qtd:pend.length,valor:pendValor},
         pagantes:janelas.pagantes,vencendo7d:vencendo.slice(0,8),vencendoQtd:vencendo.length,
-        novos:{hoje:novosHoje,dias7:novos7,total:totalUsers},global});
+        novos:{hoje:novosHoje,dias7:novos7,total:totalUsers}});
     }
     // ── Admin: PAGANTES — visão única "quem pagou + dias de VIP" (calculada no servidor = fonte única) ──
 if(pathname==="/api/admin/pagantes"&&req.method==="GET"){try{
@@ -12424,7 +11766,7 @@ if(pathname.startsWith("/api/admin/financeiro-usuario/")&&req.method==="GET"){tr
   const gmailsBloqueados=(u.senderEmails||[]).filter(se=>se.blocked).map(se=>({email:se.email,motivo:se.blockedReason||null}));
 
   return json(res,200,{ok:true,
-    usuario:{email:u.email,name:u.name||u.email,createdAt:u.created_at||null,serverId:_resolveServerId(req),
+    usuario:{email:u.email,name:u.name||u.email,createdAt:u.created_at||null,
       isAdmin:!!u.isAdmin,whatsapp:u.whatsapp||u.phone||"",country:u.country||"",language:u.language||"pt"},
     plano:{
       atual:getPlan(u),source:vip.source||null,note:vip.note||"",
@@ -13170,297 +12512,17 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}if(DB_APP_INDEX[te]){delete DB
   }
 
 
-  // ══ MULTI-SERVIDOR ═══════════════════════════════════════
-  // GET /api/servers/self — dados públicos mínimos deste servidor (para peers)
-  if(pathname==="/api/servers/self"&&req.method==="GET"){
-    return json(res,200,{ok:true,id:_resolveServerId(req),users:_countLocalUsers(),at:Date.now()});
-  }
-  // GET /api/servers/has-account?h=<sha256 do e-mail> — checagem de conta única
-  // entre servidores. Só recebe HASH (privacidade); rate limit por IP.
-  if(pathname==="/api/servers/has-account"&&req.method==="GET"){
-    const _hip=(req.headers["x-forwarded-for"]||req.socket?.remoteAddress||"").split(",")[0].trim();
-    if(rateLimit("hasacct_"+_hip,120,60_000))return json(res,429,{error:"Muitas consultas. Aguarde."});
-    const h=(u.searchParams.get("h")||"").toLowerCase().trim();
-    if(!/^[a-f0-9]{64}$/.test(h))return json(res,400,{error:"hash inválido"});
-    return json(res,200,{ok:true,serverId:_resolveServerId(req),exists:_emailHashExists(h)});
-  }
-  // GET /api/auth/where?email=<e-mail> — localiza em QUAL servidor o e-mail já
-  // tem conta (fluxo de login do card de entrada: e-mail sem senha → servidor
-  // certo → só lá acontece o login do Google). Checa local primeiro (grátis),
-  // depois os irmãos via hash SHA-256 (o e-mail nunca viaja em texto entre
-  // servidores). Não expõe NADA além de "existe / em qual servidor".
+  // GET /api/auth/where?email=<e-mail> — fluxo de login do card de entrada:
+  // e-mail sem senha → confere se já existe conta → login ou cadastro novo,
+  // sempre neste servidor único.
   if(pathname==="/api/auth/where"&&req.method==="GET"){
     const _wip=(req.headers["x-forwarded-for"]||req.socket?.remoteAddress||"").split(",")[0].trim();
     if(rateLimit("authwhere_"+_wip,30,60_000))return json(res,429,{error:"Muitas tentativas. Aguarde um minuto."});
     const email=String(u.searchParams.get("email")||"").toLowerCase().trim();
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)||email.length>120)return json(res,400,{error:"E-mail inválido"});
-    const _selfId=_resolveServerId(req);
-    const list=_getServersConfig();
-    const _svInfo=sv=>({id:sv.id,nome:sv.nome,url:sv.url||"",status:sv.status,self:sv.id===_selfId});
-    // 🛡️ Atalho ADMIN (pedido do dono, 07/07/2026): admin não fica preso à regra
-    // "conta pertence a 1 servidor só" — ele PRECISA conseguir entrar em
-    // QUALQUER servidor pra administrar/testar. Quando o e-mail é admin, manda
-    // junto a lista COMPLETA de servidores (com self) pro front oferecer
-    // "entrar direto" em cada um, além do resultado normal de onde a conta existe.
-    const _isAdmin=isAdminEmail(email);
-    // v156b (print do dono, 22/08: o atalho admin ainda listava Servidor 2 e
-    // 3 — "apague, não existe mais"): até a lista especial de admin esconde
-    // os ocultos. Com 1 servidor só, o front nem mostra a tela de escolha.
-    const _allServers=_isAdmin?list.filter(sv=>sv.status!=="oculto").map(_svInfo):undefined;
-    // 1) Conta existe NESTE servidor?
     const h=crypto.createHash("sha256").update(email).digest("hex");
-    if(_emailHashExists(h)){
-      const me=list.find(s=>s.id===_selfId)||{id:_selfId,nome:"Servidor "+_selfId,status:"aberto"};
-      return json(res,200,{ok:true,found:true,server:_svInfo(me),isAdmin:_isAdmin,servers:_allServers});
-    }
-    // 2) 🚨 v156 (era de 1 servidor só): conta que não existe aqui é CADASTRO
-    // NOVO AQUI — nunca mais consulta irmão nem oferece outro servidor (o
-    // caso real de 22/08: pessoa criando conta jogada pro Servidor 3 morto).
-    // O status devolvido é forçado "aberto": nenhum front antigo em cache
-    // pode filtrar este servidor pra fora e deixar a pessoa sem porta.
-    const me=list.find(s=>s.id===_selfId)||{id:_selfId,nome:"Servidor "+_selfId,url:"",status:"aberto"};
-    return json(res,200,{ok:true,found:false,openServers:[{..._svInfo(me),status:"aberto"}],isAdmin:_isAdmin,servers:_allServers});
+    return json(res,200,{ok:true,found:_emailHashExists(h)});
   }
-  // GET /api/servers — lista completa para o seletor da landing.
-  // Para o próprio servidor conta usuários locais; para peers busca (cache 10 min)
-  // via httpsReq; se o peer estiver fora, users=null e o front mostra "—".
-  // ── v59: financeiro deste servidor pros IRMÃOS (autenticado por token
-  // derivado da DATA_ENC_KEY compartilhada — comparação em tempo constante).
-  if(pathname==="/api/servers/financeiro"&&req.method==="GET"){
-    const tok=_peerFinToken();
-    if(!tok)return json(res,403,{error:"desativado (sem DATA_ENC_KEY)"});
-    const got=String(req.headers["x-peer-fin"]||"");
-    const a=crypto.createHash("sha256").update(got).digest();
-    const b=crypto.createHash("sha256").update(tok).digest();
-    if(!crypto.timingSafeEqual(a,b))return json(res,403,{error:"não autorizado"});
-    return json(res,200,{ok:true,id:_resolveServerId(req),entradas:_entradasResumo()});
-  }
-  // v69: recebe o backup diário de um servidor IRMÃO (mesmo token e mesma
-  // comparação timing-safe do financeiro). Só GUARDA o blob gzip — nunca abre.
-  if(pathname==="/api/servers/backup-receive"&&req.method==="POST"){
-    const tok=_peerFinToken();
-    if(!tok)return json(res,403,{error:"desativado (sem DATA_ENC_KEY)"});
-    const got=String(req.headers["x-peer-fin"]||"");
-    const a=crypto.createHash("sha256").update(got).digest();
-    const b=crypto.createHash("sha256").update(tok).digest();
-    if(!crypto.timingSafeEqual(a,b))return json(res,403,{error:"não autorizado"});
-    const fromId=parseInt(req.headers["x-backup-from"],10)||0;
-    if(![1,2,3].includes(fromId))return json(res,400,{error:"origem inválida"});
-    const stamp=(String(req.headers["x-backup-stamp"]||"").replace(/[^0-9A-Za-z_-]/g,"").slice(0,40))||new Date().toISOString().slice(0,10);
-    const buf=await new Promise((rs)=>{const ch=[];let tot=0;let morto=false;
-      req.on("data",c=>{tot+=c.length;if(tot>BACKUP_PEERS_MAX){morto=true;req.destroy();rs(null);return;}ch.push(c);});
-      req.on("end",()=>{if(!morto)rs(Buffer.concat(ch));});
-      req.on("error",()=>rs(null));});
-    if(!buf||!buf.length)return json(res,413,{error:"corpo vazio ou acima do teto"});
-    try{
-      const dir=path.join(BACKUP_PEERS_DIR,"srv"+fromId);
-      fs.mkdirSync(dir,{recursive:true});
-      fs.writeFileSync(path.join(dir,stamp+".json.gz"),buf);
-      const _fls=fs.readdirSync(dir).sort();
-      const _exc=_fls.length-BACKUP_PEERS_RETENCAO;
-      if(_exc>0)for(const v of _fls.slice(0,_exc)){try{fs.unlinkSync(path.join(dir,v));}catch{}}
-      console.log(`[backup-peers] 📦 recebido do Servidor ${fromId}: ${stamp}.json.gz (${Math.round(buf.length/1024)}KB)`);
-      return json(res,200,{ok:true,bytes:buf.length});
-    }catch(e){return json(res,500,{error:e.message});}
-  }
-  // ══ 🚚 v144 — FUSÃO DE SERVIDORES (ordem do dono, 15/08/2026) ═══════════
-  // O Google limita OAuth não-verificado a 100 usuários; o dono vai criar um
-  // OAuth novo SÓ no Servidor 1 e desligar o 2 e o 3. Estas rotas deixam o
-  // Servidor 1 PUXAR tudo dos irmãos (mesma conta Render, mesmo DATA_ENC_KEY)
-  // antes do desligamento. REGRA APROVADA DO CONFLITO DE E-MAIL: vence a
-  // conta criada por ÚLTIMO, MAS envios + anti-duplicado + dias de VIP pagos
-  // + diamantes + missões são SOMADOS — ninguém perde nada que pagou.
-  // Lado FONTE (roda nos 3; só responde com o token peer): exporta paginado
-  // pra nunca estourar memória — user-batch leva os PDFs do disco junto.
-  const _fusaoPeerAuth=()=>{
-    const tok=_peerFinToken();
-    if(!tok)return false;
-    const got=String(req.headers["x-peer-fin"]||"");
-    const a=crypto.createHash("sha256").update(got).digest();
-    const b=crypto.createHash("sha256").update(tok).digest();
-    return crypto.timingSafeEqual(a,b);
-  };
-  if(pathname==="/api/servers/fusao/manifest"&&req.method==="GET"){
-    if(!_fusaoPeerAuth())return json(res,403,{error:"não autorizado"});
-    const emails=Object.keys(DB_USERS).sort();
-    return json(res,200,{ok:true,serverId:_resolveServerId(req),emails,
-      pedidosIds:DB_PEDIDOS.map(p2=>p2.id).filter(Boolean),
-      counts:{users:emails.length,pedidos:DB_PEDIDOS.length,
-        pagamentos:(DB_FINANCEIRO.pagamentos||[]).length,codes:Object.keys(DB_CODES).length,reviews:DB_REVIEWS.length}});
-  }
-  if(pathname==="/api/servers/fusao/user-batch"&&req.method==="POST"){
-    if(!_fusaoPeerAuth())return json(res,403,{error:"não autorizado"});
-    try{
-      const d=JSON.parse(await readBody(req));
-      const emails=(Array.isArray(d.emails)?d.emails:[]).slice(0,10).map(e2=>String(e2).toLowerCase().trim());
-      const out={};
-      for(const em of emails){
-        const pl=_fusaoUserPayload(em);
-        if(pl)out[em]=pl;
-      }
-      return json(res,200,{ok:true,users:out});
-    }catch(e){return json(res,500,{ok:false,error:e.message});}
-  }
-  if(pathname==="/api/servers/fusao/globais"&&req.method==="GET"){
-    if(!_fusaoPeerAuth())return json(res,403,{error:"não autorizado"});
-    return json(res,200,{ok:true,..._fusaoGlobaisPayload()});
-  }
-  if(pathname==="/api/servers/fusao/pedidos-batch"&&req.method==="POST"){
-    if(!_fusaoPeerAuth())return json(res,403,{error:"não autorizado"});
-    try{
-      const d=JSON.parse(await readBody(req));
-      const ids=new Set((Array.isArray(d.ids)?d.ids:[]).slice(0,10));
-      // COM comprovante (base64) — a razão de paginar em 10: nunca estourar memória
-      const pedidos=DB_PEDIDOS.filter(p2=>ids.has(p2.id));
-      return json(res,200,{ok:true,pedidos});
-    }catch(e){return json(res,500,{ok:false,error:e.message});}
-  }
-
-  // v69: visão e disparo manual do backup entre irmãos (admin)
-  if(pathname==="/api/admin/backup-peers"&&req.method==="GET"){
-    const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
-    if(!(adm?.isAdmin||isAdminEmail(s?.user_email||"")))return json(res,403,{error:"Só admin."});
-    const recebidos=[];
-    try{
-      if(fs.existsSync(BACKUP_PEERS_DIR))for(const d of fs.readdirSync(BACKUP_PEERS_DIR)){
-        const dir=path.join(BACKUP_PEERS_DIR,d);
-        for(const f of fs.readdirSync(dir)){const st=fs.statSync(path.join(dir,f));recebidos.push({de:d,arquivo:f,bytes:st.size,em:st.mtimeMs});}
-      }
-    }catch(e){}
-    return json(res,200,{ok:true,envio:_peerBackupInfo,recebidos,sentinela:_sentinelaEstado});
-  }
-  if(pathname==="/api/admin/backup-peers/run"&&req.method==="POST"){
-    const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
-    if(!(adm?.isAdmin||isAdminEmail(s?.user_email||"")))return json(res,403,{error:"Só admin."});
-    return json(res,200,await enviarBackupPeers("manual (admin)"));
-  }
-  // 🚚 v144 — disparo e acompanhamento da FUSÃO (admin do Servidor 1)
-  if(pathname==="/api/admin/fusao/puxar"&&req.method==="POST"){
-    const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
-    if(!(adm?.isAdmin||isAdminEmail(s?.user_email||"")))return json(res,403,{error:"Só admin."});
-    try{
-      const d=JSON.parse((await readBody(req))||"{}");
-      const serverId=parseInt(d.serverId,10)||0;
-      if(![1,2,3].includes(serverId))return json(res,400,{error:"serverId inválido (2 ou 3)."});
-      if(serverId===_resolveServerId(req))return json(res,400,{error:"Não dá pra fundir um servidor com ele mesmo."});
-      if(_fusaoJob.running)return json(res,409,{error:"Uma fusão já está rodando — acompanhe pelo log.",running:true});
-      _fusaoJob.running=true;_fusaoJob.serverId=serverId;_fusaoJob.modo="puxar";_fusaoJob.progress=0;_fusaoJob.total=0;
-      _fusaoJob.log=[];_fusaoJob.startedAt=Date.now();_fusaoJob.finishedAt=0;_fusaoJob.error=null;_fusaoJob.relatorio=null;
-      _runFusao(serverId,s.user_email).catch(e=>{_fusaoJob.error=e.message;_fusaoJob.running=false;_fusaoJob.finishedAt=Date.now();});
-      return json(res,200,{ok:true,started:true,serverId});
-    }catch(e){return json(res,500,{error:e.message});}
-  }
-  if(pathname==="/api/admin/fusao/status"&&req.method==="GET"){
-    const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
-    if(!(adm?.isAdmin||isAdminEmail(s?.user_email||"")))return json(res,403,{error:"Só admin."});
-    return json(res,200,{ok:true,..._fusaoJob,state:Object.fromEntries(Object.entries(DB_FUSAO).map(([k,v])=>[k,{feitos:Object.keys(v.doneEmails||{}).length,pedidosFeitos:Object.keys(v.donePedidos||{}).length,globaisDone:!!v.globaisDone,lastRunAt:v.lastRunAt||0,relatorio:v.relatorio||null}]))});
-  }
-  // ══ 📦 v148 — MIGRAÇÃO POR ARQUIVO (dono, 20/08/2026: "já que a fusão não
-  // está dando certo... um botão de download de todas as informações... vou no
-  // server dois, baixo o documento completo... no server um, o importar").
-  // EXPORTAR: roda no servidor de ORIGEM (2/3), logado como admin. Gera UM
-  // arquivo .gz com TUDO: contas (sem tokens OAuth — regra 13u), histórico,
-  // anti-duplicado, PDFs dos currículos, pedidos com comprovante e globais.
-  // Escrito em stream, um usuário por vez — memória controlada.
-  if(pathname==="/api/admin/fusao/exportar"&&req.method==="GET"){
-    const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
-    if(!(adm?.isAdmin||isAdminEmail(s?.user_email||"")))return json(res,403,{error:"Só admin."});
-    try{
-      const selfId=_resolveServerId(req);
-      const emails=Object.keys(DB_USERS).sort();
-      const stamp=new Date().toISOString().slice(0,10);
-      res.writeHead(200,{"Content-Type":"application/gzip",
-        "Content-Disposition":`attachment; filename="h2bapply-servidor-${selfId}-completo-${stamp}.fusao.gz"`,
-        "x-fusao-server":String(selfId),"x-fusao-users":String(emails.length),"x-fusao-pedidos":String(DB_PEDIDOS.length),
-        "Cache-Control":"no-store"});
-      const gz=zlib.createGzip({level:6});gz.pipe(res);
-      const w=(str)=>new Promise(r2=>{gz.write(str)?r2():gz.once("drain",r2);});
-      await w(`{"fmt":"h2bapply-fusao-arquivo-v1","serverId":${selfId},"exportadoEm":${Date.now()},"counts":${JSON.stringify({users:emails.length,pedidos:DB_PEDIDOS.length,pagamentos:(DB_FINANCEIRO.pagamentos||[]).length,codes:Object.keys(DB_CODES).length,reviews:DB_REVIEWS.length})},"users":{`);
-      let primeiro=true;
-      for(const em of emails){
-        const pl=_fusaoUserPayload(em);if(!pl)continue;
-        await w((primeiro?"":",")+JSON.stringify(em)+":"+JSON.stringify(pl));
-        primeiro=false;
-      }
-      await w(`},"pedidos":[`);
-      for(let i=0;i<DB_PEDIDOS.length;i++)await w((i>0?",":"")+JSON.stringify(DB_PEDIDOS[i]));
-      await w(`],"globais":${JSON.stringify(_fusaoGlobaisPayload())}}`);
-      gz.end();
-      logAdminAction(s.user_email,"fusao_exportar_arquivo",("srv"+selfId),null,null,`Exportou arquivo completo do Servidor ${selfId}: ${emails.length} usuários, ${DB_PEDIDOS.length} pedidos`);
-      return;
-    }catch(e){
-      // Se os headers já saíram, só encerra a conexão; senão devolve JSON.
-      if(!res.headersSent)return json(res,500,{error:e.message});
-      try{res.end();}catch{}
-      return;
-    }
-  }
-  // IMPORTAR: roda no servidor de DESTINO (1). Recebe o arquivo, valida o
-  // formato e o servidor de origem, e roda o MESMO motor de fusão em
-  // background (backup antes, idempotente, log ao vivo no mesmo painel).
-  if(pathname==="/api/admin/fusao/importar"&&req.method==="POST"){
-    const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
-    if(!(adm?.isAdmin||isAdminEmail(s?.user_email||"")))return json(res,403,{error:"Só admin."});
-    try{
-      if(_fusaoJob.running)return json(res,409,{error:"Uma fusão/importação já está rodando — acompanhe pelo log.",running:true});
-      // corpo BINÁRIO (gzip) com leitor próprio — o teto padrão do readBody
-      // (50MB) é pouco pra um servidor inteiro com PDFs e comprovantes.
-      const buf=await new Promise((rs,rj)=>{const p=[];let sz=0;req.on("data",c=>{sz+=c.length;if(sz>300*1024*1024){rj(new Error("Arquivo grande demais (máx 300MB)"));try{req.destroy();}catch{}return;}p.push(c);});req.on("end",()=>rs(Buffer.concat(p)));req.on("error",rj);});
-      const r=_fusaoImportStartFromBuf(buf,s.user_email,_resolveServerId(req));
-      return json(res,r.status,r.body);
-    }catch(e){return json(res,500,{error:e.message});}
-  }
-  // 📦 v148b — UPLOAD EM PARTES (caso real do dono, 20/08 à noite: 42,6MB do
-  // celular numa requisição só ficava em "Enviando..." pra sempre — o proxy
-  // do Render corta requisição longa ≈100s). O painel fatia o arquivo em
-  // pedaços de 4MB; cada pedaço é uma requisição rápida gravada NO OFFSET
-  // certo do arquivo temporário (idempotente: reenviar o mesmo pedaço numa
-  // retentativa regrava os mesmos bytes no mesmo lugar, nunca corrompe).
-  if(pathname==="/api/admin/fusao/importar-parte"&&req.method==="POST"){
-    const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
-    if(!(adm?.isAdmin||isAdminEmail(s?.user_email||"")))return json(res,403,{error:"Só admin."});
-    try{
-      const upId=String(req.headers["x-up-id"]||"");
-      const off=parseInt(req.headers["x-up-off"],10);
-      if(!/^[a-z0-9]{6,40}$/i.test(upId)||isNaN(off)||off<0||off>300*1024*1024)return json(res,400,{error:"upload inválido (id/offset)"});
-      const buf=await new Promise((rs,rj)=>{const p=[];let sz=0;req.on("data",c=>{sz+=c.length;if(sz>8*1024*1024){rj(new Error("pedaço grande demais (máx 8MB)"));try{req.destroy();}catch{}return;}p.push(c);});req.on("end",()=>rs(Buffer.concat(p)));req.on("error",rj);});
-      if(off+buf.length>300*1024*1024)return json(res,400,{error:"Arquivo grande demais (máx 300MB)"});
-      const fp=path.join(DATA_DIR,"fusao_upload_"+upId.toLowerCase()+".part");
-      const fd=fs.openSync(fp,fs.existsSync(fp)?"r+":"w");
-      try{fs.writeSync(fd,buf,0,buf.length,off);}finally{fs.closeSync(fd);}
-      return json(res,200,{ok:true,bytes:off+buf.length});
-    }catch(e){return json(res,500,{error:e.message});}
-  }
-  if(pathname==="/api/admin/fusao/importar-fim"&&req.method==="POST"){
-    const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
-    if(!(adm?.isAdmin||isAdminEmail(s?.user_email||"")))return json(res,403,{error:"Só admin."});
-    try{
-      const d=JSON.parse((await readBody(req))||"{}");
-      const upId=String(d.upId||"");
-      if(!/^[a-z0-9]{6,40}$/i.test(upId))return json(res,400,{error:"upload inválido"});
-      const fp=path.join(DATA_DIR,"fusao_upload_"+upId.toLowerCase()+".part");
-      if(!fs.existsSync(fp))return json(res,400,{error:"upload não encontrado — envie o arquivo de novo"});
-      const buf=fs.readFileSync(fp);
-      try{fs.unlinkSync(fp);}catch{}
-      const r=_fusaoImportStartFromBuf(buf,s.user_email,_resolveServerId(req));
-      return json(res,r.status,r.body);
-    }catch(e){return json(res,500,{error:e.message});}
-  }
-  if(pathname==="/api/servers"&&req.method==="GET"){
-    const _selfId=_resolveServerId(req);
-    // 🙈 v147: servidor "oculto" não existe pro público — só o seletor filtra;
-    // as rotas internas (fusão, financeiro global, ranking) seguem enxergando.
-    const list=_getServersConfig().filter(sv=>sv.status!=="oculto");
-    const out=[];
-    for(const sv of list){
-      let users=null;
-      if(sv.id===_selfId){ users=_countLocalUsers(); }
-      else if(sv.url){ const pi=await _fetchPeerJson(sv.url,"/api/servers/self"); if(pi&&typeof pi.users==="number") users=pi.users; }
-      out.push({id:sv.id,nome:sv.nome,url:sv.url,maxExibido:sv.maxExibido,status:sv.status,users,self:sv.id===_selfId});
-    }
-    return json(res,200,{ok:true,selfId:_selfId,servers:out});
-  }
-
   if(pathname==="/api/public-stats"&&req.method==="GET"){
     const ds=todayStr();
     const totalUsers=Object.keys(DB_USERS).length;
@@ -13472,25 +12534,7 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}if(DB_APP_INDEX[te]){delete DB
     const totalSent=allHist.reduce((n,a)=>n+a.filter(h=>h.type!=="reply").length,0);
     const totalAuto=allHist.reduce((n,a)=>n+a.filter(h=>h.type==="auto").length,0);
     const out={totalUsers,vipUsers,todaySent,todayAuto,totalSent,totalAuto,
-      avisoResetLogin:!!DB_ADMIN_SETTINGS.avisoResetLogin, // 📢 v144: aviso do reset de OAuth na landing (toggle do admin)
-      serversVisiveis:_getServersConfig().filter(sv=>sv.status!=="oculto").length}; // 🙈 v147: com 1 só, a pill 🌐 some da landing
-    // 🌍 v129 (ORDEM DO DONO, 13/08): a landing mostra o negócio INTEIRO —
-    // soma dos 3 servidores. ?local=1 = resposta só local (é o que os irmãos
-    // pedem entre si — nunca recursão). Peer fora do ar: fail-open.
-    if(u.searchParams.get("local")!=="1"&&!process.env.TEST_LOGIN_TOKEN){
-      const _selfId=_resolveServerId(req);let srvOk=1;
-      for(const sv of _getServersConfig()){
-        if(sv.id===_selfId||!sv.url)continue;
-        try{
-          const pi=await _fetchPeerJson(sv.url,"/api/public-stats?local=1");
-          if(pi&&typeof pi.totalUsers==="number"){
-            srvOk++;
-            for(const k of ["totalUsers","vipUsers","todaySent","todayAuto","totalSent","totalAuto"])out[k]+=parseInt(pi[k])||0;
-          }
-        }catch(e){/* fail-open */}
-      }
-      out.global=srvOk>1;out.servidores=srvOk;
-    }
+      avisoResetLogin:!!DB_ADMIN_SETTINGS.avisoResetLogin}; // 📢 v144: aviso do reset de OAuth na landing (toggle do admin)
     return json(res,200,out);
   }
 
@@ -13983,67 +13027,10 @@ function calcStreak(h){ return _calcStreakMod(h); } // corpo em src/engine/core.
 function last7Days(h){ return _last7DaysMod(h); } // corpo em src/engine/core.js
 
 
-// ══ MULTI-SERVIDOR: helpers ═══════════════════════════════════════════════
-// Config dos servidores (default embutido + override em admin_settings.servers)
-function _getServersConfig(){
-  // v156: era de 1 servidor só — default espelha o DB_ADMIN_SETTINGS (1 aberto,
-  // 2/3 ocultos; as URLs continuam aqui só pras rotas de fusão/peers).
-  const def=[
-    {id:1,nome:"Servidor 1",url:"https://h2bapply.com",maxExibido:100,status:"aberto"},
-    {id:2,nome:"Servidor 2",url:"https://h2b-teste.onrender.com",maxExibido:100,status:"oculto"},
-    {id:3,nome:"Servidor 3",url:"https://h2b-server-3.onrender.com",maxExibido:100,status:"oculto"}
-  ];
-  const raw=Array.isArray(DB_ADMIN_SETTINGS.servers)&&DB_ADMIN_SETTINGS.servers.length?DB_ADMIN_SETTINGS.servers:def;
-  return raw.map(sv=>({
-    id:parseInt(sv.id)||0,
-    nome:String(sv.nome||("Servidor "+sv.id)).slice(0,40),
-    url:String(sv.url||"").replace(/\/+$/,""),
-    maxExibido:Math.max(1,parseInt(sv.maxExibido)||100),
-    // 🙈 v147 (fusão): "oculto" tira o servidor do SELETOR público (ninguém
-    // mais escolhe o 2/3 — todo mundo é forçado pro 1), mas ele CONTINUA
-    // nesta lista interna — a fusão/peers ainda precisam achar a URL dele.
-    status:["lotado","oculto"].includes(String(sv.status||"aberto").toLowerCase())?String(sv.status).toLowerCase():"aberto"
-  })).filter(sv=>sv.id>0);
-}
-// ── V951: IDENTIDADE ÚNICA POR HOST, usada em TODA rota que precisa saber
-// "quem sou eu" (não só no callback OAuth como antes). A env SERVER_ID é só
-// o fallback de última instância — a fonte de verdade é o host da requisição
-// batido contra a URL de cada servidor na config. Isso corrige de raiz o
-// looping do Servidor 2: antes, só o callback OAuth se autocorrigia pelo host;
-// /api/auth/where, /api/servers, /api/servers/self, /api/status etc. ainda
-// confiavam cegamente na env SERVER_ID — se ela estivesse ausente/errada no
-// Render, essas rotas relatavam a identidade ERRADA (ex.: o próprio servidor
-// aberto aparecia como "não-self"), fazendo o front redirecionar a pessoa
-// pra URL onde ela JÁ está → recarrega a landing → parece que "voltou a
-// pedir e-mail" → loop infinito. Resultado é cacheado por 60s (host não muda
-// em runtime) só para não recalcular em toda requisição.
-let _selfIdCache=null,_selfIdCacheAt=0,_selfIdWarned=false;
-function _resolveServerId(req){
-  const now=Date.now();
-  if(_selfIdCache && (now-_selfIdCacheAt)<60_000) return _selfIdCache;
-  const _norm=x=>String(x||"").replace(/^https?:\/\//,"").replace(/\/.*$/,"").toLowerCase();
-  const _reqHost=_norm(req&&req.headers&&req.headers.host);
-  const _cfgList=_getServersConfig();
-  const _hostMatch=_reqHost?_cfgList.find(sv=>_norm(sv.url)===_reqHost):null;
-  let id=SERVER_ID;
-  if(_hostMatch){
-    if(_hostMatch.id!==SERVER_ID && !_selfIdWarned){
-      _selfIdWarned=true;
-      console.error(`[servers] 🚨 CONFIG CONTRADITÓRIA: este deploy responde por "${_reqHost}" (Servidor ${_hostMatch.id} na config), mas a env SERVER_ID=${SERVER_ID||"(ausente)"} aponta para outro id. Usando a identidade pelo HOST (mais confiável) em TODAS as rotas — corrija a env SERVER_ID no Render para ${_hostMatch.id} assim que possível.`);
-    }
-    id=_hostMatch.id;
-  }
-  _selfIdCache=id;_selfIdCacheAt=now;
-  return id;
-}
-function _countLocalUsers(){
-  // Conta usuários visíveis (exclui contas soft-deletadas)
-  let n=0; for(const u of Object.values(DB_USERS)){ if(!u||u.accountDeleted) continue; n++; } return n;
-}
-// ── CONTA ÚNICA ENTRE SERVIDORES ──────────────────────────────────────────
-// Cada pessoa tem conta em UM servidor só. A checagem cruzada usa SHA-256 do
-// e-mail (o e-mail nunca viaja em texto entre servidores). Cache do set de
-// hashes locais reconstruído a cada 5 min ou quando a base muda de tamanho.
+// ── CONTA ÚNICA ────────────────────────────────────────────────────────────
+// Checagem de "e-mail já tem conta" usa SHA-256 do e-mail (privacidade no
+// transporte). Cache do set de hashes locais reconstruído a cada 5 min ou
+// quando a base muda de tamanho.
 let _acctHashCache={at:0,size:-1,set:new Set()};
 function _emailHashExists(h){
   const emails=Object.keys(DB_USERS); // inclui contas soft-deletadas (relogin restaura — a conta EXISTE)
@@ -14054,71 +13041,6 @@ function _emailHashExists(h){
   }
   return _acctHashCache.set.has(h);
 }
-// 🚨 v156: checkAccountOnPeers() foi REMOVIDA (era de 1 servidor só — o
-// cadastro/login nunca mais consulta irmão; as contas dos Servidores 2/3
-// moram aqui via fusão v148). O raio-X /api/admin/diagnostico-login continua
-// consultando os peers por conta própria, só pra INFORMAR o admin.
-
-// Cache de chamadas a peers (10 min) — nunca derruba a resposta se o peer cair
-const _peerCache={};
-// v115: POST simples a um peer (sem cache — usado pra ações, ex.: resgate
-// de código criado em outro servidor). Timeout curto, falha vira null.
-async function _postPeerJson(baseUrl,apiPath,bodyObj){
-  try{
-    const h=new URL(baseUrl);
-    if(h.protocol!=="https:")throw new Error("peer não-https");
-    const body=JSON.stringify(bodyObj||{});
-    const call=httpsReq({hostname:h.hostname,port:h.port||443,path:apiPath,method:"POST",headers:{"Content-Type":"application/json","Content-Length":Buffer.byteLength(body),"Accept":"application/json","User-Agent":"H2BApply-Server/"+SERVER_ID}},body);
-    const r=await Promise.race([call,new Promise(res2=>setTimeout(()=>res2(null),6000))]);
-    if(r&&r.body&&typeof r.body==="object")return r.body;
-  }catch(e){console.warn("[servers] peer POST",baseUrl,apiPath,"falhou:",e.message);}
-  return null;
-}
-async function _fetchPeerJson(baseUrl,apiPath,extraHeaders){
-  const key=baseUrl+apiPath;
-  const c=_peerCache[key];
-  if(c&&Date.now()-c.at<600_000) return c.data;
-  try{
-    const h=new URL(baseUrl);
-    if(h.protocol!=="https:") throw new Error("peer não-https");
-    // 💸 v140: gzip entre irmãos — o json() do peer já comprime respostas
-    // >16KB quando pedimos; o httpsReq descomprime sozinho. Menos banda paga.
-    const {status,body}=await httpsReq({hostname:h.hostname,port:h.port||443,path:apiPath,method:"GET",headers:{"Accept":"application/json","Accept-Encoding":"gzip","User-Agent":"H2BApply-Server/"+SERVER_ID,...(extraHeaders||{})}});
-    if(status===200&&body&&typeof body==="object"){ _peerCache[key]={at:Date.now(),data:body}; return body; }
-  }catch(e){ console.warn("[servers] peer",baseUrl,apiPath,"falhou:",e.message); }
-  _peerCache[key]={at:Date.now(),data:null}; // cacheia a falha p/ não martelar o peer
-  return null;
-}
-// ── v59 (dono, 25/07): FATURAMENTO GLOBAL — os 3 servidores somados ─────────
-// Resumo de ENTRADAS deste servidor (mesmas regras da Visão do Dono: conta de
-// admin NUNCA soma). Usado pela Visão do Dono local e servido aos servidores
-// irmãos pela rota /api/servers/financeiro (autenticada por token derivado da
-// DATA_ENC_KEY, que os 3 servidores compartilham — nenhuma env nova).
-// v83: era uma cópia inteira do cálculo de computeEntradasJanelas() — agora
-// só delega (fonte única, sem correção de pedido duplicada/desatualizada).
-// 🌍 v129: a rota peer financeira agora carrega TUDO que o dono quer somar
-// entre servidores — entradas (janelas), GASTOS (30d e total) e usuários.
-function _entradasResumo(){
-  const j=computeEntradasJanelas();
-  const now=Date.now(),DAY=86400_000;
-  const _ts=x=>{if(!x)return 0;if(typeof x==="number")return x;const t=Date.parse(x);return isNaN(t)?0:t;};
-  // 💼 MC5-P3: mesmo bug do dono-resumo — gasto usa dataGasto, não dataPagamento
-  let gastos30=0,gastosTotal=0;
-  for(const g of (DB_FINANCEIRO.gastos||[])){
-    const v=parseFloat(g.valor)||0;gastosTotal+=v;
-    if((_ts(g.dataGasto||g.data)||g.criadoEm||0)>=now-30*DAY)gastos30+=v;
-  }
-  return {...j,gastos30,gastosTotal,usuariosTotal:Object.keys(DB_USERS).length};
-}
-// Token de autenticação entre servidores irmãos: HMAC da DATA_ENC_KEY (os 3
-// compartilham a mesma). Sem a chave → recurso desligado (fail closed).
-function _peerFinToken(){
-  if(!_encKeyRaw)return null;
-  return crypto.createHmac("sha256",_encKeyRaw).update("h2b-peer-financeiro-v1").digest("hex");
-}
-
-
-
 
 // ════════════════════════════════════════════════════════════
 //  SISTEMA DE PEDIDOS DE PLANO
@@ -14516,13 +13438,6 @@ server.listen(PORT,"0.0.0.0",()=>{
   //   • Watchdog a cada 30min verifica novas planilhas pendentes
   //   • Admin pode pausar via botão Parar; watchdog retoma automaticamente
 
-  // 💸 v151 (fatura do Render): servidor aposentado NÃO roda nenhum robô de
-  // planilha/coleta/notícias/renovação — eram esses ciclos, em triplicata
-  // nos 3 servidores, que geravam a banda "Service-Initiated" da fatura.
-  if(MODO_APOSENTADO){
-    console.log("[robôs] 🪦 modo aposentado — enrich/frescor/H-2A/H-2B/notícias-IA/renovação/resumo DESLIGADOS neste servidor");
-    return;
-  }
   // 📊 Resumo Diário do Dono — push às 8h BRT com os números de ontem.
   scheduleResumoDono();
 

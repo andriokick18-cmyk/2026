@@ -143,7 +143,7 @@ fs.writeFileSync(path.join(DATA, "users.json"), JSON.stringify(users, null, 2));
 fs.writeFileSync(path.join(DATA, "blocked_emails.json"), JSON.stringify({
   emails: ["esdrassilva.h2b@gmail.com", "fica.banido@test.com"] }));
 // 🩻 v163: 2 pedidos com comprovante em base64 pra medir os que ficam
-// RESIDENTES na RAM (mais 2 chegam depois pela fusão B+C — memX exige ≥4).
+// RESIDENTES na RAM.
 fs.writeFileSync(path.join(DATA, "pedidos.json"), JSON.stringify([
   { id: "pedmem1", userEmail: "memtest1@test.com", userName: "Mem Teste Um", tipo: "doacao", plano: "doacao",
     valorTotal: 50, diamantes: 33, status: "ativo", comprovante: Buffer.from("comprovante-mem-1").toString("base64"),
@@ -203,18 +203,6 @@ fs.writeFileSync(path.join(DATA, "cvs", "fantasma@test.com_777.pdf"), "%PDF-1.4 
 // (aba Notícias/DOL removida nesta reconstrução — sem DB_NOTICIAS/vigia no
 // server.js; fixtures antigas de notícia inválida/baseline saíram.)
 
-// Simula o disco de um servidor ANTIGO (lista salva da era v58, com o 1
-// "lotado") — as migrações one-shot do boot rodam em cadeia: v58 (_migSrv3)
-// acrescenta o Servidor 3 e depois a v156 (_migMonoSrv, "não existe mais
-// server 2 e 3") deixa o 1 ABERTO e os irmãos OCULTOS. O check lá embaixo
-// prova o estado FINAL — exatamente o que curou a pessoa real barrada em 22/08.
-fs.writeFileSync(path.join(DATA, "admin_settings.json"), JSON.stringify({
-  servers: [
-    { id: 1, nome: "Servidor 1", url: "https://h2bapply.com", maxExibido: 50, status: "lotado" },
-    { id: 2, nome: "Servidor 2", url: "https://h2b-teste.onrender.com", maxExibido: 100, status: "aberto" },
-  ],
-}));
-
 // v48: INCIDENTE REAL (25/07, print do dono: "as vagas das planilhas de
 // inverno e h2a sumiram") — cópia de /data truncada (gravação não-atômica
 // interrompida) e cópia vazia. Como /data tem prioridade, o load antigo
@@ -250,6 +238,20 @@ const req2 = (method, p, payload) => new Promise((resolve, reject) => {
   r.end();
 });
 const get = (p) => req2("GET", p);
+// Variante binária de get() — pra respostas não-JSON (CSV/imagem) onde o
+// corpo precisa chegar como Buffer intacto, nunca decodificado/truncado.
+const _getBufA = (p) => new Promise((resolve, reject) => {
+  const r = http.request(BASE + p, {
+    method: "GET",
+    headers: { ...(COOKIE ? { Cookie: COOKIE } : {}) },
+  }, (res) => {
+    const chunks = [];
+    res.on("data", (c) => chunks.push(c));
+    res.on("end", () => resolve({ status: res.statusCode, buf: Buffer.concat(chunks), headers: res.headers }));
+  });
+  r.on("error", reject);
+  r.end();
+});
 
 const waitUp = async (ms) => {
   const t0 = Date.now();
@@ -347,42 +349,19 @@ async function testAuthWatchdogPush() {
     const ps = await get("/api/public-stats");
     check("GET /api/public-stats responde 200 (landing pública)", ps.status === 200, `status=${ps.status}`);
     // (aba Notícias DOL removida nesta reconstrução — sem /api/noticias)
-    // 🚨 v156 (dono, 22/08 — pessoa real criando conta jogada pro Servidor 3
-    // morto): a era multi-servidor ACABOU. O fixture semeou a lista ANTIGA
-    // (v58: 1 lotado, 2 aberto) — a migração one-shot do boot tem que deixar
-    // o 1 ABERTO e os irmãos OCULTOS; o seletor público mostra SÓ o 1.
-    const svs = await get("/api/servers");
-    check("🌐 v156: seletor público mostra SÓ o Servidor 1 (os irmãos viraram ocultos na migração do boot)",
-      svs.json?.ok === true && (svs.json?.servers || []).length === 1 && svs.json?.servers?.[0]?.id === 1 &&
-      svs.json?.servers?.[0]?.status === "aberto",
-      JSON.stringify((svs.json?.servers || []).map((x) => x.id + ":" + x.status + ":" + x.url)));
-    let _admSet = null; try { _admSet = JSON.parse(fs.readFileSync(path.join(DATA, "admin_settings.json"), "utf8")); } catch {}
-    const _svDisco = (id) => (_admSet?.servers || []).find((x) => parseInt(x.id) === id);
-    check("🌐 v156: migração gravou no disco (flag one-shot _migMonoSrv) — 1 aberto, irmãos ocultos; edição futura do dono nunca é revertida",
-      _admSet?._migMonoSrv === true && _svDisco(1)?.status === "aberto" &&
-      (_admSet?.servers || []).filter((x) => parseInt(x.id) !== 1).every((x) => x.status === "oculto"),
-      `_migMonoSrv=${_admSet?._migMonoSrv} lista=${JSON.stringify((_admSet?.servers || []).map((x) => x.id + ":" + x.status))}`);
-    // O coração do bug real: e-mail SEM conta pedia cadastro e a triagem
-    // oferecia o Servidor 3. Agora /api/auth/where devolve SEMPRE este
-    // servidor como único destino, forçado "aberto" — nunca mais um irmão.
+    // 🌐 servidor único: /api/auth/where só confere se o e-mail já tem conta
+    // aqui (login) ou não (cadastro novo) — sem nenhum conceito de "outro
+    // servidor" (arquitetura multi-servidor removida por completo).
     const aw = await get("/api/auth/where?email=" + encodeURIComponent("pessoa.nova.v156@gmail.com"));
-    check("🌐 v156: /api/auth/where de e-mail novo → cadastro é AQUI (self, aberto) e NENHUM irmão é oferecido",
-      aw.json?.ok === true && aw.json?.found === false && (aw.json?.openServers || []).length === 1 &&
-      aw.json?.openServers?.[0]?.self === true && aw.json?.openServers?.[0]?.status === "aberto",
-      JSON.stringify(aw.json?.openServers));
-    // v156b (print do dono: o atalho admin ainda listava Servidor 2 e 3 —
-    // "apague, não existe mais"): a lista especial de admin também esconde
-    // ocultos; com 1 servidor o front pula a tela de escolha (d.servers>1).
-    const awAdm = await get("/api/auth/where?email=" + encodeURIComponent("andrio.usa2026@gmail.com"));
-    check("🌐 v156b: atalho admin do /api/auth/where lista SÓ o Servidor 1 (ocultos apagados até pra admin)",
-      awAdm.json?.ok === true && awAdm.json?.isAdmin === true && Array.isArray(awAdm.json?.servers) &&
-      awAdm.json?.servers.length === 1 && awAdm.json?.servers[0]?.id === 1,
-      JSON.stringify(awAdm.json?.servers));
-    // (o texto histórico do KB-063 cita os códigos de erro — o que não pode
-    // existir é o CÓDIGO do redirect: writeHead 302 pra /?err=srv_lotado etc.)
+    check("🌐 /api/auth/where de e-mail novo → found:false (cadastro novo é sempre aqui)",
+      aw.json?.ok === true && aw.json?.found === false, JSON.stringify(aw.json));
+    const awExist = await get("/api/auth/where?email=" + encodeURIComponent("cliente@test.com"));
+    check("🌐 /api/auth/where de e-mail já cadastrado (fixture) → found:true",
+      awExist.json?.ok === true && awExist.json?.found === true, JSON.stringify(awExist.json));
     const _srvSrc156 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
-    check("🌐 v156: (estrutural) o callback OAuth não tem mais NENHUM redirect de cadastro pra outro servidor (srv_lotado/conta_outro_srv mortos)",
-      !_srvSrc156.includes("Location:`/?err=srv_lotado") && !_srvSrc156.includes("Location:`/?err=conta_outro_srv") && !/async function checkAccountOnPeers/.test(_srvSrc156),
+    check("🌐 (estrutural) nenhum resquício de arquitetura multi-servidor no server.js (SERVER_ID/_getServersConfig/_resolveServerId/checkAccountOnPeers/financeiro-global)",
+      !/\bSERVER_ID\b/.test(_srvSrc156) && !_srvSrc156.includes("_getServersConfig") && !_srvSrc156.includes("_resolveServerId") &&
+      !/async function checkAccountOnPeers/.test(_srvSrc156) && !_srvSrc156.includes("financeiro-global"),
       "sobrou trava/redirect multi-servidor no server.js");
 
     // (migração de notícias inválidas, baseline do vigia, página pública
@@ -703,7 +682,13 @@ async function testAuthWatchdogPush() {
 
     // Disco
     // ═══ FLUXOS AUTENTICADOS (sessão de teste — só existe com TEST_LOGIN_TOKEN) ═══
-    const lg = await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
+    // 🔒 v172: admin também precisa de refresh_token de verdade pra enviar
+    // (login parou de conceder gmail.send a QUALQUER UM, admin incluso —
+    // ver /oauth/connect-send). Semeado UMA VEZ aqui (fica gravado no
+    // usuário pra sempre — os ~7 re-logins de smoke@test.com no resto da
+    // suíte NUNCA tocam em refresh_token de novo) pra não quebrar os
+    // dezenas de testes que já usavam o admin pra mandar/automatizar.
+    const lg = await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true, refreshToken: "rt-smoke-admin-test" });
     check("login de teste cria sessão", lg.status === 200 && lg.json?.ok === true, lg.body.slice(0, 100));
     const st2 = await get("/api/status");
     check("sessão vale: /api/status connected:true", st2.json?.connected === true);
@@ -1032,46 +1017,6 @@ async function testAuthWatchdogPush() {
     const pgCorr = (fin1b.json?.pagamentos || []).find((x) => x.pedidoId === pdId);
     check("✏️ correção de valor corrige o caixa JUNTO (uma verdade só)", corr.json?.caixaCorrigido === true && pgCorr?.valor === 147);
 
-    // ═══ v59: 🌍 FATURAMENTO GLOBAL — os 3 servidores somados ═══
-    // Rota peer sem token → 403; com o token derivado da DATA_ENC_KEY → ok.
-    const finNoTok = await get("/api/servers/financeiro");
-    check("🌍 rota peer de financeiro SEM token → 403 (dinheiro nunca fica público)",
-      finNoTok.status === 403, `status=${finNoTok.status}`);
-    const _peerTok = crypto.createHmac("sha256", "smoke-enc-key-1234567890").update("h2b-peer-financeiro-v1").digest("hex");
-    const finTok = await new Promise((resolve, reject) => {
-      const r = http.request({ host: "127.0.0.1", port: PORT, path: "/api/servers/financeiro", method: "GET", headers: { "x-peer-fin": _peerTok } }, (res) => {
-        let b = ""; res.on("data", (c) => (b += c)); res.on("end", () => { let j = null; try { j = JSON.parse(b); } catch {} resolve({ status: res.statusCode, json: j }); });
-      }); r.on("error", reject); r.end();
-    });
-    check("🌍 rota peer COM token responde as entradas (admin nunca na soma)",
-      finTok.status === 200 && finTok.json?.ok === true && typeof finTok.json?.entradas?.total === "number",
-      JSON.stringify(finTok.json?.entradas || {}).slice(0, 120));
-    const fg = await get("/api/admin/financeiro-global");
-    check("🌍 Faturamento Global: lista os 3 servidores e soma (self na hora)",
-      fg.json?.ok === true && (fg.json?.servidores || []).length === 3 &&
-      fg.json.servidores.some((x) => x.self && x.ok) && fg.json?.global?.total >= 147 && fg.json?.peerAuth === true,
-      JSON.stringify({ total: fg.json?.global?.total, n: (fg.json?.servidores || []).length }).slice(0, 120));
-    // v83 (consolidação de telas financeiras): dono-resumo e a entrada "self"
-    // do Faturamento Global agora vêm da MESMA função (computeEntradasJanelas)
-    // — nunca mais 2 cálculos que podem divergir (mesma classe de bug do v77b,
-    // só que no caixa em vez de diamantes). Guarda de regressão: os 2 números
-    // (calculados no MESMO instante) têm que bater EXATAMENTE.
-    const drCheck = await get("/api/admin/dono-resumo");
-    const _fgSelf = (fg.json?.servidores || []).find((x) => x.self);
-    check("💰 v83: dono-resumo e Faturamento Global (self) usam a MESMA fonte — total/hoje idênticos, nunca divergem",
-      drCheck.json?.entradas?.total === _fgSelf?.entradas?.total && drCheck.json?.entradas?.hoje === _fgSelf?.entradas?.hoje && drCheck.json?.pagantes === _fgSelf?.entradas?.pagantes,
-      JSON.stringify({ dono: drCheck.json?.entradas, global: _fgSelf?.entradas }));
-    // v60: servidores antigos (1/2, intocados por ordem do dono) entram na
-    // soma pelo TOTAL INFORMADO manualmente — salvo nas configurações.
-    const _fgBase = fg.json?.global?.total || 0;
-    // (no smoke este servidor se resolve como id 1 — então o manual entra no 2)
-    await req2("POST", "/api/admin/settings", { fgManual2: 5000 });
-    const fg2 = await get("/api/admin/financeiro-global");
-    const _srv2m = (fg2.json?.servidores || []).find((x) => x.id === 2);
-    check("🌍 total manual do servidor antigo soma no global (R$5.000 informado no 2)",
-      fg2.json?.ok === true && _srv2m?.manual === true && fg2.json.global.total === _fgBase + 5000,
-      JSON.stringify({ total: fg2.json?.global?.total, esperado: _fgBase + 5000 }).slice(0, 120));
-
     // (v32: Robô de Renovação — /api/admin/renova-run não existe nesta
     // reconstrução.)
 
@@ -1337,23 +1282,6 @@ async function testAuthWatchdogPush() {
       _cats.length >= 20 && _cats.slice(0, 10).every((c) => c === "landscape"),
       JSON.stringify(_cats));
 
-    // ═══ 🌍 v129 (ORDEM DO DONO, 13/08): OS 3 SERVIDORES SÃO UM NEGÓCIO SÓ ═══
-    // Contabilidade soma os 3 (ranking foi removido por completo nesta
-    // reconstrução — sem /api/ranking nem /api/servers/ranking-export).
-    // Aqui provamos as peças reais: a rota peer financeira com gastos+
-    // usuários, e a landing com modo ?local=1 (anti-recursão).
-    const _finTok = crypto.createHmac("sha256", "smoke-enc-key-1234567890").update("h2b-peer-financeiro-v1").digest("hex");
-    const finPeer = await new Promise((resolve, reject) => {
-      http.get(BASE + "/api/servers/financeiro", { headers: { "x-peer-fin": _finTok } }, (r) => { let b = ""; r.on("data", (c) => (b += c)); r.on("end", () => { let j = null; try { j = JSON.parse(b); } catch {} resolve({ status: r.statusCode, json: j, body: b }); }); }).on("error", reject);
-    });
-    check("🌍 v129: rota peer financeira agora carrega gastos (30d/total) e usuários — tudo que o dono quer somar",
-      finPeer.json?.ok === true && typeof finPeer.json?.entradas?.gastos30 === "number" && typeof finPeer.json?.entradas?.gastosTotal === "number" && typeof finPeer.json?.entradas?.usuariosTotal === "number",
-      JSON.stringify(finPeer.json?.entradas || {}).slice(0, 160));
-    const psLocal = await get("/api/public-stats?local=1");
-    check("🌍 v129: landing tem modo ?local=1 (o que os irmãos pedem entre si — nunca recursão)",
-      typeof psLocal.json?.totalUsers === "number" && psLocal.json?.global === undefined,
-      psLocal.body.slice(0, 120));
-
     // ═══ 📡 v134: RADAR DE VAGAS (aprovado pelo dono) + funil do limite ═══
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radaruser@test.com", name: "Radar User" });
     const rdVazio = await req2("POST", "/api/radar", { estados: [], cidade: "", q: "" });
@@ -1395,22 +1323,6 @@ async function testAuthWatchdogPush() {
     // (v133: prompt da IA do chat — o chat com IA foi removido por completo
     // nesta reconstrução, README confirma.)
 
-    // ═══ 🗄️ v69: BACKUP ENTRE IRMÃOS — rota de recepção blindada ═══
-    const zlibB = require("zlib");
-    const _peerTokB = crypto.createHmac("sha256", "smoke-enc-key-1234567890").update("h2b-peer-financeiro-v1").digest("hex");
-    const _gzB = zlibB.gzipSync(JSON.stringify({ v: 1, ts: 1, serverId: 1, files: { "financeiro.json": "{\"pagamentos\":[]}" } }));
-    const rawPost = (p, buf, hdrs) => new Promise((resolve, reject) => {
-      const r = http.request(BASE + p, { method: "POST", headers: { ...hdrs, "Content-Length": buf.length } }, (res) => {
-        let b = ""; res.on("data", (c) => (b += c)); res.on("end", () => { let j = null; try { j = JSON.parse(b); } catch {} resolve({ status: res.statusCode, json: j, body: b }); });
-      }); r.on("error", reject); r.write(buf); r.end();
-    });
-    const br403 = await rawPost("/api/servers/backup-receive", _gzB, { "x-backup-from": "1" });
-    check("🗄️ backup-receive SEM token → 403 (dados nunca ficam públicos)", br403.status === 403, `status=${br403.status}`);
-    const brOk = await rawPost("/api/servers/backup-receive", _gzB, { "x-peer-fin": _peerTokB, "x-backup-from": "1", "x-backup-stamp": "2026-07-26", "Content-Type": "application/gzip" });
-    check("🗄️ backup do irmão é aceito e confirma os bytes", brOk.json?.ok === true && brOk.json?.bytes === _gzB.length, brOk.body.slice(0, 100));
-    check("🗄️ blob gzip gravado no disco (backups_peers/srv1)", fs.existsSync(path.join(DATA, "backups_peers", "srv1", "2026-07-26.json.gz")));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-
     // (v121 PLANILHA H-2A BIMESTRAL e v138 PLANILHA H-2B MENSAL — robôs de
     // coleta/publicação automática de planilha DOL; README confirma que
     // esta reconstrução não tem robôs de coleta — "as planilhas são
@@ -1418,18 +1330,16 @@ async function testAuthWatchdogPush() {
     // /api/admin/sheet/h2b-mensal-run, coleta-status ou coleta-publish.)
 
     // ═══ 💸 v140 (conta do Render): gzip nas conversas de robô ═══
-    // Os 23GB de "Service-Initiated" eram em boa parte JSON cru — o
-    // httpsReq agora descomprime sozinho e os robôs pedem gzip do DOL e
-    // dos irmãos. As chamadas de streaming cru (proxy/download de buffer)
-    // CONTINUAM identity de propósito — não descomprimem. (Contagens
-    // recalibradas: os robôs de coleta bimestral/mensal que somavam
-    // chamadas gzip extras não existem nesta reconstrução.)
+    // O httpsReq descomprime sozinho e as chamadas ao DOL pedem gzip. A
+    // chamada de streaming cru (proxy/download de buffer) CONTINUA identity
+    // de propósito — não descomprime. (Arquitetura multi-servidor removida:
+    // as chamadas gzip que existiam só pra rota peer saíram junto.)
     const _gmailSrcV140 = fs.readFileSync(path.join(__dirname, "mod-gmail.js"), "utf8");
     check("💸 v140: httpsReq descomprime gzip/deflate/br sozinho (fail-open pro corpo cru se falhar)",
       _gmailSrcV140.includes("content-encoding") && _gmailSrcV140.includes("gunzipSync") && _gmailSrcV140.includes("brotliDecompressSync"),
       "descompressão não encontrada no mod-gmail.js");
-    check("💸 v140: robôs pedem gzip (DOL + irmãos) e o streaming cru segue identity",
-      (_srvSrc.match(/"Accept-Encoding":"gzip"/g) || []).length >= 4 && (_srvSrc.match(/"Accept-Encoding":"identity"/g) || []).length >= 1,
+    check("💸 v140: chamadas ao DOL pedem gzip e o streaming cru segue identity",
+      (_srvSrc.match(/"Accept-Encoding":"gzip"/g) || []).length >= 2 && (_srvSrc.match(/"Accept-Encoding":"identity"/g) || []).length >= 1,
       `gzip=${(_srvSrc.match(/"Accept-Encoding":"gzip"/g) || []).length} identity=${(_srvSrc.match(/"Accept-Encoding":"identity"/g) || []).length}`);
 
     // ═══ 🎯 v139: VAGAS PRA VOCÊ — prateleira do match na Home (regra 13m) ═══
@@ -1461,14 +1371,6 @@ async function testAuthWatchdogPush() {
       pv2.body.slice(0, 140));
     await req2("POST", "/api/auto/stop", {});
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-    const bst = await get("/api/admin/backup-peers");
-    check("🗄️ admin vê o backup recebido na visão de status", bst.json?.ok === true && (bst.json?.recebidos || []).some((r) => r.de === "srv1"), bst.body.slice(0, 140));
-    // DRILL DE RESTAURAÇÃO (regra da casa: ensaiada de verdade, nunca presumida)
-    const { execSync: _exec } = require("child_process");
-    const _restDir = path.join(DATA, "restaurado-drill");
-    _exec(`node restaurar_backup_irmao.js "${path.join(DATA, "backups_peers", "srv1", "2026-07-26.json.gz")}" "${_restDir}"`, { cwd: __dirname, stdio: "pipe" });
-    const _restOk = fs.existsSync(path.join(_restDir, "financeiro.json")) && fs.readFileSync(path.join(_restDir, "financeiro.json"), "utf8") === '{"pagamentos":[]}';
-    check("🗄️ DRILL de restauração: 1 comando devolve os arquivos do pacote intactos", _restOk);
 
     // ═══ 💼 MC4 — PARTE 1 (MASTER COMMAND 4, dono, 28/08): SÓCIOS & ACERTO ═══
     // "quanto eu tenho a receber e quanto diego tem a receber?" — fonte única
@@ -1518,299 +1420,12 @@ async function testAuthWatchdogPush() {
       _srvSrc.includes("function computeSocios()") && _srvSrc.includes("sociosSplit"),
       "computeSocios sumiu do server.js");
 
-    // ═══ 🚚 v144: DRILL REAL DE FUSÃO DE SERVIDORES (ordem do dono, 15/08) ═══
-    // Não é simulação: sobe um SEGUNDO servidor de verdade (o "Servidor 2"),
-    // com contas, VIP, diamantes, envios, PDF no disco e pedido com
-    // comprovante — e o servidor principal PUXA e FUNDE tudo, exatamente o
-    // clique que o dono vai dar em produção antes de desligar os irmãos.
-    const PORT_B = FEED_PORT + 1;
-    const DATA_B = fs.mkdtempSync(path.join(os.tmpdir(), "h2b-fusao-b-"));
-    const _fNow = Date.now();
-    fs.writeFileSync(path.join(DATA_B, "users.json"), JSON.stringify({
-      // conta que SÓ existe no B — entra inteira no A
-      "fusao.legado@test.com": { email: "fusao.legado@test.com", name: "Legado Fusão", plan: "vipro",
-        created_at: "2026-05-01T00:00:00.000Z", profiles: [],
-        vip: { active: true, plan: "vipro", manualExpires: _fNow + 20 * 86400_000, autoExpires: _fNow + 20 * 86400_000, source: "payment",
-          creditos: [{ id: "credB1", quando: _fNow - 86400_000, dias: 30, tipo: "pago", origem: "pagamento", motivo: "VIPro", dadoPor: "sistema", valor: 150 }] },
-        cvs: [{ idx: 9001, name: "CV_Legado.pdf", size: 2000, cvType: "resume" }] },
-      // conta que existe NOS DOIS — no B é a MAIS NOVA (2026-08-01), então
-      // o perfil dela VENCE; dias/diamantes/envios do A são SOMADOS.
-      "fusao.conflito@test.com": { email: "fusao.conflito@test.com", name: "Conflito Novo", plan: "vip",
-        created_at: "2026-08-01T00:00:00.000Z", profiles: [],
-        vip: { active: true, plan: "vip", manualExpires: _fNow + 8 * 86400_000, autoExpires: _fNow + 5 * 86400_000, source: "payment" } },
-    }));
-    fs.writeFileSync(path.join(DATA_B, "history.json"), JSON.stringify({
-      "fusao.legado@test.com": [
-        { appId: "app_b_l1", to: "l1@x.com", subject: "x", type: "manual", sentAt: "2026-06-01T12:00:00.000Z", date: "2026-06-01", dateStr: "2026-06-01" },
-        { appId: "app_b_l2", to: "l2@x.com", subject: "x", type: "auto", sentAt: "2026-06-02T12:00:00.000Z", date: "2026-06-02", dateStr: "2026-06-02" }],
-      "fusao.conflito@test.com": [
-        { appId: "app_b1", to: "emp2-b@x.com", subject: "x", type: "manual", sentAt: "2026-08-02T12:00:00.000Z", date: "2026-08-02", dateStr: "2026-08-02" }],
-    }));
-    fs.mkdirSync(path.join(DATA_B, "cvs"), { recursive: true });
-    fs.writeFileSync(path.join(DATA_B, "cvs", "fusao.legado@test.com_9001.pdf"), "%PDF-1.4 curriculo do legado que nao pode se perder");
-    const _compB64 = Buffer.from("comprovante-pix-fusao").toString("base64");
-    fs.writeFileSync(path.join(DATA_B, "pedidos.json"), JSON.stringify([
-      { id: "pedB0001", userEmail: "fusao.legado@test.com", userName: "Legado Fusão", plano: "vipro", dias: 30,
-        valorTotal: 150, status: "ativo", comprovante: _compB64, comprovanteType: "image/jpeg",
-        createdAt: _fNow - 2 * 86400_000, pagoEm: _fNow - 2 * 86400_000, ativadoEm: _fNow - 86400_000, ativadoPor: "admin" }]));
-    fs.writeFileSync(path.join(DATA_B, "financeiro.json"), JSON.stringify({
-      pagamentos: [{ id: "pgB0001", email: "fusao.legado@test.com", nome: "Legado Fusão", valor: 150, dataPagamento: "2026-08-13", criadoEm: _fNow - 86400_000, pedidoId: "pedB0001", source: "pedido_automatico" }], gastos: [] }));
-    const srvB = spawn(process.execPath, ["server.js"], {
-      cwd: __dirname,
-      env: { ...process.env, PORT: String(PORT_B), DATA_DIR: DATA_B, STORAGE: "json", TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890", DOL_FEED_BASE: `http://127.0.0.1:${FEED_PORT}/feed` },
-      stdio: ["ignore", "ignore", "ignore"],
-    });
-    const _waitB = async (ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const ok = await new Promise((rs) => { http.get(`http://127.0.0.1:${PORT_B}/api/public-stats`, (r) => { r.resume(); rs(r.statusCode === 200); }).on("error", () => rs(false)); }); if (ok) return true; } catch {} await new Promise((r) => setTimeout(r, 400)); } return false; };
-    check("🚚 v144: (setup) Servidor B subiu de verdade na porta " + PORT_B, await _waitB(40_000));
-    // aponta o "Servidor 2" da config pro B local e dispara a fusão
-    await req2("POST", "/api/admin/settings", { servers: [
-      { id: 1, nome: "Servidor 1", url: BASE, maxExibido: 100, status: "aberto" },
-      { id: 2, nome: "Servidor 2", url: `http://127.0.0.1:${PORT_B}`, maxExibido: 100, status: "aberto" }] });
-    const fu1 = await req2("POST", "/api/admin/fusao/puxar", { serverId: 2 });
-    check("🚚 v144: fusão dispara em background (started:true)", fu1.json?.ok === true && fu1.json?.started === true, fu1.body.slice(0, 140));
-    let fuSt = null;
-    for (let i = 0; i < 60; i++) {
-      await new Promise((r) => setTimeout(r, 500));
-      fuSt = (await get("/api/admin/fusao/status")).json;
-      if (fuSt && !fuSt.running && fuSt.finishedAt) break;
-    }
-    check("🚚 v144: fusão TERMINOU sem erro (backup automático antes + tudo gravado no disco)",
-      fuSt && fuSt.error === null && fuSt.relatorio, JSON.stringify({ error: fuSt?.error, rel: fuSt?.relatorio }).slice(0, 220));
-    const _rel = fuSt?.relatorio || {};
-    check("🚚 v144: relatório fecha a conta — 1 conta nova (só existia no B), 1 fundida (conflito), 1 pedido, 1 PDF, 0 erros",
-      _rel.novos === 1 && _rel.fundidos === 1 && _rel.pedidosImportados === 1 && _rel.pdfs >= 1 && (_rel.erros || []).length === 0,
-      JSON.stringify(_rel).slice(0, 260));
-    // A conta que só existia no B entrou INTEIRA: 20d de VIP, 7💎+3💎, PDF no disco
-    const finLeg = await get("/api/admin/financeiro-usuario/" + encodeURIComponent("fusao.legado@test.com"));
-    check("🚚 v144: conta exclusiva do B chegou com os dias de VIP EXATOS (a pessoa loga e já sai mandando)",
-      finLeg.json?.ok === true && finLeg.json?.plano?.manual?.diasRestantes >= 19 && finLeg.json?.plano?.manual?.diasRestantes <= 20 &&
-      finLeg.json?.plano?.auto?.diasRestantes >= 19 && finLeg.json?.creditos?.length >= 1,
-      JSON.stringify({ m: finLeg.json?.plano?.manual?.diasRestantes, a: finLeg.json?.plano?.auto?.diasRestantes }).slice(0, 120));
-    check("🚚 v144: o PDF do currículo veio junto e está NO DISCO do servidor principal",
-      fs.existsSync(path.join(DATA, "cvs", "fusao.legado@test.com_9001.pdf")));
-    const pedFu = await get("/api/pedido/pedB0001");
-    check("🚚 v144: pedido do B chegou COM comprovante aberto (base64 íntegro) e marcado com o servidor de origem",
-      pedFu.json?.ok !== false && pedFu.json?.pedido?.comprovante === _compB64 && pedFu.json?.pedido?.origemServidor === 2,
-      JSON.stringify({ tem: !!pedFu.json?.pedido?.comprovante, origem: pedFu.json?.pedido?.origemServidor }).slice(0, 120));
-    // O CONFLITO: perfil do B vence (mais novo), dias e diamantes SOMADOS
-    const finCon = await get("/api/admin/financeiro-usuario/" + encodeURIComponent("fusao.conflito@test.com"));
-    const _mDias = finCon.json?.plano?.manual?.diasRestantes, _aDias = finCon.json?.plano?.auto?.diasRestantes;
-    check("🚚 v144: CONFLITO DE E-MAIL — dias de VIP SOMADOS (10 locais + 8 do B ≈ 18 manual · 5 auto) — ninguém perde o que pagou",
-      _mDias >= 17 && _mDias <= 18 && _aDias >= 4 && _aDias <= 5, JSON.stringify({ manual: _mDias, auto: _aDias }));
-    const _uCon = (await get("/api/admin/user-detail/" + encodeURIComponent("fusao.conflito@test.com"))).json?.user;
-    check("🚚 v144: CONFLITO — perfil vencedor é o da conta criada por ÚLTIMO (nome do B)",
-      _uCon?.name === "Conflito Novo",
-      JSON.stringify({ name: _uCon?.name }).slice(0, 120));
-    // Regra 8 (a mais sagrada): anti-duplicado UNIDO — nunca reenvia pra
-    // empregador já contatado em QUALQUER um dos servidores.
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "fusao.conflito@test.com", name: "Conflito" });
-    const seFu = await get("/api/sent-emails");
-    check("🚚 v144: REGRA 8 — anti-duplicado dos DOIS servidores unido (emp1-a@x.com E emp2-b@x.com bloqueados)",
-      (seFu.json?.sent || []).includes("emp1-a@x.com") && (seFu.json?.sent || []).includes("emp2-b@x.com"), JSON.stringify(seFu.json?.sent).slice(0, 140));
-    const stFu = await get("/api/status");
-    check("🚚 v144: envios dos dois servidores SOMADOS no histórico/ranking (1 do A + 1 do B = 2)",
-      stFu.json?.totalSent === 2, JSON.stringify({ totalSent: stFu.json?.totalSent }));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-    // IDEMPOTÊNCIA: rodar de novo NÃO pode somar dias/diamantes duas vezes
-    const fu2 = await req2("POST", "/api/admin/fusao/puxar", { serverId: 2 });
-    let fuSt2 = null;
-    for (let i = 0; i < 40; i++) { await new Promise((r) => setTimeout(r, 400)); fuSt2 = (await get("/api/admin/fusao/status")).json; if (fuSt2 && !fuSt2.running && fuSt2.finishedAt) break; }
-    const finCon2 = await get("/api/admin/financeiro-usuario/" + encodeURIComponent("fusao.conflito@test.com"));
-    check("🚚 v144: IDEMPOTÊNCIA — rodar a fusão DE NOVO não duplica nada (0 novos, 0 fundidos, dias intactos)",
-      fu2.json?.ok === true && fuSt2?.relatorio?.novos === 0 && fuSt2?.relatorio?.fundidos === 0 &&
-      finCon2.json?.plano?.manual?.diasRestantes === _mDias,
-      JSON.stringify({ rel2: fuSt2?.relatorio, dias: finCon2.json?.plano?.manual?.diasRestantes }).slice(0, 220));
-    // financeiro do B fundido no caixa local
-    const finGlob = await get("/api/admin/financeiro");
-    check("🚚 v144: caixa do B fundido no caixa local (pagamento de R$150 presente, sem duplicar)",
-      (finGlob.json?.pagamentos || []).filter((p2) => p2.id === "pgB0001").length === 1, JSON.stringify((finGlob.json?.pagamentos || []).filter((p2) => p2.id === "pgB0001")).slice(0, 140));
-    srvB.kill();
-    // ═══ 🚚 v146: MODO APOSENTADO — depois da fusão, o servidor antigo
-    // redireciona TODO MUNDO pro Servidor 1 (env REDIRECT_ALL_TO), mas as
-    // rotas peer continuam vivas (pra re-puxar a fusão se precisar).
-    await new Promise((r) => setTimeout(r, 500));
-    const srvB2 = spawn(process.execPath, ["server.js"], {
-      cwd: __dirname,
-      env: { ...process.env, PORT: String(PORT_B), DATA_DIR: DATA_B, STORAGE: "json", TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890", DOL_FEED_BASE: `http://127.0.0.1:${FEED_PORT}/feed`, REDIRECT_ALL_TO: "https://h2bapply.com" },
-      stdio: ["ignore", "ignore", "ignore"],
-    });
-    const _rawB = (p, headers) => new Promise((rs) => { http.get({ host: "127.0.0.1", port: PORT_B, path: p, headers: headers || {} }, (r) => { let b = ""; r.on("data", (c) => (b += c)); r.on("end", () => rs({ status: r.statusCode, location: r.headers.location || "", body: b })); }).on("error", () => rs(null)); });
-    const _waitB2 = async (ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const r = await _rawB("/"); if (r && r.status) return true; await new Promise((r2) => setTimeout(r2, 400)); } return false; };
-    check("🚚 v146: (setup) servidor aposentado subiu com REDIRECT_ALL_TO", await _waitB2(40_000));
-    const rd1 = await _rawB("/admin?x=1");
-    check("🚚 v146: MODO APOSENTADO — quem entra no servidor antigo é jogado pro Servidor 1 (302, caminho preservado)",
-      rd1 && rd1.status === 302 && rd1.location === "https://h2bapply.com/admin?x=1", JSON.stringify(rd1).slice(0, 140));
-    const _peerTokFu = require("crypto").createHmac("sha256", "smoke-enc-key-1234567890").update("h2b-peer-financeiro-v1").digest("hex");
-    const rd2 = await _rawB("/api/servers/fusao/manifest", { "x-peer-fin": _peerTokFu });
-    check("🚚 v146: rotas peer continuam VIVAS no modo aposentado (dá pra re-puxar a fusão mesmo com o redirect ligado)",
-      rd2 && rd2.status === 200 && JSON.parse(rd2.body || "{}").ok === true, JSON.stringify({ status: rd2?.status }).slice(0, 100));
-    srvB2.kill();
-    try { fs.rmSync(DATA_B, { recursive: true, force: true }); } catch {}
-
-    // ═══ 📦 v148: DRILL REAL DA MIGRAÇÃO POR ARQUIVO (dono, 20/08: "já que a
-    // fusão não está dando certo... botão de download de todas as informações
-    // ... e no server um, o importar. Me garanta que agora vai funcionar").
-    // Sobe um TERCEIRO servidor de verdade (SERVER_ID=3), o admin EXPORTA o
-    // arquivo pela rota real, e o servidor principal IMPORTA o arquivo —
-    // sem os dois nunca se falarem por rede. Mesmo motor, mesmas garantias.
-    const PORT_C = FEED_PORT + 2;
-    const DATA_C = fs.mkdtempSync(path.join(os.tmpdir(), "h2b-fusao-c-"));
-    const _cNow = Date.now();
-    fs.writeFileSync(path.join(DATA_C, "users.json"), JSON.stringify({
-      // conta que SÓ existe no C — entra inteira no A via arquivo
-      "fusao.arquivo@test.com": { email: "fusao.arquivo@test.com", name: "Arquivo Fusão", plan: "vipro",
-        created_at: "2026-06-01T00:00:00.000Z", profiles: [],
-        vip: { active: true, plan: "vipro", manualExpires: _cNow + 12 * 86400_000, autoExpires: _cNow + 12 * 86400_000, source: "payment" },
-        cvs: [{ idx: 9101, name: "CV_Arquivo.pdf", size: 1500, cvType: "resume" }] },
-      // conta que existe NOS DOIS — no C é MAIS VELHA (2026-07-01) que a local
-      // (2026-08-01, vencedora da fusão do B) → local vence, dias/💎 SOMADOS.
-      "fusao.conflito@test.com": { email: "fusao.conflito@test.com", name: "Conflito Velho C", plan: "vip",
-        created_at: "2026-07-01T00:00:00.000Z", profiles: [],
-        vip: { active: true, plan: "vip", manualExpires: _cNow + 3 * 86400_000, autoExpires: _cNow + 2 * 86400_000, source: "payment" } },
-      // o admin do teste precisa logar no C pra exportar — pré-semeado BEM
-      // antigo pra, na importação, a conta local (mais nova) vencer sem ruído
-      "smoke@test.com": { email: "smoke@test.com", name: "Smoke", plan: "free",
-        created_at: "2020-01-01T00:00:00.000Z", profiles: [], isAdmin: true },
-    }));
-    fs.writeFileSync(path.join(DATA_C, "history.json"), JSON.stringify({
-      "fusao.arquivo@test.com": [{ appId: "app_c_a1", to: "emp4-c@x.com", subject: "x", type: "manual", sentAt: "2026-07-01T12:00:00.000Z", date: "2026-07-01", dateStr: "2026-07-01" }],
-      "fusao.conflito@test.com": [{ appId: "app_c1", to: "emp3-c@x.com", subject: "x", type: "manual", sentAt: "2026-07-02T12:00:00.000Z", date: "2026-07-02", dateStr: "2026-07-02" }],
-    }));
-    fs.mkdirSync(path.join(DATA_C, "cvs"), { recursive: true });
-    fs.writeFileSync(path.join(DATA_C, "cvs", "fusao.arquivo@test.com_9101.pdf"), "%PDF-1.4 curriculo que viaja dentro do arquivo exportado");
-    const _compC64 = Buffer.from("comprovante-pix-arquivo").toString("base64");
-    fs.writeFileSync(path.join(DATA_C, "pedidos.json"), JSON.stringify([
-      { id: "pedC0001", userEmail: "fusao.arquivo@test.com", userName: "Arquivo Fusão", plano: "vipro", dias: 30,
-        valorTotal: 100, status: "ativo", comprovante: _compC64, comprovanteType: "image/jpeg",
-        createdAt: _cNow - 3 * 86400_000, pagoEm: _cNow - 3 * 86400_000, ativadoEm: _cNow - 2 * 86400_000, ativadoPor: "admin" }]));
-    fs.writeFileSync(path.join(DATA_C, "financeiro.json"), JSON.stringify({
-      pagamentos: [{ id: "pgC0001", email: "fusao.arquivo@test.com", nome: "Arquivo Fusão", valor: 100, dataPagamento: "2026-08-14", criadoEm: _cNow - 2 * 86400_000, pedidoId: "pedC0001", source: "pedido_automatico" }], gastos: [] }));
-    const srvC = spawn(process.execPath, ["server.js"], {
-      cwd: __dirname,
-      env: { ...process.env, PORT: String(PORT_C), DATA_DIR: DATA_C, STORAGE: "json", TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890", DOL_FEED_BASE: `http://127.0.0.1:${FEED_PORT}/feed`, SERVER_ID: "3" },
-      stdio: ["ignore", "ignore", "ignore"],
-    });
-    // mini-jar de cookie próprio pro servidor C (admin logado LÁ pra exportar)
-    let COOKIE_C = "";
-    const _reqC = (method, p, payload) => new Promise((resolve, reject) => {
-      const body = payload ? JSON.stringify(payload) : null;
-      const r = http.request(`http://127.0.0.1:${PORT_C}` + p, { method, headers: {
-        ...(body ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) } : {}),
-        ...(COOKIE_C ? { Cookie: COOKIE_C } : {}) } }, (res2) => {
-        const sc = res2.headers["set-cookie"]; if (sc && sc.length) COOKIE_C = sc[0].split(";")[0];
-        let b = ""; res2.on("data", (c) => (b += c));
-        res2.on("end", () => { let j = null; try { j = JSON.parse(b); } catch {} resolve({ status: res2.statusCode, body: b, json: j }); });
-      });
-      r.on("error", reject); if (body) r.write(body); r.end();
-    });
-    const _getBufC = (p) => new Promise((rs) => { http.get({ host: "127.0.0.1", port: PORT_C, path: p, headers: COOKIE_C ? { Cookie: COOKIE_C } : {} }, (r) => { const ch = []; r.on("data", (c) => ch.push(c)); r.on("end", () => rs({ status: r.statusCode, headers: r.headers, buf: Buffer.concat(ch) })); }).on("error", () => rs(null)); });
-    const _getBufA = (p) => new Promise((rs) => { http.get(BASE + p, { headers: COOKIE ? { Cookie: COOKIE } : {} }, (r) => { const ch = []; r.on("data", (c) => ch.push(c)); r.on("end", () => rs({ status: r.statusCode, headers: r.headers, buf: Buffer.concat(ch) })); }).on("error", () => rs(null)); });
-    const _postBinA = (p, buf) => new Promise((rs, rj) => { const r = http.request(BASE + p, { method: "POST", headers: { "Content-Type": "application/gzip", "Content-Length": buf.length, ...(COOKIE ? { Cookie: COOKIE } : {}) } }, (res2) => { let b = ""; res2.on("data", (c) => (b += c)); res2.on("end", () => { let j = null; try { j = JSON.parse(b); } catch {} rs({ status: res2.statusCode, json: j, body: b }); }); }); r.on("error", rj); r.write(buf); r.end(); });
-    const _waitC = async (ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const ok = await new Promise((rs) => { http.get(`http://127.0.0.1:${PORT_C}/api/public-stats`, (r) => { r.resume(); rs(r.statusCode === 200); }).on("error", () => rs(false)); }); if (ok) return true; } catch {} await new Promise((r) => setTimeout(r, 400)); } return false; };
-    check("📦 v148: (setup) Servidor C (SERVER_ID=3) subiu de verdade na porta " + PORT_C, await _waitC(40_000));
-    await _reqC("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
-    // EXPORTAR no C: o mesmo clique que o dono vai dar no Servidor 2 e 3
-    const exC = await _getBufC("/api/admin/fusao/exportar");
-    check("📦 v148: EXPORTAR gera o arquivo .gz com os contadores nos headers (3 usuários, 1 pedido, servidor 3)",
-      exC && exC.status === 200 && String(exC.headers["content-type"]).includes("gzip") &&
-      exC.headers["x-fusao-users"] === "3" && exC.headers["x-fusao-pedidos"] === "1" && exC.headers["x-fusao-server"] === "3",
-      JSON.stringify({ status: exC?.status, u: exC?.headers?.["x-fusao-users"], p: exC?.headers?.["x-fusao-pedidos"], s: exC?.headers?.["x-fusao-server"] }));
-    let _exDados = null;
-    try { _exDados = JSON.parse(require("zlib").gunzipSync(exC.buf).toString("utf8")); } catch {}
-    check("📦 v148: o arquivo é JSON gzipado ÍNTEGRO — formato marcado, PDF em base64 a bordo, pedido com comprovante, globais juntos",
-      _exDados && _exDados.fmt === "h2bapply-fusao-arquivo-v1" && _exDados.serverId === 3 &&
-      _exDados.users["fusao.arquivo@test.com"]?.pdfs?.[0]?.b64?.length > 10 &&
-      _exDados.pedidos?.length === 1 && _exDados.pedidos[0].comprovante === _compC64 &&
-      (_exDados.globais?.financeiro?.pagamentos || []).some((p2) => p2.id === "pgC0001") &&
-      !JSON.stringify(_exDados.users).includes("refresh_token"),
-      JSON.stringify({ fmt: _exDados?.fmt, sid: _exDados?.serverId, users: Object.keys(_exDados?.users || {}).length }).slice(0, 160));
-    // IMPORTAR no A: o clique do dono no Servidor 1 (com o C já MORTO —
-    // é exatamente o cenário que a fusão por rede não cobria). v148b: o
-    // painel envia em PEDAÇOS de 4MB (arquivo de 42MB do celular era cortado
-    // pelo proxy do Render numa requisição só) — o drill prova o caminho
-    // fatiado de verdade: 2 partes por offset + fim.
-    srvC.kill();
-    const _postParteA = (upId, off, buf) => new Promise((rs, rj) => { const r = http.request(BASE + "/api/admin/fusao/importar-parte", { method: "POST", headers: { "Content-Type": "application/octet-stream", "Content-Length": buf.length, "x-up-id": upId, "x-up-off": String(off), ...(COOKIE ? { Cookie: COOKIE } : {}) } }, (res2) => { let b = ""; res2.on("data", (c) => (b += c)); res2.on("end", () => { let j = null; try { j = JSON.parse(b); } catch {} rs({ status: res2.statusCode, json: j }); }); }); r.on("error", rj); r.write(buf); r.end(); });
-    const _metade = Math.ceil(exC.buf.length / 2);
-    const pt1 = await _postParteA("smokeup1", 0, exC.buf.slice(0, _metade));
-    // a 2ª parte é enviada DUAS vezes (retentativa de 4G) — offset idempotente
-    await _postParteA("smokeup1", _metade, exC.buf.slice(_metade));
-    const pt2 = await _postParteA("smokeup1", _metade, exC.buf.slice(_metade));
-    check("📦 v148b: upload em PARTES grava por offset (retentativa do mesmo pedaço não corrompe; total de bytes fecha)",
-      pt1.json?.ok === true && pt2.json?.ok === true && pt2.json?.bytes === exC.buf.length,
-      JSON.stringify({ p1: pt1.json, p2: pt2.json, esperado: exC.buf.length }).slice(0, 140));
-    const imp1 = await req2("POST", "/api/admin/fusao/importar-fim", { upId: "smokeup1" });
-    check("📦 v148: IMPORTAR aceita o arquivo (montado das partes) e dispara em background (modo arquivo, origem 3)",
-      imp1.json?.ok === true && imp1.json?.started === true && imp1.json?.modo === "arquivo" && imp1.json?.serverId === 3,
-      (imp1.body || "").slice(0, 160));
-    let impSt = null;
-    for (let i = 0; i < 60; i++) { await new Promise((r) => setTimeout(r, 500)); impSt = (await get("/api/admin/fusao/status")).json; if (impSt && !impSt.running && impSt.finishedAt) break; }
-    check("📦 v148: importação TERMINOU sem erro — log completo pro dono conferir (backup antes + tudo gravado)",
-      impSt && impSt.error === null && impSt.relatorio && (impSt.log || []).some((l) => /IMPORTAÇÃO DO SERVIDOR 3 CONCLUÍDA/.test(l.msg)),
-      JSON.stringify({ error: impSt?.error, rel: impSt?.relatorio }).slice(0, 220));
-    const _relC = impSt?.relatorio || {};
-    check("📦 v148: relatório fecha a conta — 1 conta nova, 2 fundidas (conflito + admin), 1 pedido, 1 PDF, 0 erros",
-      _relC.novos === 1 && _relC.fundidos === 2 && _relC.pedidosImportados === 1 && _relC.pdfs >= 1 && (_relC.erros || []).length === 0,
-      JSON.stringify(_relC).slice(0, 260));
-    const finArq = await get("/api/admin/financeiro-usuario/" + encodeURIComponent("fusao.arquivo@test.com"));
-    check("📦 v148: conta exclusiva do C chegou com os dias de VIP EXATOS e o PDF do currículo NO DISCO do principal",
-      finArq.json?.ok === true && finArq.json?.plano?.manual?.diasRestantes >= 11 && finArq.json?.plano?.manual?.diasRestantes <= 12 &&
-      fs.existsSync(path.join(DATA, "cvs", "fusao.arquivo@test.com_9101.pdf")),
-      JSON.stringify({ m: finArq.json?.plano?.manual?.diasRestantes }).slice(0, 100));
-    const pedArq = await get("/api/pedido/pedC0001");
-    check("📦 v148: pedido do C chegou COM o comprovante intacto e marcado com o servidor de origem 3",
-      pedArq.json?.ok !== false && pedArq.json?.pedido?.comprovante === _compC64 && pedArq.json?.pedido?.origemServidor === 3,
-      JSON.stringify({ tem: !!pedArq.json?.pedido?.comprovante, origem: pedArq.json?.pedido?.origemServidor }).slice(0, 100));
-    const finCon3 = await get("/api/admin/financeiro-usuario/" + encodeURIComponent("fusao.conflito@test.com"));
-    const _mDias3 = finCon3.json?.plano?.manual?.diasRestantes;
-    const _uCon3 = (await get("/api/admin/user-detail/" + encodeURIComponent("fusao.conflito@test.com"))).json?.user;
-    check("📦 v148: CONFLITO via arquivo — conta local (mais nova) vence o perfil, mas os 3 dias do C são SOMADOS",
-      _mDias3 >= _mDias + 2 && _mDias3 <= _mDias + 3 && _uCon3?.name === "Conflito Novo",
-      JSON.stringify({ dias: _mDias3, antes: _mDias, name: _uCon3?.name }).slice(0, 140));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "fusao.conflito@test.com", name: "Conflito" });
-    const seC = await get("/api/sent-emails");
-    check("📦 v148: REGRA 8 — anti-duplicado do arquivo UNIDO ao local (emp3-c@x.com bloqueado; 3 envios no total)",
-      (seC.json?.sent || []).includes("emp3-c@x.com") && (await get("/api/status")).json?.totalSent === 3,
-      JSON.stringify(seC.json?.sent).slice(0, 140));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-    // IDEMPOTÊNCIA: importar o MESMO arquivo de novo não pode somar nada
-    const imp2 = await _postBinA("/api/admin/fusao/importar", exC.buf);
-    let impSt2 = null;
-    for (let i = 0; i < 40; i++) { await new Promise((r) => setTimeout(r, 400)); impSt2 = (await get("/api/admin/fusao/status")).json; if (impSt2 && !impSt2.running && impSt2.finishedAt) break; }
-    check("📦 v148: IDEMPOTÊNCIA — importar o MESMO arquivo de novo não duplica nada (0 novos, 0 fundidos, dias intactos)",
-      imp2.json?.ok === true && impSt2?.relatorio?.novos === 0 && impSt2?.relatorio?.fundidos === 0 &&
-      (await get("/api/admin/financeiro-usuario/" + encodeURIComponent("fusao.conflito@test.com"))).json?.plano?.manual?.diasRestantes === _mDias3,
-      JSON.stringify({ rel2: impSt2?.relatorio }).slice(0, 200));
-    const finGlobC = await get("/api/admin/financeiro");
-    check("📦 v148: caixa do C fundido no caixa local SEM duplicar (pagamento pgC0001 presente exatamente 1 vez)",
-      (finGlobC.json?.pagamentos || []).filter((p2) => p2.id === "pgC0001").length === 1,
-      JSON.stringify((finGlobC.json?.pagamentos || []).filter((p2) => p2.id === "pgC0001")).slice(0, 120));
-    // GUARDA: importar um arquivo exportado DESTE MESMO servidor é recusado
-    // (duplicaria dias/diamantes de todo mundo — o erro explica o porquê)
-    const exA = await _getBufA("/api/admin/fusao/exportar");
-    const impSelf = exA && exA.status === 200 ? await _postBinA("/api/admin/fusao/importar", exA.buf) : null;
-    check("📦 v148: GUARDA — arquivo exportado deste MESMO servidor é recusado na importação (senão duplicava tudo)",
-      exA && exA.status === 200 && impSelf && impSelf.status === 400 && /DESTE mesmo servidor/i.test(impSelf.json?.error || ""),
-      JSON.stringify({ ex: exA?.status, imp: impSelf?.status, err: impSelf?.json?.error }).slice(0, 180));
     const _admHtml = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
     // (o admin.html enxuto desta reconstrução não tem card de Fusão de
-    // Servidores na UI — só 3 abas — a API real já foi testada ponta a
-    // ponta acima: exportar/importar/importar em partes/guarda de auto-
-    // importação.)
-    try { fs.rmSync(DATA_C, { recursive: true, force: true }); } catch {}
+    // Servidores na UI — só 3 abas; a arquitetura multi-servidor inteira
+    // [Fusão, backup entre irmãos, financeiro-global] foi removida do
+    // server.js por não fazer parte deste site de servidor único.)
 
-    // ═══ 🙈 v147: servidor OCULTO some do seletor público, mas as rotas
-    // internas (fusão) continuam enxergando — "quem entrar no server 1 não
-    // terá mais a opção do server 2 e 3" (dono, 15/08).
-    await req2("POST", "/api/admin/settings", { servers: [
-      { id: 1, nome: "Servidor 1", url: BASE, maxExibido: 100, status: "aberto" },
-      { id: 2, nome: "Servidor 2", url: `http://127.0.0.1:${PORT_B}`, maxExibido: 100, status: "oculto" }] });
-    const svPub = await get("/api/servers");
-    check("🙈 v147: servidor marcado 'oculto' NÃO aparece no seletor público (todo mundo forçado pro Servidor 1)",
-      (svPub.json?.servers || []).length === 1 && svPub.json?.servers?.[0]?.id === 1, JSON.stringify(svPub.json?.servers?.map((s2) => s2.id)));
-    const psSrv = await get("/api/public-stats");
-    check("🙈 v147: public-stats conta 1 servidor visível → a pill 🌐 some da landing",
-      psSrv.json?.serversVisiveis === 1, JSON.stringify({ vis: psSrv.json?.serversVisiveis }));
     // 🌐 v157 (dono, 22/08: "retire tudo sobre o servidor 2 e 3"): o seletor
     // de servidores, a pill 🌐, os cards "Escolha seu servidor"/"conta em
     // outro servidor" e o atalho multi-servidor do admin SUMIRAM do front —
@@ -1866,21 +1481,6 @@ async function testAuthWatchdogPush() {
       (appJs.body.match(/"rn_t":/g) || []).length === 3 && appJs.body.includes("resetNoticeOk") &&
       appJs.body.includes("h2bResetNoticeOk") && appJs.body.includes("_avisoResetOn"),
       "modal rn_* ou interceptação do openAuthGate não encontrados");
-    // 💸 v151 (fatura do Render, 21/08 — 38,6GB de banda "Service-Initiated"
-    // gerada pelos próprios servidores): servidor aposentado (REDIRECT_ALL_TO)
-    // desliga automático, backup entre irmãos, sentinela e TODOS os robôs de
-    // coleta; o vigia de anúncios do DOL caiu de 10 pra 30min em todos.
-    // Guarda recalibrada: nesta reconstrução os robôs de coleta não existem
-    // (menos coisa pra desligar), então o gate ficou mais simples — early
-    // return "if(MODO_APOSENTADO)return" nos 4 pontos que restaram
-    // (backup peers, sentinela, scheduleAuto e o bloco de robôs), sem o
-    // padrão "if(!MODO_APOSENTADO){" de wrap que a versão antiga usava.
-    check("💸 v151: (estrutural) MODO_APOSENTADO desliga scheduleAuto + backup peers + sentinela + robôs restantes (casca só de redirect)",
-      _srvSrc.includes("const MODO_APOSENTADO") &&
-      (_srvSrc.match(/if\(MODO_APOSENTADO\)return/g) || []).length +
-        (_srvSrc.match(/if\(MODO_APOSENTADO\)\{/g) || []).length >= 4 &&
-      _srvSrc.includes("modo aposentado — enrich/frescor"),
-      "gates do MODO_APOSENTADO não encontrados no server.js");
     // (vigia de anúncios do DOL/dolNewsAutoTick — aba Notícias removida,
     // sem esse robô nesta reconstrução.)
     // 🔓 v153 (ordem do dono, 21/08 — "libera todos"): o boot ZERA a lista
@@ -1995,9 +1595,9 @@ async function testAuthWatchdogPush() {
 
     // ═══ 🩻 v163: RAIO-X DE MEMÓRIA (OOM 2GB no Render — medir antes de operar)
     const memX = (await get("/api/admin/memoria")).json;
-    check("🩻 v163: /api/admin/memoria mede o processo (rss/heap > 0), conta os comprovantes base64 RESIDENTES na RAM (fixtures: pedidos ≥4 com foto, gastos ≥1) e lista os arquivos do DATA com tamanho",
+    check("🩻 v163: /api/admin/memoria mede o processo (rss/heap > 0), conta os comprovantes base64 RESIDENTES na RAM (fixtures: pedidos ≥2 com foto, gastos ≥1) e lista os arquivos do DATA com tamanho",
       memX?.ok === true && memX.processo?.rssMB > 0 && memX.processo?.heapUsadoMB > 0 &&
-      memX.comprovantes?.pedidos?.n >= 4 && memX.comprovantes?.pedidos?.mb >= 0 &&
+      memX.comprovantes?.pedidos?.n >= 2 && memX.comprovantes?.pedidos?.mb >= 0 &&
       memX.comprovantes?.gastos?.n >= 1 &&
       Array.isArray(memX.arquivos) && memX.arquivos.some((a) => a.nome === "users.json") &&
       Array.isArray(memX.dicas) && memX.dicas.length >= 1 && typeof memX.bancos?.usuarios === "number",
@@ -2182,12 +1782,6 @@ async function testAuthWatchdogPush() {
       _rAdm4?.ehAdmin === true && _rUsr4?.ehAdmin === false &&
       _srvSrc.includes("if(isAdminEmail(pd.userEmail))continue;"),
       JSON.stringify({ adm: _rAdm4?.ehAdmin, usr: _rUsr4?.ehAdmin }).slice(0, 80));
-    await req2("POST", "/api/admin/settings", { fgManual2: 0 });
-    const fg4 = (await get("/api/admin/financeiro-global")).json;
-    const _srvOc4 = (fg4?.servidores || []).find((x) => !x.self && x.oculto === true && x.ok === false);
-    check("💼 MC5-P4: era de 1 servidor — servidor OCULTO nunca mais é consultado (dieta 13w) e chega marcado (oculto:true)",
-      !!_srvOc4 && _srvSrc.includes("_svOculto"),
-      JSON.stringify(fg4?.servidores || []).slice(0, 160));
 
     // ═══ 💼 MC5 — PARTE 5 (29/08): QUEM RECEBEU/GASTOU 100% ════════════════
     // Dono do dinheiro NUNCA mais é chutado; gasto recorrente (Render todo
@@ -2375,37 +1969,17 @@ async function testAuthWatchdogPush() {
     // verificação por IA, aprovação sempre manual pelo admin".)
 
     // 🩺 v155 (caso Esdras: "desbaniu e continua barrado" — a causa era OUTRA
-    // porta): raio-X do login testa todas as portas; e a triagem nunca mais
-    // manda ninguém pra servidor Oculto (lá o código congelado tem regras velhas).
+    // porta): raio-X do login testa as portas de bloqueio LOCAIS (ban, conta
+    // existe, flags de trial).
     const dg1 = await get("/api/admin/diagnostico-login?email=" + encodeURIComponent("smoke@test.com"));
     check("🩺 v155: diagnóstico de conta EXISTENTE → nenhum bloqueio e explica que o login é liberado",
       dg1.json?.ok === true && (dg1.json?.problemas || []).length === 0 && (dg1.json?.info || []).some((x) => /Conta EXISTE/.test(x)),
       (dg1.body || "").slice(0, 160));
-    await req2("POST", "/api/admin/settings", { servers: [
-      { id: 1, nome: "Servidor 1", url: BASE, maxExibido: 100, status: "lotado" },
-      { id: 2, nome: "Servidor 2", url: `http://127.0.0.1:${PORT_B}`, maxExibido: 100, status: "oculto" }] });
     const dg2 = await get("/api/admin/diagnostico-login?email=" + encodeURIComponent("naoexiste.diag@test.com"));
-    check("🩺 v155+v156: e-mail SEM conta + servidor 'lotado' na config → NENHUM bloqueio (o lotado virou decorativo: cadastro novo é SEMPRE aceito aqui)",
+    check("🩺 v155: e-mail SEM conta → nenhum bloqueio, seria cadastro novo",
       dg2.json?.ok === true && (dg2.json?.problemas || []).length === 0 &&
-      (dg2.json?.info || []).some((x) => /SEMPRE aceito/.test(x)) && (dg2.json?.info || []).some((x) => /decorativo/.test(x)),
+      (dg2.json?.info || []).some((x) => /CADASTRO NOVO/.test(x)),
       (dg2.body || "").slice(0, 250));
-    // E o /api/auth/where com o MESMO servidor "lotado" na config: a pessoa
-    // nova continua sendo cadastrada AQUI (a trava morreu de verdade, não só
-    // no diagnóstico) — este era exatamente o cenário da pessoa real de 22/08.
-    const aw2 = await get("/api/auth/where?email=" + encodeURIComponent("pessoa.nova2.v156@gmail.com"));
-    check("🌐 v156: mesmo com status 'lotado' salvo na config, a triagem manda o cadastro pra CÁ (forçado aberto) — nunca pro Servidor 2/3",
-      aw2.json?.ok === true && aw2.json?.found === false && (aw2.json?.openServers || []).length === 1 &&
-      aw2.json?.openServers?.[0]?.self === true && aw2.json?.openServers?.[0]?.status === "aberto",
-      JSON.stringify(aw2.json?.openServers));
-    await req2("POST", "/api/admin/settings", { servers: [
-      { id: 1, nome: "Servidor 1", url: BASE, maxExibido: 100, status: "aberto" },
-      { id: 2, nome: "Servidor 2", url: `http://127.0.0.1:${PORT_B}`, maxExibido: 100, status: "oculto" }] });
-    // (admin.html enxuto não tem a UI do raio-X de login — diagnosticarLogin/
-    // diag-email; a rota real /api/admin/diagnostico-login já foi testada
-    // ponta a ponta acima.)
-    check("🩺 v155: (estrutural) triagem NUNCA manda ninguém pra servidor Oculto",
-      _srvSrc.includes('if(sv.status==="oculto")continue;'),
-      "skip de oculto não encontrado");
 
     // ═══ 🛡️ v73: AQUECIMENTO DE CONTA GMAIL NOVA (proteção anti-bloqueio) ═══
     // Pedido real do dono: "tem gente sendo bloqueada pelo Google". A defesa:
