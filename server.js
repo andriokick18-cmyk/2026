@@ -10025,6 +10025,23 @@ ${pedido.criadoPor&&pedido.criadoPor!==pedido.userEmail?`\n🛠️ Registrado re
         const dias=parseInt(pd.dias,10)||30;
         pd.diasTotal=dias; // ⚠️ estorno-de-dias no cancelamento (abaixo) e a reconciliação do boot leem ESTE campo — sem ele, cancelar um pedido não devolve os dias
         const isAuto=["vipro","doublepro"].includes(planoKey);
+        // ⚠️ v171 (auditoria 11/09/2026): se ESTE pedido já tinha ativação
+        // PROVISÓRIA (autoAtivarProvisorio), addManualVipDays/addAutoVipDays
+        // empilhariam os dias pagos EM CIMA do provisório ainda não vencido —
+        // a expiração final passava a valer mais que pd.diasTotal, e o
+        // estorno do cancelamento (que só subtrai pd.diasTotal) nunca
+        // recuperava essa sobra: pedido cancelado ficava com dias de plano
+        // pago ativos de graça. O pagamento SUCEDE o provisório, nunca soma
+        // com ele — zera o provisório deste pedido (cap em "agora", nunca
+        // no passado) antes de empilhar os dias pagos, mesmo padrão que a
+        // revogação de provisório já usa abaixo.
+        const uProv=getUser(pd.userEmail);
+        if(pd.autoAtivado&&uProv?.vip?.source==="auto-provisorio"&&uProv.vip.pedidoId===pd.id){
+          const agoraP=Date.now();
+          setUser(pd.userEmail,{vip:{...uProv.vip,
+            manualExpires:Math.min(uProv.vip.manualExpires||0,agoraP),
+            autoExpires:Math.min(uProv.vip.autoExpires||0,agoraP)}});
+        }
         addManualVipDays(pd.userEmail,dias);
         if(isAuto)addAutoVipDays(pd.userEmail,dias);
         const uFresh=getUser(pd.userEmail)||{}; // relê fresco — os helpers acima já gravaram

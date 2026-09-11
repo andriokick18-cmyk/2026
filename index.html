@@ -1039,6 +1039,11 @@ textarea.input,input.input,select.input{background:#f5f7ff;color:#1e1b4b}
   grid-template-columns:1fr 340px;
   gap:48px;align-items:stretch;
 }
+/* ⚠️ QA 11/09: item de grid sem min-width próprio herda min-width:auto —
+   um texto sem quebra dentro (ex.: handle do Instagram) empurra a coluna
+   além do espaço disponível e corta a borda direita de botões/caixas no
+   mobile. min-width:0 deixa o item encolher até o tamanho da track. */
+.ln-hero-copy{min-width:0}
 @media(max-width:860px){.ln-hero-inner{grid-template-columns:1fr}}
 /* v169 (dono, 08/09/2026 — "imagem desproporcional ao espaço que tem ali pra
    baixo"): era uma caixa 4:3 de altura FIXA (255px) ao lado de uma coluna de
@@ -2538,7 +2543,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
             <datalist id="dl-estados"></datalist>
             <datalist id="dl-cidades"></datalist>
           </div>
-          <div class="filters-row" id="filters-row" style="overflow:visible">
+          <div class="filters-row" id="filters-row">
             <button class="fbtn" id="btn-master-filters" onclick="openMasterFilters()" style="font-weight:800;color:#7c3aed;border:1.5px solid rgba(124,58,237,.4);background:rgba(124,58,237,.1);white-space:nowrap">
               <i class="ti ti-adjustments-horizontal"></i> Filtros
               <span id="master-filters-badge" style="display:none;background:#7c3aed;color:#fff;border-radius:10px;padding:0 6px;font-size:10px;margin-left:3px;font-weight:800"></span>

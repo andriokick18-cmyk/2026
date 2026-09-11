@@ -1031,6 +1031,13 @@ function applyMasterFilters(){
     return;
   }
   // MANUAL (comportamento original + grupos/status + v22: meses/ordenação)
+  // ⚠️ QA 11/09: faltava reler estado/salário/trabalhadores do DOM (só o
+  // automático via _mfCapture() fazia isso) — "Limpar tudo" limpava os
+  // campos na tela mas "Aplicar" continuava buscando com os valores
+  // antigos guardados nos globais fState/fWage/fWorkers.
+  fState=g("#f-state")?.value||"";
+  fWage=parseFloat(g("#f-wage")?.value||0)||0;
+  fWorkers=parseInt(g("#f-workers")?.value||0)||0;
   fGrupos=[..._mfGrupos];fEtaStatus=g("#mf-dol-status")?.value||"";
   fBeginMonths=[..._mfBeginMonths];fSort=g("#mf-sort")?.value||"random";
   closeMasterFilters();
@@ -1790,6 +1797,7 @@ function mkDetailHTML(j){
 }
 
 function showDetail(html){
+  qSugClose(); // ⚠️ QA 11/09: sem isso, o dropdown de sugestões de busca (z-index 90) ficava aberto por cima do painel de detalhe mobile (z-index 60) e podia roubar o primeiro toque do usuário
   const dc=g("#jd-content");const de=g("#jd-empty");
   if(dc&&de){de.classList.add("gone");dc.style.display="block";dc.innerHTML=html;}
   const mc=g("#mob-detail-content");if(mc)mc.innerHTML=html;
@@ -2977,6 +2985,7 @@ function showVisaTypeChooser(){
   const old=document.getElementById("vt-chooser");if(old)old.remove();
   const ov=document.createElement("div");
   ov.id="vt-chooser";
+  ov.className="overlay"; // ⚠️ QA 11/09: sem isso o guard outroModalAberto do tour não via este popup como modal aberto e deixava o tour cobrir/travar os cliques nele
   ov.style.cssText="position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(3px)";
   ov.innerHTML=`<div style="background:var(--surface);border-radius:20px;padding:22px;max-width:420px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.35)">
     <div style="font-size:16px;font-weight:900;margin-bottom:4px">Qual tipo de perfil você quer criar?</div>
@@ -3144,78 +3153,8 @@ function openProfileEditor(id,visaType){
   // Slots de currículo
   const delBtn=g("#pe-del-btn");if(delBtn)delBtn.style.display=p?"inline-flex":"none";
 
-  // Slots de currículo
-  const resSlots=g("#pe-res-slots");
-  if(resSlots){
-    const res=DOCS.filter(c=>(c.cvType||"resume")==="resume");
-    if(!res.length){resSlots.innerHTML='<div style="font-size:11px;color:var(--t3)">Nenhum currículo na conta. <span style="color:var(--blue);cursor:pointer" onclick="closeProfileEditor();sv(\'profile\');setTimeout(()=>switchProfileTab(\'profiles\'),100)">Adicionar →</span></div>';}
-    else{
-      resSlots.innerHTML=[
-        `<label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;padding:6px 8px;border-radius:7px;border:1.5px solid var(--border);background:var(--sf2)"><input type="radio" name="pe-res" value="" style="accent-color:var(--purple)"> <span style="color:var(--t2)">Nenhum</span></label>`,
-        ...res.map(c=>`<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:7px;border:1.5px solid var(--border);background:var(--sf2)"><label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;flex:1;min-width:0"><input type="radio" name="pe-res" value="${c.idx}" style="accent-color:var(--blue)"><i class="ti ti-file-type-pdf" style="color:var(--red);flex-shrink:0"></i><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name)}</span></label><button onclick="deleteCvFromAccount(${c.idx},'resume')" title="Excluir PDF" style="background:#fee2e2;border:1.5px solid #fca5a5;color:#dc2626;border-radius:6px;padding:4px 6px;font-size:11px;cursor:pointer;flex-shrink:0;line-height:1"><i class='ti ti-trash'></i></button></div>`)
-      ].join("");
-      // Marca o selecionado atual
-      const curVal=_peResIdx!=null?String(_peResIdx):"";
-      resSlots.querySelectorAll('input[name="pe-res"]').forEach(r=>{
-        r.checked=(r.value===curVal);
-        r.addEventListener("change",()=>{
-          const val=r.value;
-          if(!val){
-            // "Nenhum" — remove ativo
-            _peResIdx=null;
-            const card=g("#pe-res-active-card");if(card)card.style.display="none";
-            const cur2=g("#pe-pdf-current");if(cur2)cur2.style.display="none";
-            profilePdfBase64=null;profilePdfName=null;profilePdfSize=0;
-          } else {
-            // Selecionou um PDF da conta
-            _peResIdx=parseInt(val,10);
-            profilePdfBase64=null;profilePdfName=null;profilePdfSize=0;
-            const cur2=g("#pe-pdf-current");if(cur2)cur2.style.display="none";
-            const cvMeta=DOCS.find(c=>c.idx===_peResIdx);
-            const nm=cvMeta?.name||"Currículo";
-            const nameEl=g("#pe-res-active-name");if(nameEl)nameEl.textContent=nm;
-            const card=g("#pe-res-active-card");if(card)card.style.display="flex";
-            _peHideResUpload();
-          }
-        });
-      });
-    }
-  }
-
-  // Slots de cover letter
-  const coverSlots=g("#pe-cover-slots");
-  if(coverSlots){
-    const covers=DOCS.filter(c=>c.cvType==="cover");
-    if(!covers.length){coverSlots.innerHTML='<div style="font-size:11px;color:var(--t3)">Nenhuma cover letter na conta. <span style="color:var(--blue);cursor:pointer" onclick="closeProfileEditor();sv(\'profile\');setTimeout(()=>switchProfileTab(\'profiles\'),100)">Adicionar →</span></div>';}
-    else{
-      coverSlots.innerHTML=[
-        `<label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;padding:6px 8px;border-radius:7px;border:1.5px solid var(--border);background:var(--sf2)"><input type="radio" name="pe-cover" value="" style="accent-color:var(--purple)"> <span style="color:var(--t2)">Nenhuma</span></label>`,
-        ...covers.map(c=>`<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:7px;border:1.5px solid var(--border);background:var(--sf2)"><label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;flex:1;min-width:0"><input type="radio" name="pe-cover" value="${c.idx}" style="accent-color:var(--purple)"><i class="ti ti-file-description" style="color:var(--purple);flex-shrink:0"></i><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name)}</span></label><button onclick="deleteCvFromAccount(${c.idx},'cover')" title="Excluir PDF" style="background:#fee2e2;border:1.5px solid #fca5a5;color:#dc2626;border-radius:6px;padding:4px 6px;font-size:11px;cursor:pointer;flex-shrink:0;line-height:1"><i class='ti ti-trash'></i></button></div>`)
-      ].join("");
-      const curCovVal=_peCoverIdx!=null?String(_peCoverIdx):"";
-      coverSlots.querySelectorAll('input[name="pe-cover"]').forEach(r=>{
-        r.checked=(r.value===curCovVal);
-        r.addEventListener("change",()=>{
-          const val=r.value;
-          if(!val){
-            _peCoverIdx=null;
-            const card=g("#pe-cover-active-card");if(card)card.style.display="none";
-            const cur2=g("#pe-cover-current");if(cur2)cur2.style.display="none";
-            profileCoverBase64=null;profileCoverName=null;profileCoverSize=0;
-          } else {
-            _peCoverIdx=parseInt(val,10);
-            profileCoverBase64=null;profileCoverName=null;profileCoverSize=0;
-            const cur2=g("#pe-cover-current");if(cur2)cur2.style.display="none";
-            const cvMeta=DOCS.find(c=>c.idx===_peCoverIdx);
-            const nm=cvMeta?.name||"Cover Letter";
-            const nameEl=g("#pe-cover-active-name");if(nameEl)nameEl.textContent=nm;
-            const card=g("#pe-cover-active-card");if(card)card.style.display="flex";
-            _peHideCoverUpload();
-          }
-        });
-      });
-    }
-  }
+  _pePopulateResumeSlots();
+  _pePopulateCoverSlots();
 
   // v143: rascunho salvo localmente (sessão caiu no meio de um perfil
   // deste MESMO tipo de visto e do MESMO perfil — nunca mistura rascunho
@@ -3233,6 +3172,83 @@ function openProfileEditor(id,visaType){
   }
 
   g("#profile-editor-overlay").classList.remove("gone");
+}
+
+// ⚠️ QA 11/09: extraídas de dentro de openProfileEditor() pra ficarem
+// CHAMÁVEIS também depois de excluir um PDF (deleteCvFromAccount chamava
+// peRenderResumeSlots/peRenderCoverSlots, que nunca existiram — a exclusão
+// no servidor funcionava, mas o front caía no catch e mostrava "Erro de
+// conexão" em cima do toast de sucesso, com a lista do modal desatualizada).
+function _pePopulateResumeSlots(){
+  const resSlots=g("#pe-res-slots");
+  if(!resSlots)return;
+  const res=DOCS.filter(c=>(c.cvType||"resume")==="resume");
+  if(!res.length){resSlots.innerHTML='<div style="font-size:11px;color:var(--t3)">Nenhum currículo na conta. <span style="color:var(--blue);cursor:pointer" onclick="closeProfileEditor();sv(\'profile\');setTimeout(()=>switchProfileTab(\'profiles\'),100)">Adicionar →</span></div>';}
+  else{
+    resSlots.innerHTML=[
+      `<label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;padding:6px 8px;border-radius:7px;border:1.5px solid var(--border);background:var(--sf2)"><input type="radio" name="pe-res" value="" style="accent-color:var(--purple)"> <span style="color:var(--t2)">Nenhum</span></label>`,
+      ...res.map(c=>`<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:7px;border:1.5px solid var(--border);background:var(--sf2)"><label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;flex:1;min-width:0"><input type="radio" name="pe-res" value="${c.idx}" style="accent-color:var(--blue)"><i class="ti ti-file-type-pdf" style="color:var(--red);flex-shrink:0"></i><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name)}</span></label><button onclick="deleteCvFromAccount(${c.idx},'resume')" title="Excluir PDF" style="background:#fee2e2;border:1.5px solid #fca5a5;color:#dc2626;border-radius:6px;padding:4px 6px;font-size:11px;cursor:pointer;flex-shrink:0;line-height:1"><i class='ti ti-trash'></i></button></div>`)
+    ].join("");
+    // Marca o selecionado atual
+    const curVal=_peResIdx!=null?String(_peResIdx):"";
+    resSlots.querySelectorAll('input[name="pe-res"]').forEach(r=>{
+      r.checked=(r.value===curVal);
+      r.addEventListener("change",()=>{
+        const val=r.value;
+        if(!val){
+          // "Nenhum" — remove ativo
+          _peResIdx=null;
+          const card=g("#pe-res-active-card");if(card)card.style.display="none";
+          const cur2=g("#pe-pdf-current");if(cur2)cur2.style.display="none";
+          profilePdfBase64=null;profilePdfName=null;profilePdfSize=0;
+        } else {
+          // Selecionou um PDF da conta
+          _peResIdx=parseInt(val,10);
+          profilePdfBase64=null;profilePdfName=null;profilePdfSize=0;
+          const cur2=g("#pe-pdf-current");if(cur2)cur2.style.display="none";
+          const cvMeta=DOCS.find(c=>c.idx===_peResIdx);
+          const nm=cvMeta?.name||"Currículo";
+          const nameEl=g("#pe-res-active-name");if(nameEl)nameEl.textContent=nm;
+          const card=g("#pe-res-active-card");if(card)card.style.display="flex";
+          _peHideResUpload();
+        }
+      });
+    });
+  }
+}
+function _pePopulateCoverSlots(){
+  const coverSlots=g("#pe-cover-slots");
+  if(!coverSlots)return;
+  const covers=DOCS.filter(c=>c.cvType==="cover");
+  if(!covers.length){coverSlots.innerHTML='<div style="font-size:11px;color:var(--t3)">Nenhuma cover letter na conta. <span style="color:var(--blue);cursor:pointer" onclick="closeProfileEditor();sv(\'profile\');setTimeout(()=>switchProfileTab(\'profiles\'),100)">Adicionar →</span></div>';}
+  else{
+    coverSlots.innerHTML=[
+      `<label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;padding:6px 8px;border-radius:7px;border:1.5px solid var(--border);background:var(--sf2)"><input type="radio" name="pe-cover" value="" style="accent-color:var(--purple)"> <span style="color:var(--t2)">Nenhuma</span></label>`,
+      ...covers.map(c=>`<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:7px;border:1.5px solid var(--border);background:var(--sf2)"><label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;flex:1;min-width:0"><input type="radio" name="pe-cover" value="${c.idx}" style="accent-color:var(--purple)"><i class="ti ti-file-description" style="color:var(--purple);flex-shrink:0"></i><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name)}</span></label><button onclick="deleteCvFromAccount(${c.idx},'cover')" title="Excluir PDF" style="background:#fee2e2;border:1.5px solid #fca5a5;color:#dc2626;border-radius:6px;padding:4px 6px;font-size:11px;cursor:pointer;flex-shrink:0;line-height:1"><i class='ti ti-trash'></i></button></div>`)
+    ].join("");
+    const curCovVal=_peCoverIdx!=null?String(_peCoverIdx):"";
+    coverSlots.querySelectorAll('input[name="pe-cover"]').forEach(r=>{
+      r.checked=(r.value===curCovVal);
+      r.addEventListener("change",()=>{
+        const val=r.value;
+        if(!val){
+          _peCoverIdx=null;
+          const card=g("#pe-cover-active-card");if(card)card.style.display="none";
+          const cur2=g("#pe-cover-current");if(cur2)cur2.style.display="none";
+          profileCoverBase64=null;profileCoverName=null;profileCoverSize=0;
+        } else {
+          _peCoverIdx=parseInt(val,10);
+          profileCoverBase64=null;profileCoverName=null;profileCoverSize=0;
+          const cur2=g("#pe-cover-current");if(cur2)cur2.style.display="none";
+          const cvMeta=DOCS.find(c=>c.idx===_peCoverIdx);
+          const nm=cvMeta?.name||"Cover Letter";
+          const nameEl=g("#pe-cover-active-name");if(nameEl)nameEl.textContent=nm;
+          const card=g("#pe-cover-active-card");if(card)card.style.display="flex";
+          _peHideCoverUpload();
+        }
+      });
+    });
+  }
 }
 
 function closeProfileEditor(){
@@ -3261,8 +3277,11 @@ async function deleteCvFromAccount(idx, cvType){
       // Recarregar lista de PDFs
       var cvs=(U.cvs||[]).filter(function(c){return c.idx!==idx;});
       U.cvs=cvs;
-      peRenderResumeSlots(cvs, null);
-      peRenderCoverSlots(cvs, null);
+      DOCS=DOCS.filter(function(c){return c.idx!==idx;});
+      if(_peResIdx===idx)_peResIdx=null;
+      if(_peCoverIdx===idx)_peCoverIdx=null;
+      _pePopulateResumeSlots();
+      _pePopulateCoverSlots();
     } else {
       toast(d.error||"Erro ao excluir PDF","r");
     }
@@ -3322,11 +3341,17 @@ async function saveProfileFromEditor(){
   const sheets=[...document.querySelectorAll('input[name="pe-sheet"]:checked')].map(cb=>cb.value);
   const selRes=document.querySelector('input[name="pe-res"]:checked');
   const resumeIdx=_peResIdx!=null?_peResIdx:(selRes?.value?parseInt(selRes.value,10):null);
-  // VALIDAÇÃO: Currículo obrigatório
+  const selCover=document.querySelector('input[name="pe-cover"]:checked');
+  const coverIdx=_peCoverIdx!=null?_peCoverIdx:(selCover?.value?parseInt(selCover.value,10):null);
+  // VALIDAÇÃO: pelo menos 1 dos 2 (currículo OU carta) — mesma regra do
+  // servidor e do README ("pelo menos um dos dois"). Bloquear com carta
+  // já anexada e nenhum currículo era falso-negativo.
   const hasResumePdf=profilePdfBase64&&profilePdfBase64!=="__none__";
   const hasResumeLinked=resumeIdx!=null;
-  if(!hasResumePdf&&!hasResumeLinked){
-    toast("⚠️ Adicione um Currículo (PDF) antes de salvar o perfil!","r");
+  const hasCoverPdf=profileCoverBase64&&profileCoverBase64!=="__none__";
+  const hasCoverLinked=coverIdx!=null;
+  if(!hasResumePdf&&!hasResumeLinked&&!hasCoverPdf&&!hasCoverLinked){
+    toast("⚠️ Adicione um Currículo (PDF) ou uma Carta de Apresentação antes de salvar o perfil!","r");
     // Destacar a área de upload
     const drop=document.getElementById("pe-pdf-drop");
     if(drop){drop.style.borderColor="#ef4444";drop.style.background="#fef2f2";setTimeout(()=>{drop.style.borderColor="";drop.style.background="";},3000);}
@@ -3335,8 +3360,6 @@ async function saveProfileFromEditor(){
     if(wrap)wrap.scrollIntoView({behavior:"smooth",block:"center"});
     return;
   }
-  const selCover=document.querySelector('input[name="pe-cover"]:checked');
-  const coverIdx=_peCoverIdx!=null?_peCoverIdx:(selCover?.value?parseInt(selCover.value,10):null);
 
   const prf={
     id:editingProfileId||undefined,
