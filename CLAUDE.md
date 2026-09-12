@@ -98,10 +98,44 @@ se referindo a outro repositório/projeto.
   O painel (`admin.html`) destaca esses pedidos com selo "já ativo
   (provisório)" e sobe eles pro topo da lista — mantenha isso ao mexer
   na tela de Pedidos Pendentes.
-- **Chave Pix**: uma só, consolidada (telefone do Andrio), vive em
-  `PIX_KEY`/`PIX_NAME` no `app.js`. Não reintroduzir múltiplas chaves.
+- **Chave Pix**: uma só, consolidada, vive em `PIX_KEY`/`PIX_NAME` no
+  `app.js`. Desde 12/09/2026 (ordem do dono) é a chave aleatória do Diego
+  (`PIX_NAME='Diego Cardoso'`) — todo dinheiro cai no nome dele agora, não
+  mais no Andrio. Não reintroduzir múltiplas chaves nem voltar pro Andrio
+  sem ordem nova.
 - **Português fixo**: o app não tem seletor de idioma nem detecta idioma
   do navegador — é só em português, de propósito.
+- **ZERO envio grátis, sem exceção** (dono, 11-12/09/2026, reforçado várias
+  vezes: "nenhum usuário vai ter envio grátis... ninguém sendo free
+  consegue enviar nada e nem fazer autenticação"). `PLAN_LIMITS`/
+  `PLAN_LIMITS_NEW` em `mod-config.js`: `free:{manual:0,auto:0}` sempre —
+  qualquer fallback tipo `||10`/`||20` num limite é BUG (mascara um 0 real
+  com um número falso; use sempre `??`). O botão de conectar Gmail
+  **não existe/não funciona pra conta free** — free só navega/vê vagas e
+  planos, nunca autentica Gmail nem envia nada, manual ou automático.
+- **Plano vencido bloqueia de vez, com data (v172h, dono, 12/09/2026)**:
+  quando o plano de alguém vence (mesmo com Gmail já conectado de antes),
+  manual E automático ficam bloqueados — `/api/send`/`/api/auto/start`
+  devolvem 402 citando a data exata de vencimento (`planGateMsg()` em
+  `server.js`); um job automático que já estava rodando quando o plano
+  vence PARA de vez (`scheduleAuto()` seta `status:"paused_no_vip"`,
+  nunca mais fica reagendando pra meia-noite pra sempre). O aviso na tela
+  sempre cita a data real ("seu plano venceu em DD/MM/AAAA"), nunca um
+  "expirou" genérico. Os botões de conectar Gmail (manual e automático)
+  são cartões grandes de ação — não voltar a ser pilulazinha pequena.
+- **Usernames reservados nascem admin** (`ADMIN_RESERVED_USERNAMES` em
+  `server.js`, hoje `andrio`/`andrew`/`diego`): concedido NA HORA do
+  cadastro (`/api/cadastro`) + migração de apoio no boot pra conta
+  pré-existente. `/api/cadastro` é rota pública — risco aceito e conhecido
+  de corrida (alguém registrar o username antes da pessoa real), o dono
+  foi avisado e decidiu assim mesmo. Não adicionar username novo à lista
+  sem ordem expressa do dono (cada um vira admin de verdade).
+- **Nada de texto do "site antigo"** (dono, 12/09/2026: "nosso site é o
+  2026, eu não quero nada do site antigo"). Antes de escrever/revisar
+  qualquer card explicativo ou copy nova, confira se não descreve um
+  conceito que esta reconstrução removeu (moeda intermediária/diamantes,
+  processo interno que o usuário não precisa saber, plano grátis com
+  limite, etc. — ver "O que este repo é" no topo deste arquivo).
 
 ## Variáveis de ambiente
 

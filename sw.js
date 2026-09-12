@@ -86,7 +86,7 @@
 //    promessa de "direito de arrependimento de 7 dias" (removida também dos
 //    Termos — seção renumerada 1-12).
 //
-const CACHE_NAME = "h2bapply-2026-v30"; // v30: v172h (ordem do dono, 12/09/2026 — "tem que ser bloqueado o envio automático e o manual... diz pra ela que o plano dela venceu dia tal") — cartões GRANDES de ação (conectar Gmail / ver planos) no manual e no automático, mensagens de vencimento com data real, e revisão de textos stale da aba Planos (removida menção a "moeda intermediária" e ao processo interno de conferência).
+const CACHE_NAME = "h2bapply-2026-v31"; // v31: v172h (dono, 12/09/2026 — "verifique todo o site, tem muitas regras soltas, tudo errado... eu não quero nada do site antigo") — varredura geral por copy stale: FAQ da Home e da landing (h_faq_qty, como-usar.html) diziam "plano gratuito: 20 manuais + 10 automáticos por dia" e "não precisa pagar, 10 automáticos grátis pra todo mundo" — contradizia de frente a regra de zero envio grátis; JSON-LD de SEO também prometia envio grátis limitado (falso). Corrigido nos 3 idiomas + tour + landing + JSON-LD, e mais 2 lugares que descreviam "planos VIP" como se incluíssem automático (é só manual — VIPro/DoublePro é que incluem).
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).
