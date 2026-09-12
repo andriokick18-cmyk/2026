@@ -1246,6 +1246,18 @@ async function testAuthWatchdogPush() {
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "ndrkick.2@gmail.com", name: "Andrio Kickhofel" });
     const pdAdm = await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, valorTotal: 150, userName: "Andrio Kickhofel" });
     check("🚫 pedido de conta admin é criado normalmente (fluxo não quebra)", pdAdm.json?.ok === true || !!pdAdm.json?.pedidoId, pdAdm.body.slice(0, 120));
+
+    // 🚨 v172c-SEC (auditoria, 12/09/2026): o portão mestre de /api/admin/*
+    // checava `p?.isAdmin` cru — ignorando ADMIN_EMAILS_EXTRA (isAdminEmail).
+    // ndrkick.2@gmail.com está na lista mas nunca teve isAdmin:true
+    // persistido (só logou via /api/test/login sem a flag, igual uma conta
+    // legada real cairia) — antes do fix isso dava 403 aqui mesmo sendo
+    // isAdminVip()===true; agora usa a fonte única em vez de reimplementar.
+    const admStatsExtra = await get("/api/admin/stats");
+    check("🚨 v172c-SEC: e-mail de ADMIN_EMAILS_EXTRA acessa /api/admin/* mesmo sem isAdmin:true persistido (isAdminVip é a fonte única do portão)",
+      admStatsExtra.status === 200 && admStatsExtra.json?.totalUsers !== undefined,
+      admStatsExtra.body.slice(0, 150));
+
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
     const cfAdm = await get("/api/admin/conferencia");
     const _temAdmRow = (cfAdm.json?.rows || []).some((r) => String(r.email || "").toLowerCase() === "ndrkick.2@gmail.com");

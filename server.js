@@ -10721,7 +10721,7 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
     if(cur.length<=1&&cur.some(pr=>pr.id===d.id))return json(res,400,{error:"Você precisa de pelo menos 1 perfil configurado. Edite-o em vez de apagar."});
     setUser(s.user_email,{profiles:cur.filter(pr=>pr.id!==d.id)});return json(res,200,{ok:true});}catch(e){return json(res,500,{error:e.message});}}
 
-  if(pathname==="/api/debug/export"){const s=getSess(req);if(!s?.user_email||(getUser(s.user_email)||{}).isAdmin!==true)return json(res,403,{error:"Acesso negado."});
+  if(pathname==="/api/debug/export"){const s=getSess(req);if(!s?.user_email||!isAdminVip(getUser(s.user_email)))return json(res,403,{error:"Acesso negado."});
     // v21-SEC: antes exportava DB_USERS CRU — refresh_tokens do Google de TODOS
     // os usuários (principal + senders extras) iam pro navegador do admin.
     const _safeUsers={};for(const[em,uu]of Object.entries(DB_USERS))_safeUsers[em]=sanitizeUserForClient(uu);
@@ -11219,7 +11219,13 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
   // ── ADMIN ─────────────────────────────────────────────
   if(pathname.startsWith("/api/admin")){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    const p=getUser(s.user_email);if(!p?.isAdmin)return json(res,403,{error:"Acesso negado."});
+    // 🚨 v172c-SEC (auditoria, 12/09/2026): era `!p?.isAdmin` cru — ignorava
+    // ADMIN_EMAILS_EXTRA (isAdminEmail). Conta legada cujo e-mail bate na
+    // lista mas nunca teve isAdmin:true persistido no cadastro ficava 403
+    // aqui, mesmo sendo isAdminVip()===true (fonte única) em todo o resto
+    // do sistema — 2 definições de "é admin" divergindo no MAIOR portão da
+    // API. Nunca reintroduzir a checagem crua; sempre isAdminVip(p).
+    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Acesso negado."});
     if(pathname==="/api/admin/stats"&&req.method==="GET"){const tu=Object.keys(DB_USERS).length;const ts=Object.values(DB_HIST).reduce((n,a)=>n+a.length,0);const ds=todayStr();const tt=Object.values(DB_HIST).reduce((n,a)=>n+a.filter(h=>h.dateStr===ds).length,0);const vu=Object.values(DB_USERS).filter(u=>isVipActive(u)).length;const au=Object.values(DB_AUTO).filter(j=>j.active).length;return json(res,200,{totalUsers:tu,totalSent:ts,todayTotal:tt,vipUsers:vu,activeAutoJobs:au,freeUsers:tu-vu,jobsCached:jobsCache.length,jobsTotal,activeSessions:Object.keys(sessions).filter(k=>!k.startsWith("__")).length,dataDir:DATA_DIR,disk:fs.existsSync("/data"),sheetJan:SHEET_JAN.length,sheetJul:SHEET_JUL.length});}
     if(pathname==="/api/admin/users"&&req.method==="GET"){const list=Object.values(DB_USERS).map(u=>{const vok=isVipActive(u);const h=getHist(u.email);const autoJob=getAutoJob(u.email);return{email:u.email,name:u.name,picture:u.picture,country:u.country,phone:u.phone,created_at:u.created_at,cvCount:(u.cvs||[]).length,histCount:h.length,todaySent:countManualToday(h)+countAutoToday(h),plan:getPlan(u),isAdmin:!!u.isAdmin,vip:u.vip?{active:vok,expiresAt:u.vip.expiresAt,activatedAt:u.vip.activatedAt,days:u.vip.days||30,plan:u.vip.plan||"vip",manualExpires:u.vip.manualExpires||0,autoExpires:u.vip.autoExpires||0,source:u.vip.source||"admin",usedCode:u.vip.usedCode||null,codeNote:u.vip.codeNote||null,activatedBy:u.vip.activatedBy||null,note:u.vip.note||null}:null,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0}:null};}).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));return json(res,200,{users:list,total:list.length});}
     // ── 🎁 DIAS GRÁTIS (cortesia) — dono, 18/07/2026 ─────────────────────
