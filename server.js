@@ -10099,7 +10099,16 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
         if(!resumeAttached){
           const _fb=(p.cvs||[]).find(c=>(c.cvType||"resume")==="resume"&&loadCv(s.user_email,c.idx));
           if(_fb){attachments.push({data:loadCv(s.user_email,_fb.idx),name:_fb.name||"resume.pdf"});console.warn(`[send] ⚠️ ${s.user_email}: resumeIdx=${d.resumeIdx} sem arquivo — usando fallback "${_fb.name}"`);}
-          else return json(res,400,{error:"Seu currículo (PDF) não foi encontrado no servidor. Vá em Perfil → Documentos e envie o PDF de novo antes de se candidatar.",pdfMissing:true});
+          else{
+            // 🐛 v172e (auditoria, 12/09/2026): esse retorno acontece DEPOIS da
+            // reserva de slot (_reserveManualSlot acima) mas é um "return" liso,
+            // nunca passa pelo catch — sem isso a reserva ficava "fantasma" até
+            // o setTimeout de 60s, e um reenvio rápido (currículo corrigido, ou
+            // outra vaga) podia levar um 429 de limite sem o usuário ter
+            // esgotado a cota de verdade.
+            if(_reservedManualSlot){_releaseManualSlot(s.user_email);_reservedManualSlot=false;}
+            return json(res,400,{error:"Seu currículo (PDF) não foi encontrado no servidor. Vá em Perfil → Documentos e envie o PDF de novo antes de se candidatar.",pdfMissing:true});
+          }
         }
       }
 
@@ -10131,6 +10140,11 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
           // pro principal sem checar ele também poderia furar a proteção da
           // OUTRA conta. Mais simples e mais seguro: avisar, não redirecionar.
           if(e2.message==="WARMUP_CAP_REACHED"){
+            // 🐛 v172e: mesmo caso do pdfMissing acima — "return" liso após a
+            // reserva de slot, nunca passa pelo catch externo. Sem liberar
+            // aqui, a reserva fantasma podia gerar um 429 de limite indevido
+            // num reenvio rápido com outra conta/vaga dentro da janela de 60s.
+            if(_reservedManualSlot){_releaseManualSlot(s.user_email);_reservedManualSlot=false;}
             return json(res,429,{error:"Essa conta Gmail atingiu o limite de segurança de hoje (proteção contra bloqueio pelo Google — ela é nova aqui e ainda está em aquecimento). Tente outra conta ou volte em algumas horas.",warmup:true});
           }
           console.warn("[send] Sender extra falhou, usando principal:",e2.message);

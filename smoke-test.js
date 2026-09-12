@@ -2337,6 +2337,17 @@ async function testAuthWatchdogPush() {
       !_srvSrc.includes("(countBySender[c.email] || 0) < cap") &&
       !_srvSrc.includes("(countBySender[c.email] || 0) < perSenderAutoLimit"),
       "algum dos 3 usos (aquecimento/admin/sort) ainda lê countBySender pela identidade crua — a conta v172c continuaria sempre com contagem 0");
+    // 🐛 v172e-FIX (auditoria, 12/09/2026): 2 caminhos de erro em /api/send
+    // (pdfMissing e WARMUP_CAP_REACHED) faziam "return" depois de reservar
+    // o slot manual (_reserveManualSlot) sem liberar — a reserva ficava
+    // "fantasma" até o setTimeout de 60s, podendo gerar um 429 de limite
+    // indevido num reenvio rápido legítimo. Difícil de testar via HTTP sem
+    // depender de timing entre requisições concorrentes — guarda estrutural
+    // confirma que os 2 pontos exatos liberam a reserva antes do return.
+    check("🐛 v172e-FIX: /api/send libera a reserva de slot ANTES do return em erro de currículo ausente (pdfMissing) e de conta em aquecimento (warmup) — nunca mais reserva fantasma por até 60s",
+      /if\(_reservedManualSlot\)\{_releaseManualSlot\(s\.user_email\);_reservedManualSlot=false;\}\s*\n\s*return json\(res,400,\{error:"Seu currículo \(PDF\) não foi encontrado no servidor/.test(_srvSrc) &&
+      /if\(_reservedManualSlot\)\{_releaseManualSlot\(s\.user_email\);_reservedManualSlot=false;\}\s*\n\s*return json\(res,429,\{error:"Essa conta Gmail atingiu o limite de segurança de hoje/.test(_srvSrc),
+      "um dos 2 releases antes do return não foi encontrado — a reserva de slot pode voltar a vazar por até 60s nesses erros");
     check("🌱 aquecimento: conta de HOJE (dia 0) tem teto de 15/dia", _warmupFn(new Date().toISOString()) === 15, `cap=${_warmupFn(new Date().toISOString())}`);
     check("🌱 aquecimento: conta de 4 dias tem teto de 40/dia", _warmupFn(Date.now() - 4 * 86400_000) === 40, `cap=${_warmupFn(Date.now() - 4 * 86400_000)}`);
     check("🌱 aquecimento: conta de 10 dias tem teto de 100/dia", _warmupFn(Date.now() - 10 * 86400_000) === 100, `cap=${_warmupFn(Date.now() - 10 * 86400_000)}`);
