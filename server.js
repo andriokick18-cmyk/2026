@@ -419,12 +419,17 @@ let DB_ADMIN_SETTINGS = { emailNotificationsEnabled: false,
   // editável na seção "Sócios & Acerto" da aba 🧠 (computeSocios usa isto).
   sociosSplit: { andrio: 50, diego: 50 },
 }; // v9: trial = 1d VIP Manual apenas (sem auto)
-// v57/v171 (ORDEM DO DONO): administrador não tem senha nenhuma — só é
-// admin quem entra com o e-mail cadastrado (ADMIN_EMAIL/ADMIN_EMAIL_2/
-// isAdminEmail, a rota já exige sessão de admin antes de qualquer ação).
-// O antigo sistema de "senha de editor" (Andrew/Diego) foi removido por
-// completo nesta faxina — nenhum fluxo de aprovação usava mais, e as
-// senhas padrão de fábrica tinham vazado no código público.
+// v57/v171 (ORDEM DO DONO): SER admin continua vindo do e-mail (ADMIN_EMAIL/
+// ADMIN_EMAIL_2/isAdminEmail — a rota já exige sessão de admin antes de
+// qualquer ação); o que mudou foi COMO se chega numa sessão com esse
+// e-mail. v172b (12/09/2026) trocou "logar com esse e-mail no Google" por
+// senha própria do painel (/api/admin-panel/login, ADMIN_PANEL_PASS_*
+// mais abaixo) — o e-mail continua sendo o dono real da conta/trilha
+// financeira, a senha é só a porta de entrada nova.
+// O antigo sistema de "senha de editor" (Andrew/Diego, de antes disso
+// tudo) foi removido por completo nesta faxina — nenhum fluxo de
+// aprovação usava mais, e as senhas padrão de fábrica tinham vazado no
+// código público.
 // DIEGO_ADMIN_EMAILS: e-mails que contam como "Diego" na trilha/acerto
 // financeiro; o resto dos admins conta como "Andrew" (Andrio). Ajustável
 // por env sem deploy de código.
@@ -6037,9 +6042,10 @@ const server=http.createServer(async(req,res)=>{
     <h2>1. Informações que coletamos</h2>
     <p>Ao usar o H2BApply, coletamos as seguintes informações:</p>
     <ul>
-      <li><strong>Dados do Google:</strong> nome, endereço de email e foto de perfil (via login Google)</li>
-      <li><strong>Acesso ao Gmail:</strong> permissão para enviar emails em seu nome para candidaturas H-2B/H-2A</li>
-      <li><strong>Dados do perfil:</strong> nome completo, país, telefone, cidade</li>
+      <li><strong>Dados de cadastro:</strong> nome de usuário e senha (armazenada com hash — nunca em texto puro), informados diretamente por você ao criar sua conta</li>
+      <li><strong>Dados do perfil:</strong> nome completo, sobrenome, data de nascimento, país, estado, cidade, telefone/WhatsApp</li>
+      <li><strong>Dados do Google (apenas se/quando você conectar um Gmail para enviar candidaturas, após ativar um plano pago):</strong> endereço de email da conta Google conectada</li>
+      <li><strong>Acesso ao Gmail:</strong> permissão para enviar emails em seu nome para candidaturas H-2B/H-2A — concedida apenas quando você mesmo escolhe conectar sua conta Google (nunca durante o cadastro ou login, que são feitos só com usuário e senha)</li>
       <li><strong>Currículos (PDF):</strong> arquivos enviados para uso nas candidaturas</li>
       <li><strong>Histórico de candidaturas:</strong> registro dos emails enviados para empregadores americanos</li>
     </ul>
@@ -7382,9 +7388,11 @@ filtrar();
 
   // ── 🔐 LOGIN DO PAINEL ADMIN (ordem do dono, 12/09/2026): o painel admin
   // (/admin) passa a ter entrada própria por usuário+senha — só Andrio e
-  // Diego, nada de Google aqui. Login normal do site (usuário comum) e o
-  // Gmail que o admin conecta pra ENVIAR (/oauth/connect-send) continuam
-  // 100% Google, sem mudança nenhuma — isto é SÓ a porta do painel.
+  // Diego, nada de Google aqui. (No MESMO dia, v172c logo abaixo trocou
+  // TAMBÉM o cadastro/login do usuário comum pra usuário+senha — o único
+  // login que continua Google é o Gmail que se conecta DEPOIS de um plano
+  // pago pra ENVIAR candidaturas, /oauth/connect-send/add-sender — nunca
+  // mais pra entrar em conta nenhuma, admin ou comum.)
   // Senha nunca fica em texto puro no código: scrypt (memory-hard) com
   // salt próprio por login; ADMIN_PANEL_PASS_ANDRIO/_DIEGO (env, opcional)
   // permitem trocar a senha sem mexer no código — sem env, usa o hash
@@ -8249,52 +8257,6 @@ filtrar();
   // ── 🩺 ROTAS DE SAÚDE/OPERAÇÃO — extraídas para src/routes/admin-health.js (Fase 1 · Módulo 5)
   if(await handleAdminHealthRoutes(req,res,pathname)) return;
   if(await handleAdminV2Routes(req,res,pathname)) return;
-
-  // ── M04: Exportar usuários como CSV ──────────────────────
-  if(pathname==="/api/admin/users/export"&&req.method==="GET"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    if(!isAdminEmail(s.user_email))return json(res,403,{error:"Apenas admins."});
-    const now=Date.now();
-    const rows=[["Email","Nome","Plano","VIP Ativo","VIP Expira","Criado em","Último acesso","Total Enviados","Auto Rodando","Token OK"]];
-    for(const u of Object.values(DB_USERS||{})){
-      if(!u?.email)continue;
-      const job=getAutoJob(u.email);
-      const vipOk=isVipActive(u);
-      const vipExp=Math.max(u.vip?.manualExpires||0,u.vip?.autoExpires||0);
-      const tokenOk=u.cached_token_expiry&&u.cached_token_expiry>now;
-      const hist=getHist(u.email);
-      const total=Object.values(hist||{}).reduce((a,arr)=>a+(arr?.length||0),0);
-      rows.push([u.email,u.name||"",u.plan||"free",vipOk?"Sim":"Não",vipExp?new Date(vipExp).toLocaleDateString("pt-BR"):"",u.created_at?u.created_at.slice(0,10):"",u.lastSeenAt?new Date(u.lastSeenAt).toLocaleDateString("pt-BR"):"",total,job?.active?"Sim":"Não",tokenOk?"Sim":"Não"]);
-    }
-    const csv=rows.map(r=>r.map(c=>'"'+String(c||"").replace(/"/g,'""')+'"').join(",")).join("\n");
-    res.writeHead(200,{"Content-Type":"text/csv; charset=utf-8","Content-Disposition":`attachment; filename="usuarios_${new Date().toISOString().slice(0,10)}.csv"`});
-    return res.end("\uFEFF"+csv); // BOM para Excel
-  }
-
-  // ── M05: Métricas diárias para gráfico (últimos 30 dias) ─
-  if(pathname==="/api/admin/metrics/daily"&&req.method==="GET"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Acesso negado."});
-    const days=parseInt(new URL("http://x"+pathname+new URL("http://x"+(s.user_email||"")+"?"+req.url.split("?")[1]||"").search).searchParams.get("days")||"30");
-    const result=[];
-    for(let i=days-1;i>=0;i--){
-      const d=new Date();d.setDate(d.getDate()-i);
-      const ds=d.toISOString().slice(0,10).replace(/-/g,"");
-      let total=0,manual=0,auto=0,newUsers=0;
-      for(const u of Object.values(DB_USERS||{})){
-        if(!u)continue;
-        if(u.created_at&&u.created_at.slice(0,10)===d.toISOString().slice(0,10))newUsers++;
-        const hist=getHist(u.email);
-        for(const arr of Object.values(hist||{})){
-          for(const h of (arr||[])){
-            if((h.dateStr||"").replace(/-/g,"")===ds){total++;if(h.type==="auto")auto++;else manual++;}
-          }
-        }
-      }
-      result.push({date:d.toISOString().slice(0,10),total,manual,auto,newUsers});
-    }
-    return json(res,200,{ok:true,metrics:result});
-  }
 
   // ── M08: Marcar ação admin no log ─────────────────────────
   // (helper usado internamente, mas também exposto como webhook)
@@ -9376,8 +9338,10 @@ ${pedido.criadoPor&&pedido.criadoPor!==pedido.userEmail?`\n🛠️ Registrado re
               error:`🔴 COMPROVANTE JÁ USADO: ${(_hash&&_usado.comprovanteHash===_hash)?"o MESMO arquivo":"a MESMA transação PIX"} já está no pedido #${String(_usado.id||"").slice(-8).toUpperCase()} (${_usado.userEmail}), pago/ativo. Só confirme se tiver CERTEZA que são pagamentos diferentes.`});
           }
         }
-        // v57 (dono, 25/07): sem senha — o admin já entrou com o Google e a
-        // rota já exige sessão de admin; o e-mail logado identifica o editor.
+        // v57 (dono, 25/07) — atualizado p/ v172b (12/09): sem senha extra aqui — a
+        // sessão de admin (login por usuário+senha em /api/admin-panel/login desde
+        // o v172b, nunca mais Google) já garante quem é o editor; o e-mail da sessão
+        // identifica quem fez a ação.
         const editorKey=editorFromEmail(s.user_email);
         pd._ativadoEditor=editorKey==="andrew"?"Andrew":"Diego";
         pd._ativadoEditorEmail=s.user_email;
@@ -10421,7 +10385,7 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
         canceladoEm:pd.canceladoEm||null,temComprovante:!!pd.comprovante}));
       const exportado={
         geradoEm:new Date().toISOString(),
-        aviso:"Seus dados pessoais no H2BApply, conforme a LGPD (Lei 13.709/2018, art. 18). Nunca inclui senha (o login é só Google) nem token de acesso.",
+        aviso:"Seus dados pessoais no H2BApply, conforme a LGPD (Lei 13.709/2018, art. 18). Nunca inclui a senha em texto puro (só o hash, e nem esse é exportado) nem token de acesso.",
         conta:{email,nome:p.name||"",telefone:p.phone||"",whatsapp:p.whatsapp||"",cidade:p.city||"",
           pais:p.country||"",idade:p.age||null,idioma:p.language||"",criadaEm:p.created_at||null,
           plano:getPlan(p),vip:p.vip?{ativo:isVipActive(p),manualExpira:p.vip.manualExpires||null,autoExpira:p.vip.autoExpires||null}:null},
@@ -12353,7 +12317,9 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}if(DB_APP_INDEX[te]){delete DB
         const d=JSON.parse(await readBody(req));
         if(!d.email)return json(res,400,{error:"email obrigatório."});
         const target=getUser(d.email);if(!target)return json(res,404,{error:"Usuário não encontrado."});
-        // v57 (dono, 25/07): sem senha — identidade pelo e-mail de admin logado.
+        // v172b (dono, 12/09): login do painel admin agora exige usuário+senha (scrypt,
+        // /api/admin-panel/login) — aqui só reaproveita a identidade da sessão já
+        // autenticada (e-mail de admin logado), sem pedir senha de novo por ação.
         const editorKey=editorFromEmail(s.user_email);
         const editorName=editorKey==="andrew"?"Andrew":"Diego";
         const now=Date.now();

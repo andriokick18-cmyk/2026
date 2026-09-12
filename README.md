@@ -2,8 +2,9 @@
 
 Plataforma de candidatura automática para vagas **H-2B e H-2A** nos Estados
 Unidos. Este repositório é uma reconstrução enxuta do H2BApply original:
-mantém o motor de envio (manual e automático), login com Google e perfis de
-currículo, mas **remove** ranking, IA/Gemini (incluindo o antigo Cérebro
+mantém o motor de envio (manual e automático), login por usuário e senha e
+perfis de currículo (o Google só entra depois, para conectar o Gmail de
+envio quando o plano está pago), mas **remove** ranking, IA/Gemini (incluindo o antigo Cérebro
 Contábil), aba de notícias, chat, e o menu/drawer — trocados por uma
 navegação e um onboarding bem mais simples. O pagamento também mudou: não
 existe mais moeda intermediária (diamante) — o usuário escolhe plano e
@@ -40,7 +41,7 @@ só não tem mais uma tela dedicada de navegação), menu/drawer hambúrguer.
 
 - **Backend:** Node.js puro (sem frameworks)
 - **Frontend:** HTML/CSS/JS vanilla (SPA)
-- **Auth:** Google OAuth 2.0 (Gmail)
+- **Auth:** Usuário+senha (scrypt) para login/cadastro do usuário comum (`/api/login`, `/api/cadastro`) e para o painel admin (`/api/admin-panel/login`); Google OAuth 2.0 é usado SOMENTE para conectar um Gmail de ENVIO de candidaturas (`/oauth/connect-send`, `/oauth/add-sender`), disponível apenas após plano pago ativo — nunca mais para login/cadastro
 - **Deploy:** Render.com
 
 ## Estrutura

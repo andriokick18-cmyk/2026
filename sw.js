@@ -86,7 +86,7 @@
 //    promessa de "direito de arrependimento de 7 dias" (removida também dos
 //    Termos — seção renumerada 1-12).
 //
-const CACHE_NAME = "h2bapply-2026-v23"; // v23: faxina do sistema antigo (ordem do dono, 12/09) — removido tudo que sobrou do login por Google/ranking/VAPID/código promo/aba Respostas/aviso de reset já mortos por ordens anteriores (server.js, app.js, index.html, mod-config.js, mod-engine-core.js, reset_h2bapply.js, tutorial-conteudo.html, como-usar.html) + h2b-extras-admin.js e mod-notif-templates.js excluídos por inteiro (órfãos)
+const CACHE_NAME = "h2bapply-2026-v24"; // v24: 2ª varredura (auditoria independente pós-v23) achou mais resquícios de "login por Google"/"sem senha" sobrando em comentários e textos que a v23 não pegou (onboarding, logout, privacidade, exportação LGPD, README/CLAUDE.md) + removidas as rotas mortas M04 (/api/admin/users/export) e M05 (/api/admin/metrics/daily), sem chamador em lugar nenhum
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).

@@ -1111,9 +1111,11 @@ async function testAuthWatchdogPush() {
     await req2("PATCH", "/api/pedido/" + pd2.json?.pedidoId, { status: "cancelado" });
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "comprador@test.com", name: "Comprador" });
 
-    // v57 (dono, 25/07): aprovar NÃO pede mais senha — o portão é a SESSÃO de
-    // admin (Google), e quem aprovou fica registrado pelo e-mail logado.
-    // Não-admin tentando ativar → 403 (o portão que importa continua de pé).
+    // v57 (dono, 25/07): aprovar NÃO pede mais senha a cada clique — o portão
+    // é a SESSÃO de admin (hoje aberta por login usuário+senha do painel,
+    // v172b — não mais por Google), e quem aprovou fica registrado pelo
+    // e-mail logado. Não-admin tentando ativar → 403 (o portão que importa
+    // continua de pé).
     const naoAdm = await req2("PATCH", "/api/pedido/" + pdId, { status: "ativo" });
     check("🔒 não-admin NÃO consegue ativar pedido (403 — portão é a sessão, não senha)", naoAdm.status === 403, `status=${naoAdm.status}`);
     // troca pro ADMIN pra aprovar

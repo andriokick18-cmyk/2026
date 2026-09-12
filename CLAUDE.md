@@ -11,9 +11,11 @@
 
 Leia o `README.md` primeiro — ele é a fonte da verdade sobre o que o
 produto faz. Resumo: motor de envio de candidaturas H-2B/H-2A (manual e
-automático) por Gmail, login Google, perfis de currículo, compra direta
-de plano (Pix → comprovante → ativação, sem moeda intermediária), painel
-admin de contabilidade. **NÃO existe** (removido de propósito nesta
+automático) por Gmail, cadastro/login por usuário+senha (Google só para
+conectar o Gmail de envio após plano pago, via /oauth/connect-send),
+perfis de currículo, compra direta de plano (Pix → comprovante →
+ativação, sem moeda intermediária), painel admin de contabilidade
+(também por usuário+senha, v172b). **NÃO existe** (removido de propósito nesta
 reconstrução): ranking/gamificação, IA/Gemini, Cérebro Contábil, aba de
 Notícias, chat, seletor de idioma, robôs de coleta de planilha, códigos
 promocionais, multi-servidor, menu/drawer hambúrguer.
