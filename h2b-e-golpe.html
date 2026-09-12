@@ -138,7 +138,7 @@ footer a{color:var(--blue);font-weight:600}
     <a href="#como-verificar" class="nav-link">Como verificar</a>
     <a href="#faq" class="nav-link">FAQ</a>
   </nav>
-  <a href="/oauth/google" class="btn-login" onclick="gtag('event','sign_up_intent',{method:'google',source:'h2b-e-golpe-nav'})">
+  <a href="/?cadastro=1" class="btn-login" onclick="gtag('event','sign_up_intent',{method:'password',source:'h2b-e-golpe-nav'})">
     <i class="ti ti-rocket"></i>
     Começar grátis
   </a>
@@ -153,7 +153,7 @@ footer a{color:var(--blue);font-weight:600}
     <h1>O visto H-2B é golpe? Ou só tem golpe em volta dele?</h1>
     <p class="hero-sub">O H-2B é um visto de trabalho temporário real, emitido pelo governo dos Estados Unidos. O problema são os golpes que usam o nome dele para enganar brasileiros. Veja os sinais de alerta mais comuns e como confirmar se uma vaga é legítima antes de pagar ou enviar qualquer dado.</p>
     <div class="hero-cta-row">
-      <a href="/oauth/google" class="btn-hero btn-hero-primary" onclick="gtag('event','sign_up_intent',{method:'google',source:'h2b-e-golpe-hero'})">
+      <a href="/?cadastro=1" class="btn-hero btn-hero-primary" onclick="gtag('event','sign_up_intent',{method:'password',source:'h2b-e-golpe-hero'})">
         <i class="ti ti-rocket"></i>
         Criar conta grátis
       </a>
@@ -266,7 +266,7 @@ footer a{color:var(--blue);font-weight:600}
     </div>
     <div class="card">
       <p>O H2BApply <strong>não vende vaga, não cobra taxa de recrutamento e não promete visto ou emprego garantido</strong> — porque, como visto acima, ninguém pode garantir isso, e cobrar do trabalhador por isso vai contra as próprias regras do programa. O que a ferramenta faz é organizar dados públicos de empregadores certificados pelo DOL e automatizar o envio da sua candidatura para eles — o resto do processo (entrevista, decisão do consulado) segue pelos canais oficiais, fora da nossa plataforma.</p>
-      <p>Login é feito por OAuth oficial do Google (sem senha compartilhada), o plano gratuito não pede cartão, e a equipe por trás do produto é identificável, com suporte real por WhatsApp e e-mail. Você também pode ver <a href="/#ln-proof-section" style="color:var(--blue);font-weight:700">avaliações reais de outros usuários</a> direto no site, escritas por quem realmente usa a plataforma.</p>
+      <p>A conta é criada com usuário e senha, sem pedir cartão; o Google só entra quando você, já com plano ativo, autoriza o envio pelo seu próprio Gmail (OAuth oficial, sem nunca compartilhar sua senha). A equipe por trás do produto é identificável, com suporte real por WhatsApp e e-mail. Você também pode ver <a href="/#ln-proof-section" style="color:var(--blue);font-weight:700">avaliações reais de outros usuários</a> direto no site, escritas por quem realmente usa a plataforma.</p>
     </div>
     <div class="warn-box warn-blue">
       <i class="ti ti-info-circle"></i>
@@ -297,16 +297,16 @@ footer a{color:var(--blue);font-weight:600}
       </div>
       <div class="faq-item">
         <button class="faq-q" onclick="toggleFaq(this)">O H2BApply cobra para garantir vaga ou visto?<i class="ti ti-chevron-down faq-arrow"></i></button>
-        <div class="faq-a"><div class="faq-a-inner">Não. O H2BApply automatiza o envio de candidaturas para empregadores certificados pelo DOL, mas não decide nem garante contratação ou visto — isso depende do empregador e do consulado. Existe plano gratuito permanente, sem cartão de crédito.</div></div>
+        <div class="faq-a"><div class="faq-a-inner">Não. O H2BApply automatiza o envio de candidaturas para empregadores certificados pelo DOL, mas não decide nem garante contratação ou visto — isso depende do empregador e do consulado. Criar a conta e ver as vagas é grátis; o envio exige um plano pago, via Pix — sem cartão de crédito.</div></div>
       </div>
     </div>
   </section>
 
   <div class="cta-section">
     <h3>Quer se candidatar do jeito certo? 🇺🇸</h3>
-    <p>Criar uma conta é grátis e leva menos de 1 minuto — você entra com o Google e já pode buscar vagas certificadas pelo DOL.</p>
+    <p>Criar uma conta é grátis e leva menos de 1 minuto — só usuário e senha, e você já pode buscar vagas certificadas pelo DOL.</p>
     <div class="cta-btn-row">
-      <a href="/oauth/google" class="btn-cta-white" onclick="gtag('event','sign_up_intent',{method:'google',source:'h2b-e-golpe-cta'})"><i class="ti ti-rocket"></i> Criar conta grátis</a>
+      <a href="/?cadastro=1" class="btn-cta-white" onclick="gtag('event','sign_up_intent',{method:'password',source:'h2b-e-golpe-cta'})"><i class="ti ti-rocket"></i> Criar conta grátis</a>
       <a href="/h2bapply-funciona" class="btn-cta-outline"><i class="ti ti-info-circle"></i> Ver como o H2BApply funciona</a>
     </div>
   </div>
@@ -326,7 +326,7 @@ footer a{color:var(--blue);font-weight:600}
     {"@type":"Question","name":"O visto H-2B é golpe?","acceptedAnswer":{"@type":"Answer","text":"Não. O H-2B é um visto de trabalho temporário oficial do governo dos Estados Unidos, regulado pelo Departamento do Trabalho e pelo DHS. O que existe são golpes que usam o nome do programa para enganar candidatos — o programa em si é legítimo."}},
     {"@type":"Question","name":"É normal pagar para conseguir uma vaga H-2B?","acceptedAnswer":{"@type":"Answer","text":"Não. Pela regra federal do programa (Fact Sheet #78D do Departamento do Trabalho dos EUA), é proibido cobrar do trabalhador taxas de recrutamento, agenciamento ou processamento."}},
     {"@type":"Question","name":"Como sei se uma vaga H-2B que me ofereceram é real?","acceptedAnswer":{"@type":"Answer","text":"Verifique se o empregador aparece em registros públicos do Departamento do Trabalho dos EUA, desconfie de qualquer cobrança antecipada e lembre que a decisão final do visto é sempre do consulado americano."}},
-    {"@type":"Question","name":"O H2BApply cobra para garantir vaga ou visto?","acceptedAnswer":{"@type":"Answer","text":"Não. O H2BApply automatiza o envio de candidaturas para empregadores certificados pelo DOL, mas não decide nem garante contratação ou visto. Existe plano gratuito permanente, sem cartão de crédito."}}
+    {"@type":"Question","name":"O H2BApply cobra para garantir vaga ou visto?","acceptedAnswer":{"@type":"Answer","text":"Não. O H2BApply automatiza o envio de candidaturas para empregadores certificados pelo DOL, mas não decide nem garante contratação ou visto. Criar a conta e ver as vagas é grátis; o envio exige um plano pago, via Pix — sem cartão de crédito."}}
   ]
 }
 </script>

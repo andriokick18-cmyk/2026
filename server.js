@@ -3269,13 +3269,13 @@ footer a{color:var(--blue);font-weight:600}
 <body>
 <header class="top-bar">
   <a href="/" class="logo-row"><img src="/apple-touch-icon.png" alt="H2BApply logo"><span>H2BApply</span></a>
-  <a href="/oauth/google" class="btn-login" onclick="gtag('event','sign_up_intent',{method:'google',source:'vagas-h2b-${entry.slug}-nav'})"><i class="ti ti-rocket"></i> Começar grátis</a>
+  <a href="/?cadastro=1" class="btn-login" onclick="gtag('event','sign_up_intent',{method:'password',source:'vagas-h2b-${entry.slug}-nav'})"><i class="ti ti-rocket"></i> Começar grátis</a>
 </header>
 <section class="hero">
   <div class="hero-badge"><i class="ti ti-map-pin"></i> Vagas em ${titleCase}</div>
   <h1>Vagas H-2B e H-2A em ${titleCase}: quantas tem e quanto pagam</h1>
   <p class="hero-sub">${fmtN(count)} vagas certificadas pelo Departamento do Trabalho dos EUA (DOL) em ${titleCase}, com salário médio de ${fmtUsd(avgWage)} por hora. Números calculados ao vivo, direto da base de dados do H2BApply.</p>
-  <a href="/oauth/google" class="btn-hero" onclick="gtag('event','sign_up_intent',{method:'google',source:'vagas-h2b-${entry.slug}-hero'})"><i class="ti ti-rocket"></i> Ver essas vagas grátis</a>
+  <a href="/?cadastro=1" class="btn-hero" onclick="gtag('event','sign_up_intent',{method:'password',source:'vagas-h2b-${entry.slug}-hero'})"><i class="ti ti-rocket"></i> Ver essas vagas grátis</a>
 </section>
 <div class="stats-row">
   <div class="stat-card"><div class="stat-n">${fmtN(count)}</div><div class="stat-lbl">Vagas em ${titleCase}</div></div>
@@ -3301,7 +3301,7 @@ footer a{color:var(--blue);font-weight:600}
     <h3>Buscar vagas em ${titleCase} agora 🇺🇸</h3>
     <p>Conta grátis, sem cartão de crédito. Você entra com o Google e já pode filtrar vagas por estado, categoria e salário.</p>
     <div class="cta-btn-row">
-      <a href="/oauth/google" class="btn-cta-white" onclick="gtag('event','sign_up_intent',{method:'google',source:'vagas-h2b-${entry.slug}-cta'})"><i class="ti ti-rocket"></i> Criar conta grátis</a>
+      <a href="/?cadastro=1" class="btn-cta-white" onclick="gtag('event','sign_up_intent',{method:'password',source:'vagas-h2b-${entry.slug}-cta'})"><i class="ti ti-rocket"></i> Criar conta grátis</a>
       <a href="/quanto-ganha-h2b" class="btn-cta-outline"><i class="ti ti-chart-bar"></i> Ver salários por estado</a>
     </div>
   </div>
@@ -3430,13 +3430,13 @@ footer a{color:var(--blue);font-weight:600}
 <body>
 <header class="top-bar">
   <a href="/" class="logo-row"><img src="/apple-touch-icon.png" alt="H2BApply logo"><span>H2BApply</span></a>
-  <a href="/oauth/google" class="btn-login" onclick="gtag('event','sign_up_intent',{method:'google',source:'vagas-h2b-cat-${catKey}-nav'})"><i class="ti ti-rocket"></i> Começar grátis</a>
+  <a href="/?cadastro=1" class="btn-login" onclick="gtag('event','sign_up_intent',{method:'password',source:'vagas-h2b-cat-${catKey}-nav'})"><i class="ti ti-rocket"></i> Começar grátis</a>
 </header>
 <section class="hero">
   <div class="hero-badge">${catEmoji} Vagas de ${catName}</div>
   <h1>Vagas H-2B e H-2A de ${catName} nos EUA: quantas tem e quanto pagam</h1>
   <p class="hero-sub">${fmtN(count)} vagas certificadas pelo Departamento do Trabalho dos EUA (DOL) na área de ${catName}, com salário médio de ${fmtUsd(avgWage)} por hora. Números calculados ao vivo, direto da base de dados do H2BApply.</p>
-  <a href="/oauth/google" class="btn-hero" onclick="gtag('event','sign_up_intent',{method:'google',source:'vagas-h2b-cat-${catKey}-hero'})"><i class="ti ti-rocket"></i> Ver essas vagas grátis</a>
+  <a href="/?cadastro=1" class="btn-hero" onclick="gtag('event','sign_up_intent',{method:'password',source:'vagas-h2b-cat-${catKey}-hero'})"><i class="ti ti-rocket"></i> Ver essas vagas grátis</a>
 </section>
 <div class="stats-row">
   <div class="stat-card"><div class="stat-n">${fmtN(count)}</div><div class="stat-lbl">Vagas de ${catName}</div></div>
@@ -3462,7 +3462,7 @@ footer a{color:var(--blue);font-weight:600}
     <h3>Buscar vagas de ${catName} agora 🇺🇸</h3>
     <p>Conta grátis, sem cartão de crédito. Você entra com o Google e já pode filtrar vagas por estado, categoria e salário.</p>
     <div class="cta-btn-row">
-      <a href="/oauth/google" class="btn-cta-white" onclick="gtag('event','sign_up_intent',{method:'google',source:'vagas-h2b-cat-${catKey}-cta'})"><i class="ti ti-rocket"></i> Criar conta grátis</a>
+      <a href="/?cadastro=1" class="btn-cta-white" onclick="gtag('event','sign_up_intent',{method:'password',source:'vagas-h2b-cat-${catKey}-cta'})"><i class="ti ti-rocket"></i> Criar conta grátis</a>
       <a href="/quanto-ganha-h2b" class="btn-cta-outline"><i class="ti ti-chart-bar"></i> Ver salários por estado</a>
     </div>
   </div>

@@ -143,7 +143,7 @@ footer a{color:var(--blue);font-weight:600}
     <a href="#planos" class="nav-link">Planos</a>
     <a href="#faq" class="nav-link">FAQ</a>
   </nav>
-  <a href="/oauth/google" class="btn-login" onclick="gtag('event','sign_up_intent',{method:'google',source:'h2bapply-funciona-nav'})">
+  <a href="/?cadastro=1" class="btn-login" onclick="gtag('event','sign_up_intent',{method:'password',source:'h2bapply-funciona-nav'})">
     <i class="ti ti-rocket"></i>
     Começar grátis
   </a>
@@ -158,7 +158,7 @@ footer a{color:var(--blue);font-weight:600}
     <h1>O H2BApply funciona mesmo?<br>Veja como, por dentro</h1>
     <p class="hero-sub">Explicamos exatamente o que o H2BApply faz, quem está por trás, como protege sua conta do Google e quanto custa — sem enrolação, para você decidir com informação real.</p>
     <div class="hero-cta-row">
-      <a href="/oauth/google" class="btn-hero btn-hero-primary" onclick="gtag('event','sign_up_intent',{method:'google',source:'h2bapply-funciona-hero'})">
+      <a href="/?cadastro=1" class="btn-hero btn-hero-primary" onclick="gtag('event','sign_up_intent',{method:'password',source:'h2bapply-funciona-hero'})">
         <i class="ti ti-rocket"></i>
         Criar conta grátis
       </a>
@@ -267,35 +267,30 @@ footer a{color:var(--blue);font-weight:600}
       <div class="section-icon si-amber"><i class="ti ti-coin"></i></div>
       <div>
         <h2>Planos e preços</h2>
-        <p>Comece grátis, sem cartão de crédito</p>
+        <p>Conta grátis para ver as vagas; envio de candidaturas por plano, pago via Pix</p>
       </div>
     </div>
     <div class="plans-grid">
       <div class="plan-card">
-        <div class="plan-name">🆓 Free</div>
-        <div class="plan-price">R$ 0<span>/sempre</span></div>
-        <div class="plan-feat">20 candidaturas manuais/dia<br>10 candidaturas automáticas/dia</div>
-      </div>
-      <div class="plan-card">
         <div class="plan-name">⭐ VIP Manual</div>
-        <div class="plan-price">R$ 100<span>/mês</span></div>
-        <div class="plan-feat">200 candidaturas manuais/dia<br>Sem envio automático</div>
+        <div class="plan-price">R$ 100<span>/30 dias</span></div>
+        <div class="plan-feat">100 candidaturas manuais/dia<br>Sem envio automático</div>
       </div>
       <div class="plan-card featured">
         <div class="plan-badge">MAIS POPULAR</div>
         <div class="plan-name">🤖 VIPro</div>
-        <div class="plan-price">R$ 150<span>/mês</span></div>
-        <div class="plan-feat">200 manuais/dia<br>200 automáticas/dia</div>
+        <div class="plan-price">R$ 150<span>/30 dias</span></div>
+        <div class="plan-feat">100 manuais/dia<br>100 automáticas/dia</div>
       </div>
       <div class="plan-card">
         <div class="plan-name">💎 DoublePro</div>
-        <div class="plan-price">R$ 250<span>/mês</span></div>
-        <div class="plan-feat">400 manuais/dia<br>400 automáticas/dia (2 contas Gmail)</div>
+        <div class="plan-price">R$ 250<span>/30 dias</span></div>
+        <div class="plan-feat">200 manuais/dia<br>200 automáticas/dia (2 contas Gmail)</div>
       </div>
     </div>
     <div class="warn-box warn-blue">
       <i class="ti ti-info-circle"></i>
-      <div>Todo mundo pode usar o plano <strong>Free para sempre</strong>, sem cartão de crédito. Os planos pagos são opcionais, para quem quer enviar um volume maior de candidaturas por dia.</div>
+      <div>Criar a conta, montar o perfil e ver todas as vagas é <strong>grátis, sem cartão de crédito</strong>. O envio de candidaturas — manual ou automático — só libera com um plano ativo; períodos de 30, 60 e 90 dias ou 1 ano, sem renovação automática.</div>
     </div>
   </section>
 
@@ -314,11 +309,11 @@ footer a{color:var(--blue);font-weight:600}
       </div>
       <div class="faq-item">
         <button class="faq-q" onclick="toggleFaq(this)">Preciso pagar para usar o H2BApply?<i class="ti ti-chevron-down faq-arrow"></i></button>
-        <div class="faq-a"><div class="faq-a-inner">Não. Existe um plano gratuito permanente com 20 candidaturas manuais e 10 automáticas por dia. Os planos pagos (a partir de R$ 100/mês) apenas aumentam esse volume diário.</div></div>
+        <div class="faq-a"><div class="faq-a-inner">Para enviar candidaturas, sim. Criar a conta, montar o perfil e ver as vagas é grátis; o envio (manual ou automático) só libera com um plano ativo — a partir de R$ 100/mês (VIP Manual). VIPro e DoublePro incluem o robô automático.</div></div>
       </div>
       <div class="faq-item">
         <button class="faq-q" onclick="toggleFaq(this)">O H2BApply tem acesso à minha senha do Gmail?<i class="ti ti-chevron-down faq-arrow"></i></button>
-        <div class="faq-a"><div class="faq-a-inner">Não. O login é feito pelo OAuth oficial do Google — o H2BApply recebe apenas uma autorização para enviar e-mails em seu nome pela API do Gmail, sem nunca ver sua senha. Você pode revogar esse acesso quando quiser nas configurações da sua conta Google.</div></div>
+        <div class="faq-a"><div class="faq-a-inner">Não. Sua conta no H2BApply é por usuário e senha. O Google só entra depois que você tem um plano ativo, quando autoriza o envio pelo seu próprio Gmail via OAuth oficial — o H2BApply recebe apenas a permissão de enviar e-mails em seu nome (nunca de ler sua caixa, nunca sua senha). Você pode revogar esse acesso quando quiser nas configurações da sua conta Google.</div></div>
       </div>
       <div class="faq-item">
         <button class="faq-q" onclick="toggleFaq(this)">De onde vêm as vagas mostradas no H2BApply?<i class="ti ti-chevron-down faq-arrow"></i></button>
@@ -326,16 +321,16 @@ footer a{color:var(--blue);font-weight:600}
       </div>
       <div class="faq-item">
         <button class="faq-q" onclick="toggleFaq(this)">Posso cancelar um plano pago quando quiser?<i class="ti ti-chevron-down faq-arrow"></i></button>
-        <div class="faq-a"><div class="faq-a-inner">Sim. Os planos são mensais, sem fidelidade. Para dúvidas sobre cobrança ou cancelamento, o suporte responde por WhatsApp e e-mail (suporte@h2bapply.com).</div></div>
+        <div class="faq-a"><div class="faq-a-inner">Não existe fidelidade nem renovação automática: você paga por um período (30, 60 ou 90 dias, ou 1 ano) e, quando ele termina, só renova se quiser. Para dúvidas sobre cobrança, o suporte responde por WhatsApp e e-mail (suporte@h2bapply.com).</div></div>
       </div>
     </div>
   </section>
 
   <div class="cta-section">
     <h3>Quer ver por conta própria? ✈️</h3>
-    <p>Criar uma conta é grátis e leva menos de 1 minuto — você entra com o Google e já pode explorar as vagas disponíveis.</p>
+    <p>Criar uma conta é grátis e leva menos de 1 minuto — só usuário e senha, e você já pode explorar as vagas disponíveis.</p>
     <div class="cta-btn-row">
-      <a href="/oauth/google" class="btn-cta-white" onclick="gtag('event','sign_up_intent',{method:'google',source:'h2bapply-funciona-cta'})"><i class="ti ti-rocket"></i> Criar conta grátis</a>
+      <a href="/?cadastro=1" class="btn-cta-white" onclick="gtag('event','sign_up_intent',{method:'password',source:'h2bapply-funciona-cta'})"><i class="ti ti-rocket"></i> Criar conta grátis</a>
       <a href="/guia" class="btn-cta-outline"><i class="ti ti-book-2"></i> Ler o guia completo</a>
     </div>
   </div>
@@ -353,7 +348,7 @@ footer a{color:var(--blue);font-weight:600}
   "@type": "FAQPage",
   "mainEntity": [
     {"@type":"Question","name":"O H2BApply garante que vou conseguir o visto ou emprego?","acceptedAnswer":{"@type":"Answer","text":"Não, e nenhuma empresa séria pode garantir isso — a decisão final é do empregador americano e do consulado. O H2BApply aumenta suas chances ao automatizar o envio de candidaturas para centenas de empregadores certificados pelo DOL, mas não controla a resposta deles."}},
-    {"@type":"Question","name":"Preciso pagar para usar o H2BApply?","acceptedAnswer":{"@type":"Answer","text":"Não. Existe um plano gratuito permanente com 20 candidaturas manuais e 10 automáticas por dia. Os planos pagos (a partir de R$ 100/mês) apenas aumentam esse volume diário."}},
+    {"@type":"Question","name":"Preciso pagar para usar o H2BApply?","acceptedAnswer":{"@type":"Answer","text":"Para enviar candidaturas, sim. Criar a conta, montar o perfil e ver as vagas é grátis; o envio (manual ou automático) só libera com um plano ativo — a partir de R$ 100/mês (VIP Manual). VIPro e DoublePro incluem o robô automático."}},
     {"@type":"Question","name":"O H2BApply tem acesso à minha senha do Gmail?","acceptedAnswer":{"@type":"Answer","text":"Não. O login é feito pelo OAuth oficial do Google — o H2BApply recebe apenas uma autorização para enviar e-mails em seu nome pela API do Gmail, sem nunca ver sua senha."}},
     {"@type":"Question","name":"De onde vêm as vagas mostradas no H2BApply?","acceptedAnswer":{"@type":"Answer","text":"De planilhas públicas do Departamento do Trabalho dos EUA (DOL), que lista os empregadores certificados a contratar trabalhadores estrangeiros via H-2B e H-2A."}},
     {"@type":"Question","name":"Posso cancelar um plano pago quando quiser?","acceptedAnswer":{"@type":"Answer","text":"Sim. Os planos são mensais, sem fidelidade. Para dúvidas sobre cobrança ou cancelamento, o suporte responde por WhatsApp e e-mail."}}

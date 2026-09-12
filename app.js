@@ -244,6 +244,18 @@ function maybeShowServerSelect(){
   // SEMPRE aparece; só rola até o botão de entrada e o destaca.
   try{
     const ps=new URLSearchParams(location.search);
+    // 🔗 v172j (auditoria 12/09/2026): as páginas públicas de SEO
+    // (/h2bapply-funciona, /h2b-e-golpe, /vagas-h2b-*) mandavam o botão
+    // "Criar conta grátis" pra /oauth/google — rota que não existe desde o
+    // v172c (404 seco pra quem chegava do Google). Agora apontam pra
+    // /?cadastro=1: a landing aparece normalmente por trás e o card de
+    // cadastro já abre no passo certo — a pessoa acabou de CLICAR em
+    // "criar conta", fazer ela clicar de novo é fricção pura.
+    if(ps.get("cadastro")==="1"){
+      try{history.replaceState({},"","/");}catch(e){}
+      setTimeout(()=>{try{openAuthGate("signup","signup");}catch(e){}},300);
+      return;
+    }
     if(ps.get("entrar")==="1"){
       try{sessionStorage.setItem("h2bSrvSeen","1");}catch(e){}
       try{history.replaceState({},"","/");}catch(e){}
