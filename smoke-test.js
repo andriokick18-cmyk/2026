@@ -2147,6 +2147,43 @@ async function testAuthWatchdogPush() {
     check("🐛 resolveSendGmail: sem registro nenhum (owner null/undefined) → null, nunca quebra",
       resolveSendGmail(null) === null && resolveSendGmail(undefined) === null);
 
+    // ═══ 🐛 v172c-FIX rodada 2 (auditoria adversarial, 12/09/2026): outros ═══
+    // lugares que ainda tratavam a identidade de login (username sem @ pra
+    // conta nova) como se fosse sempre um Gmail de verdade — achados DEPOIS
+    // do fix crítico do connect-send/motor de envio, revisando o resto do
+    // produto com a mesma lupa. Todos resolvidos com a MESMA fonte única
+    // (resolveSendGmail / findAccountByRealGmail), nunca uma 2ª lógica.
+    check("🐛 v172c-FIX: {email} do template automático usa _autoRealSendEmail (Gmail real), não o username cru",
+      _srvSrc.includes("email:      String(_autoRealSendEmail)") || _srvSrc.includes("email: String(_autoRealSendEmail)"),
+      "tplVars.email não usa _autoRealSendEmail — {email} nos assuntos/corpos do envio automático voltaria a vazar o username");
+    check("🐛 v172c-FIX: histórico/log do envio automático (senderEmail) usa _autoRealSendEmail, nunca mais _autoSenderEmail||email cru",
+      !_srvSrc.includes("senderEmail: _autoSenderEmail || email") && !_srvSrc.includes("senderEmail:_autoSenderEmail||email"),
+      "ainda existe um senderEmail:_autoSenderEmail||email cru no motor automático — 'Enviado por (Gmail)' voltaria a mostrar o username");
+    check("🐛 v172c-FIX: histórico do envio MANUAL resolve senderEmail pelo Gmail real quando é o principal quem envia",
+      _srvSrc.includes("(actualSenderEmail && actualSenderEmail !== s.user_email) ? actualSenderEmail : (resolveSendGmail(p) || s.user_email)"),
+      "senderEmail do envio manual não resolve mais pelo resolveSendGmail — histórico voltaria a mostrar o username em vez do Gmail");
+    check("🐛 v172c-FIX: fill() do cliente (envio manual) usa U.gmailEmail antes do username pro {email}",
+      _appSrc172d.includes("U?.gmailEmail||U?.email") || _appSrc172d.includes("U?.gmailEmail || U?.email"),
+      "fill() ainda usa só U?.email pro {email} — candidatura manual voltaria a vazar o username pro empregador");
+    check("🐛 v172c-FIX: /api/status devolve gmailEmail (Gmail real resolvido) — front finalmente consegue mostrar o Gmail certo",
+      _srvSrc.includes("const gmailEmail = resolveSendGmail(p);") && _srvSrc.includes("gmailConnected,gmailEmail,needsPlan"),
+      "/api/status não expõe mais gmailEmail — dropdown/checklist de remetente e {email} manual ficariam sem fonte de verdade");
+    check("🐛 v172c-FIX: dropdown 'Enviar por' e checklist do Automático mostram o Gmail real (rótulo), mantendo o value original",
+      _appSrc172d.includes("lbl:(U.gmailEmail||U.email)+\" (principal)\"") && _appSrc172d.includes("label:U.gmailEmail||U.email"),
+      "rótulo do dropdown/checklist não usa mais U.gmailEmail — voltaria a mostrar o username rotulado '(principal)'");
+    check("🐛 v172c-FIX: /oauth/add-sender/callback trava duplicar o PRÓPRIO Gmail principal como extra via resolveSendGmail (não só comparando o username)",
+      _srvSrc.includes("const _principalGmail2=resolveSendGmail(owner2);") && _srvSrc.includes("(_principalGmail2&&newEmail2===_principalGmail2)||newEmail2===ownerEmail2"),
+      "guarda de e-mail principal duplicado não usa resolveSendGmail — conta nova conseguiria re-registrar o próprio Gmail como 'extra'");
+    check("🐛 v172c-FIX: DELETE /api/sender reconhece o Gmail conectado de uma conta v172c antes de revogar (findAccountByRealGmail)",
+      _srvSrc.includes("function findAccountByRealGmail(email)") && _srvSrc.includes("const _donoLogin=findAccountByRealGmail(emailToRemove);"),
+      "DELETE /api/sender ainda usa getUser(emailToRemove) puro — revoke podia derrubar o Gmail de envio de uma conta v172c sem aviso (v165 furado)");
+    check("🐛 v172c-FIX: admin.html não bloqueia mais 'E-mail do cliente' com validação nativa de e-mail (aceita username v172c)",
+      !/id="pg-email"[^>]*type="email"/.test(fs.readFileSync(path.join(__dirname,"admin.html"),"utf8")),
+      "campo pg-email ainda é type=email — admin não consegue linkar pagamento a cliente cadastrado por username");
+    check("🐛 v172c-FIX: e-mail de aviso de novo pedido ao admin não rotula mais o username como 'Email' (mostra login + Gmail conectado separados)",
+      _srvSrc.includes("🪪 Usuário (login): ${pedido.userEmail") && _srvSrc.includes("📧 Gmail conectado: ${_realGmailForMail"),
+      "aviso de novo pedido ainda rotula pedido.userEmail como Email — confunde o admin quando é um username");
+
     // ═══ 🛡️ v73: AQUECIMENTO DE CONTA GMAIL NOVA (proteção anti-bloqueio) ═══
     // Pedido real do dono: "tem gente sendo bloqueada pelo Google". A defesa:
     // conta recém-conectada manda pouco nos primeiros dias, ganha volume aos

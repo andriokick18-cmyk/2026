@@ -86,7 +86,7 @@
 //    promessa de "direito de arrependimento de 7 dias" (removida também dos
 //    Termos — seção renumerada 1-12).
 //
-const CACHE_NAME = "h2bapply-2026-v24"; // v24: 2ª varredura (auditoria independente pós-v23) achou mais resquícios de "login por Google"/"sem senha" sobrando em comentários e textos que a v23 não pegou (onboarding, logout, privacidade, exportação LGPD, README/CLAUDE.md) + removidas as rotas mortas M04 (/api/admin/users/export) e M05 (/api/admin/metrics/daily), sem chamador em lugar nenhum
+const CACHE_NAME = "h2bapply-2026-v25"; // v25: 2ª rodada da auditoria v172c (bug crítico de conexão de Gmail) achou mais lugares tratando o username de login como se fosse sempre um Gmail real — {email} do template, "Enviado por (Gmail)" nos logs, dropdown/checklist de remetente, duplicar o próprio Gmail como extra, revoke que podia derrubar o Gmail conectado de uma conta nova, campo de e-mail do admin bloqueando username. Tudo resolvido com resolveSendGmail/findAccountByRealGmail (fonte única).
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).

@@ -164,7 +164,9 @@ async function checkStatus(){
   whatsapp:d.whatsapp||"",rankName:d.rankName||"",appAvatarId:d.appAvatarId||"",h2bProfile:d.h2bProfile||{},phone:d.phone||"",serverId:d.serverId||1,publicProfile:d.publicProfile||{},
   // 🔒 v172 (ORDEM DO DONO, 11/09/2026): gate de envio — plano pago ativo E
   // Gmail conectado (/oauth/connect-send), nunca antes disso.
-  gmailConnected:!!d.gmailConnected,needsPlan:!!d.needsPlan};
+  // 🐛 v172c: gmailEmail é o Gmail REAL de envio (null se ainda não conectou)
+  // — email é só a identidade de login (username sem @ pra conta nova).
+  gmailConnected:!!d.gmailConnected,gmailEmail:d.gmailEmail||null,needsPlan:!!d.needsPlan};
       // 🌐 v149c (dono, 20/08: "tira aquele negócio de qual servidor você
       // está, agora só tem 1 server!") — os selos "Servidor N" do drawer e
       // do perfil foram removidos junto com a era multi-servidor.
@@ -1884,7 +1886,7 @@ async function openModal(jobId){
     if(sBox&&sSel){
       if(extras.length){
         const saved=(()=>{try{return localStorage.getItem("h2b_manual_sender")}catch(e){return null}})();
-        const opts=[{email:U.email,lbl:U.email+" (principal)"},...extras.map(x=>({email:x.email,lbl:x.email}))];
+        const opts=[{email:U.email,lbl:(U.gmailEmail||U.email)+" (principal)"},...extras.map(x=>({email:x.email,lbl:x.email}))]; // 🐛 v172c: rótulo mostra o Gmail real, valor continua o mesmo (sentinela que o servidor já espera)
         sSel.innerHTML=opts.map(o=>`<option value="${esc(o.email)}" ${saved===o.email?"selected":""}>${esc(o.lbl)}</option>`).join("");
         sBox.style.display="block";
       } else { sBox.style.display="none"; }
@@ -2467,7 +2469,7 @@ const fill=(tpl,j)=>(tpl||"")
   .replace(/{nome}/g,    CFG.name||U?.name||"")
   .replace(/{pais}/g,    CFG.country||"Brazil")
   .replace(/{telefone}/g,CFG.phone||"")
-  .replace(/{email}/g,   U?.email||"")
+  .replace(/{email}/g,   U?.gmailEmail||U?.email||"") // 🐛 v172c: Gmail real, nunca o username de login
   .replace(/{cidade}/g,  j?.city||j?.cidade||"")
   .replace(/{estado}/g,  j?.state||j?.estado||"")
   .replace(/{city}/g,    j?.city||j?.cidade||"")
@@ -5245,13 +5247,15 @@ function renderAutoSenders(){
   const box=g("#auto-senders-box"), list=g("#auto-senders-list");
   if(!box||!list) return;
   const extras=(U.senderEmails||[]).filter(s=>s.active!==false);
-  const all=[{email:U.email,principal:true},...extras.map(s=>({email:s.email,principal:false,tokenExpired:!!s.tokenExpired}))];
+  // 🐛 v172c: value continua U.email (sentinela que o servidor/allowlist já
+  // espera) — só o RÓTULO mostrado troca pro Gmail real quando conectado.
+  const all=[{email:U.email,label:U.gmailEmail||U.email,principal:true},...extras.map(s=>({email:s.email,label:s.email,principal:false,tokenExpired:!!s.tokenExpired}))];
   if(all.length<2){ box.style.display="none"; window._autoSenders=null; return; }
   box.style.display="block";
   list.innerHTML=all.map((s,i)=>`
     <label style="display:flex;align-items:center;gap:9px;background:var(--sf);border:1px solid var(--border2);border-radius:9px;padding:9px 11px;cursor:pointer">
       <input type="checkbox" class="auto-sender-chk" value="${esc(s.email)}" ${s.tokenExpired?"":"checked"} style="width:16px;height:16px;accent-color:#7c3aed">
-      <span style="flex:1;min-width:0;font-size:12.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.email)}</span>
+      <span style="flex:1;min-width:0;font-size:12.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.label||s.email)}</span>
       ${s.principal?'<span style="font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px;background:rgba(124,58,237,.15);color:#a78bfa">PRINCIPAL</span>':''}
       ${s.tokenExpired?'<span style="font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px;background:rgba(239,68,68,.15);color:#f87171">RECONECTAR</span>':''}
     </label>`).join("");

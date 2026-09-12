@@ -1344,6 +1344,18 @@ function persistLogsImmediate() { persist(LOGS_FILE, DB_LOGS); }
 
 // CRUD
 const getUser    = e => DB_USERS[e]||null;
+// 🐛 v172c: getUser(email) só acha conta pela CHAVE do banco — pra conta
+// legada isso já É o Gmail real, mas pra conta nova (v172c) a chave é o
+// username e o Gmail real vive à parte em u.gmailEmail. Usada pra proteção
+// "esse Gmail é conta de login de alguém, não revogar" (v165) — sem isso,
+// essa proteção nunca reconhecia uma conta v172c pelo Gmail que ela conectou.
+function findAccountByRealGmail(email){
+  const byKey=getUser(email);
+  if(byKey)return byKey;
+  const low=String(email||"").toLowerCase().trim();
+  if(!low)return null;
+  return Object.values(DB_USERS||{}).find(u=>u&&String(u.gmailEmail||"").toLowerCase().trim()===low)||null;
+}
 // FIX-CRASH: setUser usa debounce de 3s para evitar escrita excessiva no disco
 // (markOnline chamado em todo /api/status causava persist() a cada request)
 const _setUserPersistDebounce = { tid: null };
@@ -4312,7 +4324,7 @@ async function _doAutoSendInner(email) {
       candidate.to = _ce.email; // normalizado
       target = Object.assign({}, candidate); break;
     }
-    addLog(email, { status:"duplicado", company:candidate.company||"", to:candidate.to, jobTitle:candidate.title||"", category:candidate.category||"other", state:candidate.state||"", source:job.source||"", error:"Email já enviado anteriormente", senderEmail:email });
+    addLog(email, { status:"duplicado", company:candidate.company||"", to:candidate.to, jobTitle:candidate.title||"", category:candidate.category||"other", state:candidate.state||"", source:job.source||"", error:"Email já enviado anteriormente", senderEmail:resolveSendGmail(getUser(email))||email });
     queue.shift();
   }
 
@@ -4461,6 +4473,17 @@ async function _doAutoSendInner(email) {
   while (retryCount <= MAX_RETRIES) {
     // Relê usuário a cada tentativa (dados podem ter mudado)
     const p = getUser(email) || {};
+    // 🐛 v172c: "email" (parâmetro da função) é a IDENTIDADE da conta — pra
+    // conta nova (login usuário+senha) isso é o USERNAME, nunca um Gmail de
+    // verdade (sem @, validado assim de propósito no cadastro). Quem
+    // realmente ENVIA (e deve aparecer no From:, no {email} do template e
+    // no registro de qual conta mandou) é: o sender EXTRA de verdade
+    // (_autoSenderEmail !== email), OU o Gmail conectado pelo principal
+    // (resolveSendGmail(p)) — "email" só sobra de fallback pra conta LEGADA,
+    // onde ele já É o Gmail. Fonte ÚNICA calculada aqui, reusada em tudo
+    // que precisa do endereço real (MIME From:, {email} do template, log/
+    // histórico) — nunca recalculada duas vezes com risco de divergir.
+    const _autoRealSendEmail = (_autoSenderEmail && _autoSenderEmail !== email) ? _autoSenderEmail : (resolveSendGmail(p) || email);
 
     // Seleção de perfil — sempre calculada do zero
     const profiles       = Array.isArray(p.profiles) ? p.profiles : [];
@@ -4593,7 +4616,7 @@ async function _doAutoSendInner(email) {
       nome:       String(p.name || sess?.user_name || ""),
       pais:       String(p.country || "Brazil"),
       telefone:   String(p.phone || ""),
-      email:      String(email),                        // email do usuário/candidato
+      email:      String(_autoRealSendEmail),            // Gmail real de envio (nunca o username de login)
       cidade:     String(target.city    || p.city || ""),
       estado:     String(target.state   || ""),
       // v167 (bug real, auditoria 08/09/2026): {categoria} era um botão
@@ -4647,19 +4670,12 @@ async function _doAutoSendInner(email) {
     target.to = _finalEmail.email; // garante normalizado no MIME
 
     // ── Constrói MIME do zero (nunca reutiliza raw) ────────
-    // 🐛 v172c: fromEmail não pode ser String(email) cru — pra conta nova
-    // (login usuário+senha) "email" é o USERNAME, nunca um Gmail de verdade,
-    // e o From: saía malformado (sem @). Quando o envio é por um SENDER
-    // EXTRA (_autoSenderEmail !== email), o From certo é o Gmail real do
-    // extra; quando é o principal, é o Gmail conectado (p.gmailEmail) —
-    // "email" só sobra de fallback pra conta LEGADA, onde ele já É o Gmail.
-    const _autoFromEmail = (_autoSenderEmail && _autoSenderEmail !== email) ? _autoSenderEmail : (resolveSendGmail(p) || email);
     const raw = buildMime({
       to: target.to,
       subject,
       text: body,
       fromName: String(p.name || "H2BApply"),
-      fromEmail: String(_autoFromEmail),
+      fromEmail: String(_autoRealSendEmail),
       attachments: attachments.map(a => ({ data: a.data, name: a.name })), // cópia explícita
     });
 
@@ -4729,7 +4745,7 @@ async function _doAutoSendInner(email) {
         threadId:  gmBody?.threadId || null,
         jobSnapshot: snap,
         type:      "auto",
-        senderEmail: _autoSenderEmail || email,
+        senderEmail: _autoRealSendEmail,
         attachCount: attachments.length,
         category:  target.category,
         state:     target.state,
@@ -4768,7 +4784,7 @@ async function _doAutoSendInner(email) {
         })();
       }
 
-      addLog(email, { ...logEntry, status:"enviado", appId, profileUsed:selectedProfile?.name||"", subjectUsed:subject.slice(0,120), subjectTpl:(chosenSubject||"").slice(0,120), attachCount:attachments.length, attempt:retryCount+1, senderEmail:_autoSenderEmail||email, wage:target.wage||"", city:target.city||"", workers:target.workers||null, start:target.start||"", caseNum:target.caseNum||"" });
+      addLog(email, { ...logEntry, status:"enviado", appId, profileUsed:selectedProfile?.name||"", subjectUsed:subject.slice(0,120), subjectTpl:(chosenSubject||"").slice(0,120), attachCount:attachments.length, attempt:retryCount+1, senderEmail:_autoRealSendEmail, wage:target.wage||"", city:target.city||"", workers:target.workers||null, start:target.start||"", caseNum:target.caseNum||"" });
       updateAutoStats(email, { sent:(getAutoStats(email).sent||0)+1, startedAt:getAutoStats(email).startedAt||Date.now() });
       // ✅ Heartbeat: registra atividade para o watchdog
       { const h=getHealth(email); h.lastSent=Date.now(); h.errors=0; h.stalledAt=null; h.status="ok"; }
@@ -4905,7 +4921,7 @@ async function _doAutoSendInner(email) {
 
       // Erro definitivo para esta vaga (invalid email, rejected, quota, unknown)
       // Pula a vaga e continua com a próxima — NÃO para o automático
-      addLog(email, { ...logEntry, status: isSkippable ? "pulado" : "falhou", error: errFriendly, profileUsed:selectedProfile?.name||"", subjectUsed:(subject||"").slice(0,120), attachCount:attachments.length, attempt:retryCount+1, senderEmail:_autoSenderEmail||email, wage:target.wage||"", city:target.city||"" });
+      addLog(email, { ...logEntry, status: isSkippable ? "pulado" : "falhou", error: errFriendly, profileUsed:selectedProfile?.name||"", subjectUsed:(subject||"").slice(0,120), attachCount:attachments.length, attempt:retryCount+1, senderEmail:_autoRealSendEmail, wage:target.wage||"", city:target.city||"" });
       trackJourney(email,'auto_fail',{ok:false,error:errFriendly,detail:`${target?.company||"?"} → ${target?.to||"?"}`});
       updateAutoStats(email, { failed:(getAutoStats(email).failed||0)+1 });
       break;
@@ -7538,9 +7554,15 @@ filtrar();
         const{body:ui2}=await httpsReq({hostname:"www.googleapis.com",path:"/oauth2/v2/userinfo",method:"GET",headers:{"Authorization":"Bearer "+tk2.access_token}});
         if(!ui2.email)return fail2("E-mail não obtido.");
         const newEmail2=ui2.email.toLowerCase().trim();
-        if(newEmail2===ownerEmail2)return fail2("Este é seu email principal. Adicione um Gmail diferente.");
-        if(getUser(newEmail2))return fail2("Este Gmail já tem conta no H2BApply. Use outro email.");
         const owner2=getUser(ownerEmail2)||{};
+        // 🐛 v172c: ownerEmail2 é a IDENTIDADE da sessão (username sem @ pra
+        // conta nova) — comparar newEmail2 (Gmail real) contra ela nunca dá
+        // igual pra conta v172c, deixando essa trava sempre desarmada.
+        // resolveSendGmail(owner2) resolve pro Gmail principal de verdade
+        // (gmailEmail carimbado, ou o próprio e-mail em conta legada).
+        const _principalGmail2=resolveSendGmail(owner2);
+        if((_principalGmail2&&newEmail2===_principalGmail2)||newEmail2===ownerEmail2)return fail2("Este é seu email principal. Adicione um Gmail diferente.");
+        if(getUser(newEmail2))return fail2("Este Gmail já tem conta no H2BApply. Use outro email.");
         const existing2=owner2.senderEmails||[];
         const jaExiste2=existing2.find(s=>s.email===newEmail2);
         if(jaExiste2){
@@ -7761,7 +7783,7 @@ filtrar();
     // removida como extra — só descartamos o token local (a privacidade v21
     // continua valendo pros extras "puros", que não são conta de ninguém).
     const _tok=_snd.refresh_token||_snd.access_token;
-    const _donoLogin=getUser(emailToRemove);
+    const _donoLogin=findAccountByRealGmail(emailToRemove);
     if(_tok&&!_donoLogin){
       httpsReq({hostname:"oauth2.googleapis.com",path:"/revoke?token="+encodeURIComponent(_tok),method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"}})
         .then(r=>console.log(`[sender] 🔒 token de ${emailToRemove} revogado no Google (status ${r.status})`))
@@ -9104,11 +9126,17 @@ filtrar();
           if(adminToken){
             const _fromEmail = adminTokenFrom || ADMIN_EMAIL;
             const _pagoEmStr = pedido.pagoEm ? new Date(pedido.pagoEm).toLocaleDateString("pt-BR") : "Não informada";
+            // 🐛 v172c: pedido.userEmail é a IDENTIDADE da sessão (username
+            // sem @ pra conta nova) — rotulado "Email" isso confundia o
+            // admin. Mostra o login separado do Gmail REAL já conectado
+            // (resolveSendGmail), quando existir.
+            const _realGmailForMail = resolveSendGmail(getUser(pedido.userEmail));
             const emailSubject=`💳 Novo pedido de plano — ${pedido.userName||pedido.userEmail} quer ${pedido.plano} por ${pedido.dias}d`;
             const emailText=`💳 NOVO PEDIDO DE PLANO RECEBIDO!
 
 👤 Usuário: ${pedido.userName||"?"}
-📧 Email: ${pedido.userEmail||"?"}
+🪪 Usuário (login): ${pedido.userEmail||"?"}
+📧 Gmail conectado: ${_realGmailForMail||"(ainda não conectou Gmail de envio)"}
 📱 WhatsApp: ${pedido.userWhatsapp||"?"}
 🏙️ Cidade: ${pedido.userCity||"?"}
 
@@ -9716,7 +9744,14 @@ ${pedido.criadoPor&&pedido.criadoPor!==pedido.userEmail?`\n🛠️ Registrado re
     // [!p.refresh_token, sem isentar admin], só este campo do /api/status
     // estava errado).
     const gmailConnected = !!p.refresh_token;
-    return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,planRulesNotice:_prNotice,manualCdOff:p.manualCdOff===true,gmailConnected,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",language:p.language||"pt-BR",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||300),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
+    // 🐛 v172c: o front nunca recebia o Gmail REAL conectado — só "email"
+    // (identidade de login, USERNAME sem @ pra conta nova), então toda tela
+    // que precisa mostrar "qual Gmail vai enviar" (dropdown do envio manual,
+    // checklist do automático) rotulava o username como se fosse o Gmail
+    // principal. resolveSendGmail devolve o endereço certo (ou null se ainda
+    // não conectou nenhum).
+    const gmailEmail = resolveSendGmail(p);
+    return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,planRulesNotice:_prNotice,manualCdOff:p.manualCdOff===true,gmailConnected,gmailEmail,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",language:p.language||"pt-BR",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||300),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
   }
 
   if(pathname==="/api/onboard"&&req.method==="POST"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});setUser(s.user_email,{onboarded:true});return json(res,200,{ok:true});}
@@ -10028,7 +10063,12 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
           jobSnapshot: snap,
           attachCount: attachments.length,
           type: "manual",
-          senderEmail: actualSenderEmail,
+          // 🐛 v172c: actualSenderEmail fica em s.user_email (username de
+          // login, sem @) sempre que quem manda é o principal — mesma classe
+          // de bug do motor automático. resolveSendGmail(p) resolve pro
+          // Gmail real quando actualSenderEmail não é um sender EXTRA de
+          // verdade (extra já vem correto de getSenderToken/usedEmail).
+          senderEmail: (actualSenderEmail && actualSenderEmail !== s.user_email) ? actualSenderEmail : (resolveSendGmail(p) || s.user_email),
           sheetSource: d.sheetSource||undefined,
           // FIX: salvar caseNum para que /api/sent-ids possa filtrar a vaga da planilha
           caseNum: d.caseNum || "",
