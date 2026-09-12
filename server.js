@@ -9562,6 +9562,19 @@ ${pedido.criadoPor&&pedido.criadoPor!==pedido.userEmail?`\n🛠️ Registrado re
         // com ele — zera o provisório deste pedido (cap em "agora", nunca
         // no passado) antes de empilhar os dias pagos, mesmo padrão que a
         // revogação de provisório já usa abaixo.
+        // ⚠️ FRAGILIDADE CONHECIDA (auditoria 12/09/2026, achado adversarial —
+        // hoje inofensivo porque autoAtivarProvisorio só é chamada dentro do
+        // gancho TEST_LOGIN_TOKEN de preCheckComprovante, nunca por tráfego
+        // real nesta reconstrução sem IA/Gemini; documentar ANTES de reativar
+        // verificação automática de comprovante): vip.pedidoId guarda 1 ÚNICO
+        // "dono" do provisório por usuário. Se o mesmo usuário tivesse 2+
+        // pedidos provisoriamente ativados em sequência, o 2º sobrescreveria
+        // pedidoId do 1º — a checagem abaixo (===pd.id) falharia silenciosamente
+        // ao aprovar o pedido "perdido", e addManualVipDays/addAutoVipDays
+        // somariam os dias pagos SEM zerar o provisório de 3 dias antes. Se
+        // reativar auto-ativação por IA, resolver isso primeiro (ex.: só
+        // permitir 1 pedido provisório pendente por vez, ou registrar
+        // pedidoId como um Set em vez de valor único).
         const uProv=getUser(pd.userEmail);
         if(pd.autoAtivado&&uProv?.vip?.source==="auto-provisorio"&&uProv.vip.pedidoId===pd.id){
           const agoraP=Date.now();
