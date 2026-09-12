@@ -28,43 +28,43 @@
 
 ---
 
-### PASSO 1 — MOSTRAR A HOMEPAGE (0:30 - 1:00)
+### PASSO 1 — MOSTRAR A HOMEPAGE E O CADASTRO (0:30 - 1:00)
 
 - Abra o navegador em **h2bapply.com**
-- Mostre a página inicial
+- Mostre a página inicial e o botão "Criar conta grátis"
 - Diga:
 
-> "This is our homepage at h2bapply.com. Users can sign in with their Google account to access the platform."
+> "This is our homepage at h2bapply.com. Users create an account with just a username and password — no Google account is required to sign up or to browse job listings and plans."
 
 ---
 
-### PASSO 2 — FLUXO DE LOGIN GOOGLE (1:00 - 1:45)
+### PASSO 2 — ASSINAR UM PLANO E CONECTAR O GMAIL (1:00 - 1:45)
 
-- Clique em "Entrar com Google"
-- A tela de consentimento do Google vai aparecer
+- Já logado (usuário+senha), abra a aba Planos e mostre um plano ativo (ou o fluxo de pagamento via PIX)
+- Vá até a tela de envio automático ou manual e clique em "Conectar Gmail"
+- Mostre o aviso obrigatório explicando que o e-mail conectado é permanente e será usado para enviar candidaturas
+- Clique em continuar — a tela de consentimento do Google vai aparecer
 - Mostre os **escopos solicitados**: openid, email, profile, gmail.send
 - Diga:
 
-> "When a user clicks Sign in with Google, they are redirected to the Google OAuth consent screen. 
+> "Only after subscribing to a paid plan does the app ask the user to connect a Gmail account for SENDING applications. Before that step, a clear warning explains that this email is permanent and will be used for both manual and automatic sending.
 >
-> The app requests only four permissions:
-> - openid, email, and profile — to authenticate the user
+> The app requests only four permissions at this point:
+> - openid, email, and profile — to confirm which Google account is being connected
 > - gmail.send — to send job application emails on behalf of the user
 >
 > We do NOT request access to read, modify, or delete any emails."
 
-- Complete o login
+- Complete a conexão
 
 ---
 
 ### PASSO 3 — MOSTRAR O PAINEL (1:45 - 2:30)
 
-- Mostre o painel logado com nome/foto do Google
+- Mostre o painel com o Gmail já conectado
 - Diga:
 
-> "After login, the user's Google name and profile picture are displayed in the dashboard.
-> 
-> The user can browse H-2B and H-2A job listings from the U.S. Department of Labor database."
+> "After connecting Gmail, the user can browse H-2B and H-2A job listings from the U.S. Department of Labor database and start sending applications."
 
 - Mostre a lista de vagas
 
@@ -111,7 +111,7 @@
 
 > "To summarize:
 >
-> H2BApply uses Google OAuth to authenticate users and the Gmail API with gmail.send scope ONLY to send job application emails on behalf of users.
+> H2BApply's own login is username and password — Google is never involved in sign-up or sign-in. Google OAuth and the Gmail API with the gmail.send scope are used ONLY, and only after a paid subscription, to send job application emails on behalf of users.
 >
 > We do not read, store, or share any Gmail content.
 > We comply fully with Google's Limited Use requirements.

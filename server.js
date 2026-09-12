@@ -161,7 +161,7 @@ const { MAX_SENDER_EMAILS_FREE, MAX_SENDER_EMAILS_VIP, MAX_SENDER_EMAILS_ADMIN,
         ADMIN_AUTO_DAILY_LIMIT_PER_SENDER,
         MAX_RESUMES, MAX_COVERS,
         ADMIN_EMAIL, ADMIN_EMAIL_2, ADMIN_EMAILS_EXTRA, ADMIN_EMAILS, isAdminEmail,
-        VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT, PUSH_ENABLED,
+        PUSH_ENABLED,
         PLAN_LIMITS, PLAN_LIMITS_NEW } = require("./mod-config.js");
 // 🔐 SENHA — helpers compartilhados (painel admin E cadastro de usuário
 // comum, ambos por usuário+senha agora). scrypt (memory-hard) com salt
@@ -210,11 +210,6 @@ const PORT          = parseInt(process.env.PORT || "3000", 10);
 const IS_PROD       = APP_URL.startsWith("https://");
 const CONFIGURED    = !!(CLIENT_ID && CLIENT_SECRET);
 
-// ── VAPID — Web Push Notifications ───────────────────────
-// Gere suas chaves com: npx web-push generate-vapid-keys
-// Configure as variáveis de ambiente VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY
-console.log(`[boot] Push VAPID: ${PUSH_ENABLED?"✅ configurado":"⚠️  desativado (configure VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY)"}`);
-
 // ── Planos ────────────────────────────────────────────────
 //   free      → 20 manual  + 10 auto   /dia (Grátis)
 //   vip       → 200 manual + 10 auto   /dia (só manual pago)
@@ -233,7 +228,7 @@ console.log(`[boot] Push VAPID: ${PUSH_ENABLED?"✅ configurado":"⚠️  desati
 // Admins podem configurar intervalo menor.
 // adminIntervalSecs: número de segundos entre envios (mín 30s para admins)
 // calcSmartInterval: corpo em src/engine/core.js (Fase 1 · Módulo 6)
-const { createCalcSmartInterval, nowBRT: _nowBRTMod, todayStrBRT: _todayStrBRTMod, toLocaleBRT: _toLocaleBRTMod, calcStreak: _calcStreakMod, last7Days: _last7DaysMod, warmupCapForSender } = require("./mod-engine-core.js");
+const { createCalcSmartInterval, nowBRT: _nowBRTMod, todayStrBRT: _todayStrBRTMod, toLocaleBRT: _toLocaleBRTMod, warmupCapForSender } = require("./mod-engine-core.js");
 // 🔒 Integridade de vagas — 1 vaga = 1 ETA Case Number único (KB-076).
 // Mesmo módulo usado pelo build-sheets.js standalone, pra nunca divergir a
 // regra de dedupe/merge entre o cron oficial e o bot de coleta do admin.
@@ -361,7 +356,6 @@ const LOGS_FILE   = path.join(DATA_DIR, "auto_logs.json");   // NEW: logs detalh
 const JOURNEY_FILE = path.join(DATA_DIR, "journey.json");       // Jornada do usuário
 const NOTES_FILE  = path.join(DATA_DIR, "notes.json");
 const ALERTS_FILE = path.join(DATA_DIR, "job_alerts.json");
-const CODES_FILE  = path.join(DATA_DIR, "promo_codes.json"); // NEW: promo codes
 const PUSH_FILE   = path.join(DATA_DIR, "push_subs.json");   // NEW: push subscriptions
 const APPIDX_FILE = path.join(DATA_DIR, "app_index.json");   // NEW v13: índice de candidaturas
 const ADMIN_SETTINGS_FILE = path.join(DATA_DIR, "admin_settings.json"); // Admin global settings
@@ -412,7 +406,6 @@ let DB_LOGS   = {};   // { userEmail → LogEntry[] }
 let DB_JOURNEY = {}; // { userEmail → JourneyEvent[] }
 let DB_NOTES  = {};
 let DB_ALERTS = {};
-let DB_CODES  = {};   // NEW: promo codes { code → { manualDays, autoDays, createdAt, createdBy, active, usedBy[] } }
 let DB_PUSH   = {};   // NEW: push subscriptions { userEmail → PushSubscription[] }
 // NEW v13: índice de candidaturas — { userEmail → { byThread:{tid:appId}, byMsgId:{mid:appId}, byTo:{email:[appId,...]} } }
 let DB_APP_INDEX = {};
@@ -974,12 +967,10 @@ function load(f, def) { return storageLoad(f, def); } // Fase 4: SQLite + migra�
 // ══════════════════════════════════════════════════════════
 const INVALID_EMAILS_FILE   = path.join(DATA_DIR, "invalid_emails.json");
 const EMAIL_CORRECTIONS_FILE = path.join(DATA_DIR, "email_corrections.json");
-const EMAIL_FIXES_FILE       = path.join(DATA_DIR, "email_fixes_ia.json"); // v67: e-mails achados pela IA na internet
 const TEMP_FAILURES_FILE    = path.join(DATA_DIR, "temp_failures.json");
 
 let DB_INVALID_EMAILS   = {};  // { email: {email,domain,motivo,tipo,first,last,count,users,msg,status} }
 let DB_EMAIL_CORRECTIONS = {}; // { orig: {original,corrected,confidence,count,first,last} }
-let DB_EMAIL_FIXES = {}; // v67: { emailInvalido: {fixed:email|null,at,company,by} } — cache das pesquisas da IA (negativo também: nunca pesquisa 2x)
 let DB_TEMP_FAILURES    = {};  // { email: {email,errors:[],count} }
 
 // Padrões de erro permanente (o endereço não existe)
@@ -1183,7 +1174,7 @@ function boot() {
         const _empty = {
           "users.json": {}, "h2b_users.json": {}, "history.json": {}, "h2b_history.json": {},
           "app_index.json": {}, "auto_jobs.json": {}, "sent_emails.json": {}, "auto_logs.json": {},
-          "journey.json": {}, "notes.json": {}, "job_alerts.json": {}, "promo_codes.json": {},
+          "journey.json": {}, "notes.json": {}, "job_alerts.json": {},
           "push_subs.json": {}, "financeiro.json": { pagamentos: [], gastos: [] }, "pedidos.json": [],
           "suggestions.json": [], "referrals.json": { byCode: {}, byEmail: {} },
           "notifications.json": { notifications: [] },
@@ -1230,7 +1221,6 @@ function boot() {
   DB_ALERTS = load(ALERTS_FILE, {});
   DB_LOGS   = load(LOGS_FILE, {});
   DB_JOURNEY = load(JOURNEY_FILE, {});
-  DB_CODES  = load(CODES_FILE, {});
   DB_PUSH   = load(PUSH_FILE, {});
   DB_APP_INDEX = load(APPIDX_FILE, {});
   const savedAdminSettings = load(ADMIN_SETTINGS_FILE, null);
@@ -1276,7 +1266,6 @@ function boot() {
     DB_INVALID_EMAILS[k] = {...v, users: new Set(Array.isArray(v.users)?v.users:(v.users?[v.users]:[]))};
   }
   DB_EMAIL_CORRECTIONS = load(EMAIL_CORRECTIONS_FILE, {});
-  DB_EMAIL_FIXES = load(EMAIL_FIXES_FILE, {});
   DB_TEMP_FAILURES = load(TEMP_FAILURES_FILE, {});
   const _invalidCount = Object.keys(DB_INVALID_EMAILS).length;
   const _tempCount = Object.keys(DB_TEMP_FAILURES).length;
@@ -2288,7 +2277,6 @@ setInterval(()=>{
 //  Um usuário pode ter: vip.manualExpires e vip.autoExpires
 //  separados. O admin pode dar só manual, só auto ou ambos.
 // ══════════════════════════════════════════════════════════
-function persistCodes() { persist(CODES_FILE, DB_CODES); }
 function persistPush() { persist(PUSH_FILE, DB_PUSH); }
 
 
@@ -4276,15 +4264,6 @@ function translateGmailErrorMsg(msg, toEmailCtx) {
   return { type:"unknown", friendly:`❌ Não foi possível enviar: ${msg.slice(0, 200)}` };
 }
 
-// ══ v67 (ordem do dono, 26/07): IA CAÇA-E-MAIL ═══════════════════════════
-// Vaga com e-mail inválido (bounce permanente) não é mais descartada de cara:
-// o Gemini pesquisa NA INTERNET (google_search) o e-mail de contato atual da
-// empresa. Achou → o robô envia pro novo endereço; não achou → ignora de vez.
-// Cache em disco (positivo E negativo) — a mesma empresa NUNCA é pesquisada
-// duas vezes, e um teto diário global segura o custo. Fail-open: sem chave
-// Gemini, timeout ou resposta ruim = segue o fluxo antigo (pula a vaga).
-
-
 async function _doAutoSendInner(email) {
   // Sempre relê o job do banco — nunca usa objeto em cache
   const job = getAutoJob(email);
@@ -4314,7 +4293,7 @@ async function _doAutoSendInner(email) {
       if (isEmailInvalid(_ce.email)) {
         const invInfo = DB_INVALID_EMAILS[_ce.email];
         const motivo = invInfo?.motivo || 'Email permanentemente inválido (bounce detectado)';
-        addLog(email, { status:"pulado", company:candidate.company||"", to:candidate.to, jobTitle:candidate.title||"", category:candidate.category||"other", state:candidate.state||"", source:job.source||"", error:`⚫ Email inválido removido da fila: ${motivo} (${invInfo?.count||1}x detectado) · 🤖 IA pesquisou na internet e não achou e-mail válido desta empresa — vaga ignorada` });
+        addLog(email, { status:"pulado", company:candidate.company||"", to:candidate.to, jobTitle:candidate.title||"", category:candidate.category||"other", state:candidate.state||"", source:job.source||"", error:`⚫ Email inválido removido da fila: ${motivo} (${invInfo?.count||1}x detectado)` });
         queue.shift(); continue;
       }
       // ── v23: VAGA MORTA — a fila envelhece; não gasta envio do limite
@@ -6743,51 +6722,6 @@ ul li{margin-bottom:6px}
     }catch(e){ return json(res,500,{error:e.message}); }
   }
 
-  // ══════════════════════════════════════════════════════════════════════
-  //  📜 LOGS UNIFICADOS DE TODOS OS ROBÔS — pedido do dono (07/07/2026):
-  //  "preciso de logs inteligentes pra eu visualizar" — 1 feed só, todo robô
-  //  do sistema, filtrável, pra saber o que cada um fez e quando.
-  // ══════════════════════════════════════════════════════════════════════
-  const BOT_REGISTRY = [
-    {id:'enrich',        label:'Enriquecimento de Planilha', desc:'Completa e-mail/telefone/cidade/salário de vagas já coletadas, por ETA case number.'},
-    {id:'planilha-fresca',label:'Planilha Sempre Fresca',    desc:'Revisita as vagas já publicadas no DOL a cada ciclo: atualiza status (retirada/expirada), datas de início e salário — sem nenhum clique do admin.'},
-    {id:'grupos-jul2026',label:'Grupos — Julho 2026',        desc:'Grupo A–H só de Julho 2026, só do relatório oficial do DOL (upload manual ou download automático) — nunca adivinhado.'},
-    {id:'robot-teste',   label:'Robô de Teste',               desc:'Simula um usuário real (QA) e limpa os dados de teste no final.'},
-    {id:'robo-auditoria',label:'Robô de Auditoria',           desc:'Coleta dados do sistema e manda pro Gemini analisar — só lê, nunca altera.'},
-    {id:'sentinel',      label:'Health Sentinel',             desc:'Detecta VIP com robô parado, VIP expirando, planilha desatualizada — notifica sozinho.'},
-    {id:'token-guardian',label:'Token Guardian',              desc:'Renova o token do Gmail de cada usuário ativo a cada 10min, antes que expire.'},
-    {id:'auth-watchdog', label:'Auth Error Watchdog',         desc:'Avisa usuário cujo robô parou por erro de autenticação há mais de 12h.'},
-  ];
-
-  // GET /api/admin/bots/logs — feed unificado (opcional ?bot=chave, ?limit=)
-  if(pathname==="/api/admin/bots/logs"&&req.method==="GET"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
-    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
-    const botFilter=(u.searchParams.get("bot")||"").trim();
-    const limit=Math.min(500,Math.max(1,parseInt(u.searchParams.get("limit")||"200",10)));
-    let logs=DB_BOT_LOGS;
-    if(botFilter) logs=logs.filter(l=>l.bot===botFilter);
-    // Conta por robô (pro filtro em chips na tela, com número)
-    const counts={};
-    for(const l of DB_BOT_LOGS){ counts[l.bot]=(counts[l.bot]||0)+1; }
-    return json(res,200,{ok:true, bots:BOT_REGISTRY, counts, logs:logs.slice(0,limit)});
-  }
-
-  // POST /api/admin/bots/log-run — robôs client-driven (Robô de Teste, Robô
-  // de Auditoria) reportam um resumo da rodada aqui quando terminam.
-  if(pathname==="/api/admin/bots/log-run"&&req.method==="POST"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
-    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
-    try{
-      const d=JSON.parse(await readBody(req));
-      const bot=String(d.bot||"").slice(0,40);
-      const known=BOT_REGISTRY.find(b=>b.id===bot);
-      if(!known) return json(res,400,{error:"Robô desconhecido: "+bot});
-      botLog(bot, known.label, String(d.msg||"").slice(0,400), ["info","ok","warn","error"].includes(d.type)?d.type:"info");
-      return json(res,200,{ok:true});
-    }catch(e){ return json(res,400,{error:"Corpo inválido: "+e.message}); }
-  }
-
   // POST /api/admin/sheet/seed-jul2026 — força a semeadura da planilha
   // Julho 2026 a partir do jul2026_compact.json bundled, mesmo que já
   // exista uma entrada (zoada ou não) no registro. Botão de segurança pra
@@ -6907,7 +6841,7 @@ ul li{margin-bottom:6px}
     res.writeHead(200,h);return res.end(body);
   }
   // 🔧 FIX CRÍTICO (03/07): extras nunca eram servidos (404) — blindagem não carregava
-  if(pathname==="/h2b-extras-user.js"||pathname==="/h2b-extras-admin.js"||pathname==="/app.js"){
+  if(pathname==="/h2b-extras-user.js"||pathname==="/app.js"){
     // v116: /app.js = todo o JS do corpo do index.html, extraído pra fora
     // (1,3MB inline eram re-parseados a cada abertura = ~14s de travada em
     // celular mediano). Mesmo motor de asset: brotli/gzip + ETag/304.
@@ -7445,37 +7379,6 @@ filtrar();
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
     DB_LOGS[s.user_email]=[];persistLogs();return json(res,200,{ok:true});
   }
-
-  // ── Stats pessoais ────────────────────────────────────
-  if(pathname==="/api/my-stats"){
-    const s=getSess(req);if(!s?.user_email)return json(res,200,{});
-    const h=getHist(s.user_email);const logs=DB_LOGS[s.user_email]||[];
-    const totalAuto   = h.filter(x=>x.type==="auto").length;
-    const totalManual = h.filter(x=>x.type==="manual").length;
-    const totalSent   = totalAuto + totalManual; // respostas NÃO entram aqui
-    const todayManual = countManualToday(h);
-    const todayAuto   = countAutoToday(h);
-    const totalFailed=logs.filter(l=>l.status==="falhou").length;
-    const totalDup=logs.filter(l=>l.status==="duplicado").length;
-    const byState={};h.forEach(x=>{if(x.state&&x.type!=="reply"){byState[x.state]=(byState[x.state]||0)+1;}});
-    const topStates=Object.entries(byState).sort((a,b)=>b[1]-a[1]).slice(0,5);
-    // v92 (reestruturação parte 5): métricas REAIS pro lugar dos cards mortos
-    // "Respostas"/"Taxa resposta" (app é só-envio — nunca teria como contar
-    // resposta de verdade; ficavam eternamente em 0 desanimando o usuário).
-    const empresasUnicas=new Set(h.filter(x=>x.type!=="reply"&&x.to).map(x=>String(x.to).toLowerCase())).size;
-    const estadosUnicos=Object.keys(byState).length;
-    const streak=calcStreak(h);const sentLast7=last7Days(h);
-    const autoJob=getAutoJob(s.user_email);
-    return json(res,200,{
-      totalSent,totalAuto,totalManual,
-      todayManual,todayAuto,
-      totalFailed,totalDup,
-      topStates,streak,sentLast7,
-      empresasUnicas,estadosUnicos,
-      autoQueueSize: autoJob?.active ? (autoJob.queue||[]).length : 0
-    });
-  }
-  // calcStreak e last7Days agora estão no escopo global (definidas acima do server.listen)
 
   // ── 🔐 LOGIN DO PAINEL ADMIN (ordem do dono, 12/09/2026): o painel admin
   // (/admin) passa a ter entrada própria por usuário+senha — só Andrio e
@@ -8391,44 +8294,6 @@ filtrar();
       result.push({date:d.toISOString().slice(0,10),total,manual,auto,newUsers});
     }
     return json(res,200,{ok:true,metrics:result});
-  }
-
-  // ── M06: Stats detalhados do usuário logado ───────────────
-  if(pathname==="/api/me/stats"&&req.method==="GET"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    const u=getUser(s.user_email);if(!u)return json(res,404,{error:"Usuário não encontrado."});
-    const hist=getHist(s.user_email);
-    const allEntries=Object.values(hist||{}).flat();
-    const now=Date.now();
-    const last7=allEntries.filter(h=>h.dateStr&&new Date(h.dateStr)>new Date(Date.now()-7*86400000));
-    const last30=allEntries.filter(h=>h.dateStr&&new Date(h.dateStr)>new Date(Date.now()-30*86400000));
-    const byState={};allEntries.forEach(h=>{if(h.state){byState[h.state]=(byState[h.state]||0)+1;}});
-    const topStates=Object.entries(byState).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([s,c])=>({state:s,count:c}));
-    return json(res,200,{ok:true,total:allEntries.length,manual:allEntries.filter(h=>h.type!=="auto").length,auto:allEntries.filter(h=>h.type==="auto").length,last7days:last7.length,last30days:last30.length,topStates,memberSince:u.created_at,streak:calcStreak(allEntries)});
-  }
-
-  // ── M07: Verificar vagas sem resposta há 7d (follow-up) ──
-  if(pathname==="/api/followup/check"&&req.method==="GET"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    const hist=getHist(s.user_email);
-    const now=Date.now();
-    const sevenDaysAgo=now-7*86400_000;
-    // INBOX_EMAILS nunca foi declarado globalmente — referência direta lança
-    // ReferenceError ("INBOX_EMAILS is not defined"). typeof protege; || não.
-    const _inboxArr = (typeof INBOX_EMAILS !== "undefined" && Array.isArray(INBOX_EMAILS)) ? INBOX_EMAILS : [];
-    const inboxEmails=new Set(_inboxArr.map(e=>(e.from||"").toLowerCase()));
-    const followups=[];
-    for(const [key,entries] of Object.entries(hist||{})){
-      if(!entries?.length)continue;
-      const last=entries[0];
-      const lastDate=new Date(last.date||0).getTime()||0;
-      if(lastDate<sevenDaysAgo&&lastDate>0){
-        const toEmail=(last.to||"").toLowerCase();
-        const hasReply=inboxEmails.has(toEmail);
-        if(!hasReply)followups.push({jobId:last.jobId||key,job:last.job||"",company:last.company||"",to:last.to||"",sentAt:last.date,daysSince:Math.round((now-lastDate)/86400000)});
-      }
-    }
-    return json(res,200,{ok:true,followups:followups.slice(0,50),total:followups.length});
   }
 
   // ── M08: Marcar ação admin no log ─────────────────────────
@@ -9672,9 +9537,7 @@ ${pedido.criadoPor&&pedido.criadoPor!==pedido.userEmail?`\n🛠️ Registrado re
   // ── GET /api/admin/conferencia — TODOS os pagamentos desde a 1ª compra ────
   // (dono, 21/07/2026) Uma linha por pagamento: pedidos de plano (qualquer
   // status, valor editável via PATCH corrigirValor, comprovante sob demanda
-  // via GET /api/pedido/:id) + resgates de código promocional. Regra do dono:
-  // código de 30 dias (os do YouTube do Diego) entra valendo R$147 — os
-  // demais códigos entram como cortesia (R$0). Sem imagens na lista (leve).
+  // via GET /api/pedido/:id). Sem imagens na lista (leve).
   // 🧾 3.0-P7 — fonte ÚNICA da Conferência: a lista e a exportação usam o
   // MESMO builder e o MESMO filtro (nunca 2 verdades sobre os pagamentos).
   const _confData=()=>{
@@ -9704,25 +9567,6 @@ ${pedido.criadoPor&&pedido.criadoPor!==pedido.userEmail?`\n🛠️ Registrado re
         comprovanteInstituicao:pd.preCheck?.instituicaoLida||null,
         valorOriginal:pd.valorOriginal!==undefined?pd.valorOriginal:null,
         valorCorrigidoPor:pd.valorCorrigidoPor||null,valorCorrigidoEm:pd.valorCorrigidoEm||null});
-    }
-    const CODIGO_YT_VALOR=147; // valor de venda dos códigos de 30d (YouTube do Diego)
-    for(const [code,c] of Object.entries(DB_CODES)){
-      const diasCod=Math.max(c.manualDays||0,c.autoDays||0);
-      // v46: flag yt explícito vale primeiro; 30d continua como regra legada
-      // (códigos criados antes do flag existir — regra 13b do dono).
-      const valorCod=(c.yt===true||diasCod===30)?CODIGO_YT_VALOR:0;
-      for(const em of (c.usedBy||[])){
-        if(isAdminEmail(em))continue; // v53: resgate de admin não é receita
-        const cu=getUser(em)||{};
-        // usedBy não guarda quando cada um resgatou — usa a ativação do VIP
-        // se o código dele ainda for este; senão, a criação do código.
-        const quando=(cu.vip?.usedCode===code&&cu.vip?.activatedAt)?cu.vip.activatedAt:(c.createdAt||0);
-        rows.push({tipo:"codigo",id:"code_"+code+"_"+em,em:quando,
-          email:em,nome:cu.name||em,
-          plano:(c.autoDays>0&&c.manualDays>0)?"vipro":(c.autoDays>0?"pro":"vip"),
-          dias:diasCod,valor:valorCod,status:"codigo",code,codeNote:c.note||"",
-          temComprovante:false});
-      }
     }
     rows.sort((a,b)=>(b.em||0)-(a.em||0));
     const resumo={
@@ -12580,8 +12424,7 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}if(DB_APP_INDEX[te]){delete DB
     const todaySent=_todayManual+todayAuto;
     const totalSent=allHist.reduce((n,a)=>n+a.filter(h=>h.type!=="reply").length,0);
     const totalAuto=allHist.reduce((n,a)=>n+a.filter(h=>h.type==="auto").length,0);
-    const out={totalUsers,vipUsers,todaySent,todayAuto,totalSent,totalAuto,
-      avisoResetLogin:!!DB_ADMIN_SETTINGS.avisoResetLogin}; // 📢 v144: aviso do reset de OAuth na landing (toggle do admin)
+    const out={totalUsers,vipUsers,todaySent,todayAuto,totalSent,totalAuto};
     return json(res,200,out);
   }
 
@@ -13048,7 +12891,7 @@ async function pushToUser(){}
 //  intencional, KB-860) · authErrorWatchdog (notifica parados >12h, 3/3h)
 // ══════════════════════════════════════════════════════════
 const { initWatchdogs } = require("./mod-watchdogs.js");
-const { tokenGuardianRun, vipExpiryWatchdog, authErrorWatchdog, getAuthErrNotifiedAt } = initWatchdogs({
+const { getAuthErrNotifiedAt } = initWatchdogs({
   DB_AUTO: ()=>DB_AUTO, autoTimers: ()=>autoTimers,
   getUser, getAutoJob, setAutoJob, addLog, sendNotifEmail, refreshTokenForUser,
   authErrNotifiedAtInit: _DB_NOTIF_COOLDOWN.authErrNotifiedAt, // V951: sobrevive a deploy
@@ -13066,12 +12909,6 @@ const { tokenGuardianRun, vipExpiryWatchdog, authErrorWatchdog, getAuthErrNotifi
 //  FUNÇÕES UTILITÁRIAS GLOBAIS (stats, ranking)
 //  Movidas para escopo global para reutilização entre rotas
 // ══════════════════════════════════════════════════════════
-
-// Calcula streak de dias consecutivos com envios
-function calcStreak(h){ return _calcStreakMod(h); } // corpo em src/engine/core.js
-
-// Retorna contagem de envios dos últimos 7 dias
-function last7Days(h){ return _last7DaysMod(h); } // corpo em src/engine/core.js
 
 
 // ════════════════════════════════════════════════════════════
@@ -13356,7 +13193,6 @@ function flushAll() {
   try { persist(ALERTS_FILE, DB_ALERTS); } catch(e) { console.warn("[shutdown] alerts:", e.message); } // v47: faltava — com setAlerts debounced, sem isso um alerta recém-salvo se perderia no deploy
   try { persist(LOGS_FILE,   DB_LOGS);  } catch(e) { console.warn("[shutdown] logs:",  e.message); }
   try { persist(PUSH_FILE,   DB_PUSH);  } catch(e) { console.warn("[shutdown] push:",  e.message); }
-  try { persist(CODES_FILE,  DB_CODES); } catch(e) { console.warn("[shutdown] codes:", e.message); }
   try { persist(APPIDX_FILE, DB_APP_INDEX); } catch(e) { console.warn("[shutdown] appidx:", e.message); }
   try { persist(NOTIF_FILE,    DB_NOTIF);    } catch(e) { console.warn("[shutdown] notif:",    e.message); }
   try { persist(SUGGESTIONS_FILE, DB_SUGGESTIONS); } catch(e) { console.warn("[shutdown] suggestions:", e.message); }
@@ -13499,7 +13335,6 @@ server.listen(PORT,"0.0.0.0",()=>{
 //  🩺 HEALTH SENTINEL — extraído para src/sentinel.js (Fase 1 · Módulo 3)
 //  Injeção de dependências via getters: estado vivo do servidor sempre atual.
 // ══════════════════════════════════════════════════════════════════════════
-const { MSGS_VIP_EXPIRING, MSGS_NO_PROFILE, MSGS_VIP_DESYNC, MSGS_REFILL, MSGS_PLAN_ACTIVATED } = require("./mod-notif-templates.js");
 const { initSentinel } = require("./mod-sentinel.js");
 const { healthSentinelRun, pendingOrderAlert, queueSanitizerRun, getPedAlertSent } = initSentinel({
   DB_USERS: ()=>DB_USERS, DB_AUTO: ()=>DB_AUTO, DB_PEDIDOS: ()=>DB_PEDIDOS,

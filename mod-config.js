@@ -26,12 +26,13 @@ const ADMIN_EMAILS_EXTRA = ["ndrkick.2@gmail.com","jesuscristh22@gmail.com","and
 const ADMIN_EMAILS  = new Set([ADMIN_EMAIL, ADMIN_EMAIL_2, ...ADMIN_EMAILS_EXTRA].filter(Boolean));
 const isAdminEmail  = (e) => ADMIN_EMAILS.has((e||"").trim().toLowerCase());
 
-// ── VAPID — Web Push Notifications ──────────────────────────────────────
-// Gere suas chaves com: npx web-push generate-vapid-keys
-const VAPID_PUBLIC_KEY  = (process.env.VAPID_PUBLIC_KEY  || "").trim();
-const VAPID_PRIVATE_KEY = (process.env.VAPID_PRIVATE_KEY || "").trim();
-const VAPID_SUBJECT     = process.env.VAPID_SUBJECT || `mailto:${ADMIN_EMAIL}`;
-const PUSH_ENABLED      = !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+// ── Web Push ─────────────────────────────────────────────────────────────
+// Sem backend real de Web Push nesta reconstrução (sem lib web-push, sem
+// rotas /api/push/*, sem VAPID configurado) — PUSH_ENABLED fica sempre
+// false; DB_PUSH/pushToUser continuam como stubs inertes (injeção de
+// dependência de mod-sentinel.js/mod-watchdogs.js, nunca reativados sem
+// ordem nova do dono).
+const PUSH_ENABLED = false;
 
 // ── Planos ───────────────────────────────────────────────────────────────
 //   free      → 0 manual   + 0 auto   /dia (SEM envio — só navegar/ver como funciona)
@@ -69,6 +70,6 @@ module.exports = {
   ADMIN_AUTO_DAILY_LIMIT_PER_SENDER,
   MAX_RESUMES, MAX_COVERS,
   ADMIN_EMAIL, ADMIN_EMAIL_2, ADMIN_EMAILS_EXTRA, ADMIN_EMAILS, isAdminEmail,
-  VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT, PUSH_ENABLED,
+  PUSH_ENABLED,
   PLAN_LIMITS, PLAN_LIMITS_NEW,
 };

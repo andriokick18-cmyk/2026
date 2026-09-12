@@ -79,7 +79,7 @@ const ALLOWLIST = new Set([
   "app.js:09ce6f37c941", "app.js:8c3e83eb18e0", "app.js:03f1c9fdd571", "app.js:bec1a605c6d4", "app.js:755e1aeff07d",
   "app.js:a4361d354957", "app.js:a0477b4280d4", "app.js:1002f7586e81", "app.js:31544df75aa5", "app.js:7a6d66aafffa",
   "app.js:9de316c2d76c", "app.js:70c36d55e956", "app.js:b9649532e42f", "app.js:caaa4d3f7604", "app.js:aae8a8e4e135",
-  "app.js:5084ad234267", "app.js:316f7a6a8b90", "app.js:c9a8ca4d8df9",
+  "app.js:5084ad234267", "app.js:316f7a6a8b90", "app.js:c9a8ca4d8df9", "app.js:b196106b8127",
   // Só ícone/cor/rótulo de um mapa INTERNO fixo (categorias, planos, sons,
   // estado de visto) indexado por chave — nunca texto livre de fora:
   "app.js:515a1087ca52", "app.js:ca018fab6d78", "app.js:3f1ea2b0702e",

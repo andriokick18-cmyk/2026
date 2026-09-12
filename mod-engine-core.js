@@ -4,7 +4,6 @@
    - calcSmartInterval: o intervalo "humanizado" (6,5-7,5min c/ jitter) que
      protege as contas Gmail dos usuários — a função mais crítica do produto
    - Timezone BRT (UTC-3 fixo): nowBRT, todayStrBRT, toLocaleBRT
-   - calcStreak / last7Days: métricas de constância do ranking
    scheduleAuto (a máquina de estados completa, 100% acoplada) permanece
    no server.js — extração dela exige reescrita guiada, não mecânica.
    ═══════════════════════════════════════════════════════════════════════ */
@@ -79,32 +78,6 @@ function toLocaleBRT(ts) {
   return `${date} ${time}`;
 }
 
-// ── Métricas de constância (ranking) ──────────────────────────────────────
-// Calcula streak de dias consecutivos com envios
-function calcStreak(h) {
-  let s = 0;
-  const nowBRTd = nowBRT(); // usa UTC-3 fixo igual ao todayStrBRT()
-  for (let i = 0; i < 30; i++) {
-    const d = new Date(nowBRTd.getTime() - i * 86400_000);
-    const ds = `${String(d.getUTCDate()).padStart(2,"0")}/${String(d.getUTCMonth()+1).padStart(2,"0")}/${d.getUTCFullYear()}`;
-    if (h.some(x => x.dateStr === ds)) s++;
-    else break;
-  }
-  return s;
-}
-
-// Retorna contagem de envios dos últimos 7 dias
-function last7Days(h) {
-  const r = [];
-  const nowBRTd = nowBRT(); // usa UTC-3 fixo igual ao todayStrBRT()
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(nowBRTd.getTime() - i * 86400_000);
-    const ds = `${String(d.getUTCDate()).padStart(2,"0")}/${String(d.getUTCMonth()+1).padStart(2,"0")}/${d.getUTCFullYear()}`;
-    r.push(h.filter(x => x.dateStr === ds).length);
-  }
-  return r;
-}
-
 // ── 🛡️ v73 — AQUECIMENTO DE CONTA GMAIL NOVA (ordem do dono, 27/07/2026:
 // "tem gente sendo bloqueada pelo Google, tem algo que possamos fazer?") ──
 // Padrão consagrado de QUALQUER ferramenta séria de e-mail em volume
@@ -134,4 +107,4 @@ function warmupCapForSender(addedAtTsOrIso) {
   return null;             // dia 15+: sem teto extra, vale o limite do plano
 }
 
-module.exports = { createCalcSmartInterval, nowBRT, todayStrBRT, toLocaleBRT, calcStreak, last7Days, daysSince, warmupCapForSender };
+module.exports = { createCalcSmartInterval, nowBRT, todayStrBRT, toLocaleBRT, daysSince, warmupCapForSender };

@@ -30,7 +30,6 @@ const ALVOS = [
   ["index.html", scriptsDe(fs.readFileSync("index.html", "utf8"))],
   ["admin.html", scriptsDe(fs.readFileSync("admin.html", "utf8"))],
   ["h2b-extras-user.js", fs.readFileSync("h2b-extras-user.js", "utf8")],
-  ["h2b-extras-admin.js", fs.readFileSync("h2b-extras-admin.js", "utf8")],
 ];
 
 let falhas = 0;

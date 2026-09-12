@@ -86,7 +86,7 @@
 //    promessa de "direito de arrependimento de 7 dias" (removida também dos
 //    Termos — seção renumerada 1-12).
 //
-const CACHE_NAME = "h2bapply-2026-v22"; // v22: auditoria independente do v21 achou texto velho de "login por Google" sobrando na landing/modal/onboarding (corrigido) + bug real de default do intervalo do admin (180s/420s → 300s em todo lugar) + aviso do Gmail nunca mais pula o consentimento em silêncio
+const CACHE_NAME = "h2bapply-2026-v23"; // v23: faxina do sistema antigo (ordem do dono, 12/09) — removido tudo que sobrou do login por Google/ranking/VAPID/código promo/aba Respostas/aviso de reset já mortos por ordens anteriores (server.js, app.js, index.html, mod-config.js, mod-engine-core.js, reset_h2bapply.js, tutorial-conteudo.html, como-usar.html) + h2b-extras-admin.js e mod-notif-templates.js excluídos por inteiro (órfãos)
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).

@@ -1,8 +1,8 @@
 # ✅ Checklist completo — Verificação OAuth do Google (H2BApply)
 
-**Atualizado em:** 09/09/2026 · **Domínio:** h2bapply.com · **Servidor único** (a era multi-servidor acabou — não é mais preciso rodar fusão nenhuma antes de verificar).
+**Atualizado em:** 12/09/2026 (pós-v172c: login virou usuário+senha) · **Domínio:** h2bapply.com · **Servidor único** (a era multi-servidor acabou — não é mais preciso rodar fusão nenhuma antes de verificar).
 
-Consolida e substitui `GUIA_VERIFICACAO_GOOGLE.txt` e o checklist anterior. O roteiro de vídeo continua em `GOOGLE_VERIFICATION_VIDEO_SCRIPT.md`. Todo item marcado **[CÓDIGO]** já foi conferido/corrigido no repositório; todo item **[DONO]** só pode ser feito por fora, no Google Cloud Console / Search Console — nenhum código resolve isso.
+O roteiro de vídeo continua em `GOOGLE_VERIFICATION_VIDEO_SCRIPT.md`. Todo item marcado **[CÓDIGO]** já foi conferido/corrigido no repositório; todo item **[DONO]** só pode ser feito por fora, no Google Cloud Console / Search Console — nenhum código resolve isso.
 
 ---
 
@@ -17,7 +17,7 @@ O Google separa escopos OAuth em 3 níveis: não-sensível, **sensível** (ex.: 
 1. **[CÓDIGO ✅]** Só `openid email profile gmail.send` é solicitado — `OAUTH_SCOPES` em `server.js:136`, hardcoded, não é mais toggle por ambiente.
 2. **[CÓDIGO ✅]** Nunca `gmail.readonly`/`gmail.modify`/`gmail.metadata`/`gmail.insert`/`gmail.compose`/`mail.google.com`.
 3. **[CÓDIGO ✅]** Nenhuma rota lê a caixa de entrada — bounce-scan e polling de resposta desligados de propósito (`GMAIL_SEND_ONLY` guarda isso em pelo menos 3 pontos do server.js).
-4. **[CÓDIGO ✅ — conferido 09/09]** `state` contra CSRF: `/oauth/start` gera um valor aleatório de 20 bytes (`crypto.randomBytes`), grava em `sessions["__p__"+state]` (ou `__sender__` no fluxo de conta extra) e consome UMA VEZ SÓ no `/oauth/callback` (`delete` logo após o uso — nunca reaproveitável). Sem state válido = fluxo recusado.
+4. **[CÓDIGO ✅ — conferido 12/09, pós-v172c]** `state` contra CSRF: login do site virou usuário+senha e `/oauth/start` é hoje um dead-end (302 pra `/`, nunca mais gera state nem abre o Google). O state real nasce em `/oauth/connect-send` (`sessions["__connectsend__"+state]`, Gmail de ENVIO pós-plano pago) e em `/oauth/add-sender` (`sessions["__sender__"+state]`, conta extra) — cada um gerado com `crypto.randomBytes` e consumido UMA VEZ SÓ no `/oauth/callback` (`delete` logo após o uso — nunca reaproveitável). Sem state válido = fluxo recusado.
 5. **[CÓDIGO ✅ — conferido 09/09]** Rate limit: `/oauth/start` chama `rateLimit(ip+"_oauth", 30, 900_000)` — 30 tentativas por 15 minutos por IP, com aviso claro ao estourar.
 6. **[CÓDIGO ✅ — conferido 09/09]** Token revogado de verdade ao excluir conta: `/api/account/delete` chama o endpoint `/revoke` do Google (`oauth2.googleapis.com`) com o `refresh_token`/`cached_access_token` do usuário antes do soft-delete.
 7. **[CÓDIGO ✅ — conferido 09/09]** Só 2 redirect URIs vivos no código, sempre construídos a partir de um allowlist de hosts (`_oauthBase()` — nunca aceita host arbitrário do header): `/oauth/callback` (fluxo principal, unificado) e `/oauth/add-sender/callback` (mantido como alias de compatibilidade, redireciona pro unificado). **[DONO]** só falta conferir que os 2 estão cadastrados no Google Cloud Console exatamente assim.
@@ -58,13 +58,13 @@ O Google separa escopos OAuth em 3 níveis: não-sensível, **sensível** (ex.: 
 
 31. **[DONO]** Gravado no domínio REAL de produção — nunca localhost/staging.
 32. **[DONO]** Mostra a tela de consentimento do Google com o nome do app e a permissão "Enviar e-mail em seu nome" visíveis por alguns segundos — o momento mais importante do vídeo inteiro.
-33. **[DONO]** Mostra o fluxo completo: login → usuário escreve o próprio e-mail (assunto/corpo/currículo) → clica Enviar → o e-mail aparece em "Enviados" no Gmail do próprio usuário.
+33. **[DONO]** Mostra o fluxo completo: login (usuário+senha) → assina um plano → conecta o Gmail de envio → usuário escreve o próprio e-mail (assunto/corpo/currículo) → clica Enviar → o e-mail aparece em "Enviados" no Gmail do próprio usuário.
 34. **[DONO]** Formato: YouTube não listado, 2 a 4 minutos, com ou sem narração (legendas/zoom ajudam).
 35. **[DONO] (reforça bastante)** Mostrar myaccount.google.com → Segurança → apps com acesso → H2BApply aparecendo só com "enviar e-mail", nada mais.
 
 ## F. Texto de justificativa do escopo
 
-36. **[DONO]** Descrever em inglês, específico ao produto (não genérico) — modelo pronto em `GUIA_VERIFICACAO_GOOGLE.txt`.
+36. **[DONO]** Descrever em inglês, específico ao produto (não genérico) — modelo pronto na seção "JUSTIFICATIVA DOS ESCOPOS" de `GOOGLE_VERIFICATION_VIDEO_SCRIPT.md`.
 37. **[DONO]** Deixar explícito: nunca lê, nunca armazena, nunca acessa a caixa de entrada.
 38. **[DONO]** Referenciar a URL exata da política de privacidade dentro do texto.
 

@@ -327,8 +327,6 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 .hstat-num{font-family:'Sora',sans-serif;font-size:28px;font-weight:800;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .hstat-lbl{font-size:12px;color:rgba(255,255,255,.6)}
 .login-card{background:rgba(255,255,255,.07);backdrop-filter:blur(16px);border:1.5px solid rgba(255,255,255,.15);border-radius:var(--rl);padding:24px;max-width:420px;margin:0 auto;width:100%;position:relative;z-index:1;box-shadow:0 20px 60px rgba(0,0,0,.3)}
-.btn-google{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:14px;background:#fff;border-radius:var(--r);font-size:15px;font-weight:700;cursor:pointer;transition:all .18s;border:none;color:#1e293b;box-shadow:0 4px 20px rgba(0,0,0,.25)}
-.btn-google:hover{background:#f8fafc;transform:translateY(-1px);box-shadow:0 8px 28px rgba(0,0,0,.3)}
 .feat-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px;justify-content:center}
 .feat-chip{display:flex;align-items:center;gap:5px;font-size:11px;color:rgba(255,255,255,.8);background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.14);padding:5px 11px;border-radius:20px;backdrop-filter:blur(4px)}
 .feat-chip i{color:#93c5fd;font-size:13px}
@@ -1019,14 +1017,14 @@ textarea.input,input.input,select.input{background:#f5f7ff;color:#1e1b4b}
   background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25);
   padding:4px 10px;border-radius:20px;
 }
-.btn-google-sm{
+.btn-login-sm{
   display:inline-flex;align-items:center;gap:7px;
   background:linear-gradient(135deg,#3b82f6,#6366f1);
   color:#fff;border:none;border-radius:9px;
   padding:8px 16px;font-size:13px;font-weight:700;
   cursor:pointer;font-family:inherit;transition:all .15s;
 }
-.btn-google-sm:hover{opacity:.9;transform:translateY(-1px)}
+.btn-login-sm:hover{opacity:.9;transform:translateY(-1px)}
 
 /* ── HERO ── */
 .ln-hero{
@@ -1730,30 +1728,6 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
 <!-- ════ LANDING PREMIUM v15 ════ -->
 <div id="landing">
 
-  <!-- 📢 v144: AVISO DO RESET DE LOGIN (OAuth novo) — só aparece quando o
-       admin liga o toggle nas Configurações, na hora da virada. Texto do
-       dono: nada foi apagado; entre com o MESMO e-mail; conta duplicada =
-       risco de ban permanente dos dois e-mails. -->
-  <div id="aviso-reset-banner" style="display:none;background:linear-gradient(135deg,#78350f,#92400e);border-bottom:2px solid #f59e0b;padding:14px 16px;text-align:center">
-    <div style="max-width:720px;margin:0 auto">
-      <div style="font-size:14px;font-weight:800;color:#fef3c7;margin-bottom:4px">🔑 <span data-i18n="rst_t">Atualizamos o sistema de login</span></div>
-      <div style="font-size:12.5px;color:#fde68a;line-height:1.6" data-i18n="rst_b">Seu login foi resetado, mas <strong>NADA foi apagado</strong> — envios, dias de plano e currículos estão todos salvos. Entre com o <strong>MESMO e-mail do Google</strong> que você usava antes. ⚠️ <strong>Não crie outra conta</strong> com e-mail diferente: mais de uma conta dá risco de <strong>banimento permanente dos dois e-mails</strong>. As vagas são limitadas — use a conta que você já tem.</div>
-    </div>
-  </div>
-
-  <!-- 📢 v150 — JANELA DO RESET (ordem do dono, 20/08): com o aviso ligado,
-       quem clica pra entrar LÊ isto antes do login: servidores unificados
-       no 1, entre com o MESMO e-mail principal, e 2 contas com o mesmo nome
-       no currículo = risco de BAN PERMANENTE das duas. Só segue no botão. -->
-  <div id="reset-notice-modal" style="display:none;position:fixed;inset:0;z-index:10050;background:rgba(2,6,16,.84);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:18px">
-    <div style="max-width:440px;width:100%;background:linear-gradient(160deg,#101a33,#0a1024);border:1px solid rgba(245,158,11,.45);border-radius:18px;padding:22px 20px;box-shadow:0 24px 70px rgba(0,0,0,.6)">
-      <div style="font-size:17px;font-weight:800;color:#fef3c7;margin-bottom:10px">📢 <span data-i18n="rn_t">Atualização importante — leia antes de entrar</span></div>
-      <div style="font-size:13px;color:rgba(255,255,255,.82);line-height:1.65;margin-bottom:10px" data-i18n="rn_p1">Atualizamos o H2BApply: os 3 servidores viraram UM só — todas as contas foram trazidas pra cá. NADA foi apagado: seus envios, dias de VIP e currículos estão aqui. Entre usando apenas 1 e-mail, de preferência o e-mail principal que já estava cadastrado na sua conta.</div>
-      <div style="font-size:13px;font-weight:700;color:#fecaca;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);border-radius:12px;padding:10px 12px;line-height:1.6;margin-bottom:14px" data-i18n="rn_warn">⚠️ Sistema anti-duplicação: se forem criadas 2 contas com o mesmo nome no currículo — mesmo com e-mails diferentes — as duas contas podem ser BANIDAS PERMANENTEMENTE. Use somente 1 conta.</div>
-      <button onclick="resetNoticeOk()" style="width:100%;background:linear-gradient(135deg,#4f46e5,#7c3aed);border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:800;color:#fff;cursor:pointer;font-family:inherit" data-i18n="rn_ok">✅ Li e entendi — continuar</button>
-    </div>
-  </div>
-
   <!-- ══ CARD DE ENTRADA (auth gate) ═══════════════════════════════════════
        Overlay que cobre TODA a tela principal. v172c (12/09/2026, ordem do
        dono): login/cadastro por usuário+senha — SEM Google na landing.
@@ -1800,7 +1774,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
     </div>
     <div class="ln-nav-actions">
       <span class="ln-live-badge"><span class="live-dot"></span> Ao vivo</span>
-      <button type="button" class="btn-google-sm" onclick="openAuthGate('login','login')">
+      <button type="button" class="btn-login-sm" onclick="openAuthGate('login','login')">
         <i class="ti ti-login"></i> Entrar
       </button>
     </div>
@@ -3475,7 +3449,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
             <i class="ti ti-book-2" style="font-size:32px"></i>
           </div>
           <div style="font-family:'Sora',sans-serif;font-size:22px;font-weight:800;margin-bottom:6px" data-i18n="tut_t">Central de Tutoriais</div>
-          <div style="font-size:13px;opacity:.85" data-i18n="tut_s">28 passo a passos com fotos reais — tudo o que dá pra fazer no H2BApply, explicado tela por tela</div>
+          <div style="font-size:13px;opacity:.85" data-i18n="tut_s">20 passo a passos com fotos reais — tudo o que dá pra fazer no H2BApply, explicado tela por tela</div>
         </div>
 
         <!-- Busca -->

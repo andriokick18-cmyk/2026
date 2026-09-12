@@ -127,14 +127,6 @@ users["legadoplano@test.com"] = {
   name: "Legado Plano", plan: "vipro", cvs: [], profiles: [],
   vip: { manualExpires: Date.now() + 20 * 86400_000, autoExpires: Date.now() + 20 * 86400_000, days: 30, source: "pix", active: true },
 };
-// 🚚 v144: lado LOCAL do drill de FUSÃO — conta que TAMBÉM existe no
-// servidor-irmão B (criada lá DEPOIS, então lá é a vencedora). Aqui: conta
-// ANTIGA com 10d de VIP manual pagos, 5 💎 reais e 1 envio (emp1-a@x.com).
-users["fusao.conflito@test.com"] = {
-  email: "fusao.conflito@test.com", name: "Conflito Antigo", plan: "vip",
-  created_at: "2026-01-01T00:00:00.000Z", cvs: [], profiles: [],
-  vip: { active: true, plan: "vip", manualExpires: Date.now() + 10 * 86400_000, autoExpires: 0, source: "payment" },
-};
 fs.writeFileSync(path.join(DATA, "users.json"), JSON.stringify(users, null, 2));
 // 🔓 v152: simula o ban acidental do Esdras (delete-account bane o e-mail
 // junto) — a cura de boot tem que tirar SÓ ele, preservando bans legítimos.
@@ -196,8 +188,6 @@ fs.writeFileSync(path.join(DATA, "auto_jobs.json"), JSON.stringify({
 const COOLDOWN_FIX_TS = Date.now();
 fs.writeFileSync(path.join(DATA, "history.json"), JSON.stringify({
   "cooldown@test.com": [{ to: "empresa@teste-cooldown.com", subject: "x", type: "manual", sentAt: new Date(COOLDOWN_FIX_TS).toISOString(), date: "hoje" }],
-  // 🚚 v144: envio local do usuário do drill de fusão (DB_SENT reconstrói do hist)
-  "fusao.conflito@test.com": [{ appId: "app_a1", to: "emp1-a@x.com", subject: "x", type: "manual", sentAt: "2026-02-01T12:00:00.000Z", date: "2026-02-01", dateStr: "2026-02-01" }],
 }));
 // PDF órfão no disco (lixo do antigo delete sem unlink) — o sweep deve apagar
 fs.mkdirSync(path.join(DATA, "cvs"), { recursive: true });
@@ -427,14 +417,10 @@ async function testAuthWatchdogPush() {
     const _idxSrc172d = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
     const _appSrc172d = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
     const _srvSrc172d = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
-    const _mntSrc172d = fs.readFileSync(path.join(__dirname, "mod-notif-templates.js"), "utf8");
     check("🌐 v172d: landing/modal/onboarding sem NENHUM resquício de 'login por Google' (nem 'sem senha')",
       !_idxSrc172d.includes("Entre com Google") && !_idxSrc172d.includes("a entrada é sempre pela sua conta Google") &&
       !_idxSrc172d.includes("Sem senha") && !_idxSrc172d.includes("E-mail (conta Google)"),
       "sobrou texto de login por Google na landing/modal/onboarding do index.html");
-    check("🌐 v172d: mensagem de reconexão (mod-notif-templates.js) não manda mais clicar 'Entrar com Google'",
-      !_mntSrc172d.includes("Entrar com Google"),
-      "sobrou instrução de login por Google em mod-notif-templates.js");
     check("🌐 v172d: aviso obrigatório do Gmail-pra-enviar NUNCA pula o consentimento — se #gwm sumir do HTML, recarrega em vez de ir direto pro Google",
       /if\(!m\)\{[^}]*location\.reload/.test(_appSrc172d) && !/if\(!m\)\{location\.href="\/oauth\/connect-send/.test(_appSrc172d),
       "fallback de showGmailConnectWarnModal ainda pula direto pro Google sem consentimento");
@@ -759,13 +745,13 @@ async function testAuthWatchdogPush() {
       }
       check(`🩺 v159: sintaxe de TODOS os ${_blocosTot} blocos <script> inline das ${_paginas.length} páginas HTML compila (1 aspa errada nunca mais apaga um painel em silêncio)`,
         _blocosTot >= 11 && _errosSx.length === 0, _errosSx.join(" | ").slice(0, 300));
-      const _jsArq = ["app.js", "h2b-extras-user.js", "h2b-extras-admin.js", "sw.js"];
+      const _jsArq = ["app.js", "h2b-extras-user.js", "sw.js"];
       const _errosJs = [];
       for (const _f of _jsArq) {
         try { new vm.Script(fs.readFileSync(path.join(__dirname, _f), "utf8"), { filename: _f }); }
         catch (e) { _errosJs.push(`${_f}: ${String(e.message).slice(0, 120)}`); }
       }
-      check("🩺 v159: app.js, h2b-extras-*.js e sw.js compilam como script clássico do navegador",
+      check("🩺 v159: app.js, h2b-extras-user.js e sw.js compilam como script clássico do navegador",
         _errosJs.length === 0, _errosJs.join(" | ").slice(0, 300));
     }
 
@@ -1601,18 +1587,6 @@ async function testAuthWatchdogPush() {
       !appJs.body.includes("Escolha seu servidor") && !appJs.body.includes("Acesso Admin detectado"),
       "sobrou UI multi-servidor no front");
 
-    // 📢 v144: aviso do reset de login — toggle do admin liga o banner público
-    await req2("POST", "/api/admin/settings", { avisoResetLogin: true });
-    const psAviso = await get("/api/public-stats");
-    check("📢 v144: toggle ligado → /api/public-stats expõe o aviso pra landing (antes do login)",
-      psAviso.json?.avisoResetLogin === true, psAviso.body.slice(0, 120));
-    await req2("POST", "/api/admin/settings", { avisoResetLogin: false });
-    const psAviso2 = await get("/api/public-stats");
-    check("📢 v144: toggle desligado → aviso some", psAviso2.json?.avisoResetLogin === false, psAviso2.body.slice(0, 100));
-    check("📢 v144: banner existe na landing com o texto do dono (data-i18n rst_t/rst_b, 3 línguas)",
-      home.body.includes('id="aviso-reset-banner"') && home.body.includes('data-i18n="rst_b"'),
-      "banner do reset não encontrado no index.html");
-
     // ═══ 🛡️ v149: CONTA ÚNICA (ordem do dono, 20/08 — print do ranking com
     // todo mundo 2x). As 3 defesas: ranking global deduplica por uid (a mesma
     // conta pós-fusão vive nos 2 servidores), o e-mail digitado vira contrato
@@ -1643,14 +1617,6 @@ async function testAuthWatchdogPush() {
       home.body.includes('data-i18n="au_t"') && home.body.includes('data-i18n="au_b"') &&
       (appJs.body.match(/"au_t":/g) || []).length === 3 && (appJs.body.match(/"au_b":/g) || []).length === 3,
       "seção au_t/au_b não encontrada (landing ou dicionário 3 línguas)");
-    // 📢 v150 (comunicado do dono): janela obrigatória ANTES do login (mesmo
-    // toggle avisoResetLogin) — reset explicado + anti-duplicação com ban; o
-    // fluxo de entrada só segue depois do "Li e entendi" (fail-open sempre).
-    check("📢 v150: janela do reset ANTES do login (anti-duplicação/ban) nas 3 línguas + intercepta o openAuthGate com fail-open",
-      home.body.includes('id="reset-notice-modal"') && home.body.includes('data-i18n="rn_warn"') &&
-      (appJs.body.match(/"rn_t":/g) || []).length === 3 && appJs.body.includes("resetNoticeOk") &&
-      appJs.body.includes("h2bResetNoticeOk") && appJs.body.includes("_avisoResetOn"),
-      "modal rn_* ou interceptação do openAuthGate não encontrados");
     // (vigia de anúncios do DOL/dolNewsAutoTick — aba Notícias removida,
     // sem esse robô nesta reconstrução.)
     // 🔓 v153 (ordem do dono, 21/08 — "libera todos"): o boot ZERA a lista
@@ -2103,10 +2069,10 @@ async function testAuthWatchdogPush() {
       const _appJs160 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
       // Nesta reconstrução várias das 28 partes originais cobriam features
       // removidas (ranking, chat IA, notícias, códigos promo etc.) — restam
-      // 21 partes reais, todas com palavras-chave; o mecanismo (busca sob
+      // 20 partes reais, todas com palavras-chave; o mecanismo (busca sob
       // demanda) continua o mesmo.
       check(`📖 v160: o fragmento /tutorial-conteudo tem as ${_tuts.length} partes que sobraram (cada uma com palavras-chave) e a aba carrega sob demanda (loadTutorial) com busca (tutFiltra)`,
-        _tuts.length === 21 &&
+        _tuts.length === 20 &&
         (_frag160.match(/data-kw="/g) || []).length >= _tuts.length &&
         _idx160.includes('id="tut-conteudo"') && _idx160.includes('oninput="tutFiltra()"') &&
         _appJs160.includes("function tutFiltra") && _appJs160.includes("function loadTutorial") &&

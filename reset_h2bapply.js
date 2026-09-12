@@ -4,8 +4,7 @@
 //  Apaga: usuários, histórico, sessões, logs, comprovantes,
 //         financeiro, candidaturas, pedidos, referrals,
 //         sugestões, alertas, notificações, push subs,
-//         emails inválidos, badges, ranking oculto, notas,
-//         promo codes, backup automático, temp failures,
+//         emails inválidos, notas, backup automático, temp failures,
 //         email corrections, auto jobs, sent emails.
 //
 //  PRESERVA: admin_settings.json (configurações do sistema)
@@ -119,10 +118,6 @@ writeJSON(path.join(DATA_DIR, "notes.json"), {});
 console.log("\n▶ Alertas:");
 writeJSON(path.join(DATA_DIR, "job_alerts.json"), {});
 
-// ── 9. Promo codes ────────────────────────────────────────
-console.log("\n▶ Promo codes:");
-writeJSON(path.join(DATA_DIR, "promo_codes.json"), {});
-
 // ── 10. Push subscriptions ────────────────────────────────
 console.log("\n▶ Push subscriptions:");
 writeJSON(path.join(DATA_DIR, "push_subs.json"), {});
@@ -146,11 +141,6 @@ writeJSON(path.join(DATA_DIR, "referrals.json"), { byCode: {}, byEmail: {} });
 // ── 15. Notificações globais ──────────────────────────────
 console.log("\n▶ Notificações:");
 writeJSON(path.join(DATA_DIR, "notifications.json"), { notifications: [] });
-
-// ── 16. Ranking: ocultos e badges ─────────────────────────
-console.log("\n▶ Ranking:");
-writeJSON(path.join(DATA_DIR, "rank_hidden.json"), {});
-writeJSON(path.join(DATA_DIR, "rank_badges.json"), {});
 
 // ── 17. Emails inválidos / correções / falhas temp ────────
 console.log("\n▶ Email intelligence:");
@@ -207,7 +197,6 @@ console.log(`
 ║  • Pedidos, referrals, sugestões apagados            ║
 ║  • Email intelligence zerado                         ║
 ║  • Push subscriptions removidas                      ║
-║  • Ranking e badges zerados                          ║
 ║  • admin_settings.json PRESERVADO                    ║
 ║  • Arquivos de vagas DOL não tocados                 ║
 ╚══════════════════════════════════════════════════════╝
