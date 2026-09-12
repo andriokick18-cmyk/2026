@@ -354,7 +354,7 @@ async function testAuthWatchdogPush() {
     // recusado → senha curta é recusada → username com @ é recusado → login
     // com senha certa entra → login com senha errada é recusado.
     const _cadOk = await req2("POST", "/api/cadastro", {
-      username: "novo_user_v172c", password: "12345", nome: "Fulano", sobrenome: "Silva",
+      username: "novo_user_v172c", password: "12345678", nome: "Fulano", sobrenome: "Silva",
       dataNascimento: "1995-01-01", cidade: "Recife", estado: "PE", pais: "Brasil",
       telefone: "+5581999999999", whatsapp: "+5581999999999",
     });
@@ -365,17 +365,17 @@ async function testAuthWatchdogPush() {
     check("🔐 v172c: usuário novo nasce com senha em HASH (scrypt) — nunca texto puro no banco",
       !!_novoUser?.passwordSalt && !!_novoUser?.passwordHash && _novoUser.passwordHash !== "12345",
       JSON.stringify({ temSalt: !!_novoUser?.passwordSalt, temHash: !!_novoUser?.passwordHash }));
-    const _cadDup = await req2("POST", "/api/cadastro", { username: "novo_user_v172c", password: "99999", nome: "Outro", sobrenome: "Nome" });
+    const _cadDup = await req2("POST", "/api/cadastro", { username: "novo_user_v172c", password: "99999999", nome: "Outro", sobrenome: "Nome" });
     check("🔐 v172c: cadastro com username JÁ EXISTENTE → 409 (nunca sobrescreve a conta)",
       _cadDup.status === 409, `status=${_cadDup.status}`);
     const _cadCurta = await req2("POST", "/api/cadastro", { username: "outro_user_v172c", password: "12", nome: "A", sobrenome: "B" });
     check("🔐 v172c: cadastro com senha curta (<4) → 400",
       _cadCurta.status === 400, `status=${_cadCurta.status}`);
-    const _cadArroba = await req2("POST", "/api/cadastro", { username: "tem@arroba", password: "12345", nome: "A", sobrenome: "B" });
+    const _cadArroba = await req2("POST", "/api/cadastro", { username: "tem@arroba", password: "12345678", nome: "A", sobrenome: "B" });
     check("🔐 v172c: cadastro com @ no username → 400 (impossível colidir com e-mail de admin)",
       _cadArroba.status === 400, `status=${_cadArroba.status}`);
     COOKIE = "";
-    const _logOk = await req2("POST", "/api/login", { username: "novo_user_v172c", password: "12345" });
+    const _logOk = await req2("POST", "/api/login", { username: "novo_user_v172c", password: "12345678" });
     check("🔐 v172c: POST /api/login com usuário+senha certos → 200 e sessão nova",
       _logOk.status === 200 && _logOk.json?.ok === true, JSON.stringify(_logOk.json));
     COOKIE = "";
@@ -1624,6 +1624,23 @@ async function testAuthWatchdogPush() {
     check("🛡️ v172c-FIX: (estrutural) /oauth/connect-send usa resolveSendGmail (nunca a identidade de login crua) pro login_hint e pra travar reconexão, revoga se autenticar outro Gmail",
       _csBlock.includes("resolveSendGmail(p)") && _srvSrc.includes("resolveSendGmail(ownerCS)") && _srvSrc.includes("_emailCS!==_expectedGmailCS") && _srvSrc.includes('path:"/revoke"'),
       "connect-send protegido (resolveSendGmail) não encontrado no server.js");
+    // 🚨 v172c-SEC (auditoria de segurança, 12/09/2026 — CRÍTICO real): até
+    // aqui, o "state" do OAuth sozinho era prova suficiente de quem completa
+    // o fluxo em /oauth/callback — sem checar se a sessão ATUAL é a mesma
+    // que iniciou. Login-CSRF: um atacante podia iniciar o fluxo logado
+    // como ele mesmo, mandar o link de consentimento pra uma vítima
+    // qualquer, e o Gmail de VERDADE da vítima ficava vinculado à conta do
+    // atacante. Não dá pra testar de ponta a ponta sem credencial real do
+    // Google (CONFIGURED=false neste ambiente — outros testes acima
+    // dependem disso de propósito); prova estrutural: os 2 branches
+    // (__sender__ e __connectsend__) exigem getSess(req) batendo com quem
+    // iniciou ANTES de qualquer troca de código com o Google.
+    check("🚨 v172c-SEC: /oauth/callback (branch __sender__) exige que a sessão ATUAL seja quem iniciou o fluxo — login-CSRF fechado",
+      /const _sess2=getSess\(req\);\s*\n\s*if\(!_sess2\?\.user_email\|\|_sess2\.user_email!==ownerEmail2\)/.test(_srvSrc),
+      "callback de add-sender não confere mais a sessão atual contra quem iniciou o fluxo");
+    check("🚨 v172c-SEC: /oauth/callback (branch __connectsend__) exige que a sessão ATUAL seja quem iniciou o fluxo — login-CSRF fechado",
+      /const _sessCS=getSess\(req\);\s*\n\s*if\(!_sessCS\?\.user_email\|\|_sessCS\.user_email!==ownerEmailCS\)/.test(_srvSrc),
+      "callback de connect-send não confere mais a sessão atual contra quem iniciou o fluxo");
     // v172c: cadastro/login por usuário+senha — nunca senha em texto puro
     // (scrypt), nunca @ no username (impossível colidir com e-mail de admin),
     // e as 2 rotas têm rate limit (força-bruta de senha/username).

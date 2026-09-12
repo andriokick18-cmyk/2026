@@ -86,7 +86,7 @@
 //    promessa de "direito de arrependimento de 7 dias" (removida também dos
 //    Termos — seção renumerada 1-12).
 //
-const CACHE_NAME = "h2bapply-2026-v25"; // v25: 2ª rodada da auditoria v172c (bug crítico de conexão de Gmail) achou mais lugares tratando o username de login como se fosse sempre um Gmail real — {email} do template, "Enviado por (Gmail)" nos logs, dropdown/checklist de remetente, duplicar o próprio Gmail como extra, revoke que podia derrubar o Gmail conectado de uma conta nova, campo de e-mail do admin bloqueando username. Tudo resolvido com resolveSendGmail/findAccountByRealGmail (fonte única).
+const CACHE_NAME = "h2bapply-2026-v26"; // v26: auditoria de segurança do login novo (v172b/v172c) — login-CSRF no OAuth de conectar Gmail (state sem amarrar na sessão de quem iniciou) fechado nos dois fluxos (conectar Gmail principal e extra), e senha mínima subiu de 4 pra 8 caracteres (cadastro e admin definindo senha de usuário).
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).

@@ -7530,7 +7530,12 @@ filtrar();
       // Sem @ de propósito — nunca pode colidir com um e-mail real (e-mail
       // só existe depois, quando conecta o Gmail de envio).
       if(!/^[a-z0-9_.]{3,30}$/.test(username))return json(res,400,{error:"Nome de usuário precisa ter 3 a 30 letras/números/ponto/underline (sem espaço, sem @)."});
-      if(senha.length<4)return json(res,400,{error:"A senha precisa ter pelo menos 4 caracteres."});
+      // 🚨 v172c-SEC (auditoria de segurança, 12/09/2026): 4 caracteres era
+      // fraco demais — combinado com o vazamento corrigido de passwordHash/
+      // passwordSalt (sanitizeUserForClient), senhas curtas quebrariam
+      // offline em segundos. 8 é o mínimo aceitável hoje sem exigir
+      // complexidade (o site é 100% em português simples, regra 6f).
+      if(senha.length<8)return json(res,400,{error:"A senha precisa ter pelo menos 8 caracteres."});
       if(!nome||!sobrenome)return json(res,400,{error:"Nome e sobrenome são obrigatórios."});
       // Defesa extra: impossível "roubar" identidade de admin escolhendo o
       // e-mail dele como nome de usuário (a validação sem @ acima já torna
@@ -7615,6 +7620,20 @@ filtrar();
       if(Date.now()-pending2.created>600_000){delete sessions["__sender__"+_st];return fail2("Sessão expirada. Tente novamente.");}
       const ownerEmail2=pending2.ownerEmail;
       delete sessions["__sender__"+_st];
+      // 🚨 v172c-SEC (auditoria de segurança, 12/09/2026 — CRÍTICO real):
+      // até aqui, o "state" sozinho era prova suficiente de quem completa
+      // o fluxo — sem checar a SESSÃO atual. Um atacante logado como ele
+      // mesmo podia iniciar /oauth/add-sender, mandar o link de
+      // consentimento do Google pra uma VÍTIMA qualquer (que só precisa
+      // clicar "Permitir" — nem precisa ter conta no H2BApply), e o Gmail
+      // de VERDADE da vítima ficava vinculado como sender "extra" da conta
+      // do atacante (login-CSRF/state-fixation, CWE-352). Exige que quem
+      // está navegando AGORA seja a MESMA pessoa que iniciou o fluxo.
+      const _sess2=getSess(req);
+      if(!_sess2?.user_email||_sess2.user_email!==ownerEmail2){
+        _authEvent(ownerEmail2,"oauth_state_sessao_diferente","Callback de add-sender chegou sem sessão ou com sessão diferente de quem iniciou — bloqueado (possível login-CSRF)");
+        return fail2("Sessão inválida ou expirada. Faça login e clique em Conectar Gmail Extra de novo.");
+      }
       try{
         const tb2=new URLSearchParams({code,client_id:CLIENT_ID,client_secret:CLIENT_SECRET,redirect_uri:_oauthBase(req)+"/oauth/callback",grant_type:"authorization_code"}).toString();
         const{body:tk2}=await httpsReq({hostname:"oauth2.googleapis.com",path:"/token",method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded","Content-Length":Buffer.byteLength(tb2)}},tb2);
@@ -7662,6 +7681,17 @@ filtrar();
       if(Date.now()-pendingCS.created>600_000){delete sessions["__connectsend__"+_st];return failCS("Sessão expirada. Tente conectar de novo.");}
       const ownerEmailCS=pendingCS.ownerEmail;
       delete sessions["__connectsend__"+_st];
+      // 🚨 v172c-SEC: mesma falha de login-CSRF do bloco __sender__ acima
+      // (ver comentário lá) — sem isso, um atacante com plano pago podia
+      // iniciar /oauth/connect-send e induzir uma VÍTIMA a completar o
+      // consentimento do Google, vinculando o Gmail de ENVIO real da
+      // vítima à conta do atacante (gmail.send — escopo sensível de
+      // verdade). Exige sessão atual = quem iniciou o fluxo.
+      const _sessCS=getSess(req);
+      if(!_sessCS?.user_email||_sessCS.user_email!==ownerEmailCS){
+        _authEvent(ownerEmailCS,"oauth_state_sessao_diferente","Callback de connect-send chegou sem sessão ou com sessão diferente de quem iniciou — bloqueado (possível login-CSRF)");
+        return failCS("Sessão inválida ou expirada. Faça login e clique em Conectar Gmail de novo.");
+      }
       try{
         // Defesa em profundidade: o plano pode ter expirado nos ~segundos
         // que a pessoa levou na tela do Google — confere de novo, igual a
@@ -8900,7 +8930,7 @@ filtrar();
       const email=String(d.email||"").trim().toLowerCase();
       const novaSenha=String(d.novaSenha||"");
       if(!email)return json(res,400,{error:"email obrigatório"});
-      if(novaSenha.length<4)return json(res,400,{error:"A senha precisa ter pelo menos 4 caracteres."});
+      if(novaSenha.length<8)return json(res,400,{error:"A senha precisa ter pelo menos 8 caracteres."});
       const tgt=getUser(email);if(!tgt)return json(res,404,{error:"Usuário não encontrado"});
       const {salt,hash}=await _hashPw(novaSenha);
       setUser(email,{passwordSalt:salt,passwordHash:hash});

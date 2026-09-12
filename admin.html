@@ -821,9 +821,9 @@ async function responderDivergencia(concordo){
 // pra destrancar (ou pra repor senha esquecida de conta nova).
 async function definirSenhaUsuario(email){
   if(!email)return;
-  var novaSenha=prompt("Definir senha nova para "+email+"\n\nPode ser só números, mínimo 4 caracteres. A pessoa entra em h2bapply.com com este usuário+senha.");
+  var novaSenha=prompt("Definir senha nova para "+email+"\n\nPode ser só números, mínimo 8 caracteres. A pessoa entra em h2bapply.com com este usuário+senha.");
   if(novaSenha===null)return; // cancelou
-  if(novaSenha.length<4){toast("Senha precisa ter pelo menos 4 caracteres.","err");return;}
+  if(novaSenha.length<8){toast("Senha precisa ter pelo menos 8 caracteres.","err");return;}
   try{
     await api("/api/admin/set-password",{method:"POST",body:{email:email,novaSenha:novaSenha}});
     toast("Senha definida para "+email+".","ok");

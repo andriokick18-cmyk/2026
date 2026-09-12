@@ -374,7 +374,7 @@ function agSubmitSignup(){
   if(err)err.style.display="none";
   if(!nome||!sobrenome){showErr("⚠️ Preencha nome e sobrenome.");return;}
   if(!/^[a-z0-9_.]{3,30}$/.test(username)){showErr("⚠️ Nome de usuário: 3 a 30 letras, números, ponto ou underline — sem espaço, sem @.");return;}
-  if(senha.length<4){showErr("⚠️ A senha precisa ter pelo menos 4 caracteres.");return;}
+  if(senha.length<8){showErr("⚠️ A senha precisa ter pelo menos 8 caracteres.");return;}
   const payload={
     username,password:senha,nome,sobrenome,
     dataNascimento:val("#ag-s-nasc"),cidade:val("#ag-s-cidade"),estado:val("#ag-s-estado"),
