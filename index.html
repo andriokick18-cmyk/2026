@@ -1755,10 +1755,12 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
   </div>
 
   <!-- ══ CARD DE ENTRADA (auth gate) ═══════════════════════════════════════
-       Overlay que cobre TODA a tela principal. Fluxo (v157, 1 servidor só):
-       1) Entrar ou Criar conta  →  2) digita só o E-MAIL (sem senha)
-       3) conta existe → "Entrar com Google"; sem conta → cria aqui mesmo
-          (o seletor de servidores foi removido junto com os Servidores 2/3). -->
+       Overlay que cobre TODA a tela principal. v172c (12/09/2026, ordem do
+       dono): login/cadastro por usuário+senha — SEM Google na landing.
+       1) Entrar ou Criar conta → 2a) login: usuário+senha (/api/login)
+       2b) cadastro: dados pessoais+usuário+senha (/api/cadastro), com
+       aceite dos Termos antes de enviar. O Google só entra depois, quando a
+       pessoa tem plano pago e conecta o Gmail de ENVIO (connectGmailForSending). -->
   <style>
     @keyframes srvPop{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}
     #auth-gate{position:fixed;inset:0;z-index:99990;background:rgba(3,6,16,.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);display:none;align-items:center;justify-content:center;padding:16px;overflow-y:auto}
@@ -1779,8 +1781,8 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
     .ag-err{display:none;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);border-radius:11px;padding:10px 13px;font-size:12px;color:#fca5a5;line-height:1.5;margin-bottom:12px}
     .ag-back{position:absolute;top:12px;left:12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:10px;width:32px;height:32px;color:rgba(255,255,255,.7);font-size:15px;cursor:pointer;display:none;align-items:center;justify-content:center}
     .ag-foot{font-size:10.5px;color:rgba(255,255,255,.4);text-align:center;line-height:1.6;margin-top:6px;padding:10px 6px 0;border-top:1px solid rgba(255,255,255,.07)}
-    .ag-spin{display:flex;justify-content:center;padding:22px}
-    .ag-email-chip{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:20px;padding:5px 13px;font-size:12px;font-weight:700;color:rgba(255,255,255,.85);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:16px}
+    .ag-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+    .ag-grid2 .ag-input{margin-bottom:0}
   </style>
   <div id="auth-gate">
     <div class="ag-modal">
@@ -1798,10 +1800,9 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
     </div>
     <div class="ln-nav-actions">
       <span class="ln-live-badge"><span class="live-dot"></span> Ao vivo</span>
-      <a href="/oauth/start" class="btn-google-sm" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px" onclick="event.preventDefault();openAuthGate('email','login')">
-        <svg width="15" height="15" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
-        Entrar
-      </a>
+      <button type="button" class="btn-google-sm" onclick="openAuthGate('login','login')">
+        <i class="ti ti-login"></i> Entrar
+      </button>
     </div>
   </nav>
 
@@ -1825,12 +1826,12 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <div class="ln-feat"><i class="ti ti-shield-check"></i> Anti-duplicata</div>
           <div class="ln-feat"><i class="ti ti-lock"></i> Só envia — nunca lê seu Gmail</div>
         </div>
-        <button class="ln-login-btn" onclick="openAuthGate('email','login')">
+        <button class="ln-login-btn" onclick="openAuthGate('login','login')">
           <i class="ti ti-login" style="font-size:18px"></i> Já tenho conta — Entrar
         </button>
-        <button class="ln-cta-btn" onclick="openAuthGate('email','signup')">
-          <svg width="20" height="20" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
-          Criar Conta com Google
+        <button class="ln-cta-btn" onclick="openAuthGate('signup','signup')">
+          <i class="ti ti-user-plus" style="font-size:20px"></i>
+          Criar Conta Grátis
         </button>
         <a href="/guia" class="ln-guia-btn" target="_blank" rel="noopener noreferrer">
           <i class="ti ti-book-2"></i> Ler o Guia Completo H-2B &amp; H-2A
@@ -2151,9 +2152,9 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       <div style="font-size:48px;margin-bottom:16px">🇧🇷 ✈️ 🇺🇸</div>
       <h2 class="ln-cta-section-title">Sua oportunidade nos EUA começa agora</h2>
       <p class="ln-cta-section-sub">Crie sua conta, veja como funciona e assine um plano quando estiver pronto — aí sim o robô entrega, automaticamente, as candidaturas que você mesmo escreveu. Centenas de vagas H-2B e H-2A esperando você.</p>
-      <button class="ln-cta-btn" onclick="openAuthGate('email','signup')" style="margin:0 auto 16px;max-width:380px">
-        <svg width="20" height="20" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
-        Criar Conta com Google
+      <button class="ln-cta-btn" onclick="openAuthGate('signup','signup')" style="margin:0 auto 16px;max-width:380px">
+        <i class="ti ti-user-plus" style="font-size:20px"></i>
+        Criar Conta Grátis
       </button>
       <div class="ln-trust-row" style="justify-content:center;margin-top:0">
         <span><i class="ti ti-lock"></i> 100% seguro</span>
@@ -5430,7 +5431,7 @@ html, body, #app, .bottom-nav, .sidebar{
   <div style="background:#fff;border-radius:22px;max-width:440px;width:100%;padding:22px 18px 16px;box-shadow:0 24px 80px rgba(0,0,0,.5);margin:auto">
 
     <div style="text-align:center;margin-bottom:12px">
-      <div style="display:inline-block;background:#fef3c7;border:2px solid #f59e0b;border-radius:12px;padding:6px 16px;font-size:13px;font-weight:900;color:#92400e;letter-spacing:.02em">⚠️ LEIA ANTES DE ENTRAR — MUITO IMPORTANTE</div>
+      <div style="display:inline-block;background:#fef3c7;border:2px solid #f59e0b;border-radius:12px;padding:6px 16px;font-size:13px;font-weight:900;color:#92400e;letter-spacing:.02em">⚠️ LEIA ANTES DE CONECTAR — MUITO IMPORTANTE</div>
     </div>
 
     <div style="font-size:19px;font-weight:900;color:#0f172a;text-align:center;line-height:1.35;margin-bottom:10px">O Google vai mostrar<br>ESTA TELA de aviso: 👇</div>
@@ -5447,7 +5448,7 @@ html, body, #app, .bottom-nav, .sidebar{
       <div style="font-size:14.5px;font-weight:900;color:#3730a3;line-height:1.5">👥 Este site é do <span style="color:#4f46e5">DIEGO</span> e do <span style="color:#4f46e5">ANDRIO</span> — feito para a comunidade H2B. Dúvidas? YouTube: <u>Diego H2B</u>.</div>
     </div>
 
-    <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:13px 15px;margin-bottom:14px">
+    <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:13px 15px;margin-bottom:10px">
       <div style="font-size:13px;font-weight:900;color:#0f172a;margin-bottom:8px">📱 QUANDO O AVISO APARECER, FAÇA ASSIM:</div>
       <div style="font-size:13.5px;color:#334155;line-height:2;font-weight:600">
         <div><span style="display:inline-block;background:#4f46e5;color:#fff;border-radius:50%;width:20px;height:20px;text-align:center;font-size:12px;font-weight:900;line-height:20px;margin-right:6px">1</span>Toque em <strong>"Avançado"</strong> (canto esquerdo)</div>
@@ -5456,9 +5457,18 @@ html, body, #app, .bottom-nav, .sidebar{
       </div>
     </div>
 
+    <!-- 🔒 ordem do dono, 12/09/2026: o e-mail conectado aqui é PERMANENTE
+         (nunca pode ser trocado depois) e vale tanto pro envio MANUAL
+         quanto pro AUTOMÁTICO — a pessoa precisa concordar com isso ANTES
+         de ver a tela do Google, não depois. -->
+    <div style="background:#fef2f2;border:2px solid #ef4444;border-radius:14px;padding:13px 15px;margin-bottom:10px">
+      <div style="font-size:14.5px;font-weight:900;color:#991b1b;margin-bottom:6px">🔒 Esse e-mail NÃO PODE SER TROCADO depois</div>
+      <div style="font-size:13px;color:#7f1d1d;line-height:1.6;font-weight:600">A conta Google que você conectar agora vira o e-mail de ENVIO da sua conta pra sempre — usado tanto no envio manual quanto no automático. Escolha com cuidado ANTES de continuar.</div>
+    </div>
+
     <label style="display:flex;align-items:flex-start;gap:9px;background:#fffbeb;border:1.5px solid #fbbf24;border-radius:12px;padding:11px 13px;margin-bottom:10px;cursor:pointer">
       <input type="checkbox" id="gwm-check" onchange="gwmUpdateBtn()" style="width:19px;height:19px;margin-top:1px;flex-shrink:0;accent-color:#f59e0b">
-      <span style="font-size:13px;font-weight:800;color:#92400e;line-height:1.5">Li e entendi: o aviso do Google é normal e este site é confiável.</span>
+      <span style="font-size:13px;font-weight:800;color:#92400e;line-height:1.5">Li e entendi: o aviso do Google é normal e este site é confiável — e sei que este e-mail não poderá ser trocado depois.</span>
     </label>
 
     <!-- v54 (caso real de usuário, 25/07): quem entra com e-mail de EMPRESA/

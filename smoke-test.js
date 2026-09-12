@@ -353,15 +353,72 @@ async function testAuthWatchdogPush() {
     const ps = await get("/api/public-stats");
     check("GET /api/public-stats responde 200 (landing pública)", ps.status === 200, `status=${ps.status}`);
     // (aba Notícias DOL removida nesta reconstrução — sem /api/noticias)
-    // 🌐 servidor único: /api/auth/where só confere se o e-mail já tem conta
-    // aqui (login) ou não (cadastro novo) — sem nenhum conceito de "outro
-    // servidor" (arquitetura multi-servidor removida por completo).
-    const aw = await get("/api/auth/where?email=" + encodeURIComponent("pessoa.nova.v156@gmail.com"));
-    check("🌐 /api/auth/where de e-mail novo → found:false (cadastro novo é sempre aqui)",
-      aw.json?.ok === true && aw.json?.found === false, JSON.stringify(aw.json));
-    const awExist = await get("/api/auth/where?email=" + encodeURIComponent("cliente@test.com"));
-    check("🌐 /api/auth/where de e-mail já cadastrado (fixture) → found:true",
-      awExist.json?.ok === true && awExist.json?.found === true, JSON.stringify(awExist.json));
+    // (/api/auth/where removida no v172c junto com o login por e-mail/Google
+    // — cadastro/login viraram usuário+senha, ver bloco 🔐 v172c abaixo.)
+    // 🔐 v172c (ORDEM DO DONO, 12/09/2026): cadastro/login por usuário+senha,
+    // ZERO Google na landing. E2E real: cria conta → usuário duplicado é
+    // recusado → senha curta é recusada → username com @ é recusado → login
+    // com senha certa entra → login com senha errada é recusado.
+    const _cadOk = await req2("POST", "/api/cadastro", {
+      username: "novo_user_v172c", password: "12345", nome: "Fulano", sobrenome: "Silva",
+      dataNascimento: "1995-01-01", cidade: "Recife", estado: "PE", pais: "Brasil",
+      telefone: "+5581999999999", whatsapp: "+5581999999999",
+    });
+    check("🔐 v172c: POST /api/cadastro cria conta usuário+senha (sem Google) e já devolve sessão logada",
+      _cadOk.status === 200 && _cadOk.json?.ok === true && _cadOk.json?.username === "novo_user_v172c",
+      JSON.stringify(_cadOk.json));
+    const _novoUser = JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"))["novo_user_v172c"];
+    check("🔐 v172c: usuário novo nasce com senha em HASH (scrypt) — nunca texto puro no banco",
+      !!_novoUser?.passwordSalt && !!_novoUser?.passwordHash && _novoUser.passwordHash !== "12345",
+      JSON.stringify({ temSalt: !!_novoUser?.passwordSalt, temHash: !!_novoUser?.passwordHash }));
+    const _cadDup = await req2("POST", "/api/cadastro", { username: "novo_user_v172c", password: "99999", nome: "Outro", sobrenome: "Nome" });
+    check("🔐 v172c: cadastro com username JÁ EXISTENTE → 409 (nunca sobrescreve a conta)",
+      _cadDup.status === 409, `status=${_cadDup.status}`);
+    const _cadCurta = await req2("POST", "/api/cadastro", { username: "outro_user_v172c", password: "12", nome: "A", sobrenome: "B" });
+    check("🔐 v172c: cadastro com senha curta (<4) → 400",
+      _cadCurta.status === 400, `status=${_cadCurta.status}`);
+    const _cadArroba = await req2("POST", "/api/cadastro", { username: "tem@arroba", password: "12345", nome: "A", sobrenome: "B" });
+    check("🔐 v172c: cadastro com @ no username → 400 (impossível colidir com e-mail de admin)",
+      _cadArroba.status === 400, `status=${_cadArroba.status}`);
+    COOKIE = "";
+    const _logOk = await req2("POST", "/api/login", { username: "novo_user_v172c", password: "12345" });
+    check("🔐 v172c: POST /api/login com usuário+senha certos → 200 e sessão nova",
+      _logOk.status === 200 && _logOk.json?.ok === true, JSON.stringify(_logOk.json));
+    COOKIE = "";
+    const _logBad = await req2("POST", "/api/login", { username: "novo_user_v172c", password: "senhaerrada" });
+    check("🔐 v172c: POST /api/login com senha ERRADA → 403 (nunca entra)",
+      _logBad.status === 403, `status=${_logBad.status}`);
+    COOKIE = "";
+
+    // 🔐 v172c: /api/admin/set-password é a válvula de escape pra conta
+    // ANTIGA (criada por Google, sem senha nenhuma — simulada aqui via
+    // /api/test/login, que nasce sem passwordSalt/passwordHash igual uma
+    // conta Google real) — sem isso ela ficaria trancada pra sempre.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "legado_sem_senha@test.com", name: "Legado Sem Senha" });
+    COOKIE = "";
+    const _logLegadoAntes = await req2("POST", "/api/login", { username: "legado_sem_senha@test.com", password: "qualquer" });
+    check("🔐 v172c: conta ANTIGA (Google, sem senha) não consegue logar por senha antes do admin destrancar",
+      _logLegadoAntes.status === 403, `status=${_logLegadoAntes.status}`);
+    const _spNoAuth = await req2("POST", "/api/admin/set-password", { email: "legado_sem_senha@test.com", novaSenha: "novaSenha1" });
+    check("🔐 v172c: /api/admin/set-password SEM sessão → 401",
+      _spNoAuth.status === 401, `status=${_spNoAuth.status}`);
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "naopode@test.com" });
+    const _spNaoAdmin = await req2("POST", "/api/admin/set-password", { email: "legado_sem_senha@test.com", novaSenha: "novaSenha1" });
+    check("🔐 v172c: /api/admin/set-password com usuário COMUM logado (não-admin) → 403",
+      _spNaoAdmin.status === 403, `status=${_spNaoAdmin.status}`);
+    COOKIE = "";
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const _spOk = await req2("POST", "/api/admin/set-password", { email: "legado_sem_senha@test.com", novaSenha: "novaSenha1" });
+    check("🔐 v172c: /api/admin/set-password com sessão ADMIN → 200 (destrava a conta antiga)",
+      _spOk.status === 200 && _spOk.json?.ok === true, JSON.stringify(_spOk.json));
+    const _sp404 = await req2("POST", "/api/admin/set-password", { email: "ninguem_aqui@test.com", novaSenha: "novaSenha1" });
+    check("🔐 v172c: /api/admin/set-password pra e-mail inexistente → 404",
+      _sp404.status === 404, `status=${_sp404.status}`);
+    COOKIE = "";
+    const _logLegadoDepois = await req2("POST", "/api/login", { username: "legado_sem_senha@test.com", password: "novaSenha1" });
+    check("🔐 v172c: conta ANTIGA loga normalmente DEPOIS que o admin carimbou a senha nova (destrancada de vez)",
+      _logLegadoDepois.status === 200 && _logLegadoDepois.json?.ok === true, JSON.stringify(_logLegadoDepois.json));
+    COOKIE = "";
     const _srvSrc156 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
     check("🌐 (estrutural) nenhum resquício de arquitetura multi-servidor no server.js (SERVER_ID/_getServersConfig/_resolveServerId/checkAccountOnPeers/financeiro-global)",
       !/\bSERVER_ID\b/.test(_srvSrc156) && !_srvSrc156.includes("_getServersConfig") && !_srvSrc156.includes("_resolveServerId") &&
@@ -999,20 +1056,20 @@ async function testAuthWatchdogPush() {
     const _scopeUses = (_srvSrc.match(/scope:OAUTH_SCOPES/g) || []).length;
     const _sendOnlyConst = (_srvSrc.match(/const GMAIL_SEND_ONLY\s*=\s*(true|false)\s*;/) || [])[1] || "";
     const _scopesLine = (_srvSrc.match(/const OAUTH_SCOPES\s*=\s*"([^"]+)"/) || [])[1] || "";
-    // v172 (ORDEM DO DONO, 11/09/2026): LOGIN nunca mais pede gmail.send —
-    // scope:OAUTH_SCOPES só aparece em /oauth/add-sender (extra) e
-    // /oauth/connect-send (principal, gated por plano pago), NUNCA em
-    // /oauth/start (login = scope:LOGIN_SCOPES, sem gmail.send). Regressão
-    // aqui faria login voltar a pedir permissão de Gmail sem pagamento.
-    const _loginScopesConst = (_srvSrc.match(/const LOGIN_SCOPES\s*=\s*"([^"]+)"/) || [])[1] || "";
-    check("✉️ v172: OAUTH_SCOPES (com gmail.send) só é usado em /oauth/add-sender e /oauth/connect-send — NUNCA em /oauth/start (login = LOGIN_SCOPES, sem gmail.send)",
-      _scopeUses === 2 && _sendOnlyConst === "true" && _scopesLine.includes("gmail.send") && !_scopesLine.includes("readonly") && !_scopesLine.includes("modify") &&
-      _loginScopesConst === "openid email profile" && !_loginScopesConst.includes("gmail"),
-      `usos=${_scopeUses} | GMAIL_SEND_ONLY=${_sendOnlyConst} | LOGIN_SCOPES="${_loginScopesConst}" | OAUTH_SCOPES="${_scopesLine.slice(0, 90)}"`);
-    // v172: /oauth/start (login) tem que usar scope:LOGIN_SCOPES, nunca OAUTH_SCOPES.
-    const _startBlock = (_srvSrc.match(/if\(pathname==="\/oauth\/start"\)\{[\s\S]*?\n  \}/) || [""])[0];
-    check("✉️ v172: /oauth/start usa scope:LOGIN_SCOPES (nunca OAUTH_SCOPES) — login é só identidade",
-      _startBlock.includes("scope:LOGIN_SCOPES") && !_startBlock.includes("scope:OAUTH_SCOPES"),
+    // v172c (ORDEM DO DONO, 12/09/2026): login normal do site virou usuário+
+    // senha (/api/cadastro, /api/login) — ZERO ligação com Google na landing.
+    // scope:OAUTH_SCOPES (gmail.send) só existe em /oauth/add-sender (extra)
+    // e /oauth/connect-send (principal, gated por plano pago). Regressão
+    // aqui faria a landing voltar a abrir o Google pra login sem pagamento.
+    check("✉️ v172c: OAUTH_SCOPES (com gmail.send) só é usado em /oauth/add-sender e /oauth/connect-send — a landing não fala mais com o Google pra login",
+      _scopeUses === 2 && _sendOnlyConst === "true" && _scopesLine.includes("gmail.send") && !_scopesLine.includes("readonly") && !_scopesLine.includes("modify"),
+      `usos=${_scopeUses} | GMAIL_SEND_ONLY=${_sendOnlyConst} | OAUTH_SCOPES="${_scopesLine.slice(0, 90)}"`);
+    // v172c: /oauth/start virou um dead-end fechado (302 pra "/", sem scope
+    // nenhum) — ninguém consegue mais contornar o cadastro novo batendo
+    // direto na URL antiga e consumir o teto de 100 contas de teste do OAuth.
+    const _startBlock = (_srvSrc.match(/if\(pathname==="\/oauth\/start"\)\{[^\n]*/) || [""])[0];
+    check("✉️ v172c: /oauth/start virou dead-end (302 pra '/', nunca fala com o Google)",
+      _startBlock.includes('Location:"/"') && !_startBlock.includes("scope:") && !_startBlock.includes("accounts.google.com"),
       _startBlock ? "" : "/oauth/start não encontrado no server.js");
     // v172: /oauth/connect-send (o único lugar que pede gmail.send pra conta
     // PRINCIPAL) tem que checar isVipActive ANTES de redirecionar pro Google —
@@ -1539,19 +1596,25 @@ async function testAuthWatchdogPush() {
     // das 100 é devolvida), e a landing avisa: 2ª conta = risco de ban.
     // (ranking removido por completo nesta reconstrução — sem /api/ranking
     // nem dedupe de peers por uid; README confirma ranking fora do escopo.)
-    // v172 (ORDEM DO DONO, 11/09/2026): o fluxo de 2 FASES morreu — login
-    // agora é 1 pedido só (LOGIN_SCOPES, identidade), e a permissão sensível
-    // (gmail.send) virou uma rota TOTALMENTE separada (/oauth/connect-send),
-    // gated por plano pago, com a MESMA proteção de "e-mail digitado é
-    // contrato" + revoke em caso de conta errada — só que agora protegendo
-    // um pedido que de fato carrega escopo sensível (login não carrega mais).
-    check("🛡️ v172: (estrutural) login é 1 pedido SÓ (LOGIN_SCOPES) — barra e-mail errado sem precisar de 2ª ida ao Google; /oauth/connect-send (gmail.send) tem a MESMA proteção + revoke NO CALLBACK, porque é ali que a permissão sensível de verdade é pedida",
-      _startBlock.includes("qs.set(\"login_hint\"") && _srvSrc.includes("_expectedHint&&_authedEmail!==_expectedHint") &&
+    // v172c (ORDEM DO DONO, 12/09/2026): login do site virou usuário+senha —
+    // não existe mais "e-mail digitado é contrato" pra login (não tem Google
+    // no meio). Essa proteção agora só faz sentido em /oauth/connect-send
+    // (gmail.send, gated por plano pago): a sessão já sabe qual é o e-mail
+    // (login_hint:s.user_email), autenticar OUTRO revoga e barra.
+    check("🛡️ v172c: (estrutural) /oauth/connect-send trava a conta com login_hint da sessão e revoga se autenticar outro e-mail",
       _csBlock.includes("login_hint:s.user_email") && _srvSrc.includes("_emailCS!==ownerEmailCS") && _srvSrc.includes('path:"/revoke"'),
-      "login de 1 fase + connect-send protegido não encontrados no server.js");
-    check("🛡️ v149: (estrutural) o front manda o e-mail digitado como login_hint (só o desta visita, nunca um antigo do aparelho)",
-      appJs.body.includes("login_hint=") && appJs.body.includes("_agEmail"),
-      "login_hint não encontrado no app.js");
+      "connect-send protegido não encontrado no server.js");
+    // v172c: cadastro/login por usuário+senha — nunca senha em texto puro
+    // (scrypt), nunca @ no username (impossível colidir com e-mail de admin),
+    // e as 2 rotas têm rate limit (força-bruta de senha/username).
+    check("🔐 v172c: (estrutural) /api/cadastro e /api/login usam scrypt (_hashPw/_verifyPw), nunca senha em texto puro",
+      _srvSrc.includes("scryptSync") && _srvSrc.includes("function _hashPw") && _srvSrc.includes("function _verifyPw") &&
+      _srvSrc.includes('pathname==="/api/cadastro"') && _srvSrc.includes('pathname==="/api/login"'),
+      "hashing de senha ou rotas de cadastro/login não encontrados no server.js");
+    check("🔐 v172c: (estrutural) username de cadastro NUNCA aceita @ (impossível colidir com e-mail de admin) + isAdminEmail como defesa extra + rate limit nas 2 rotas",
+      _srvSrc.includes("^[a-z0-9_.]{3,30}$") && _srvSrc.includes("isAdminEmail(username)") &&
+      (_srvSrc.match(/rateLimit\("cadastro_/) || []).length > 0 && (_srvSrc.match(/rateLimit\("login_/) || []).length > 0,
+      "validação de username ou rate limit não encontrados no server.js");
     check("🛡️ v149: aviso de CONTA ÚNICA na landing (ban permanente, nome do currículo denuncia) nas 3 línguas",
       home.body.includes('data-i18n="au_t"') && home.body.includes('data-i18n="au_b"') &&
       (appJs.body.match(/"au_t":/g) || []).length === 3 && (appJs.body.match(/"au_b":/g) || []).length === 3,

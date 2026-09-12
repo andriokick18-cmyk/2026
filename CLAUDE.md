@@ -45,17 +45,38 @@ se referindo a outro repositório/projeto.
 
 ## Regras de produto (confirmadas com o dono — não reverter sem ordem nova)
 
-- **Login do site continua sem senha.** Usuário comum e o Gmail que o
-  admin conecta pra ENVIAR continuam 100% Google (login normal nunca pede
-  gmail.send — só `/oauth/connect-send`, com plano pago ativo).
-  **v172b (dono, 12/09/2026): o PAINEL admin (`/admin`) passou a logar por
-  usuário+senha** — só 2 logins existem (`ADMIN_PANEL_LOGINS` em
+- **Login do site (usuário comum) é usuário+senha — ZERO Google na
+  landing.** v172b (dono, 12/09/2026): o PAINEL admin (`/admin`) passou a
+  logar por usuário+senha — só 2 logins existem (`ADMIN_PANEL_LOGINS` em
   server.js: andrio/diego), senha em scrypt (nunca texto puro no código;
   `ADMIN_PANEL_PASS_ANDRIO`/`_DIEGO` no `.env` sobrescrevem sem mexer no
   código). A sessão criada mapeia pro `ADMIN_EMAIL`/`ADMIN_EMAIL_2` real —
   toda a lógica `isAdminVip`/`isAdminEmail` já existente continua intocada
   e vale igual, venha a sessão de onde vier (senha do painel OU login
   Google normal como um desses e-mails).
+  **v172c (dono, 12/09/2026 — "não quero que tenha nenhuma ligação com o
+  Google na landing page"): cadastro/login do usuário comum TAMBÉM virou
+  usuário+senha** — `POST /api/cadastro` (nome, sobrenome, data de
+  nascimento, cidade, estado, país, telefone, WhatsApp, usuário, senha —
+  senha pode ser só números, mín. 4 caracteres) e `POST /api/login`
+  (usuário+senha), ambos em `server.js`, mesmo hashing scrypt do painel
+  (`_hashPw`/`_verifyPw`). O USERNAME vira a chave `.email`/`DB_USERS` —
+  regex `^[a-z0-9_.]{3,30}$` proíbe `@` de propósito (estruturalmente
+  impossível colidir com um e-mail real de admin); `isAdminEmail(username)`
+  é defesa extra. Conta nova nasce 100% free (sem trial), sem NENHUM
+  e-mail conectado. `/oauth/start` virou um dead-end fechado (302 pra `/`,
+  nunca mais abre o Google) — só existe pra não deixar um link antigo
+  contornar o cadastro novo. O Google só entra em cena DEPOIS: quando a
+  pessoa tem plano pago ativo e clica em enviar automático/manual, um
+  botão abre `/oauth/connect-send` (gated por `isVipActive`) pra conectar
+  o Gmail de ENVIO — com aviso obrigatório (modal `#gwm`,
+  `showGmailConnectWarnModal`) de que esse e-mail é PERMANENTE (usado
+  tanto no manual quanto no automático, nunca pode ser trocado depois).
+  PROIBIDO reintroduzir login/cadastro por e-mail+Google na landing sem
+  ordem nova do dono — se precisar recuperar uma conta Google antiga (de
+  antes do v172c, sem senha) ou repor senha esquecida, é o admin quem
+  carimba uma senha nova pela aba Usuários (botão 🔑, `POST
+  /api/admin/set-password` em server.js), nunca reabrindo `/oauth/start`.
 - **Compra direta de plano, preço sempre do servidor.** `GET /api/planos`
   é a fonte única de preço/limites; `POST /api/pedido` recalcula o valor
   oficial no servidor e NUNCA confia num `valorTotal` vindo do cliente.

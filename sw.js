@@ -86,7 +86,7 @@
 //    promessa de "direito de arrependimento de 7 dias" (removida também dos
 //    Termos — seção renumerada 1-12).
 //
-const CACHE_NAME = "h2bapply-2026-v20"; // v20: painel admin loga por usuário+senha (admin.html não é cacheado pelo SW — bump por convenção) + regras novas do automático do admin (5min/450 por e-mail/seleção aleatória)
+const CACHE_NAME = "h2bapply-2026-v21"; // v21: cadastro/login do site viram usuário+senha (index.html/app.js) — ZERO Google na landing; Google só entra depois, no /oauth/connect-send (pós-plano pago); admin.html ganhou botão 🔑 pra destravar conta antiga sem senha
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).

@@ -142,6 +142,8 @@ tbody tr:hover{background:var(--glass2)}
 .badge.gray{background:var(--glass2);color:var(--t2);border-color:var(--border2)}
 .warn-flag{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;background:var(--redg);color:var(--red);border:1px solid var(--redb);cursor:pointer;font-size:14px}
 .warn-flag:hover{background:var(--red);color:#fff}
+.key-flag{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;background:var(--blueg);color:var(--blue);border:1px solid var(--blueb);cursor:pointer;font-size:14px}
+.key-flag:hover{background:var(--blue);color:#fff}
 
 /* ── empty / loading ──────────────────────────────────────────── */
 .empty{text-align:center;padding:40px 20px;color:var(--t3)}
@@ -329,10 +331,10 @@ tbody tr:hover{background:var(--glass2)}
             <div class="tbl-wrap">
               <table>
                 <thead>
-                  <tr><th>Usuário</th><th>Plano</th><th>Dias restantes</th><th>Dias creditados (pago)</th><th></th></tr>
+                  <tr><th>Usuário</th><th>Plano</th><th>Dias restantes</th><th>Dias creditados (pago)</th><th></th><th></th></tr>
                 </thead>
                 <tbody id="tbl-usuarios">
-                  <tr><td colspan="5"><div class="spin"></div></td></tr>
+                  <tr><td colspan="6"><div class="spin"></div></td></tr>
                 </tbody>
               </table>
             </div>
@@ -731,6 +733,7 @@ function renderLinhasUsuarios(lista){
       +'<td>'+esc(dias)+'</td>'
       +'<td>'+esc(creditados)+' dia'+((creditados===1)?"":"s")+'</td>'
       +'<td>'+(u.suspeita?('<button class="warn-flag" data-email="'+esc(u.email||"")+'" title="Ver motivo da suspeita" onclick="abrirDivergencia(this.dataset.email)"><i class="ti ti-alert-triangle"></i></button>'):'')+'</td>'
+      +'<td><button class="key-flag" data-email="'+esc(u.email||"")+'" title="Definir/redefinir senha (conta antiga sem senha ou senha esquecida)" onclick="definirSenhaUsuario(this.dataset.email)"><i class="ti ti-key"></i></button></td>'
       +'</tr>';
   }
   tbody.innerHTML=html;
@@ -805,6 +808,23 @@ async function responderDivergencia(concordo){
     toast("Erro ao salvar: "+e.message,"err");
   }finally{
     btn.disabled=false;
+  }
+}
+
+// 🔐 v172c: cadastro/login do site viraram usuário+senha — conta ANTIGA
+// (criada por Google, de antes dessa mudança) não tem senha nenhuma e o
+// login por Google saiu de circulação; esse botão é a válvula de escape
+// pra destrancar (ou pra repor senha esquecida de conta nova).
+async function definirSenhaUsuario(email){
+  if(!email)return;
+  var novaSenha=prompt("Definir senha nova para "+email+"\n\nPode ser só números, mínimo 4 caracteres. A pessoa entra em h2bapply.com com este usuário+senha.");
+  if(novaSenha===null)return; // cancelou
+  if(novaSenha.length<4){toast("Senha precisa ter pelo menos 4 caracteres.","err");return;}
+  try{
+    await api("/api/admin/set-password",{method:"POST",body:{email:email,novaSenha:novaSenha}});
+    toast("Senha definida para "+email+".","ok");
+  }catch(e){
+    toast("Erro ao definir senha: "+e.message,"err");
   }
 }
 

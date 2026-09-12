@@ -251,7 +251,7 @@ function maybeShowServerSelect(){
   }catch(e){}
   // v949 (ordem do dono): visitante deslogado VÊ A LANDING PAGE.
   // Nada de card de login automático por cima — a pessoa conhece o produto
-  // e clica ELA MESMA em "Entrar com Google" quando quiser.
+  // e clica ELA MESMA em "Entrar" ou "Criar conta" quando quiser.
 }
 // Destaca o botão principal de entrada da landing (usado no ?entrar=1)
 function _pulseLandingCTA(){
@@ -267,7 +267,7 @@ function _pulseLandingCTA(){
 // ═══════════════════════════════════════════
 //  CARD DE ENTRADA (auth gate) — Login / Criar conta por cima da landing
 // ═══════════════════════════════════════════
-let _agIntent="login",_agEmail="",_agBusy=false;
+let _agIntent="login",_agUser="",_agBusy=false;
 function openAuthGate(step,intent){
   // 📢 v150 (ordem do dono, 20/08 — comunicado do reset): com o aviso
   // ligado no admin, a janela do comunicado aparece ANTES do login e a
@@ -285,7 +285,7 @@ function openAuthGate(step,intent){
   if(ov.parentElement!==document.body)document.body.appendChild(ov);
   ov.classList.add("open");
   document.documentElement.classList.add("ag-lock"); // trava a rolagem da página atrás
-  if(intent){_agIntent=intent;gaEvent(intent==="signup"?"sign_up_intent":"login_intent",{method:"google"});}
+  if(intent){_agIntent=intent;gaEvent(intent==="signup"?"sign_up_intent":"login_intent",{method:"password"});}
   agRender(step||"choice");
 }
 function closeAuthGate(){
@@ -299,109 +299,121 @@ function resetNoticeOk(){
   const p=window._resetNoticePend||["choice",null];window._resetNoticePend=null;
   openAuthGate(p[0],p[1]);
 }
-function agBack(){ agRender(_agLastStep==="result"?"email":"choice"); }
-let _agLastStep="choice";
+function agBack(){ agRender("choice"); }
 function agRender(step,data){
-  _agLastStep=step;
   const body=g("#ag-body"),back=g("#ag-back"); if(!body) return;
   if(back)back.style.display=step==="choice"?"none":"flex";
   if(step==="choice"){
     body.innerHTML=`
       <div class="ag-title">Bem-vindo(a)! 👋</div>
       <div class="ag-sub">Candidate-se automaticamente a centenas de vagas H-2B e H-2A nos Estados Unidos.</div>
-      <button class="ag-btn primario" onclick="_agIntent='login';agRender('email')"><i class="ti ti-login"></i> Já tenho conta — Entrar</button>
-      <button class="ag-btn verde" onclick="_agIntent='signup';agRender('email')"><i class="ti ti-user-plus"></i> Criar conta grátis</button>`;
+      <button class="ag-btn primario" onclick="_agIntent='login';agRender('login')"><i class="ti ti-login"></i> Já tenho conta — Entrar</button>
+      <button class="ag-btn verde" onclick="_agIntent='signup';agRender('signup')"><i class="ti ti-user-plus"></i> Criar conta grátis</button>`;
     return;
   }
-  if(step==="email"){
-    const login=_agIntent==="login";
-    // 💾 "Lembrar meu e-mail" (pedido do dono): pré-preenche com o último
-    // e-mail salvo neste aparelho, pra pessoa não digitar de novo — ela só
-    // confere e clica Continuar. Opt-out via checkbox (unchecked → esquece).
-    let _savedEmail=""; try{ _savedEmail=localStorage.getItem("h2bLastEmail")||""; }catch(e){}
-    if(!_agEmail && _savedEmail) _agEmail=_savedEmail;
-    let _remember=true; try{ _remember=localStorage.getItem("h2bRememberEmail")!=="0"; }catch(e){}
+  // 🔒 ordem do dono, 12/09/2026: login/cadastro viraram usuário+senha —
+  // zero ligação com Google na landing (login normal nunca fez sentido
+  // consumir 1 das 100 vagas de teste do OAuth só pra "olhar o site").
+  if(step==="login"){
+    let _savedUser=""; try{ _savedUser=localStorage.getItem("h2bLastUser")||""; }catch(e){}
+    if(!_agUser && _savedUser) _agUser=_savedUser;
     body.innerHTML=`
-      <div class="ag-title">${login?"Entrar na sua conta":"Criar conta grátis"}</div>
-      <div class="ag-sub">${login
-        ?"Digite o e-mail da sua conta Google — <strong style='color:rgba(255,255,255,.8)'>sem senha</strong>, a entrada é sempre pela conta Google."
-        :"Digite seu e-mail do Google. Se você já tiver conta, entramos direto nela."}</div>
-      <input class="ag-input" id="ag-email" type="email" inputmode="email" autocomplete="email" placeholder="seuemail@gmail.com" value="${esc(_agEmail)}" onkeydown="if(event.key==='Enter')agLookup()">
-      <label style="display:flex;align-items:center;gap:8px;margin:10px 2px 2px;font-size:12px;color:rgba(255,255,255,.6);cursor:pointer;user-select:none">
-        <input type="checkbox" id="ag-remember" ${_remember?"checked":""} style="width:16px;height:16px;accent-color:#3b82f6;cursor:pointer;flex-shrink:0">
-        Lembrar meu e-mail neste aparelho
-      </label>
+      <div class="ag-title">Entrar na sua conta</div>
+      <div class="ag-sub">Digite seu nome de usuário e senha.</div>
+      <input class="ag-input" id="ag-l-user" type="text" inputmode="email" autocapitalize="off" autocomplete="username" placeholder="Nome de usuário" value="${esc(_agUser)}" onkeydown="if(event.key==='Enter'){const p=g('#ag-l-pass');if(p)p.focus();}">
+      <input class="ag-input" id="ag-l-pass" type="password" autocomplete="current-password" placeholder="Senha" onkeydown="if(event.key==='Enter')agSubmitLogin()">
       <div class="ag-err" id="ag-err"></div>
-      <button class="ag-btn primario" id="ag-continue" onclick="agLookup()">Continuar <i class="ti ti-arrow-right"></i></button>`;
-    setTimeout(()=>{const i=g("#ag-email");if(i)i.focus();},150);
+      <button class="ag-btn primario" id="ag-submit" onclick="agSubmitLogin()">Entrar <i class="ti ti-arrow-right"></i></button>
+      <button class="ag-btn fantasma" onclick="_agIntent='signup';agRender('signup')"><i class="ti ti-user-plus"></i> Não tenho conta — Criar agora</button>`;
+    setTimeout(()=>{const i=g(_agUser?"#ag-l-pass":"#ag-l-user");if(i)i.focus();},150);
     return;
   }
-  if(step==="loading"){
-    body.innerHTML=`<div class="ag-title">Localizando sua conta…</div>
-      <div class="ag-sub">Verificando o e-mail<br><strong style="color:rgba(255,255,255,.8)">${esc(_agEmail)}</strong></div>
-      <div class="ag-spin"><span class="spin spin-lg"></span></div>`;
-    return;
-  }
-  if(step==="result"){
-    // v157 (era de 1 servidor só): não existe mais "sua conta está no
-    // servidor X" — conta encontrada = entra aqui; não encontrada = cria
-    // aqui. O atalho multi-servidor do admin e a tela de escolha
-    // foram removidos junto com a era multi-servidor.
-    const d=data||{};
-    if(d.found){
-      body.innerHTML=`
-        <div style="text-align:center"><span class="ag-email-chip">📧 ${esc(_agEmail)}</span></div>
-        <div class="ag-title">Conta encontrada! ✅</div>
-        <div class="ag-sub">Todo o seu histórico, envios e VIP estão te esperando. Entre com sua conta Google para continuar.</div>
-        <button class="ag-btn primario" onclick="agGoogleAt()">
-          <svg width="17" height="17" viewBox="0 0 18 18"><path fill="#fff" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#fff" opacity=".85" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#fff" opacity=".7" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#fff" opacity=".85" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
-          Entrar com Google</button>
-        <button class="ag-btn fantasma" onclick="agRender('email')" style="margin-top:6px"><i class="ti ti-pencil"></i> Usar outro e-mail</button>`;
-      return;
-    }
-    if(_agIntent==="login"){
-      body.innerHTML=`
-        <div style="text-align:center"><span class="ag-email-chip">📧 ${esc(_agEmail)}</span></div>
-        <div class="ag-title">Não encontramos sua conta 🔍</div>
-        <div class="ag-sub">Esse e-mail ainda não tem conta no H2BApply. Confira se digitou certo — ou crie sua conta grátis agora.</div>
-        <button class="ag-btn verde" onclick="_agIntent='signup';agRender('result',window._agLastWhere)"><i class="ti ti-user-plus"></i> Criar conta grátis com esse e-mail</button>
-        <button class="ag-btn fantasma" onclick="agRender('email')"><i class="ti ti-pencil"></i> Corrigir e-mail</button>`;
-      return;
-    }
-    // Cadastro: cria a conta AQUI — direto pro aviso do Google.
-    closeAuthGate(); showGoogleWarnModal();
+  if(step==="signup"){
+    body.innerHTML=`
+      <div class="ag-title">Criar conta grátis</div>
+      <div class="ag-sub">Sem cartão, sem e-mail pra conectar aqui — só os dados abaixo. Dá pra editar tudo depois no seu perfil.</div>
+      <div class="ag-grid2">
+        <input class="ag-input" id="ag-s-nome" type="text" placeholder="Nome" autocomplete="given-name">
+        <input class="ag-input" id="ag-s-sobrenome" type="text" placeholder="Sobrenome" autocomplete="family-name">
+      </div>
+      <input class="ag-input" id="ag-s-nasc" type="date" autocomplete="bday">
+      <div class="ag-grid2">
+        <input class="ag-input" id="ag-s-cidade" type="text" placeholder="Cidade" autocomplete="address-level2">
+        <input class="ag-input" id="ag-s-estado" type="text" placeholder="Estado" autocomplete="address-level1">
+      </div>
+      <input class="ag-input" id="ag-s-pais" type="text" placeholder="País" autocomplete="country-name" value="Brasil">
+      <div class="ag-grid2">
+        <input class="ag-input" id="ag-s-tel" type="tel" placeholder="Telefone" autocomplete="tel">
+        <input class="ag-input" id="ag-s-whats" type="tel" placeholder="WhatsApp" autocomplete="tel">
+      </div>
+      <div style="height:1px;background:rgba(255,255,255,.12);margin:4px 0 12px"></div>
+      <input class="ag-input" id="ag-s-user" type="text" inputmode="email" autocapitalize="off" placeholder="Escolha um nome de usuário" autocomplete="username" onkeydown="if(event.key==='Enter'){const p=g('#ag-s-pass');if(p)p.focus();}">
+      <input class="ag-input" id="ag-s-pass" type="password" placeholder="Crie uma senha (pode ser só números)" autocomplete="new-password" onkeydown="if(event.key==='Enter')agSubmitSignup()">
+      <div class="ag-sub" style="margin-top:-4px;font-size:12px">Depois de criar a conta você completa currículo, carta e assunto de e-mail — <strong style="color:rgba(255,255,255,.8)">pode editar tudo isso quando quiser</strong>, o cadastro não precisa sair perfeito agora.</div>
+      <div class="ag-err" id="ag-err"></div>
+      <button class="ag-btn verde" id="ag-submit" onclick="agSubmitSignup()">Criar minha conta <i class="ti ti-arrow-right"></i></button>
+      <button class="ag-btn fantasma" onclick="_agIntent='login';agRender('login')"><i class="ti ti-login"></i> Já tenho conta — Entrar</button>`;
+    setTimeout(()=>{const i=g("#ag-s-nome");if(i)i.focus();},150);
     return;
   }
 }
-async function agLookup(){
+async function agSubmitLogin(){
   if(_agBusy)return;
-  const inp=g("#ag-email"),err=g("#ag-err"),btn=g("#ag-continue"),rem=g("#ag-remember");
-  const email=(inp?inp.value:"").toLowerCase().trim();
+  const uEl=g("#ag-l-user"),pEl=g("#ag-l-pass"),err=g("#ag-err"),btn=g("#ag-submit");
+  const username=(uEl?uEl.value:"").toLowerCase().trim(),senha=pEl?pEl.value:"";
   const showErr=m=>{if(err){err.style.display="block";err.textContent=m;}};
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)){showErr("⚠️ Digite um e-mail válido (ex.: nome@gmail.com).");return;}
-  _agEmail=email;_agBusy=true;
-  // 💾 "Lembrar meu e-mail": salva (ou apaga, se desmarcado) no localStorage
-  // deste aparelho — na próxima visita o campo já vem preenchido sozinho.
+  if(err)err.style.display="none";
+  if(!username||!senha){showErr("⚠️ Preencha usuário e senha.");return;}
+  _agUser=username;_agBusy=true;
+  try{ localStorage.setItem("h2bLastUser",username); }catch(e){}
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span> Entrando…';}
   try{
-    if(!rem || rem.checked){ localStorage.setItem("h2bLastEmail",email); localStorage.setItem("h2bRememberEmail","1"); }
-    else { localStorage.removeItem("h2bLastEmail"); localStorage.setItem("h2bRememberEmail","0"); }
-  }catch(e){}
-  if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span> Localizando…';}
-  agRender("loading");
-  try{
-    const r=await fetch("/api/auth/where?email="+encodeURIComponent(email),{credentials:"include"});
+    const r=await fetch("/api/login",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password:senha})});
     const d=await r.json();
-    if(!r.ok)throw new Error(d.error||"Erro ao consultar");
-    window._agLastWhere=d;
-    agRender("result",d);
+    if(!r.ok)throw new Error(d.error||"Usuário ou senha inválidos.");
+    gaEvent("login",{method:"password"});
+    location.reload();
   }catch(e){
-    agRender("email");
-    setTimeout(()=>{const e2=g("#ag-err");if(e2){e2.style.display="block";e2.textContent="⚠️ "+(e.message||"Não foi possível verificar agora. Tente de novo.");}},80);
-  }finally{_agBusy=false;}
+    _agBusy=false;
+    if(btn){btn.disabled=false;btn.innerHTML='Entrar <i class="ti ti-arrow-right"></i>';}
+    showErr("⚠️ "+(e.message||"Não foi possível entrar. Tente de novo."));
+  }
 }
-// v157: entrada é sempre AQUI — o botão do Google abre o modal de aviso
-// obrigatório (nunca pula essa etapa, é exigência legal do consentimento).
-function agGoogleAt(){ closeAuthGate(); showGoogleWarnModal(); }
+function agSubmitSignup(){
+  if(_agBusy)return;
+  const val=sel=>{const e=g(sel);return e?e.value.trim():"";};
+  const nome=val("#ag-s-nome"),sobrenome=val("#ag-s-sobrenome");
+  const username=val("#ag-s-user").toLowerCase(),senha=(g("#ag-s-pass")||{}).value||"";
+  const err=g("#ag-err");
+  const showErr=m=>{if(err){err.style.display="block";err.textContent=m;}};
+  if(err)err.style.display="none";
+  if(!nome||!sobrenome){showErr("⚠️ Preencha nome e sobrenome.");return;}
+  if(!/^[a-z0-9_.]{3,30}$/.test(username)){showErr("⚠️ Nome de usuário: 3 a 30 letras, números, ponto ou underline — sem espaço, sem @.");return;}
+  if(senha.length<4){showErr("⚠️ A senha precisa ter pelo menos 4 caracteres.");return;}
+  const payload={
+    username,password:senha,nome,sobrenome,
+    dataNascimento:val("#ag-s-nasc"),cidade:val("#ag-s-cidade"),estado:val("#ag-s-estado"),
+    pais:val("#ag-s-pais")||"Brasil",telefone:val("#ag-s-tel"),whatsapp:val("#ag-s-whats"),
+  };
+  const btn=g("#ag-submit");
+  const doSubmit=async()=>{
+    _agBusy=true;
+    if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span> Criando conta…';}
+    try{
+      const r=await fetch("/api/cadastro",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.error||"Erro ao criar conta.");
+      try{ localStorage.setItem("h2bLastUser",username); }catch(e){}
+      gaEvent("sign_up",{method:"password"});
+      location.reload();
+    }catch(e){
+      _agBusy=false;
+      if(btn){btn.disabled=false;btn.innerHTML='Criar minha conta <i class="ti ti-arrow-right"></i>';}
+      showErr("⚠️ "+(e.message||"Não foi possível criar a conta. Tente de novo."));
+    }
+  };
+  showTerms(doSubmit);
+}
 function renderOnboardChecklist(){/* removido */}
 
 // Chamada a cada vez que perfis ou docs mudarem — garante que o checklist some imediatamente
@@ -4884,26 +4896,14 @@ async function syncData(){
   // Follow-up reminders após sync
   setTimeout(checkFollowUpReminders,3000);
 }
-function _getOAuthURL(){
-  // 🔒 v149: leva o e-mail digitado no card de entrada pro Google (login_hint).
-  // O Google pré-seleciona a conta certa e o servidor BARRA se a pessoa
-  // autenticar outro e-mail (cada conta autenticada queima 1 das 100 vagas).
-  // Só usa o e-mail digitado NESTA visita (_agEmail) — nunca um antigo salvo
-  // no aparelho, senão travaria quem entra por um fluxo que pula o card.
-  let hint="";
-  try{hint=(typeof _agEmail!=="undefined"&&_agEmail)||"";}catch(e){}
-  hint=String(hint||"").toLowerCase().trim();
-  return '/oauth/start'+(/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(hint)?('?login_hint='+encodeURIComponent(hint)):'');
-}
-function connectGmail(){location.href=_getOAuthURL();}
 // 🔒 v172 (ORDEM DO DONO, 11/09/2026): pedido SEPARADO do login — só existe
 // pra quem JÁ tem plano pago ativo (o servidor confere de novo e barra quem
 // não tem). fromTab devolve a pessoa pra onde ela estava tentando enviar.
+// v172c (12/09/2026): passa pelo aviso obrigatório (showGmailConnectWarnModal)
+// antes de ir pro Google — é a conta que vira e-mail de envio PRA SEMPRE.
 function connectGmailForSending(fromTab){
-  location.href="/oauth/connect-send?from="+encodeURIComponent(fromTab||"plans");
+  showGmailConnectWarnModal(fromTab);
 }
-function closeLoginWarn(){const ov=document.getElementById("login-warn-overlay");if(ov)ov.style.display="none";}
-function showLoginWarning(){location.href=_getOAuthURL();}
 async function loadPublicStats(){
   try{
     const r=await fetch("/api/public-stats");const d=await r.json();
@@ -5943,7 +5943,7 @@ setTimeout(()=>{ if(U.connected) _autoPushSetup().catch(()=>{}); }, 1000);
               </div>
             </div>
             <button class="ln-cta-btn" onclick="openAuthGate('choice')" style="font-size:14px;padding:12px 20px;width:100%">
-              <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
+              <i class="ti ti-bolt" style="font-size:18px"></i>
               Ativar o automático agora
             </button>
           </div>
@@ -6124,10 +6124,17 @@ function _gwmArm(){
     if(t<=0){clearInterval(_gwmTimer);_gwmTimer=null;window._gwmTimeOk=true;gwmUpdateBtn();}
   },1000);
 }
-function showGoogleWarnModal(){
+// 🔒 ordem do dono, 12/09/2026: este modal não é mais sobre LOGIN (login
+// virou usuário+senha, sem Google nenhum) — é sobre CONECTAR o Gmail de
+// ENVIO (/oauth/connect-send), que ainda passa pela tela de consentimento
+// real do Google (com o aviso de app não-verificado) e continua exigindo
+// o aceite de que o e-mail escolhido é permanente.
+var _cgfsFromTab="plans";
+function showGmailConnectWarnModal(fromTab){
+  _cgfsFromTab=fromTab||"plans";
   fetch("/api/warmup",{credentials:"include"}).catch(function(){});
   var m=document.getElementById("gwm");
-  if(!m){location.href=_getOAuthURL();return;}
+  if(!m){location.href="/oauth/connect-send?from="+encodeURIComponent(_cgfsFromTab);return;}
   m.style.display="flex";
   _gwmArm();
 }
@@ -6139,15 +6146,15 @@ function gwmUpdateBtn(){
   if(window._gwmTimeOk===undefined&&!_gwmTimer){_gwmArm();return;}
   var ok=window._gwmTimeOk&&ck&&ck.checked;
   btn.disabled=!ok;
-  if(ok){btn.style.background="linear-gradient(135deg,#4f46e5,#7c3aed)";btn.style.cursor="pointer";btn.innerHTML="✅ Entendi — Continuar com Google";}
+  if(ok){btn.style.background="linear-gradient(135deg,#4f46e5,#7c3aed)";btn.style.cursor="pointer";btn.innerHTML="✅ Entendi — Conectar Gmail";}
   else if(window._gwmTimeOk){btn.style.background="#cbd5e1";btn.style.cursor="not-allowed";btn.innerHTML="Marque a caixinha acima ☝️";}
 }
 function gwmGo(){
   var ck=document.getElementById("gwm-check");
   if(!window._gwmTimeOk||!ck||!ck.checked)return;
   document.getElementById("gwm").style.display="none";
-  gaEvent("google_oauth_start",{intent:(typeof _agIntent!=="undefined"&&_agIntent)||"unknown"});
-  location.href=_getOAuthURL();
+  gaEvent("gmail_connect_send_start",{fromTab:_cgfsFromTab});
+  location.href="/oauth/connect-send?from="+encodeURIComponent(_cgfsFromTab);
 }
 
 ;
@@ -6244,22 +6251,6 @@ function termsDecline(){
   _termsCallback=null;
   if(typeof toast==="function")toast("Você precisa aceitar os Termos para usar a H2BApply.","r");
 }
-// Interceptar modal do Google para mostrar termos primeiro.
-// CORREÇÃO v947 (KB-064): a versão anterior duplicava metade da lógica do modal
-// (só fazia display=flex) e NUNCA iniciava o timer de 7s — o botão ficava travado
-// em "Leia acima… 7s" para sempre e NINGUÉM conseguia logar. A regra permanente:
-// interceptador NUNCA reimplementa — captura a referência original e delega.
-(function(){
-  var _gwmOriginalShow = window.showGoogleWarnModal;
-  window.showGoogleWarnModal=function(){
-    showTerms(function(){
-      if(typeof _gwmOriginalShow==="function"){_gwmOriginalShow();}
-      else{location.href=(typeof _getOAuthURL==="function")?_getOAuthURL():"/oauth/start";}
-    });
-  };
-})();
-
-;
 /* ═══ bloco extraído ═══ */
 
 var _tip=null;
