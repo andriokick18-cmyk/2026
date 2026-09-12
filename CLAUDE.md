@@ -123,6 +123,25 @@ se referindo a outro repositório/projeto.
   sempre cita a data real ("seu plano venceu em DD/MM/AAAA"), nunca um
   "expirou" genérico. Os botões de conectar Gmail (manual e automático)
   são cartões grandes de ação — não voltar a ser pilulazinha pequena.
+- **Manual e automático vencem SEPARADOS — nunca um herda o limite do
+  outro (v172i, 12/09/2026, vazamento de receita real)**: `getPlan()`
+  devolve um nome só, mas `vip.manualExpires` e `vip.autoExpires` são
+  independentes. `getManualLimit`/`getAutoLimit` (server.js) devolvem 0
+  ANTES de consultar qualquer tabela quando a própria dimensão não está
+  ativa (`isManualVipActive`/`isAutoVipActive`). PROIBIDO voltar a
+  derivar um limite só de `PLAN_LIMITS[getPlan(u)]` — foi assim que
+  manual vencido ganhava 200 envios/dia do automático (e doublepro com
+  automático vencido ganhava 400 pelo atalho `u.plan`).
+- **Páginas públicas de SEO são produto, não enfeite** (v172j,
+  12/09/2026): `/h2bapply-funciona`, `/h2b-e-golpe`, `/guia` e as geradas
+  por estado/categoria (`/vagas-h2b/*`, templates em server.js) ficaram 5
+  dias com o CTA principal em `/oauth/google` (404) e vendendo plano grátis
+  com envio + limites da tabela legada. O CTA de cadastro é SEMPRE
+  `/?cadastro=1` (a landing abre o card de cadastro direto —
+  `maybeShowServerSelect` em app.js); toda mudança em `PLAN_LIMITS_NEW`,
+  preço, regra de plano ou login tem que ser espelhada nessas páginas no
+  MESMO commit (guarda no smoke: números da página "funciona" = mod-config).
+  `G-XXXXXXXXXX` (GA) nessas páginas é placeholder — só o dono troca.
 - **Usernames reservados nascem admin** (`ADMIN_RESERVED_USERNAMES` em
   `server.js`, hoje `andrio`/`andrew`/`diego`): concedido NA HORA do
   cadastro (`/api/cadastro`) + migração de apoio no boot pra conta

@@ -672,6 +672,26 @@ async function testAuthWatchdogPush() {
     check(`🌐 i18n-5: CATRACA de tradução — textos PT sem data-i18n nas views: ${_semTag.length} (teto 7)`,
       _semTag.length <= 7, `estourou o teto: ${_semTag.length} — novas telas PRECISAM nascer com data-i18n (amostra: ${_semTag.slice(0, 3).join(" | ")})`);
 
+    // 🔗 v172j (auditoria 12/09/2026): as páginas públicas de SEO ficaram 5
+    // dias mandando o CTA principal pra /oauth/google (404 desde o v172c) e
+    // vendendo limites/regras do site antigo — ninguém tocava nelas. Guarda
+    // permanente: (a) nenhuma página pública nem template de SEO do server
+    // aponta pra rota morta; (b) os números de plano da página "funciona"
+    // são os de PLAN_LIMITS_NEW (fonte única) — mudou a tabela, esta guarda
+    // obriga a atualizar a página de vendas junto.
+    const _seoFiles = ["h2bapply-funciona.html", "h2b-e-golpe.html", "como-usar.html", "tutorial-conteudo.html", "server.js"];
+    const _seoMorto = _seoFiles.filter((f) => fs.readFileSync(path.join(__dirname, f), "utf8").includes("/oauth/google"));
+    check("🔗 v172j: NENHUMA página pública/template de SEO aponta pra /oauth/google (rota morta desde o v172c — era 404 no CTA principal)",
+      _seoMorto.length === 0, `ainda apontam pra rota morta: ${_seoMorto.join(", ")}`);
+    const _PLN = require(path.join(__dirname, "mod-config.js")).PLAN_LIMITS_NEW;
+    const _funciona = fs.readFileSync(path.join(__dirname, "h2bapply-funciona.html"), "utf8");
+    const _planosOk = _funciona.includes(`${_PLN.vip.manual} candidaturas manuais/dia<br>Sem envio automático`) &&
+      _funciona.includes(`${_PLN.vipro.manual} manuais/dia<br>${_PLN.vipro.auto} automáticas/dia`) &&
+      _funciona.includes(`${_PLN.doublepro.manual} manuais/dia<br>${_PLN.doublepro.auto} automáticas/dia`) &&
+      !/plano gratuito permanente|Free para sempre|🆓 Free/.test(_funciona);
+    check("🔗 v172j: página de vendas /h2bapply-funciona mostra os limites de PLAN_LIMITS_NEW (não a tabela legada) e não vende plano grátis com envio",
+      _planosOk, "limites da página de vendas divergem de mod-config.js ou voltou o card Free");
+
     // 🔖 v126 (Vagas Salvas) removido de propósito nesta reconstrução enxuta
     // (README.md) — não há mais aba/estado/rota pra testar aqui.
 
