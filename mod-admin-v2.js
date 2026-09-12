@@ -43,8 +43,13 @@ function createAdminV2Router(ctx){
       fs.renameSync(tmp,AUDIT_FILE);
     }catch(e){ console.warn("[audit-v2]",e.message); } },300);
   }
+  // 🚨 v172c-SEC: X-Forwarded-For é uma lista que o CLIENTE controla — só o
+  // ÚLTIMO valor é o que o Render (nosso proxy real) de fato viu/anexou.
+  // Pegar o primeiro deixava o IP da trilha de auditoria fácil de forjar.
   function clientIp(req){
-    return (req.headers["x-forwarded-for"]||"").split(",")[0].trim() || req.socket?.remoteAddress || "?";
+    const xff=req.headers["x-forwarded-for"];
+    if(xff){const parts=String(xff).split(",").map(s=>s.trim()).filter(Boolean);if(parts.length)return parts[parts.length-1];}
+    return req.socket?.remoteAddress || "?";
   }
   function audit(req, entry){
     const rec = {

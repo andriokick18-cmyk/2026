@@ -25,6 +25,7 @@ const https  = require("https");
 const fs     = require("fs");
 const path   = require("path");
 const crypto = require("crypto");
+const util   = require("util");
 const { URLSearchParams } = require("url");
 const zlib = require("zlib");
 
@@ -166,14 +167,26 @@ const { MAX_SENDER_EMAILS_FREE, MAX_SENDER_EMAILS_VIP, MAX_SENDER_EMAILS_ADMIN,
 // 🔐 SENHA — helpers compartilhados (painel admin E cadastro de usuário
 // comum, ambos por usuário+senha agora). scrypt (memory-hard) com salt
 // próprio por conta; nunca texto puro persistido em lugar nenhum.
-function _hashPw(senha,saltHex){
+// 🚨 v172c-SEC (auditoria de segurança, 12/09/2026): scryptSync é SÍNCRONO —
+// bloqueia o event loop ÚNICO do Node inteiro (site inteiro pra TODO MUNDO:
+// outros usuários, o robô automático, o admin) pela duração inteira do
+// cálculo. Como as 3 rotas novas (/api/cadastro, /api/login, /api/admin-
+// panel/login) são públicas e SEM autenticação, uma rajada de poucas
+// dezenas de requisições simultâneas já travava o site inteiro por
+// segundos — exatamente a classe de bug que este mesmo repo já corrigiu
+// antes (v162 "sort=match travava tudo"). crypto.scrypt (assíncrono) roda
+// no threadpool do libuv, nunca no event loop principal.
+const _scryptAsync = util.promisify(crypto.scrypt);
+async function _hashPw(senha,saltHex){
   const salt=saltHex||crypto.randomBytes(16).toString("hex");
-  return { salt, hash: crypto.scryptSync(senha,salt,64).toString("hex") };
+  const buf=await _scryptAsync(senha,salt,64);
+  return { salt, hash: buf.toString("hex") };
 }
-function _verifyPw(senha,saltHex,hashHex){
+async function _verifyPw(senha,saltHex,hashHex){
   if(!senha||!saltHex||!hashHex)return false;
   try{
-    return crypto.timingSafeEqual(crypto.scryptSync(senha,saltHex,64), Buffer.from(hashHex,"hex"));
+    const buf=await _scryptAsync(senha,saltHex,64);
+    return crypto.timingSafeEqual(buf, Buffer.from(hashHex,"hex"));
   }catch(e){ return false; }
 }
 // 🔐 LOGIN DO PAINEL ADMIN (ordem do dono, 12/09/2026): só Andrio e Diego,
@@ -182,17 +195,42 @@ function _verifyPw(senha,saltHex,hashHex){
 // senha depois não precisa mexer no código — defina ADMIN_PANEL_PASS_ANDRIO
 // ou ADMIN_PANEL_PASS_DIEGO (texto puro, só no .env, nunca commitado) que
 // o boot recalcula o hash sozinho; sem a env, usa o hash de fábrica abaixo.
+// 🚨 v172c-SEC (auditoria de segurança, 12/09/2026 — CVE interno CRÍTICO):
+// o par salt/hash de fábrica ORIGINAL deste bloco (commit a860ebc) tinha a
+// senha em TEXTO PURO exposta na própria mensagem do commit
+// ("andrio/andrioapplyh2b, diego/diegoapplyh2b") — com este repo PÚBLICO no
+// GitHub, qualquer pessoa lendo o histórico tinha login de admin completo,
+// sem precisar quebrar hash nenhum. Substituído por senhas ALEATÓRIAS de
+// alta entropia (24 caracteres, geradas fora deste chat/commit) cujo hash
+// aqui embaixo NUNCA teve o texto puro escrito em lugar nenhum do
+// repositório — só o hash é público, e scrypt com entropia alta resiste a
+// isso. AS SENHAS NOVAS FORAM ENTREGUES AO DONO FORA DO GIT. Ainda assim:
+// PROIBIDO functionar como senha permanente — configure
+// ADMIN_PANEL_PASS_ANDRIO/_DIEGO de verdade no ambiente (Render → env vars,
+// nunca no código) assim que possível; o aviso no boot abaixo lembra disso
+// toda vez que sobe sem a env definida.
 const ADMIN_PANEL_LOGINS = [
   { user:"andrio", nome:"Andrio", email:ADMIN_EMAIL,
-    salt:"ba70f72df47cfd070508e8d68fda9698",
-    hash:"e1dfd75cc4b0fd1eeedf077f56576e1ed1439b8b7cb18ffbd0f6578b62189b13245e6a73271fcaff061d20e055116e1e5d1bb26e11cfaedd119b50feac0ad3d3" },
+    salt:"5f673a0c82508a78a7edce9e7d612aaf",
+    hash:"9a6339c189bc3bf05d327d56c3f6b9cff3c70ff8562d6f78cdc9e932ed81ce6f85dc9a9d90e6b9b6d83381e8febe8f3658ec13dcf721f3bb2d94975f59a0727f" },
   { user:"diego", nome:"Diego", email:ADMIN_EMAIL_2,
-    salt:"dd3b89ca28ecc4e83773c08d014ad278",
-    hash:"415a2262238d05d7367b8982fd41182db1622dcc491b0274e9f78b9e0aab70f85c3452d049cf095686a9704858d80785aa1a7eede265609d0654394a5528ec97" },
+    salt:"7c4b2200cdec635426a9ce64bcb31a8b",
+    hash:"51d387f761bc0a5b7274dd89dc73df98b50025613f80bf02b1b1d01c317eadc73bc33627619f0d15448adddbb2f9121a29fe348f319a30f5fe3c31118ae84a55" },
 ].map(l=>{
   const envKey="ADMIN_PANEL_PASS_"+l.user.toUpperCase();
-  if(!process.env[envKey])return l;
-  const {salt,hash}=_hashPw(process.env[envKey]);
+  if(!process.env[envKey]){
+    // 🚨 v172c-SEC: sem a env, cai no hash de fábrica acima — funcional
+    // (senha de alta entropia, nunca exposta no repo), mas é um segredo
+    // ÚNICO e FIXO pra sempre até alguém configurar a env de verdade.
+    // Aviso alto no log a cada boot (mesmo padrão do DATA_ENC_KEY abaixo).
+    console.warn(`[SEGURANÇA] ⚠️ ${envKey} não definida — login do painel admin de "${l.user}" está usando a senha de FÁBRICA (fixa, nunca rotaciona sozinha). Configure ${envKey} no ambiente (Render → Environment) assim que possível.`);
+    return l;
+  }
+  // Só aqui (boot, roda 2x no total — nunca por requisição de usuário) o
+  // scryptSync SÍNCRONO é seguro; _hashPw virou assíncrono (ver acima) e
+  // não dá pra usar dentro de um .map() síncrono no carregamento do módulo.
+  const salt=crypto.randomBytes(16).toString("hex");
+  const hash=crypto.scryptSync(process.env[envKey],salt,64).toString("hex");
   return {...l,salt,hash};
 });
 // getMaxSenders retorna o TOTAL de emails (principal + extras)
@@ -310,7 +348,11 @@ function decStr(s){
   }catch{return null;} // chave errada/corrompido → ausente, nunca crash
 }
 // Campos sensíveis do usuário cifrados no disco (cópia rasa — runtime intocado)
-const USER_SECRET_FIELDS=["refresh_token","cached_access_token"];
+// 🚨 v172c-SEC: passwordHash/passwordSalt (scrypt) entraram na mesma cifra
+// em disco dos tokens OAuth — defesa extra contra vazamento de backup/disco
+// bruto (a senha mínima de 4 caracteres tornaria offline-cracking rápido
+// se o arquivo cru vazasse sem essa camada).
+const USER_SECRET_FIELDS=["refresh_token","cached_access_token","passwordHash","passwordSalt"];
 // v21-SEC: versão SEGURA de um usuário pra mandar pro navegador (admin ou não).
 // Remove os segredos de NÍVEL RAIZ e também os tokens OAuth aninhados em
 // senderEmails[] (access_token/refresh_token dos Gmails extras) — antes o
@@ -318,7 +360,13 @@ const USER_SECRET_FIELDS=["refresh_token","cached_access_token"];
 // browser, onde extensão/console/histórico de rede conseguem ler.
 function sanitizeUserForClient(u){
   if(!u)return u;
-  const c={...u,password:undefined,refresh_token:undefined,cached_access_token:undefined};
+  // 🚨 v172c-SEC (auditoria de segurança, 12/09/2026 — CRÍTICO real): este
+  // sanitizador é da era OAuth e nunca foi atualizado pros campos NOVOS de
+  // senha (v172c) — passwordHash/passwordSalt (scrypt) saíam intactos pro
+  // navegador em GET /api/debug/export (banco INTEIRO) e /api/admin/user-
+  // detail/:email, pra qualquer conta isAdmin:true. Com o limite de senha
+  // de só 4 caracteres, isso permitia quebrar offline boa parte das contas.
+  const c={...u,password:undefined,refresh_token:undefined,cached_access_token:undefined,passwordHash:undefined,passwordSalt:undefined};
   if(Array.isArray(c.senderEmails))c.senderEmails=c.senderEmails.map(se=>se?{
     email:se.email,label:se.label||"",active:se.active!==false,
     tokenExpired:!!se.tokenExpired,blocked:!!se.blocked,addedAt:se.addedAt,
@@ -5115,6 +5163,20 @@ function persistSessionsDebounced(ms=2000){
 }
 
 function rateLimit(k,max,ms){const n=Date.now();if(!rateMap[k]||rateMap[k].r<n)rateMap[k]={n:0,r:n+ms};return++rateMap[k].n>max;}
+// 🚨 v172c-SEC (auditoria de segurança, 12/09/2026): as rotas novas de
+// login/cadastro pegavam o PRIMEIRO valor de X-Forwarded-For pra montar a
+// chave do rate-limit — mas esse cabeçalho é uma LISTA que qualquer
+// cliente pode mandar com valores inventados na frente; o Render (nosso
+// proxy real) sempre ANEXA o IP de conexão de verdade como o ÚLTIMO valor
+// da lista. Confiar no primeiro deixava o limite de tentativas trivialmente
+// contornável (um valor falso novo a cada requisição = chave nova sempre).
+// _clientIp() usa o ÚLTIMO valor (o que o Render realmente viu) — fonte
+// única, nunca duplicar essa extração em rota nova.
+function _clientIp(req){
+  const xff=req.headers["x-forwarded-for"];
+  if(xff){const parts=String(xff).split(",").map(s=>s.trim()).filter(Boolean);if(parts.length)return parts[parts.length-1];}
+  return req.socket?.remoteAddress||"anon";
+}
 const makeCookieStr=id=>{const b=`h2b_session=${id}; Path=/; HttpOnly; Max-Age=${30*86400}`;return IS_PROD?b+"; Secure; SameSite=Lax":b+"; SameSite=Lax";};
 const clearCookieStr=()=>{const b="h2b_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT";return IS_PROD?b+"; Secure; SameSite=Lax":b;};
 const getSessId=req=>{const m=(req.headers.cookie||"").match(/(?:^|;\s*)h2b_session=([^;]+)/);return m?m[1]:null;};
@@ -7428,14 +7490,14 @@ filtrar();
   // permitem trocar a senha sem mexer no código — sem env, usa o hash
   // embutido de fábrica.
   if(pathname==="/api/admin-panel/login"&&req.method==="POST"){
-    const _ip=(req.headers["x-forwarded-for"]||req.socket?.remoteAddress||"anon").split(",")[0].trim();
+    const _ip=_clientIp(req);
     if(rateLimit("adminpanel_"+_ip,10,900_000))return json(res,429,{error:"Muitas tentativas. Aguarde 15 minutos."});
     try{
       const d=JSON.parse(await readBody(req));
       const user=String(d.user||"").trim().toLowerCase();
       const senha=String(d.password||"");
       const login=ADMIN_PANEL_LOGINS.find(l=>l.user===user);
-      const ok=login&&senha&&_verifyPw(senha,login.salt,login.hash);
+      const ok=login&&senha&&(await _verifyPw(senha,login.salt,login.hash));
       if(!ok){await new Promise(r=>setTimeout(r,300));return json(res,403,{error:"Usuário ou senha inválidos."});}
       if(!login.email)return json(res,500,{error:`Senha certa, mas ${login.nome} não tem e-mail configurado no ambiente (ADMIN_EMAIL${login.user==="diego"?"_2":""}). Configure e reinicie o servidor.`});
       if(!getUser(login.email))setUser(login.email,{email:login.email,name:login.nome,created_at:new Date().toISOString(),plan:"free",vip:null,cvs:[],profiles:[],saved:[],onboarded:true,isAdmin:true});
@@ -7457,7 +7519,7 @@ filtrar();
   // quando a pessoa (já com plano pago) conecta o e-mail de ENVIO em
   // /oauth/connect-send — rota separada, TOTALMENTE inalterada.
   if(pathname==="/api/cadastro"&&req.method==="POST"){
-    const _ip=(req.headers["x-forwarded-for"]||req.socket?.remoteAddress||"anon").split(",")[0].trim();
+    const _ip=_clientIp(req);
     if(rateLimit("cadastro_"+_ip,20,900_000))return json(res,429,{error:"Muitas tentativas. Aguarde 15 minutos."});
     try{
       const d=JSON.parse(await readBody(req));
@@ -7475,7 +7537,14 @@ filtrar();
       // isso estruturalmente impossível, isto é só um cinto-e-suspensório).
       if(isAdminEmail(username))return json(res,400,{error:"Esse nome de usuário não pode ser usado."});
       if(getUser(username))return json(res,409,{error:"Esse nome de usuário já existe. Escolha outro ou entre na sua conta."});
-      const {salt,hash}=_hashPw(senha);
+      const {salt,hash}=await _hashPw(senha);
+      // 🚨 v172c-SEC: _hashPw virou assíncrono (scrypt no threadpool, nunca
+      // trava o site inteiro — ver comentário acima da função) — isso abre
+      // uma janela real onde 2 cadastros com o MESMO username concorrentes
+      // passariam os 2 pelo getUser() de cima antes de qualquer um gravar.
+      // Reconfere aqui, direto antes de gravar, pra nunca sobrescrever um
+      // cadastro concorrente em silêncio.
+      if(getUser(username))return json(res,409,{error:"Esse nome de usuário já existe. Escolha outro ou entre na sua conta."});
       const nomeCompleto=(nome+" "+sobrenome).trim();
       // 🔒 v172: mesma régua de sempre — conta nova nasce 100% free (0
       // manual/0 auto), sem trial nenhum; só ENVIA depois de plano pago +
@@ -7503,14 +7572,14 @@ filtrar();
     }catch(e){return json(res,500,{error:e.message});}
   }
   if(pathname==="/api/login"&&req.method==="POST"){
-    const _ip=(req.headers["x-forwarded-for"]||req.socket?.remoteAddress||"anon").split(",")[0].trim();
+    const _ip=_clientIp(req);
     if(rateLimit("login_"+_ip,20,900_000))return json(res,429,{error:"Muitas tentativas. Aguarde 15 minutos."});
     try{
       const d=JSON.parse(await readBody(req));
       const username=String(d.username||"").trim().toLowerCase();
       const senha=String(d.password||"");
       const u=getUser(username);
-      const ok=!!u&&!isAdminEmail(username)&&_verifyPw(senha,u.passwordSalt,u.passwordHash);
+      const ok=!!u&&!isAdminEmail(username)&&(await _verifyPw(senha,u.passwordSalt,u.passwordHash));
       if(!ok){await new Promise(r=>setTimeout(r,300));return json(res,403,{error:"Usuário ou senha inválidos."});}
       const sid="usr_"+crypto.randomBytes(16).toString("hex");
       sessions[sid]={user_email:username,user_name:u.name||username,created_at:Date.now()};
@@ -8833,9 +8902,19 @@ filtrar();
       if(!email)return json(res,400,{error:"email obrigatório"});
       if(novaSenha.length<4)return json(res,400,{error:"A senha precisa ter pelo menos 4 caracteres."});
       const tgt=getUser(email);if(!tgt)return json(res,404,{error:"Usuário não encontrado"});
-      const {salt,hash}=_hashPw(novaSenha);
+      const {salt,hash}=await _hashPw(novaSenha);
       setUser(email,{passwordSalt:salt,passwordHash:hash});
-      logAdminAction(s.user_email,"set_password",email,{tinhaSenha:!!tgt.passwordHash},{tinhaSenha:true},"Senha definida/redefinida pelo admin");
+      // 🚨 v172c-SEC (auditoria de segurança, 12/09/2026): trocar a senha
+      // (conta comprometida, esquecida, etc.) SEM derrubar as sessões
+      // antigas deixava quem já estava logado continuar logado pra sempre
+      // com a senha VELHA — o reset não protegia a conta de verdade contra
+      // quem já tinha uma sessão aberta antes da troca.
+      let _sessõesDerrubadas=0;
+      for(const sid of Object.keys(sessions)){
+        if(sessions[sid]?.user_email===email){delete sessions[sid];_sessõesDerrubadas++;}
+      }
+      if(_sessõesDerrubadas)persistSessionsDebounced(500);
+      logAdminAction(s.user_email,"set_password",email,{tinhaSenha:!!tgt.passwordHash},{tinhaSenha:true,sessõesDerrubadas:_sessõesDerrubadas},"Senha definida/redefinida pelo admin");
       console.log(`[admin] 🔑 ${s.user_email} definiu senha nova para ${email}`);
       return json(res,200,{ok:true});
     }catch(e){return json(res,500,{error:e.message});}
@@ -10162,7 +10241,7 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
     try{
       const s2=getSess(req);
       const d=JSON.parse(await readBody(req));
-      const ip=(req.headers["x-forwarded-for"]||"").split(",")[0].trim()||"unknown";
+      const ip=_clientIp(req);
       if(s2?.user_email){
         setUser(s2.user_email,{termsAccepted:{version:d.version||"2.0",ts:Date.now(),date:new Date().toISOString(),ip}});
         console.log("[terms] Aceite:",s2.user_email,d.version,ip);

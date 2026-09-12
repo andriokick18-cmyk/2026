@@ -287,7 +287,11 @@ async function testAuthWatchdogPush() {
   await testAuthWatchdogPush(); // unit puro, não precisa do servidor
   const srv = spawn(process.execPath, ["server.js"], {
     cwd: __dirname,
-    env: { ...process.env, PORT: String(PORT), DATA_DIR: DATA, STORAGE: "json", TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890", DOL_FEED_BASE: `http://127.0.0.1:${FEED_PORT}/feed`, H2A_BIM_MIN_PUBLICAR: "10" },
+    // 🚨 v172c-SEC: NUNCA testar com a senha de fábrica de produção (nem a
+    // antiga vazada, nem a nova) — o teste define a SUA PRÓPRIA senha via
+    // env, exatamente como uma instalação real deveria fazer (a env sempre
+    // vence o hash de fábrica embutido no código).
+    env: { ...process.env, PORT: String(PORT), DATA_DIR: DATA, STORAGE: "json", TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890", DOL_FEED_BASE: `http://127.0.0.1:${FEED_PORT}/feed`, H2A_BIM_MIN_PUBLICAR: "10", ADMIN_PANEL_PASS_ANDRIO: "teste-smoke-andrio-2026", ADMIN_PANEL_PASS_DIEGO: "teste-smoke-diego-2026" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let log = "";
@@ -661,9 +665,9 @@ async function testAuthWatchdogPush() {
     const alWrong = await req2("POST", "/api/admin-panel/login", { user: "andrio", password: "senhaerrada" });
     check("🔐 painel admin: senha errada → 403 (nunca revela qual campo errou)",
       alWrong.status === 403 && !!alWrong.json?.error, JSON.stringify(alWrong.json));
-    const alNoUser = await req2("POST", "/api/admin-panel/login", { user: "ninguem", password: "andrioapplyh2b" });
+    const alNoUser = await req2("POST", "/api/admin-panel/login", { user: "ninguem", password: "teste-smoke-andrio-2026" });
     check("🔐 painel admin: usuário inexistente → 403", alNoUser.status === 403, JSON.stringify(alNoUser.json));
-    const alAndrio = await req2("POST", "/api/admin-panel/login", { user: "andrio", password: "andrioapplyh2b" });
+    const alAndrio = await req2("POST", "/api/admin-panel/login", { user: "andrio", password: "teste-smoke-andrio-2026" });
     check("🔐 painel admin: senha certa do Andrio → 200, sessão criada mapeada pro ADMIN_EMAIL real",
       alAndrio.status === 200 && alAndrio.json?.ok === true && !!alAndrio.json?.email,
       JSON.stringify(alAndrio.json));
@@ -673,9 +677,23 @@ async function testAuthWatchdogPush() {
     // ADMIN_EMAIL_2 (Diego) não está configurado neste ambiente de teste —
     // login com a senha CERTA do Diego tem que falhar com erro CLARO (nunca
     // criar sessão com e-mail vazio, corromper o banco em silêncio).
-    const alDiego = await req2("POST", "/api/admin-panel/login", { user: "diego", password: "diegoapplyh2b" });
+    const alDiego = await req2("POST", "/api/admin-panel/login", { user: "diego", password: "teste-smoke-diego-2026" });
     check("🔐 painel admin: senha certa do Diego, mas ADMIN_EMAIL_2 não configurado neste ambiente → erro claro (nunca sessão com e-mail vazio)",
       alDiego.status === 500 && /ADMIN_EMAIL_2/.test(alDiego.json?.error || ""), JSON.stringify(alDiego.json));
+    // 🚨 v172c-SEC (auditoria de segurança, 12/09/2026 — CRÍTICO real): a
+    // senha de FÁBRICA original vazou em TEXTO PURO na própria mensagem do
+    // commit que a criou, num repositório PÚBLICO — qualquer um lendo o
+    // histórico tinha login de admin completo, sem quebrar hash nenhum.
+    // Trocada por uma senha aleatória de alta entropia cujo texto puro
+    // NUNCA foi escrito em nenhum arquivo deste repositório (entregue ao
+    // dono fora do git) — só o hash (scrypt, resistente a isso com entropia
+    // alta) é público. Este teste NÃO pode conhecer a senha nova de
+    // verdade (senão ela vazaria de novo, aqui mesmo); confirma só que o
+    // hash antigo VAZADO parou de funcionar e que o aviso de boot existe.
+    check("🚨 v172c-SEC: a senha de fábrica ANTIGA (vazada no histórico do git) não funciona mais",
+      (await req2("POST", "/api/admin-panel/login", { user: "andrio", password: "andrioapplyh2b" })).status === 403 &&
+      (await req2("POST", "/api/admin-panel/login", { user: "diego", password: "diegoapplyh2b" })).status === 403,
+      "senha de fábrica vazada ainda funciona — rotação do hash falhou");
     // Nenhum login de verdade aconteceu ainda neste ponto do arquivo (o
     // primeiro "login de teste cria sessão" vem mais abaixo) — os testes
     // seguintes (ex.: "sem sessão → bloqueado") esperam o jar de cookie
@@ -2183,6 +2201,33 @@ async function testAuthWatchdogPush() {
     check("🐛 v172c-FIX: e-mail de aviso de novo pedido ao admin não rotula mais o username como 'Email' (mostra login + Gmail conectado separados)",
       _srvSrc.includes("🪪 Usuário (login): ${pedido.userEmail") && _srvSrc.includes("📧 Gmail conectado: ${_realGmailForMail"),
       "aviso de novo pedido ainda rotula pedido.userEmail como Email — confunde o admin quando é um username");
+
+    // ═══ 🚨 Auditoria de segurança adversarial do login novo (v172b/v172c), ═══
+    // 12/09/2026 — achados CRÍTICOS/HIGH corrigidos:
+    check("🚨 v172c-SEC: boot avisa alto no log quando ADMIN_PANEL_PASS_ANDRIO/_DIEGO não estão definidas (mesmo padrão do DATA_ENC_KEY)",
+      _srvSrc.includes("[SEGURANÇA]") && _srvSrc.includes("está usando a senha de FÁBRICA"),
+      "aviso de boot da senha de fábrica não encontrado no server.js");
+    check("🚨 v172c-SEC: sanitizeUserForClient() nunca mais deixa passwordHash/passwordSalt vazar pro navegador",
+      _srvSrc.includes("password:undefined,refresh_token:undefined,cached_access_token:undefined,passwordHash:undefined,passwordSalt:undefined"),
+      "sanitizeUserForClient não redige passwordHash/passwordSalt — /api/debug/export e /api/admin/user-detail vazam credencial de todo mundo");
+    check("🚨 v172c-SEC: passwordHash/passwordSalt entram na mesma cifra em disco dos tokens OAuth (defesa extra contra vazamento de backup)",
+      _srvSrc.includes('USER_SECRET_FIELDS=["refresh_token","cached_access_token","passwordHash","passwordSalt"]'),
+      "USER_SECRET_FIELDS não inclui mais passwordHash/passwordSalt");
+    check("🚨 v172c-SEC: _hashPw/_verifyPw viraram assíncronos (scrypt no threadpool) — login/cadastro não trava mais o site inteiro pra todo mundo",
+      _srvSrc.includes("async function _hashPw(senha,saltHex)") && _srvSrc.includes("async function _verifyPw(senha,saltHex,hashHex)") && _srvSrc.includes("const _scryptAsync = util.promisify(crypto.scrypt);"),
+      "_hashPw/_verifyPw continuam síncronos — scryptSync ainda bloqueia o event loop único");
+    check("🚨 v172c-SEC: cadastro reconfere o username por baixo do hash assíncrono (nunca sobrescreve um cadastro concorrente em silêncio)",
+      _srvSrc.includes("if(getUser(username))return json(res,409,{error:\"Esse nome de usuário já existe. Escolha outro ou entre na sua conta.\"});\n      const nomeCompleto=(nome+\" \"+sobrenome).trim();"),
+      "reconferência pós-hash do username não encontrada — corrida de cadastro concorrente pode voltar");
+    check("🚨 v172c-SEC: rate-limit das rotas de login/cadastro usa o ÚLTIMO valor de X-Forwarded-For (o que o Render realmente viu), nunca o primeiro (forjável pelo cliente)",
+      _srvSrc.includes("function _clientIp(req)") &&
+      (_srvSrc.match(/const _ip=_clientIp\(req\);/g)||[]).length>=3 &&
+      _srvSrc.includes("const ip=_clientIp(req);") &&
+      !/x-forwarded-for["\]]*\)?\s*\|\|[^;]*\)\.split\(","\)\[0\]/.test(_srvSrc),
+      "extração de IP das rotas de auth não usa mais _clientIp — rate-limit de força-bruta pode continuar contornável");
+    check("🚨 v172c-SEC: /api/admin/set-password derruba todas as sessões antigas do usuário ao trocar a senha (senha velha para de valer na hora)",
+      _srvSrc.includes("_sessõesDerrubadas++"),
+      "set-password não derruba mais sessões antigas — reset de senha não protege contra sessão já aberta");
 
     // ═══ 🛡️ v73: AQUECIMENTO DE CONTA GMAIL NOVA (proteção anti-bloqueio) ═══
     // Pedido real do dono: "tem gente sendo bloqueada pelo Google". A defesa:
