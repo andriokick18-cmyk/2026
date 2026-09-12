@@ -86,7 +86,7 @@
 //    promessa de "direito de arrependimento de 7 dias" (removida também dos
 //    Termos — seção renumerada 1-12).
 //
-const CACHE_NAME = "h2bapply-2026-v19"; // v19: card "Meu Gmail (admin)" + trava de Gmail conectado corrigida pra também valer pro admin (v18 exemptava admin até do Gmail, não só do plano) + limpeza da arquitetura multi-servidor
+const CACHE_NAME = "h2bapply-2026-v20"; // v20: painel admin loga por usuário+senha (admin.html não é cacheado pelo SW — bump por convenção) + regras novas do automático do admin (5min/450 por e-mail/seleção aleatória)
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).

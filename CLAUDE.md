@@ -45,10 +45,17 @@ se referindo a outro repositório/projeto.
 
 ## Regras de produto (confirmadas com o dono — não reverter sem ordem nova)
 
-- **Administrador não tem senha.** Só é admin quem entra com o e-mail
-  cadastrado em `ADMIN_EMAIL`/`ADMIN_EMAIL_2` via login Google — a rota já
-  exige sessão de admin antes de qualquer ação sensível. Não reintroduzir
-  nenhuma senha adicional de admin/editor.
+- **Login do site continua sem senha.** Usuário comum e o Gmail que o
+  admin conecta pra ENVIAR continuam 100% Google (login normal nunca pede
+  gmail.send — só `/oauth/connect-send`, com plano pago ativo).
+  **v172b (dono, 12/09/2026): o PAINEL admin (`/admin`) passou a logar por
+  usuário+senha** — só 2 logins existem (`ADMIN_PANEL_LOGINS` em
+  server.js: andrio/diego), senha em scrypt (nunca texto puro no código;
+  `ADMIN_PANEL_PASS_ANDRIO`/`_DIEGO` no `.env` sobrescrevem sem mexer no
+  código). A sessão criada mapeia pro `ADMIN_EMAIL`/`ADMIN_EMAIL_2` real —
+  toda a lógica `isAdminVip`/`isAdminEmail` já existente continua intocada
+  e vale igual, venha a sessão de onde vier (senha do painel OU login
+  Google normal como um desses e-mails).
 - **Compra direta de plano, preço sempre do servidor.** `GET /api/planos`
   é a fonte única de preço/limites; `POST /api/pedido` recalcula o valor
   oficial no servidor e NUNCA confia num `valorTotal` vindo do cliente.

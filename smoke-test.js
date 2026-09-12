@@ -585,6 +585,36 @@ async function testAuthWatchdogPush() {
     check("🧱 admin.html: as 3 views reais existem (overview/usuarios/pendentes)",
       admNoScript.includes('id="view-overview"') && admNoScript.includes('id="view-usuarios"') && admNoScript.includes('id="view-pendentes"'));
 
+    // ═══ 🔐 ordem do dono, 12/09/2026: painel admin loga por usuário+senha
+    // (só Andrio e Diego) — nada de Google nesta porta específica. ═══
+    check("🔐 admin.html: gate-login virou usuário+senha (sem botão Google)",
+      admPage.body.includes('id="gl-user"') && admPage.body.includes('id="gl-pass"') &&
+      admPage.body.includes("fazerLoginPainel") && !admPage.body.includes("oauth/start"),
+      "form usuário/senha não encontrado no gate-login do admin.html");
+    const alWrong = await req2("POST", "/api/admin-panel/login", { user: "andrio", password: "senhaerrada" });
+    check("🔐 painel admin: senha errada → 403 (nunca revela qual campo errou)",
+      alWrong.status === 403 && !!alWrong.json?.error, JSON.stringify(alWrong.json));
+    const alNoUser = await req2("POST", "/api/admin-panel/login", { user: "ninguem", password: "andrioapplyh2b" });
+    check("🔐 painel admin: usuário inexistente → 403", alNoUser.status === 403, JSON.stringify(alNoUser.json));
+    const alAndrio = await req2("POST", "/api/admin-panel/login", { user: "andrio", password: "andrioapplyh2b" });
+    check("🔐 painel admin: senha certa do Andrio → 200, sessão criada mapeada pro ADMIN_EMAIL real",
+      alAndrio.status === 200 && alAndrio.json?.ok === true && !!alAndrio.json?.email,
+      JSON.stringify(alAndrio.json));
+    const stAndrio = await get("/api/status");
+    check("🔐 painel admin: sessão do login por senha É reconhecida como admin de verdade (isAdminVip/isAdminEmail, mesma trilha de sempre)",
+      stAndrio.json?.connected === true && stAndrio.json?.isAdmin === true, JSON.stringify({ isAdmin: stAndrio.json?.isAdmin }));
+    // ADMIN_EMAIL_2 (Diego) não está configurado neste ambiente de teste —
+    // login com a senha CERTA do Diego tem que falhar com erro CLARO (nunca
+    // criar sessão com e-mail vazio, corromper o banco em silêncio).
+    const alDiego = await req2("POST", "/api/admin-panel/login", { user: "diego", password: "diegoapplyh2b" });
+    check("🔐 painel admin: senha certa do Diego, mas ADMIN_EMAIL_2 não configurado neste ambiente → erro claro (nunca sessão com e-mail vazio)",
+      alDiego.status === 500 && /ADMIN_EMAIL_2/.test(alDiego.json?.error || ""), JSON.stringify(alDiego.json));
+    // Nenhum login de verdade aconteceu ainda neste ponto do arquivo (o
+    // primeiro "login de teste cria sessão" vem mais abaixo) — os testes
+    // seguintes (ex.: "sem sessão → bloqueado") esperam o jar de cookie
+    // VAZIO, não a sessão do Andrio que acabamos de abrir aqui em cima.
+    COOKIE = "";
+
     // v53: GUARDA DE FUNÇÃO-FANTASMA — bug real (25/07, achado por Playwright
     // na varredura pré-deploy): switchProfileTab chamava renderProfileList(),
     // renomeada num refactor antigo — todo clique na sub-aba Perfis estourava
@@ -2038,7 +2068,59 @@ async function testAuthWatchdogPush() {
     // Pedido real do dono: "tem gente sendo bloqueada pelo Google". A defesa:
     // conta recém-conectada manda pouco nos primeiros dias, ganha volume aos
     // poucos — e uma conta suspensa isolada não trava as outras contas saudáveis.
-    const { warmupCapForSender: _warmupFn, daysSince: _daysSinceFn } = require("./mod-engine-core.js");
+    const { warmupCapForSender: _warmupFn, daysSince: _daysSinceFn, createCalcSmartInterval } = require("./mod-engine-core.js");
+
+    // ═══ 🎯 ordem do dono, 12/09/2026: automático do ADMIN — 5min por
+    // e-mail (padrão, sem customizar nada), dividido pelo nº de e-mails
+    // conectados ativos (pra que CADA e-mail individual continue ~5min). ═══
+    const _mkCalc = (fakeUsers) => createCalcSmartInterval({
+      getUser: (email) => fakeUsers[email], isAdminVip: (u) => !!u?._admin,
+    });
+    const _calcAdm1 = _mkCalc({ "adm1@test.com": { email: "adm1@test.com", _admin: true, senderEmails: [] } });
+    const _ivAdm1 = _calcAdm1("adm1@test.com");
+    check("🎯 admin SEM customizar intervalo, 1 e-mail conectado → ~5min (255-345s com jitter ±15%)",
+      _ivAdm1 >= 255_000 && _ivAdm1 <= 345_000, `iv=${Math.round(_ivAdm1 / 1000)}s`);
+    const _calcAdm2 = _mkCalc({ "adm2@test.com": { email: "adm2@test.com", _admin: true, senderEmails: [{ email: "extra@x.com", active: true }] } });
+    const _ivAdm2 = _calcAdm2("adm2@test.com");
+    check("🎯 admin com 2 e-mails conectados (principal+extra) → intervalo GERAL cai pela metade (~2,5min) pra cada e-mail continuar ~5min",
+      _ivAdm2 >= 127_000 && _ivAdm2 <= 173_000, `iv=${Math.round(_ivAdm2 / 1000)}s`);
+    const _calcAdmCustom = _mkCalc({ "adm3@test.com": { email: "adm3@test.com", _admin: true, adminSettings: { intervalSecs: 600 }, senderEmails: [] } });
+    const _ivAdmCustom = _calcAdmCustom("adm3@test.com");
+    check("🎯 admin com intervalo customizado (10min) continua respeitando o valor configurado",
+      _ivAdmCustom >= 510_000 && _ivAdmCustom <= 690_000, `iv=${Math.round(_ivAdmCustom / 1000)}s`);
+    const _calcComum = _mkCalc({ "comum@test.com": { email: "comum@test.com", senderEmails: [] } });
+    const _ivComum = _calcComum("comum@test.com");
+    check("🎯 usuário comum NÃO muda — continua 6,5-7,5min (regra v118 intacta, só o admin ganhou padrão novo)",
+      _ivComum >= 6.5 * 60_000 && _ivComum <= 7.5 * 60_000, `iv=${Math.round(_ivComum / 1000)}s`);
+
+    // ═══ 🎯 limite diário REAL do automático do admin: 450/dia POR e-mail
+    // conectado (era 9999 pra conta inteira, nunca pausava nada de verdade) ═══
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "admauto@test.com", name: "Admin Auto", isAdmin: true });
+    const asAdm1 = await get("/api/auto/status");
+    check("🎯 admin com 1 e-mail (só o principal) → autoLimit = 450 (padrão por sender)",
+      asAdm1.json?.autoLimit === 450, `autoLimit=${asAdm1.json?.autoLimit}`);
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "admauto@test.com", senderEmails: [{ email: "extra1auto@test.com", active: true }] });
+    const asAdm2 = await get("/api/auto/status");
+    check("🎯 admin com 2 e-mails (principal+extra ativo) → autoLimit = 900 (450×2, nunca um total único pra conta)",
+      asAdm2.json?.autoLimit === 900, `autoLimit=${asAdm2.json?.autoLimit}`);
+    await req2("POST", "/api/admin/my-settings", { senderLimits: { "admauto@test.com": 100 } });
+    const asAdm3 = await get("/api/auto/status");
+    check("🎯 senderLimits customizado (antes campo morto) agora É respeitado por e-mail — principal com teto 100 + extra no padrão 450 = 550",
+      asAdm3.json?.autoLimit === 550, `autoLimit=${asAdm3.json?.autoLimit}`);
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "admauto@test.com", senderEmails: [{ email: "extra1auto@test.com", active: true, blocked: true }] });
+    const asAdm4 = await get("/api/auto/status");
+    check("🎯 e-mail extra BLOQUEADO não conta no total (só o principal com teto customizado: 100)",
+      asAdm4.json?.autoLimit === 100, `autoLimit=${asAdm4.json?.autoLimit}`);
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true }); // restaura sessão de teste padrão
+    check("🎯 (estrutural) getAutoLimit(admin) soma 450/sender — nunca mais retorna 9999 fixo pra conta inteira",
+      _srvSrc.includes("perSenderAutoLimit(u,s.email)") && !_srvSrc.includes("// Admin: respeita senderLimits se configurado, senão 9999"),
+      "cálculo por sender não encontrado em getAutoLimit");
+    check("🎯 (estrutural) o teto de 450/dia por sender TAMBÉM pausa o robô do admin (waiting_limit) — antes só usuário comum pausava",
+      !_srvSrc.includes("if(!isAdminVip(p) && todayAuto>=autoLimit)") && !_srvSrc.includes("if(!isAdminVip(p)&&todayAuto>=autoLimit)return json(res,429"),
+      "gate de limite diário ainda isenta admin em algum lugar");
+    check("🎯 (estrutural) seleção de remetente do automático do ADMIN é ALEATÓRIA (nunca round-robin determinístico só pra ele) — usuário comum continua round-robin",
+      _srvSrc.includes("if (isAdminVip(p)) {") && /Math\.random\(\) \* \(i \+ 1\)/.test(_srvSrc) && _srvSrc.includes("pool.sort((a, b) => (countBySender[a.email]"),
+      "embaralhamento aleatório do pool de senders do admin não encontrado");
     check("🌱 aquecimento: conta de HOJE (dia 0) tem teto de 15/dia", _warmupFn(new Date().toISOString()) === 15, `cap=${_warmupFn(new Date().toISOString())}`);
     check("🌱 aquecimento: conta de 4 dias tem teto de 40/dia", _warmupFn(Date.now() - 4 * 86400_000) === 40, `cap=${_warmupFn(Date.now() - 4 * 86400_000)}`);
     check("🌱 aquecimento: conta de 10 dias tem teto de 100/dia", _warmupFn(Date.now() - 10 * 86400_000) === 100, `cap=${_warmupFn(Date.now() - 10 * 86400_000)}`);

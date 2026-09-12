@@ -10,6 +10,11 @@
 const MAX_SENDER_EMAILS_FREE   = 1; // free: apenas o email principal (0 extras)
 const MAX_SENDER_EMAILS_VIP    = 2; // pagantes: email principal + 1 extra = 2 total
 const MAX_SENDER_EMAILS_ADMIN  = 6; // admins: email principal + 5 extras = 6 total
+// 🎯 ordem do dono, 12/09/2026: automático do admin ganhou um teto DE
+// VERDADE (era 9999 = sem teto nenhum) — 450 envios/dia POR e-mail
+// conectado (principal ou extra), não um total único pra conta inteira.
+// Customizável por e-mail via adminSettings.senderLimits (getAutoLimit).
+const ADMIN_AUTO_DAILY_LIMIT_PER_SENDER = 450;
 const MAX_RESUMES              = 10; // 11/07: 10 PDFs de currículo por conta (perfil único, 07/2026); 3 travava usuário real com uploads órfãos de tentativas falhas
 const MAX_COVERS               = 10;
 
@@ -61,6 +66,7 @@ const PLAN_LIMITS = {
 
 module.exports = {
   MAX_SENDER_EMAILS_FREE, MAX_SENDER_EMAILS_VIP, MAX_SENDER_EMAILS_ADMIN,
+  ADMIN_AUTO_DAILY_LIMIT_PER_SENDER,
   MAX_RESUMES, MAX_COVERS,
   ADMIN_EMAIL, ADMIN_EMAIL_2, ADMIN_EMAILS_EXTRA, ADMIN_EMAILS, isAdminEmail,
   VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT, PUSH_ENABLED,

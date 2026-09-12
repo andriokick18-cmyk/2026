@@ -163,10 +163,30 @@ function _oauthBase(req){
 }
 // ── Fase 1 · Módulo 1: configuração extraída para src/config.js ──────────
 const { MAX_SENDER_EMAILS_FREE, MAX_SENDER_EMAILS_VIP, MAX_SENDER_EMAILS_ADMIN,
+        ADMIN_AUTO_DAILY_LIMIT_PER_SENDER,
         MAX_RESUMES, MAX_COVERS,
         ADMIN_EMAIL, ADMIN_EMAIL_2, ADMIN_EMAILS_EXTRA, ADMIN_EMAILS, isAdminEmail,
         VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT, PUSH_ENABLED,
         PLAN_LIMITS, PLAN_LIMITS_NEW } = require("./mod-config.js");
+// 🔐 LOGIN DO PAINEL ADMIN (ordem do dono, 12/09/2026): só Andrio e Diego,
+// por usuário+senha — nada de Google nessa porta específica. Senha NUNCA
+// em texto puro aqui: scrypt (memory-hard) com salt próprio. Trocar a
+// senha depois não precisa mexer no código — defina ADMIN_PANEL_PASS_ANDRIO
+// ou ADMIN_PANEL_PASS_DIEGO (texto puro, só no .env, nunca commitado) que
+// o boot recalcula o hash sozinho; sem a env, usa o hash de fábrica abaixo.
+const ADMIN_PANEL_LOGINS = [
+  { user:"andrio", nome:"Andrio", email:ADMIN_EMAIL,
+    salt:"ba70f72df47cfd070508e8d68fda9698",
+    hash:"e1dfd75cc4b0fd1eeedf077f56576e1ed1439b8b7cb18ffbd0f6578b62189b13245e6a73271fcaff061d20e055116e1e5d1bb26e11cfaedd119b50feac0ad3d3" },
+  { user:"diego", nome:"Diego", email:ADMIN_EMAIL_2,
+    salt:"dd3b89ca28ecc4e83773c08d014ad278",
+    hash:"415a2262238d05d7367b8982fd41182db1622dcc491b0274e9f78b9e0aab70f85c3452d049cf095686a9704858d80785aa1a7eede265609d0654394a5528ec97" },
+].map(l=>{
+  const envKey="ADMIN_PANEL_PASS_"+l.user.toUpperCase();
+  if(!process.env[envKey])return l;
+  const salt=crypto.randomBytes(16).toString("hex");
+  return {...l,salt,hash:crypto.scryptSync(process.env[envKey],salt,64).toString("hex")};
+});
 // getMaxSenders retorna o TOTAL de emails (principal + extras)
 const getMaxSenders = (u) => {
   if(u?.isAdmin || isAdminEmail(u?.email||"")) return MAX_SENDER_EMAILS_ADMIN;
@@ -2336,11 +2356,24 @@ const getManualLimit = u => {
 };
 const getAutoLimit   = u => {
   if (isAdminVip(u)) {
-    // Admin: respeita senderLimits se configurado, senão 9999
-    return 9999;
+    // 🎯 ordem do dono, 12/09/2026: 450/dia por CADA e-mail conectado
+    // (principal + extras ativos), não mais um total fixo de 9999 (que
+    // na prática nunca pausava nada). Soma os tetos por sender — o
+    // enforcement de verdade (nenhum sender isolado passa do próprio
+    // teto) mora em getSenderToken; isto aqui é só o total agregado
+    // pras telas/gates que comparam "enviei hoje >= limite".
+    const senders=[{email:u.email},...(u.senderEmails||[]).filter(s=>!s.blocked&&!s.tokenExpired)];
+    return senders.reduce((sum,s)=>sum+perSenderAutoLimit(u,s.email),0);
   }
   if (u?.vip?.limits && typeof u.vip.limits.auto==="number" && isAutoVipActive(u)) return u.vip.limits.auto ?? PLAN_LIMITS.free.auto;
   return PLAN_LIMITS[getPlan(u)]?.auto ?? 0;
+};
+// Teto diário de automático de UM sender específico do admin — usa o
+// customizado em adminSettings.senderLimits[email] se existir (>0),
+// senão o padrão ADMIN_AUTO_DAILY_LIMIT_PER_SENDER (450).
+const perSenderAutoLimit = (u,senderEmail) => {
+  const custom=u?.adminSettings?.senderLimits?.[String(senderEmail||"").toLowerCase().trim()];
+  return (Number.isFinite(custom)&&custom>0) ? custom : ADMIN_AUTO_DAILY_LIMIT_PER_SENDER;
 };
 
 // Adiciona dias de manual VIP ao stack
@@ -3787,12 +3820,13 @@ function scheduleAuto(email) {
   // (Sem hard-stop por VIP — só o limite diário regula.)
 
   // Limite: usa o atual do plano (não o lockedAutoLimit) para que expiração surta efeito
-  const autoLimit = isAdminVip(p) ? 9999 : getAutoLimit(p);
-  // Admin pode ter limite diário por sender customizado
-  const adminSenderLimits = (isAdminVip(p) && p.adminSettings?.senderLimits) ? p.adminSettings.senderLimits : null;
+  const autoLimit = getAutoLimit(p);
   const todayAuto=countAutoToday(getHist(email));
 
-  if(!isAdminVip(p) && todayAuto>=autoLimit){
+  // 🎯 ordem do dono, 12/09/2026: admin TAMBÉM pausa ao bater o teto —
+  // getAutoLimit(p) já soma 450/dia por sender conectado (perSenderAutoLimit),
+  // então o teto agora é REAL (antes 9999 nunca pausava nada de propósito).
+  if(todayAuto>=autoLimit){
     const next = nextMidnightBRT();
     const delay = Math.max(60_000, Math.min(next - Date.now(), 24*60*60*1000)); // entre 1min e 24h
     setAutoJob(email,{...job,status:"waiting_limit",nextSendAt:next.getTime()});
@@ -5348,8 +5382,23 @@ async function getSenderToken(ownerEmail, requestedSender, allowedSenders) {
     if (withinWarmup.length) pool = withinWarmup;
     // else: mantém o pool inteiro (nenhuma conta some da fila por aquecimento)
 
-    // Ordena por menor contagem hoje → alterna naturalmente 1,2,1,2...
-    pool.sort((a, b) => (countBySender[a.email] || 0) - (countBySender[b.email] || 0));
+    // 🎯 ordem do dono, 12/09/2026: automático do ADMIN escolhe o remetente
+    // ALEATORIAMENTE entre os elegíveis (nunca o round-robin determinístico
+    // de sempre — só pra admin; usuário comum, no máx 2 e-mails, continua
+    // no round-robin de menor contagem, inalterado). Prefere quem ainda
+    // está dentro do próprio teto de 450/dia (perSenderAutoLimit) — mesma
+    // filosofia do aquecimento: nunca esvazia o pool, só prefere.
+    if (isAdminVip(p)) {
+      const withinDaily = pool.filter(c => (countBySender[c.email] || 0) < perSenderAutoLimit(p, c.email));
+      if (withinDaily.length) pool = withinDaily;
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+    } else {
+      // Ordena por menor contagem hoje → alterna naturalmente 1,2,1,2...
+      pool.sort((a, b) => (countBySender[a.email] || 0) - (countBySender[b.email] || 0));
+    }
 
     for (const candidate of pool) {
       if (candidate.isPrincipal) {
@@ -7423,6 +7472,38 @@ filtrar();
     });
   }
   // calcStreak e last7Days agora estão no escopo global (definidas acima do server.listen)
+
+  // ── 🔐 LOGIN DO PAINEL ADMIN (ordem do dono, 12/09/2026): o painel admin
+  // (/admin) passa a ter entrada própria por usuário+senha — só Andrio e
+  // Diego, nada de Google aqui. Login normal do site (usuário comum) e o
+  // Gmail que o admin conecta pra ENVIAR (/oauth/connect-send) continuam
+  // 100% Google, sem mudança nenhuma — isto é SÓ a porta do painel.
+  // Senha nunca fica em texto puro no código: scrypt (memory-hard) com
+  // salt próprio por login; ADMIN_PANEL_PASS_ANDRIO/_DIEGO (env, opcional)
+  // permitem trocar a senha sem mexer no código — sem env, usa o hash
+  // embutido de fábrica.
+  if(pathname==="/api/admin-panel/login"&&req.method==="POST"){
+    const _ip=(req.headers["x-forwarded-for"]||req.socket?.remoteAddress||"anon").split(",")[0].trim();
+    if(rateLimit("adminpanel_"+_ip,10,900_000))return json(res,429,{error:"Muitas tentativas. Aguarde 15 minutos."});
+    try{
+      const d=JSON.parse(await readBody(req));
+      const user=String(d.user||"").trim().toLowerCase();
+      const senha=String(d.password||"");
+      const login=ADMIN_PANEL_LOGINS.find(l=>l.user===user);
+      const ok=login&&senha&&crypto.timingSafeEqual(
+        crypto.scryptSync(senha,login.salt,64),
+        Buffer.from(login.hash,"hex"));
+      if(!ok){await new Promise(r=>setTimeout(r,300));return json(res,403,{error:"Usuário ou senha inválidos."});}
+      if(!login.email)return json(res,500,{error:`Senha certa, mas ${login.nome} não tem e-mail configurado no ambiente (ADMIN_EMAIL${login.user==="diego"?"_2":""}). Configure e reinicie o servidor.`});
+      if(!getUser(login.email))setUser(login.email,{email:login.email,name:login.nome,created_at:new Date().toISOString(),plan:"free",vip:null,cvs:[],profiles:[],saved:[],onboarded:true,isAdmin:true});
+      const sid="adm_"+crypto.randomBytes(16).toString("hex");
+      sessions[sid]={user_email:login.email,user_name:login.nome,created_at:Date.now()};
+      persistSessionsDebounced(500);
+      console.log(`[admin-panel] 🔐 Login por senha: ${login.user} (${login.email})`);
+      res.writeHead(200,{"Content-Type":"application/json","Set-Cookie":makeCookieStr(sid)});
+      return res.end(JSON.stringify({ok:true,email:login.email}));
+    }catch(e){return json(res,500,{error:e.message});}
+  }
 
   // ── OAuth ─────────────────────────────────────────────
   if(pathname==="/oauth/start"){if(rateLimit((req.headers["x-forwarded-for"]||"anon")+"_oauth",30,900_000)){res.writeHead(302,{Location:"/?err="+encodeURIComponent("Muitas tentativas de login. Aguarde 15 minutos e tente novamente.")});return res.end();}if(!CONFIGURED){res.writeHead(302,{Location:"/?err="+encodeURIComponent("Configure GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET.")});return res.end();}const st=crypto.randomBytes(20).toString("hex");
@@ -10751,7 +10832,10 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
     // free não manda mais nada) — merece mensagem própria, "atingiu 0/dia"
     // confundiria quem nunca teve chance de mandar nenhum.
     if(!isAdminVip(p)&&autoLimit<=0)return json(res,402,{error:"Você precisa de um plano com envio automático (VIPro ou DoublePro) pra usar o robô.",needsPlan:true});
-    if(!isAdminVip(p)&&todayAuto>=autoLimit)return json(res,429,{error:`Limite de ${autoLimit} automáticos/dia atingido.`,limitReached:true});
+    // 🎯 ordem do dono, 12/09/2026: o teto do admin (450/dia por e-mail
+    // conectado, somado em getAutoLimit) agora é REAL e vale pra ele
+    // também — só a trava de PLANO (linha acima) continua isentando admin.
+    if(todayAuto>=autoLimit)return json(res,429,{error:`Limite de ${autoLimit} automáticos/dia atingido.`,limitReached:true});
     // 🔒 v172: mesma régua do /api/send — admin pula PLANO, nunca Gmail conectado.
     if(!p.refresh_token)return json(res,403,{error:"Conecte seu Gmail antes de ligar o envio automático.",needsGmailConnect:true});
     try{
@@ -10992,7 +11076,7 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
         if (!jobSenders.length) jobSenders = null;
       }
       // mode removido — sempre 24/7
-const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,filteredCount:queue.length,profileId:jobProfileId,resumeIdx:jobResumeIdx,coverIdx:jobCoverIdx,bodyTemplate:d.bodyTemplate||p.settings?.body||"",subjects:Array.isArray(d.subjects)&&d.subjects.length?d.subjects:null,emailBodies:Array.isArray(d.emailBodies)&&d.emailBodies.length?d.emailBodies:null,status:"starting",lastSentAt:null,finishedAt:null,source:d.source||"manual",category:d.category||"all",filters:d.filters||{},queueFingerprint,rotState:{lastSubjIdx:-1,lastBodyIdx:-1},senders:jobSenders,lockedAutoLimit:isAdminVip(p)?9999:getAutoLimit(p)};
+const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,filteredCount:queue.length,profileId:jobProfileId,resumeIdx:jobResumeIdx,coverIdx:jobCoverIdx,bodyTemplate:d.bodyTemplate||p.settings?.body||"",subjects:Array.isArray(d.subjects)&&d.subjects.length?d.subjects:null,emailBodies:Array.isArray(d.emailBodies)&&d.emailBodies.length?d.emailBodies:null,status:"starting",lastSentAt:null,finishedAt:null,source:d.source||"manual",category:d.category||"all",filters:d.filters||{},queueFingerprint,rotState:{lastSubjIdx:-1,lastBodyIdx:-1},senders:jobSenders,lockedAutoLimit:getAutoLimit(p)};
       setAutoJob(s.user_email,job);
       autoStats.set(s.user_email,{sent:0,failed:0,skipped:0,startedAt:Date.now()});
       addLog(s.user_email,{status:"sistema",jobTitle:`Envio automático iniciado: ${queue.length} vagas${skippedAlreadySent>0?` (${skippedAlreadySent} já enviadas foram puladas)`:""}`,company:`Fonte: ${d.source||"manual"} | Categoria: ${d.category||"all"}`,source:d.source||"manual",category:d.category||"all"});
@@ -13460,7 +13544,7 @@ server.listen(PORT,"0.0.0.0",()=>{
     for(const [em,j] of Object.entries(DB_AUTO)){
       if(!j?.active||j.status!=="waiting_limit")continue;
       const p=getUser(em)||{};
-      const abaixo=countAutoToday(getHist(em))<(isAdminVip(p)?9999:getAutoLimit(p));
+      const abaixo=countAutoToday(getHist(em))<(getAutoLimit(p));
       if(!autoTimers.has(em)||abaixo){
         if(autoTimers.has(em)){clearTimeout(autoTimers.get(em));autoTimers.delete(em);}
         console.log(`[auto] ⏰ sweep: ${em} em waiting_limit ${abaixo?"já ABAIXO do limite atual":"com timer morto"} — reagendado agora`);

@@ -15,42 +15,47 @@
 // deps: { getUser, isAdminVip } — admins podem ter intervalo custom (min 30s)
 function createCalcSmartInterval({ getUser, isAdminVip }){
   return function calcSmartInterval(email) {
-    // Verificar configuração personalizada do admin
-    if (email) {
-      const u = getUser(email);
-      if (u && isAdminVip(u) && u.adminSettings?.intervalSecs) {
-        const secs = Math.max(30, parseInt(u.adminSettings.intervalSecs) || 180);
-        const jitter = secs * 0.15; // ±15% de variação
-        return (secs + (Math.random() * 2 - 1) * jitter) * 1000;
-      }
-    }
-    // v118 (ORDEM DO DONO, 02/08): ritmo do automático subiu pra ~7min por
-    // envio — gente demais batendo nas mesmas empresas. Vale pra TODOS
-    // (proteção do sistema, não é limite de plano). Admin segue custom.
-    const MIN_MS = 6.5 * 60 * 1000; // 6,5 minutos
-    const MAX_MS = 7.5 * 60 * 1000; // 7,5 minutos (média 7)
-    const base = MIN_MS + Math.random() * (MAX_MS - MIN_MS);
+    const u = email ? getUser(email) : null;
 
-    // ── Múltiplas contas Gmail conectadas (recurso pago "2 Gmails") ─────────
-    // O round-robin (getSenderToken, em server.js) já alterna os envios entre
-    // a conta principal e as extras, sempre escolhendo quem enviou MENOS hoje
-    // — então, na prática, cada CONTA individual continua recebendo o mesmo
-    // espaçamento humanizado de 5-6min entre as SUAS próprias mensagens (o
-    // que é o que protege contra bloqueio/spam do Gmail). Só que com 2 contas
-    // se revezando, o ritmo GERAL do usuário fica mais rápido, sem aumentar
-    // o risco por conta — exatamente o que a 2ª conta deveria comprar.
-    // Sem este ajuste, o intervalo era fixo por USUÁRIO (não por conta): o
-    // plano DoublePro prometia "400 automático/dia · 2 Gmails = máximo
-    // poder", mas o motor só conseguia ~260/dia mesmo com 2 contas Gmail
-    // conectadas — a 2ª conta não acelerava nada na prática. Dividindo o
-    // intervalo pelo nº de contas ativas corrige esse descompasso.
+    // ── Múltiplas contas Gmail conectadas (recurso pago "2 Gmails", e o
+    // próprio admin) ──────────────────────────────────────────────────────
+    // O round-robin/seleção (getSenderToken, em server.js) já alterna os
+    // envios entre a conta principal e as extras — então, na prática, cada
+    // CONTA individual continua recebendo o mesmo espaçamento humanizado
+    // entre as SUAS próprias mensagens (o que protege contra bloqueio/spam
+    // do Gmail), enquanto o ritmo GERAL do usuário fica mais rápido com
+    // mais contas, sem aumentar o risco por conta — exatamente o que uma
+    // 2ª conta deveria comprar. Sem este ajuste, o intervalo era fixo por
+    // USUÁRIO (não por conta): o plano DoublePro prometia "400 automático/
+    // dia · 2 Gmails = máximo poder", mas o motor só conseguia ~260/dia
+    // mesmo com 2 contas conectadas — a 2ª conta não acelerava nada na
+    // prática. Dividindo o intervalo pelo nº de contas ativas corrige isso.
     let activeSenders = 1;
-    if (email) {
-      const u = getUser(email);
+    if (u) {
       const extras = Array.isArray(u?.senderEmails) ? u.senderEmails : [];
       activeSenders += extras.filter(s => s && s.active !== false && !s.tokenExpired && !s.blocked).length;
     }
-    activeSenders = Math.min(3, Math.max(1, activeSenders)); // trava defensiva
+    activeSenders = Math.min(6, Math.max(1, activeSenders)); // admin pode ter até 6 (principal + 5 extras)
+
+    // Verificar configuração personalizada do admin — ordem do dono,
+    // 12/09/2026: PADRÃO do admin (sem customizar nada) virou 5min POR
+    // e-mail conectado (antes caía no ritmo de usuário comum, 6,5-7,5min).
+    // A divisão por activeSenders vale AQUI TAMBÉM (antes só valia no ramo
+    // padrão abaixo) — com 2 e-mails, o ritmo GERAL vira ~2,5min pra que
+    // CADA e-mail individual continue sendo usado a cada ~5min.
+    if (u && isAdminVip(u)) {
+      const secs = Math.max(30, parseInt(u.adminSettings?.intervalSecs) || 300);
+      const jitter = secs * 0.15; // ±15% de variação
+      const base = (secs + (Math.random() * 2 - 1) * jitter) * 1000;
+      return base / activeSenders;
+    }
+
+    // v118 (ORDEM DO DONO, 02/08): ritmo do automático subiu pra ~7min por
+    // envio — gente demais batendo nas mesmas empresas. Vale pra TODOS
+    // (proteção do sistema, não é limite de plano). Admin segue custom (acima).
+    const MIN_MS = 6.5 * 60 * 1000; // 6,5 minutos
+    const MAX_MS = 7.5 * 60 * 1000; // 7,5 minutos (média 7)
+    const base = MIN_MS + Math.random() * (MAX_MS - MIN_MS);
     return base / activeSenders;
   };
 }

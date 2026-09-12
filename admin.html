@@ -210,8 +210,17 @@ tbody tr:hover{background:var(--glass2)}
   <div class="gate-card">
     <div class="gate-badge"><i class="ti ti-shield-lock"></i></div>
     <div class="gate-title">Painel Administrativo</div>
-    <div class="gate-text">Entre com a conta Google de administrador para acessar o painel de contabilidade do H2BApply.</div>
-    <button class="gbtn" onclick="location.href='/oauth/start'"><i class="ti ti-brand-google"></i> Entrar com Google</button>
+    <div class="gate-text">Entre com o usuário e a senha do painel para acessar a contabilidade do H2BApply.</div>
+    <form id="gate-login-form" onsubmit="return fazerLoginPainel(event)" style="text-align:left">
+      <label style="display:block;font-size:12px;font-weight:700;color:var(--t2);margin-bottom:6px">Usuário</label>
+      <input id="gl-user" name="username" type="text" autocomplete="username" required
+        style="width:100%;padding:11px 13px;border-radius:9px;border:1px solid var(--border2);background:var(--glass);color:var(--text);font-size:14.5px;margin-bottom:14px">
+      <label style="display:block;font-size:12px;font-weight:700;color:var(--t2);margin-bottom:6px">Senha</label>
+      <input id="gl-pass" name="password" type="password" autocomplete="current-password" required
+        style="width:100%;padding:11px 13px;border-radius:9px;border:1px solid var(--border2);background:var(--glass);color:var(--text);font-size:14.5px;margin-bottom:16px">
+      <div id="gl-err" style="display:none;font-size:12.5px;color:var(--red);margin-bottom:14px"></div>
+      <button type="submit" id="gl-submit" class="gbtn"><i class="ti ti-lock-open"></i> Entrar</button>
+    </form>
   </div>
 </div>
 
@@ -544,6 +553,26 @@ async function api(path,opts){
 }
 
 /* ═══════════════════ GATE / BOOT ═══════════════════ */
+
+// 🔐 ordem do dono, 12/09/2026: painel admin passou a logar por usuário
+// e senha (só Andrio e Diego) — nada de Google nesta porta específica.
+async function fazerLoginPainel(ev){
+  if(ev&&ev.preventDefault)ev.preventDefault();
+  var btn=document.getElementById("gl-submit"),err=document.getElementById("gl-err");
+  var user=document.getElementById("gl-user").value.trim();
+  var pass=document.getElementById("gl-pass").value;
+  err.style.display="none";
+  btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2"></i> Entrando…';
+  try{
+    await api("/api/admin-panel/login",{method:"POST",body:{user:user,password:pass}});
+    location.reload();
+  }catch(e){
+    err.textContent=(e&&e.message)||"Usuário ou senha inválidos.";
+    err.style.display="block";
+    btn.disabled=false;btn.innerHTML='<i class="ti ti-lock-open"></i> Entrar';
+  }
+  return false;
+}
 
 function mostrarTela(id){
   ["gate-login","gate-denied","gate-error","app"].forEach(function(k){
