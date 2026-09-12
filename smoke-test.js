@@ -368,6 +368,34 @@ async function testAuthWatchdogPush() {
     const _cadDup = await req2("POST", "/api/cadastro", { username: "novo_user_v172c", password: "99999999", nome: "Outro", sobrenome: "Nome" });
     check("🔐 v172c: cadastro com username JÁ EXISTENTE → 409 (nunca sobrescreve a conta)",
       _cadDup.status === 409, `status=${_cadDup.status}`);
+    // 🔑 v172f (ordem do dono, 12/09/2026 — usuário real reportou: cadastrou
+    // "andrio" e a conta NÃO nasceu admin): a migração de boot (10,5s após
+    // START do processo) só pega conta que já existia ANTES do restart —
+    // um cadastro feito com o servidor já rodando há horas nunca seria
+    // pego até o PRÓXIMO deploy. Corrigido pra conceder admin JÁ NA
+    // CRIAÇÃO, sem depender de restart nenhum.
+    const _cadAndrio = await req2("POST", "/api/cadastro", {
+      username: "andrio", password: "senhaandrio123", nome: "Andrio", sobrenome: "Teste",
+    });
+    check("🔑 v172f-FIX: cadastro com username reservado 'andrio' já nasce admin NA HORA (sem esperar boot/restart)",
+      _cadAndrio.status === 200 && _cadAndrio.json?.ok === true &&
+      JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"))["andrio"]?.isAdmin === true,
+      JSON.stringify(_cadAndrio.json));
+    const _cadDiego = await req2("POST", "/api/cadastro", {
+      username: "diego", password: "senhadiego123", nome: "Diego", sobrenome: "Teste",
+    });
+    check("🔑 v172f-FIX: cadastro com username reservado 'diego' já nasce admin NA HORA (sem esperar boot/restart)",
+      _cadDiego.status === 200 && _cadDiego.json?.ok === true &&
+      JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"))["diego"]?.isAdmin === true,
+      JSON.stringify(_cadDiego.json));
+    const _cadNormal = await req2("POST", "/api/cadastro", {
+      username: "usuario_qualquer_v172f", password: "senhanormal123", nome: "Fulano", sobrenome: "Comum",
+    });
+    check("🔑 v172f-FIX: cadastro com username NÃO reservado continua nascendo sem admin (não virou padrão pra todo mundo)",
+      _cadNormal.status === 200 &&
+      JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"))["usuario_qualquer_v172f"]?.isAdmin === false,
+      JSON.stringify(_cadNormal.json));
+    COOKIE = "";
     const _cadCurta = await req2("POST", "/api/cadastro", { username: "outro_user_v172c", password: "12", nome: "A", sobrenome: "B" });
     check("🔐 v172c: cadastro com senha curta (<4) → 400",
       _cadCurta.status === 400, `status=${_cadCurta.status}`);

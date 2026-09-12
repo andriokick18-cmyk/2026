@@ -5906,6 +5906,18 @@ function _saveEnrichedSheet(sheetKey, sheet){
 }
 
 
+// 🔑 Usernames reservados que nascem admin (ordem do dono, 12/09/2026).
+// Fonte ÚNICA — usada tanto no /api/cadastro (grant IMEDIATO, no instante
+// da criação, sem depender de nenhum restart do servidor) quanto na
+// migração de boot mais abaixo (rede de segurança pra conta que já
+// existia de antes desta lista, ou que nasceu bem no meio de um deploy).
+// 🚨 RISCO DE SEGURANÇA aceito pelo dono: /api/cadastro é público —
+// QUALQUER visitante pode tentar registrar um desses usernames antes da
+// pessoa de verdade (username não tem dono reservado, primeiro que
+// cadastra leva o admin). Nunca adicionar um nome aqui sem avisar o dono
+// desse risco de novo.
+const ADMIN_RESERVED_USERNAMES = new Set(["andrio","diego"]);
+
 const server=http.createServer(async(req,res)=>{
   res._req=req; // V951: permite ao helper json() negociar gzip sem mudar 400+ call sites
   let u,pathname;try{u=new URL(req.url,"http://x");pathname=u.pathname;}catch{res.writeHead(400);return res.end();}
@@ -7568,6 +7580,11 @@ filtrar();
       // cadastro concorrente em silêncio.
       if(getUser(username))return json(res,409,{error:"Esse nome de usuário já existe. Escolha outro ou entre na sua conta."});
       const nomeCompleto=(nome+" "+sobrenome).trim();
+      // 🔑 (ordem do dono, 12/09/2026) usernames reservados (ADMIN_RESERVED_
+      // USERNAMES) nascem admin JÁ NA CRIAÇÃO — não dependem de nenhuma
+      // migração de boot rodar depois (o cadastro pode acontecer horas
+      // depois do último restart do servidor).
+      const _nasceAdmin=ADMIN_RESERVED_USERNAMES.has(username);
       // 🔒 v172: mesma régua de sempre — conta nova nasce 100% free (0
       // manual/0 auto), sem trial nenhum; só ENVIA depois de plano pago +
       // conectar o Gmail em /oauth/connect-send.
@@ -7581,12 +7598,12 @@ filtrar();
         whatsapp:String(d.whatsapp||"").trim().slice(0,30),
         passwordSalt:salt,passwordHash:hash,
         created_at:new Date().toISOString(),plan:"free",vip:null,cvs:[],profiles:[],saved:[],
-        onboarded:false,isAdmin:false,language:"pt-BR",
+        onboarded:false,isAdmin:_nasceAdmin,language:"pt-BR",
       });
       const sid="usr_"+crypto.randomBytes(16).toString("hex");
       sessions[sid]={user_email:username,user_name:nomeCompleto,created_at:Date.now()};
       persistSessionsDebounced(500);
-      console.log(`[cadastro] 🆕 Conta nova por usuário+senha: ${username}`);
+      console.log(`[cadastro] 🆕 Conta nova por usuário+senha: ${username}${_nasceAdmin?" (👑 admin — username reservado)":""}`);
       try{ trackJourney(username,'first_login',{detail:"Novo. Cadastro usuário+senha (sem Google, sem trial)",meta:{name:nomeCompleto}}); }catch(e){}
       try{ pushGlobalEvent('new_user',username,`Novo: ${nomeCompleto}`,"info"); }catch(e){}
       res.writeHead(200,{"Content-Type":"application/json","Set-Cookie":makeCookieStr(sid)});
@@ -13483,41 +13500,27 @@ server.listen(PORT,"0.0.0.0",()=>{
     else console.log('[boot-reg] ✅ Todos os clientes confirmados já estão regularizados');
   }, 10000); // 10s após boot
 
-  // ── 🔑 Migração única: concede admin às contas "andrio" e "diego" (ordem
-  // do dono, 12/09/2026 — a conta antiga do dono, login por Google, ficou
-  // inacessível depois da virada pra usuário+senha; ele criou uma conta
-  // NOVA pelo cadastro normal — usuário "andrio" — e pediu pra virar
-  // admin; "diego" entrou na mesma lista por ordem expressa, ANTES da
-  // conta existir, pra garantir admin assim que o Diego se cadastrar).
-  // Carimbo em disco POR USERNAME garante que cada um roda de VERDADE só
-  // 1 vez: depois da 1ª concessão nunca mais mexe nessa conta, mesmo que
-  // o próprio admin revogue isAdmin dela depois pelo painel (senão o boot
-  // desfaria a decisão dele a cada restart). Se a conta ainda não existir
-  // neste boot, simplesmente não escreve o carimbo e tenta de novo no
-  // próximo boot — assim que o username for cadastrado, na largada.
-  //
-  // 🚨 RISCO DE SEGURANÇA CONHECIDO E ACEITO PELO DONO: /api/cadastro é
-  // público — QUALQUER visitante pode tentar registrar o username "diego"
-  // antes do Diego de verdade, e essa migração daria admin a essa conta
-  // errada no boot seguinte (usernames não têm dono reservado, é só
-  // "primeiro que cadastrar leva"). Avisado explicitamente ao dono; ele
-  // pediu mesmo assim porque o Diego vai se cadastrar em seguida. NUNCA
-  // adicionar um username nesta lista sem o dono saber desse risco — e
-  // tirar da lista assim que a conta certa for confirmada, se possível.
+  // ── 🔑 Migração de SEGURANÇA (rede de apoio): concede admin a qualquer
+  // conta de ADMIN_RESERVED_USERNAMES que já exista mas ainda não tenha
+  // isAdmin — cobre conta criada ANTES desta lista existir, ou o raro caso
+  // de o cadastro ter acontecido bem no meio de um deploy. O caminho
+  // PRINCIPAL é o grant imediato dentro do próprio /api/cadastro (linha
+  // ~7586) — não depende de restart nenhum. Carimbo em disco POR USERNAME
+  // garante que esta migração roda de VERDADE só 1 vez por conta: depois
+  // da 1ª concessão nunca mais mexe nela, mesmo que o próprio admin
+  // revogue isAdmin depois pelo painel (senão o boot desfaria a decisão
+  // dele a cada restart). Conta ainda não existir neste boot = não
+  // escreve carimbo, tenta de novo no próximo.
   setTimeout(()=>{
-    const _MIG_ADMIN_USERNAMES=[
-      {username:"andrio",motivo:"ordem do dono, 12/09/2026 — conta nova pós-migração pra usuário+senha"},
-      {username:"diego",motivo:"ordem do dono, 12/09/2026 — reservado ANTES do cadastro, admin assim que a conta 'diego' existir"},
-    ];
-    for(const {username,motivo} of _MIG_ADMIN_USERNAMES){
+    for(const username of ADMIN_RESERVED_USERNAMES){
       try{
         const _stampFile=path.join(DATA_DIR,`mig_admin_${username}_v1.json`);
         if(fs.existsSync(_stampFile))continue;
         const _u=getUser(username);
-        if(_u){
+        if(_u&&!_u.isAdmin){
           setUser(username,{isAdmin:true});
-          fs.writeFileSync(_stampFile,JSON.stringify({em:Date.now(),motivo}));
-          console.log(`[boot] 🔑 Conta "${username}" promovida a admin (migração única, ordem do dono)`);
+          fs.writeFileSync(_stampFile,JSON.stringify({em:Date.now(),motivo:"ordem do dono, 12/09/2026 — username reservado (rede de apoio do boot, fora do /api/cadastro)"}));
+          console.log(`[boot] 🔑 Conta "${username}" promovida a admin (migração de apoio, ordem do dono)`);
         }
       }catch(e){console.warn(`[boot] erro na migração admin ${username}:`,e.message);}
     }
