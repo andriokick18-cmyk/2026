@@ -150,7 +150,11 @@ fs.writeFileSync(path.join(DATA, "pedidos.json"), JSON.stringify([
     comprovanteType: "image/jpeg", createdAt: Date.now() - 86400_000, ativadoEm: Date.now() - 86400_000 },
   { id: "pedmem2", userEmail: "memtest2@test.com", userName: "Mem Teste Dois", tipo: "doacao", plano: "doacao",
     valorTotal: 50, diamantes: 33, status: "ativo", comprovante: Buffer.from("comprovante-mem-2").toString("base64"),
-    comprovanteType: "image/jpeg", createdAt: Date.now() - 86400_000, ativadoEm: Date.now() - 86400_000 }]));
+    comprovanteType: "image/jpeg", createdAt: Date.now() - 86400_000, ativadoEm: Date.now() - 86400_000 },
+  // 🐛 pedido pendente há 7h — alimenta o watchdog pendingOrderAlert
+  // (mod-sentinel.js) pro teste do fallback de admin sem token.
+  { id: "pedwatch1", userEmail: "watchtest@test.com", userName: "Watch Teste", tipo: "doacao", plano: "vipro",
+    valorTotal: 150, status: "pendente", createdAt: Date.now() - 7 * 3600_000 }]));
 fs.writeFileSync(path.join(DATA, "financeiro.json"), JSON.stringify({ pagamentos: [
   // 💼 MC4-P1: entrada avulsa SEM recebidoPor e SEM trilha de admin — tem que
   // cair no balde "sem dono" (nunca chutar) até o admin atribuir em 1 clique.
@@ -729,6 +733,50 @@ async function testAuthWatchdogPush() {
     check("🔒 v172: COM plano pago ATIVO → /oauth/connect-send passa da trava de plano (erro deixa de ser 'plano ativo' — só falta configurar o Google no ambiente)",
       npConnect2.status === 302 && !String(npConnect2.headers?.location || "").includes("plano"),
       `status=${npConnect2.status} location=${(npConnect2.headers?.location || "").slice(0, 160)}`);
+    // 🐛 v172 BUG REAL (achado em auditoria, 12/09/2026): /api/status dava
+    // gmailConnected:true pra QUALQUER admin, mesmo sem refresh_token nenhum
+    // — escondia pra sempre o card "Meu Gmail (admin) — não conectado" e
+    // anulava o propósito inteiro do fix anterior (o aviso de pedido novo
+    // nunca sairia e o admin nunca saberia que precisa reconectar). A trava
+    // de PLANO isenta admin (ele não paga); a trava de GMAIL CONECTADO tem
+    // que valer pra ele igual todo mundo — refresh_token é físico, não
+    // cargo. Guarda de regressão: admin SEM refresh_token → false; COM → true.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "admsemgmail@test.com", name: "Admin Sem Gmail", isAdmin: true });
+    const admNoGmail = await get("/api/status");
+    check("🐛 v172: admin SEM refresh_token → gmailConnected:false (a trava de Gmail nunca isenta admin, só a de plano isenta)",
+      admNoGmail.json?.isAdmin === true && admNoGmail.json?.gmailConnected === false && admNoGmail.json?.needsPlan === false,
+      JSON.stringify({ isAdmin: admNoGmail.json?.isAdmin, gc: admNoGmail.json?.gmailConnected, np: admNoGmail.json?.needsPlan }));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "admsemgmail@test.com", isAdmin: true, refreshToken: "rt-admsemgmail-test" });
+    const admComGmail = await get("/api/status");
+    check("🐛 v172: mesmo admin DEPOIS de conectar (refresh_token presente) → gmailConnected:true",
+      admComGmail.json?.gmailConnected === true, JSON.stringify({ gc: admComGmail.json?.gmailConnected }));
+
+    // 🐛 BUG REAL (achado em auditoria, 12/09/2026): o watchdog de pedido
+    // pendente >6h (mod-sentinel.js/pendingOrderAlert) só tentava o admin
+    // PRINCIPAL (ADMIN_EMAIL, env — nunca logado neste teste, então sem
+    // sessão nem refresh_token) e dava `break` no loop INTEIRO se não
+    // achasse token — um admin com Gmail desconectado silenciava o alerta
+    // de TODOS os pedidos pendentes da rodada, pra sempre. Login como um
+    // admin EXTRA (ADMIN_EMAILS_EXTRA) prova o fallback resolve um token
+    // mesmo com o principal sem nenhum (nunca cai no aviso "NENHUM admin
+    // com token válido"). O sandbox de teste não alcança a Gmail API de
+    // verdade (sem rede pro Google) — o envio em si (status 200) não dá
+    // pra provar aqui; a garantia estrutural abaixo prova que o código
+    // não desiste no primeiro admin sem token nem usa `break`.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "andrio.usa2026@gmail.com", name: "Admin Extra", isAdmin: true });
+    const _logBefore = log.length;
+    const hsRun = await req2("POST", "/api/admin/health-sentinel/run", {});
+    const _logSince = log.slice(_logBefore);
+    check("🐛 watchdog de pedido pendente: pedwatch1 (7h) aparece no relatório e o admin principal SEM token não trava a rodada (fallback resolve outro admin — nunca 'NENHUM admin com token válido')",
+      hsRun.json?.ok === true && (hsRun.json?.report?.pedidosPendentes || []).some((p) => p.id === "pedwatch1") &&
+      !/NENHUM admin com token válido/.test(_logSince),
+      JSON.stringify({ pend: hsRun.json?.report?.pedidosPendentes, logTrecho: _logSince.slice(-300) }).slice(0, 400));
+    const _sentinelSrc = fs.readFileSync(path.join(__dirname, "mod-sentinel.js"), "utf8");
+    const _pendFn = _sentinelSrc.slice(_sentinelSrc.indexOf("async function pendingOrderAlert"), _sentinelSrc.indexOf("setInterval(()=>pendingOrderAlert"));
+    check("🐛 (estrutural) pendingOrderAlert nunca dá `break` no loop inteiro por falta de token — resolve o admin 1x fora do loop de pedidos, com fallback pra ADMIN_EMAILS além do principal",
+      _pendFn.includes("for(const ae of ctx.ADMIN_EMAILS") && !_pendFn.includes("if(!adminToken) break"),
+      "fallback multi-admin ou ausência do break antigo não encontrados em pendingOrderAlert");
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
 
     // ═══ ⏳ v118 (ORDEM DO DONO, 02/08): 1 envio MANUAL por minuto ═══
     // O fixture gravou um envio manual "agora" pro cooldown@test.com — a
@@ -1072,6 +1120,12 @@ async function testAuthWatchdogPush() {
     // dinheiro". Pedido criado por uma conta da lista real de admins
     // (mod-config) não pode aparecer na Conferência nem somar na Visão do
     // Dono, e as contas de admin não podem poluir a tela de Duplicadas.
+    // Mede ANTES de criar o pedido do admin — nunca assume mesa zerada (o
+    // fixture pedwatch1, do watchdog de pedido pendente, já é 1 pedido
+    // pendente legítimo de não-admin de propósito; a prova certa é DELTA
+    // zero ao adicionar o pedido do admin, não um total absoluto).
+    const drAntes = await get("/api/admin/dono-resumo");
+    const _pendQtdAntes = drAntes.json?.pendentes?.qtd || 0, _pendValorAntes = drAntes.json?.pendentes?.valor || 0;
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "ndrkick.2@gmail.com", name: "Andrio Kickhofel" });
     const pdAdm = await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, valorTotal: 150, userName: "Andrio Kickhofel" });
     check("🚫 pedido de conta admin é criado normalmente (fluxo não quebra)", pdAdm.json?.ok === true || !!pdAdm.json?.pedidoId, pdAdm.body.slice(0, 120));
@@ -1079,11 +1133,10 @@ async function testAuthWatchdogPush() {
     const cfAdm = await get("/api/admin/conferencia");
     const _temAdmRow = (cfAdm.json?.rows || []).some((r) => String(r.email || "").toLowerCase() === "ndrkick.2@gmail.com");
     check("🚫 Conferência NÃO lista pedido de conta admin (admin não é receita)", cfAdm.json?.ok === true && !_temAdmRow, _temAdmRow ? "BUG: pedido do admin apareceu na Conferência" : "ok");
-    // Neste ponto o ÚNICO pedido pendente do fixture é o do admin — com a
-    // exclusão certa, a mesa do dono tem que estar zerada.
     const drAdm = await get("/api/admin/dono-resumo");
     check("🚫 Visão do Dono NÃO soma pedido pendente de admin na mesa",
-      drAdm.json?.ok === true && (drAdm.json?.pendentes?.qtd || 0) === 0 && (drAdm.json?.pendentes?.valor || 0) === 0, JSON.stringify(drAdm.json?.pendentes));
+      drAdm.json?.ok === true && (drAdm.json?.pendentes?.qtd || 0) === _pendQtdAntes && (drAdm.json?.pendentes?.valor || 0) === _pendValorAntes,
+      JSON.stringify({ antes: { qtd: _pendQtdAntes, valor: _pendValorAntes }, depois: drAdm.json?.pendentes }));
 
     // v27: conjunto de empregadores bloqueados responde pro usuário logado
     const se = await get("/api/sent-emails");

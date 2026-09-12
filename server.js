@@ -9830,8 +9830,15 @@ ${pedido.criadoPor&&pedido.criadoPor!==pedido.userEmail?`\n🛠️ Registrado re
     // 🔒 v172 (ORDEM DO DONO, 11/09/2026): o front usa isto pra decidir qual
     // CTA mostrar em Automático/Manual — "assine um plano" (sem plano pago)
     // vs "conecte seu Gmail" (tem plano, mas nunca passou por
-    // /oauth/connect-send). Admin sempre gmailConnected:true (isento).
-    const gmailConnected = isAdminVip(p) || !!p.refresh_token;
+    // /oauth/connect-send). Admin é isento SÓ da trava de PLANO — a de Gmail
+    // conectado vale pra ele igual todo mundo (bug real achado em auditoria,
+    // 12/09/2026: esta linha dava gmailConnected:true pra TODO admin mesmo
+    // sem refresh_token nenhum, escondendo pra sempre o card "Meu Gmail
+    // (admin) — não conectado" e anulando o próprio propósito do fix do
+    // e09ccd0 — /api/send e /api/auto/start já faziam a checagem certa
+    // [!p.refresh_token, sem isentar admin], só este campo do /api/status
+    // estava errado).
+    const gmailConnected = !!p.refresh_token;
     return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,planRulesNotice:_prNotice,manualCdOff:p.manualCdOff===true,gmailConnected,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",language:p.language||"pt-BR",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||180),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
   }
 
@@ -13473,7 +13480,7 @@ const { healthSentinelRun, pendingOrderAlert, queueSanitizerRun, getPedAlertSent
   DB_USERS: ()=>DB_USERS, DB_AUTO: ()=>DB_AUTO, DB_PEDIDOS: ()=>DB_PEDIDOS,
   DB_INVALID_EMAILS: ()=>DB_INVALID_EMAILS, DB_SHEETS_META: ()=>DB_SHEETS_META,
   SHEET_EXTRAS: ()=>SHEET_EXTRAS, sessions: ()=>sessions,
-  ADMIN_EMAIL,
+  ADMIN_EMAIL, ADMIN_EMAILS,
   getUser, getAutoJob, setAutoJob, isVipActive, sendNotifEmail,
   refreshTokenForUser, buildMime, httpsReq, getSheet,
   cooldownMaps: { notifSentAt: ()=>_notifSentAt, authErrNotifiedAt: getAuthErrNotifiedAt },

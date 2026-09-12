@@ -187,23 +187,44 @@ async function pendingOrderAlert(){
     id:p.id, email:p.email, plano:p.plano, valor:p.valorTotal||p.valor,
     horasPendente: Math.round((now-(p.createdAt||0))/3600_000)
   }));
+  if(!pend.length) return;
+  // 🐛 BUG REAL (achado em auditoria, 12/09/2026): esta rotina só tentava
+  // ctx.ADMIN_EMAIL e dava `break` no loop INTEIRO se não achasse token —
+  // se o admin principal ficasse com o Gmail desconectado, TODOS os pedidos
+  // pendentes da rodada (não só o atual) paravam de ser alertados, em
+  // silêncio, pra sempre (até alguém notar sozinho e reconectar). Mesmo
+  // fallback de 3 níveis já usado no aviso de "pedido novo" (server.js,
+  // rota /api/pedido) — resolvido UMA vez por rodada, fora do loop de
+  // pedidos, e avisando TODOS os admins (ADMIN_EMAILS), não só o principal.
+  let adminToken=null, adminTokenFrom=null;
+  const sessAll=Object.values(ctx.sessions()||{});
+  const primarySess=sessAll.find(s=>s.user_email===ctx.ADMIN_EMAIL&&s.access_token);
+  if(primarySess) adminToken=primarySess.access_token, adminTokenFrom=ctx.ADMIN_EMAIL;
+  if(!adminToken){ try{ const t=await ctx.refreshTokenForUser(ctx.ADMIN_EMAIL); if(t){ adminToken=t; adminTokenFrom=ctx.ADMIN_EMAIL; } }catch{} }
+  if(!adminToken){
+    for(const ae of ctx.ADMIN_EMAILS||[]){
+      if(ae===ctx.ADMIN_EMAIL) continue;
+      const se=sessAll.find(s=>s.user_email===ae&&s.access_token);
+      if(se){ adminToken=se.access_token; adminTokenFrom=ae; break; }
+      try{ const t=await ctx.refreshTokenForUser(ae); if(t){ adminToken=t; adminTokenFrom=ae; break; } }catch{}
+    }
+  }
+  if(!adminToken){ console.warn("[health-sentinel] ⚠️ NENHUM admin com token válido — alerta de pedido pendente NÃO enviado nesta rodada. Reconecte o Gmail admin."); return; }
   for(const p of pend){
     if(_pedAlertSent[p.id] && now-_pedAlertSent[p.id] < 12*3600_000) continue; // realerta a cada 12h
-    try{
-      // e-mail direto ao admin usando a própria conta admin (mesmo caminho do sendNotifEmail)
-      let adminToken=null;
-      const sess=Object.entries(ctx.sessions()).find(([,s])=>s.user_email===ctx.ADMIN_EMAIL&&s.access_token);
-      if(sess) adminToken=sess[1].access_token;
-      else { const au=ctx.getUser(ctx.ADMIN_EMAIL); if(au?.refresh_token) adminToken=await ctx.refreshTokenForUser(ctx.ADMIN_EMAIL); }
-      if(!adminToken) break;
-      const horas=Math.round((now-(p.createdAt||0))/3600_000);
-      const raw=ctx.buildMime({ to:ctx.ADMIN_EMAIL, subject:`🔔 [H2BApply] Pedido pendente há ${horas}h — ${p.email} (${p.plano})`,
-        fromName:"H2BApply Sentinel 🩺", fromEmail:ctx.ADMIN_EMAIL,
-        text:`Pedido aguardando aprovação:\n\nUsuário: ${p.email}\nPlano: ${p.plano}\nValor: R$ ${p.valorTotal||p.valor||"?"}\nPendente há: ${horas} horas\nID: ${p.id}\n\nAprove no painel admin → Pedidos para não perder a conversão.` });
-      const {status}=await ctx.httpsReq({hostname:"gmail.googleapis.com",path:"/gmail/v1/users/me/messages/send",method:"POST",
-        headers:{"Authorization":"Bearer "+adminToken,"Content-Type":"application/json"}},{raw});
-      if(status===200){ _pedAlertSent[p.id]=now; console.log(`[health-sentinel] 📧 Admin alertado: pedido ${p.id} pendente ${horas}h`); }
-    }catch(e){ console.warn("[health-sentinel] alerta pedido:",e.message); }
+    const horas=Math.round((now-(p.createdAt||0))/3600_000);
+    let algumEnviado=false;
+    for(const toEmail of (ctx.ADMIN_EMAILS||[ctx.ADMIN_EMAIL])){
+      try{
+        const raw=ctx.buildMime({ to:toEmail, subject:`🔔 [H2BApply] Pedido pendente há ${horas}h — ${p.email} (${p.plano})`,
+          fromName:"H2BApply Sentinel 🩺", fromEmail:adminTokenFrom,
+          text:`Pedido aguardando aprovação:\n\nUsuário: ${p.email}\nPlano: ${p.plano}\nValor: R$ ${p.valorTotal||p.valor||"?"}\nPendente há: ${horas} horas\nID: ${p.id}\n\nAprove no painel admin → Pedidos para não perder a conversão.` });
+        const {status}=await ctx.httpsReq({hostname:"gmail.googleapis.com",path:"/gmail/v1/users/me/messages/send",method:"POST",
+          headers:{"Authorization":"Bearer "+adminToken,"Content-Type":"application/json"}},{raw});
+        if(status===200) algumEnviado=true;
+      }catch(e){ console.warn("[health-sentinel] alerta pedido:",e.message); }
+    }
+    if(algumEnviado){ _pedAlertSent[p.id]=now; console.log(`[health-sentinel] 📧 Admin(s) alertado(s): pedido ${p.id} pendente ${horas}h`); }
     await new Promise(r=>setTimeout(r,2000));
   }
 }
