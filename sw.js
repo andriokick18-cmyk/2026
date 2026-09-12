@@ -86,7 +86,7 @@
 //    promessa de "direito de arrependimento de 7 dias" (removida também dos
 //    Termos — seção renumerada 1-12).
 //
-const CACHE_NAME = "h2bapply-2026-v29"; // v29: ordem do dono (12/09/2026 — "deixa mais explícito a quantidade de envios por cada plano... explique como funciona os envios automáticos") — cards de plano ganharam badges coloridos e explícitos de limite manual/automático (em vez de 1 linha cinza pequena) + FAQ explicando o Envio Automático na aba Planos.
+const CACHE_NAME = "h2bapply-2026-v30"; // v30: v172h (ordem do dono, 12/09/2026 — "tem que ser bloqueado o envio automático e o manual... diz pra ela que o plano dela venceu dia tal") — cartões GRANDES de ação (conectar Gmail / ver planos) no manual e no automático, mensagens de vencimento com data real, e revisão de textos stale da aba Planos (removida menção a "moeda intermediária" e ao processo interno de conferência).
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).

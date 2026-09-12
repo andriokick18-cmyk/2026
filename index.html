@@ -2510,7 +2510,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
         <!-- 🔒 v172 (ORDEM DO DONO, 11/09/2026): gate de envio — "não pode
              deixar ninguém fazer a autenticação sem pagar". Some sozinho
              quando o plano está ativo E o Gmail conectado (updateManualSendGate). -->
-        <div id="manual-send-gate" style="display:none;margin:10px 14px 0;padding:10px 14px;border-radius:12px;font-size:12.5px;font-weight:700;align-items:center;gap:8px;flex-wrap:wrap"></div>
+        <div id="manual-send-gate" style="display:none;margin:10px 14px 0;padding:14px 16px;border-radius:14px;font-weight:700;flex-wrap:wrap"></div>
         <div class="search-bar">
           <!-- v114: busca + seletores SUGESTIVOS de estado e cidade (datalist:
                digita "mass" → MASSACHUSETTS; "marth" → Martha's Vineyard).
@@ -2926,6 +2926,12 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <span class="auto-free-note" id="auto-free-note-lbl"><i class="ti ti-lock"></i> <span data-i18n="g_194">Plano ativo necessário pra enviar</span></span>
         </div>
         <div class="view-scroll" style="background:var(--bg)">
+          <!-- 🔒 v172h (ordem do dono, 12/09/2026 — "esse botão deve ser
+               grande, visível"): cartão de ação do gate de plano/Gmail —
+               a pilulazinha no topo (#auto-free-note-lbl) continua como
+               resumo compacto; aqui vai o botão GRANDE de verdade,
+               montado por _updateAutoFreeBanner(). -->
+          <div id="auto-gate-card" style="display:none;margin:10px 12px 0;padding:14px 16px;border-radius:14px"></div>
           <!-- Aviso Gmail — aparece só com 1 conta, fechável com X -->
           <div id="gmail-risk-warn" style="display:none;background:rgba(255,165,0,.08);border-left:3px solid rgba(255,165,0,.5);border-radius:0 8px 8px 0;padding:10px 12px;margin:10px 12px 0;font-size:12px;color:rgba(200,130,0,1);position:relative">
             <button onclick="(function(){localStorage.setItem('h2b-gmail-warn-dismissed','1');document.getElementById('gmail-risk-warn').style.display='none';})()" style="position:absolute;top:6px;right:8px;background:none;border:none;cursor:pointer;color:rgba(200,130,0,.8);font-size:17px;line-height:1;padding:0" title="Fechar">×</button>
@@ -3229,7 +3235,6 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <div style="font-size:44px;margin-bottom:8px">💎</div>
           <div style="font-family:'Sora',sans-serif;font-size:22px;font-weight:800" data-i18n="plans_title">Planos H2BApply</div>
           <div style="font-size:13px;opacity:.8;margin-top:6px" data-i18n="plans_sub">Escolha um plano, pague via PIX e envie o comprovante</div>
-          <div style="font-size:11px;opacity:.6;margin-top:4px" data-i18n="plans_note">Comprovante conferido automaticamente • Confirmação final sempre por um admin</div>
         </div>
 
         <!-- ETAPAS -->
@@ -3241,17 +3246,20 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
               <div style="font-size:14px;font-weight:800" data-i18n="plan_step1_title">Escolha seu plano e período</div>
             </div>
             <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
-              <!-- v170: compra DIRETA — sem moeda intermediária. -->
+              <!-- v170: compra DIRETA. v172-FIX 12/09: removida menção a
+                   "moeda intermediária" (sistema antigo já retirado). -->
               <div style="font-size:12.5px;color:var(--t2);line-height:1.65;background:var(--sf2);border:1px solid var(--border);border-radius:10px;padding:10px 12px" data-i18n="plan_step1_intro">
-                Você paga <strong>diretamente</strong> pelo plano escolhido — sem moeda intermediária. Veja os limites de cada plano, escolha o período e o preço final aparece na hora, antes de pagar.
+                Você paga <strong>diretamente</strong> pelo plano escolhido. Veja os limites de cada plano, escolha o período e o preço final aparece na hora, antes de pagar.
               </div>
               <!-- 🤖 (ordem do dono, 12/09/2026) explica o envio automático
                    ANTES da pessoa escolher o plano — os limites já ficam
-                   explícitos em badge em cada card (ver _renderPlanosUI). -->
+                   explícitos em badge em cada card (ver _renderPlanosUI).
+                   v172-FIX 12/09: reordenado — a diferença VIP×VIPro/DoublePro
+                   vem logo no começo, não mais escondida no fim do parágrafo. -->
               <details style="background:var(--sf2);border:1.5px solid var(--border2);border-radius:12px;padding:10px 14px">
                 <summary style="font-size:12.5px;font-weight:800;color:var(--t2);cursor:pointer" data-i18n="plan_auto_faq_q">🤖 Como funciona o Envio Automático?</summary>
                 <div style="font-size:12px;color:var(--t2);line-height:1.7;margin-top:8px" data-i18n="plan_auto_faq_a">
-                  O robô manda as candidaturas sozinho, pelo seu próprio Gmail, usando o currículo e os textos que você mesmo escreveu no seu perfil — ele nunca inventa nada. Você escolhe a fonte de vagas, ajusta os filtros e escolhe o perfil, toca em Iniciar e pode até fechar o app: ele continua enviando sozinho, um a cada ~7 minutos (ritmo humano, pra proteger sua conta Gmail de bloqueio pelo Google). Ao bater o limite diário do seu plano, ele pausa sozinho e volta a enviar no dia seguinte. O plano VIP é só manual (você escolhe e envia cada candidatura); VIPro e DoublePro já incluem o automático desde o primeiro dia.
+                  O robô manda as candidaturas sozinho, pelo seu próprio Gmail, usando o currículo e os textos que você mesmo escreveu no seu perfil — ele nunca inventa nada. Esse recurso vem incluído nos planos VIPro e DoublePro desde o primeiro dia (o VIP é só manual: você escolhe e envia cada candidatura). Pra usar o automático, você escolhe a fonte de vagas, ajusta os filtros e escolhe o perfil, toca em Iniciar e pode até fechar o app: ele continua enviando sozinho, um a cada ~7 minutos (ritmo humano, pra proteger sua conta Gmail de bloqueio pelo Google), até bater o limite diário do seu plano — aí ele pausa sozinho e volta a enviar no dia seguinte.
                 </div>
               </details>
               <!-- Seletor de plano+período — 100% montado por loadPlanos()/

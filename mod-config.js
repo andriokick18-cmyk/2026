@@ -36,7 +36,7 @@ const PUSH_ENABLED = false;
 
 // ── Planos ───────────────────────────────────────────────────────────────
 //   free      → 0 manual   + 0 auto   /dia (SEM envio — só navegar/ver como funciona)
-//   vip       → 200 manual + 10 auto   /dia (só manual pago)
+//   vip       → 200 manual + 0 auto   /dia (só manual pago)
 //   vipro     → 200 manual + 200 auto  /dia (manual + automático)
 //   doublepro → 400 manual + 400 auto  /dia (2 contas Gmail)
 //   pro       → 0 manual   + 200 auto  /dia (só auto — legado)
@@ -59,7 +59,13 @@ const PLAN_LIMITS_NEW = {
 };
 const PLAN_LIMITS = {
   free:      { manual: 0,   auto: 0   },
-  vip:       { manual: 200, auto: 10  }, // VIP = só manual 200/dia
+  // 🔒 v172g (auditoria 12/09/2026): era `auto:10` — resquício de antes da
+  // regra "VIP é só manual" existir. Com getAutoLimit caindo nesta tabela
+  // legada pra quem tem só manual ativo (isAutoVipActive false), um VIP
+  // manual-only tinha getAutoLimit()=10>0 e PASSAVA pelo gate `autoLimit<=0`
+  // de /api/auto/start — conseguia ligar o robô automático de graça, o que
+  // a regra "VIP = só manual" proíbe expressamente. Zerado pra fechar o furo.
+  vip:       { manual: 200, auto: 0   }, // VIP = só manual 200/dia
   pro:       { manual: 0,   auto: 200 }, // só auto — legado
   vipro:     { manual: 200, auto: 200 }, // manual + auto 200 cada
   doublepro: { manual: 400, auto: 400 }, // DoublePro — 2 contas, 400 cada

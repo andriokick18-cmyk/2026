@@ -2380,6 +2380,17 @@ function isAutoVipActive(u) {
 }
 function isVipActive(u) { return isManualVipActive(u) || isAutoVipActive(u); }
 
+// 🔒 v172h (ordem do dono, 12/09/2026 — "diz pra ela que o plano dela
+// venceu dia tal, e pra ela ir pra planos contratar um plano novo"): gate
+// de plano (/api/send, /api/auto/start, scheduleAuto) cita a data real de
+// vencimento quando o usuário já teve um plano — nunca um "expirou"
+// genérico pra quem já sabe exatamente quando isso aconteceu.
+function planGateMsg(p, semPlanoMsg) {
+  const venceuEm = Math.max(p?.vip?.autoExpires||0, p?.vip?.manualExpires||0, p?.vip?.expiresAt||0);
+  if (venceuEm > 0) return `Seu plano venceu em ${new Date(venceuEm).toLocaleDateString("pt-BR")}. ${semPlanoMsg}`;
+  return semPlanoMsg;
+}
+
 // Admin tem plano máximo para fins de limites diários
 function getAdminPlan() { return "doublepro"; }
 
@@ -3878,12 +3889,27 @@ function scheduleAuto(email) {
     return;
   }
 
-  // ── REGRA: 10 envios automáticos GRÁTIS/dia para TODOS ──────────────────
-  // Antes, quem não tinha VIP automático era PAUSADO ("plano expirou"), o que
-  // bloqueava até os 10/dia grátis. Agora NÃO bloqueia por falta de plano: o
-  // limite diário (getAutoLimit) já devolve 10 p/ free e 200 p/ VIPro, e o
-  // bloco de "waiting_limit" abaixo segura no teto e retoma à meia-noite.
-  // (Sem hard-stop por VIP — só o limite diário regula.)
+  // 🔒 v172h (ordem do dono, 12/09/2026 — "se a pessoa não pagou mais o
+  // plano... tem que ser bloqueado o envio automático e o manual... diz pra
+  // ela que o plano dela venceu dia tal"): scheduleAuto nunca distinguia
+  // "o plano de verdade venceu" de "bateu o teto de HOJE num plano ainda
+  // válido" — pra quem perdia o automático (free, ou VIPro/DoublePro
+  // vencido), getAutoLimit virava 0 e `todayAuto(0)>=autoLimit(0)` caía
+  // SEMPRE no ramo de baixo, reagendando pra meia-noite PRA SEMPRE com
+  // "Limite diário atingido: 0/0 envios hoje" — nunca avisava a pessoa que
+  // o plano venceu, nunca parava o robô de verdade (comentário antigo daqui
+  // — "10 automáticos grátis pra todos" — já nem era mais real desde que o
+  // plano free virou 0/0; ficou stale). Corrigido: sem automático ativo de
+  // verdade (nem admin) o job PARA — `paused_no_vip`, o MESMO status que
+  // /api/admin/revoke-trial já usa (toast dedicado já existe no front) —
+  // citando a data real de vencimento, sem reagendar timer nenhum.
+  if(!isAdminVip(p) && !isAutoVipActive(p)){
+    setAutoJob(email,{...job,active:false,status:"paused_no_vip",finishedAt:Date.now()});
+    autoTimers.delete(email);
+    addLog(email,{status:"sistema",jobTitle:"⛔ Envio automático pausado",company:planGateMsg(p,"Assine um plano na aba Planos pra continuar enviando automaticamente.")});
+    console.log(`[auto] ${email} sem VIP automático ativo (${planGateMsg(p,"plano nunca ativo")}) — robô PARADO (paused_no_vip), sem reagendar`);
+    return;
+  }
 
   // Limite: usa o atual do plano (não o lockedAutoLimit) para que expiração surta efeito
   const autoLimit = getAutoLimit(p);
@@ -10012,7 +10038,7 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
     // camadas: plano pago ativo (isVipActive) e Gmail conectado (refresh_token).
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Sessão expirada."});
     const p=getUser(s.user_email)||{};
-    if(!isAdminVip(p)&&!isVipActive(p))return json(res,402,{error:"Você precisa de um plano ativo pra enviar candidaturas.",needsPlan:true});
+    if(!isAdminVip(p)&&!isVipActive(p))return json(res,402,{error:planGateMsg(p,"Você precisa de um plano ativo pra enviar candidaturas."),needsPlan:true});
     // 🔒 v172: admin pula a trava de PLANO (isAdminVip já vale como plano
     // máximo), mas NÃO pula a de Gmail conectado — sem token de verdade
     // ninguém envia nada, admin incluso; bypassar aqui só trocaria um erro
@@ -10845,7 +10871,7 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
     // 🔒 v172 (ORDEM DO DONO, 11/09/2026): autoLimit=0 é o caso NOVO (plano
     // free não manda mais nada) — merece mensagem própria, "atingiu 0/dia"
     // confundiria quem nunca teve chance de mandar nenhum.
-    if(!isAdminVip(p)&&autoLimit<=0)return json(res,402,{error:"Você precisa de um plano com envio automático (VIPro ou DoublePro) pra usar o robô.",needsPlan:true});
+    if(!isAdminVip(p)&&autoLimit<=0)return json(res,402,{error:planGateMsg(p,"Você precisa de um plano com envio automático (VIPro ou DoublePro) pra usar o robô."),needsPlan:true});
     // 🎯 ordem do dono, 12/09/2026: o teto do admin (450/dia por e-mail
     // conectado, somado em getAutoLimit) agora é REAL e vale pra ele
     // também — só a trava de PLANO (linha acima) continua isentando admin.

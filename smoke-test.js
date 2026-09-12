@@ -123,6 +123,11 @@ for (let i = 0; i < 5000; i++) {
 // nada — e o /api/status precisa AVISAR (planRulesNotice).
 // ⏫ v125: dono do robô que dorme em waiting_limit (fixture em auto_jobs.json)
 users["dormindo@test.com"] = { name: "Dormindo", plan: "free", cvs: [], profiles: [] };
+// 🔒 v172h (ordem do dono, 12/09/2026): job ATIVO de um plano que NUNCA foi
+// pago (free) — scheduleAuto tem que parar de vez (paused_no_vip), nunca
+// mais reagendar pra meia-noite pra sempre com "0/0 envios" (fixture em
+// auto_jobs.json).
+users["planovencido@test.com"] = { name: "Plano Vencido", plan: "free", cvs: [], profiles: [] };
 users["legadoplano@test.com"] = {
   name: "Legado Plano", plan: "vipro", cvs: [], profiles: [],
   vip: { manualExpires: Date.now() + 20 * 86400_000, autoExpires: Date.now() + 20 * 86400_000, days: 30, source: "pix", active: true },
@@ -184,6 +189,9 @@ fs.writeFileSync(path.join(DATA, "auto_jobs.json"), JSON.stringify({
   // ("waiting_limit" até amanhã). Quando o plano novo for ativado, tem que
   // ACORDAR na hora — nunca mais pagante esperando a meia-noite à toa.
   "dormindo@test.com": { active: true, status: "waiting_limit", source: "manual", nextSendAt: Date.now() + 14 * 3600_000, queue: [{ to: "vaga@dormindo-test.com", title: "Cook", company: "Empresa D" }], originalCount: 5, startedAt: Date.now() - 7200_000, subjects: ["a"], emailBodies: ["b"] },
+  // 🔒 v172h: job que estava "sending" quando o plano (free, nunca pago)
+  // deveria ter travado o automático — scheduleAuto tem que parar de vez.
+  "planovencido@test.com": { active: true, status: "sending", source: "manual", queue: [{ to: "vaga@planovencido-test.com", title: "Cook", company: "Empresa V" }], originalCount: 3, startedAt: Date.now() - 3600_000, subjects: ["a"], emailBodies: ["b"] },
 }));
 const COOLDOWN_FIX_TS = Date.now();
 fs.writeFileSync(path.join(DATA, "history.json"), JSON.stringify({
@@ -1011,6 +1019,40 @@ async function testAuthWatchdogPush() {
     check("⏫ v125: ativar plano novo tira o robô do waiting_limit na hora (sem esperar meia-noite)",
       spDorm.json?.ok === true && _dj.status !== "waiting_limit",
       JSON.stringify({ setPlan: spDorm.status, status: _dj.status, nextSendAt: _dj.nextSendAt }));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
+
+    // ═══ 🔒 v172h (ordem do dono, 12/09/2026 — "tem que ser bloqueado o
+    // envio automático e o manual... diz pra ela que o plano dela venceu
+    // dia tal") ═══
+    // ANTES: scheduleAuto nunca distinguia "plano de verdade venceu" de
+    // "bateu o teto de HOJE" — pra quem não tinha automático (free, ou
+    // VIPro/DoublePro vencido), getAutoLimit virava 0 e o job ficava PRA
+    // SEMPRE em waiting_limit ("Limite diário atingido: 0/0"), sem nunca
+    // avisar a pessoa que o plano venceu. planovencido@test.com está
+    // "sending" (fixture) com plano free (nunca pagou) — /api/auto/resume
+    // força active:true e chama scheduleAuto de novo, que TEM que parar o
+    // job de vez (paused_no_vip — mesmo status que /api/admin/revoke-trial
+    // já usa, com toast dedicado no front) em vez de reagendar.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "planovencido@test.com" });
+    const pvResume = await req2("POST", "/api/auto/resume", {});
+    const pvSt = await get("/api/auto/status");
+    check("🔒 v172h: job ativo sem NENHUM plano (free) PARA de vez (paused_no_vip) — nunca mais 'waiting_limit' reagendando pra sempre",
+      pvResume.json?.ok === true && pvSt.json?.job?.active === false && pvSt.json?.job?.status === "paused_no_vip",
+      JSON.stringify(pvSt.json?.job || {}));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
+
+    // 🔒 v172h (bug real achado revisando o gate): PLAN_LIMITS.vip.auto
+    // (tabela LEGADA) ainda tinha "auto:10" — resquício de antes da regra
+    // "VIP é só manual" existir. Um VIP manual-only (só isManualVipActive)
+    // caía nesta tabela e getAutoLimit(p) devolvia 10>0, FURANDO o gate
+    // `autoLimit<=0` de /api/auto/start: conseguia ligar o automático de
+    // graça, mesmo tendo pago só pelo manual. Corrigido pra 0 — este teste
+    // prova que o furo está fechado.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "vipmanualso@test.com", refreshToken: "rt-vipmanualso", vip: { manualExpires: Date.now() + 30 * 86400_000, autoExpires: 0, plan: "vip", active: true }, plan: "vip" });
+    const vmsStart = await req2("POST", "/api/auto/start", { queue: [{ to: "x@vipmanualso-test.com", title: "Cook", company: "Z" }], subjects: ["a"], emailBodies: ["b"] });
+    check("🔒 v172h (bug real corrigido): VIP manual-only NUNCA consegue ligar o automático de graça (PLAN_LIMITS.vip.auto era 10, resquício que furava o gate autoLimit<=0)",
+      vmsStart.status === 402 && vmsStart.json?.needsPlan === true,
+      JSON.stringify(vmsStart.json));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
 
     // v48: INCIDENTE REAL "vagas sumiram" — o fixture semeou /data com
