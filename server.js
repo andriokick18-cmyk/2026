@@ -13483,6 +13483,29 @@ server.listen(PORT,"0.0.0.0",()=>{
     else console.log('[boot-reg] ✅ Todos os clientes confirmados já estão regularizados');
   }, 10000); // 10s após boot
 
+  // ── 🔑 Migração única: concede admin à conta "andrio" (ordem do dono,
+  // 12/09/2026 — a conta antiga (login por Google) ficou inacessível depois
+  // da virada pra usuário+senha; o dono teve que criar uma conta NOVA pelo
+  // cadastro normal — usuário "andrio" — e pediu pra virar admin). Carimbo
+  // em disco garante que roda de VERDADE só 1 vez: depois da 1ª concessão
+  // nunca mais mexe nessa conta, mesmo que o próprio admin revogue isAdmin
+  // dela depois pelo painel (senão o boot desfaria a decisão dele a cada
+  // restart). Se a conta ainda não existir neste boot (deploy correu antes
+  // do cadastro terminar), simplesmente não escreve o carimbo e tenta de
+  // novo no próximo boot.
+  setTimeout(()=>{
+    try{
+      const _stampFile=path.join(DATA_DIR,"mig_admin_andrio_v1.json");
+      if(fs.existsSync(_stampFile))return;
+      const _u=getUser("andrio");
+      if(_u){
+        setUser("andrio",{isAdmin:true});
+        fs.writeFileSync(_stampFile,JSON.stringify({em:Date.now(),motivo:"ordem do dono, 12/09/2026 — conta nova pós-migração pra usuário+senha"}));
+        console.log(`[boot] 🔑 Conta "andrio" promovida a admin (migração única, ordem do dono)`);
+      }
+    }catch(e){console.warn("[boot] erro na migração admin andrio:",e.message);}
+  },10500);
+
 
   // v72: Startup Bounce Scan DESLIGADO — lia a inbox de todo usuário com
   // token (gmail.readonly) procurando bounce. Sem esse escopo (ordem do
