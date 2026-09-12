@@ -393,6 +393,9 @@ async function testAuthWatchdogPush() {
     const _logLegadoAntes = await req2("POST", "/api/login", { username: "legado_sem_senha@test.com", password: "qualquer" });
     check("🔐 v172c: conta ANTIGA (Google, sem senha) não consegue logar por senha antes do admin destrancar",
       _logLegadoAntes.status === 403, `status=${_logLegadoAntes.status}`);
+    check("🆘 v172c-UX: conta ANTIGA recebe mensagem ESPECÍFICA (chamar o suporte), não o genérico 'usuário ou senha inválidos' que confundiria quem nunca teve senha nenhuma",
+      /suporte/i.test(_logLegadoAntes.json?.error || "") && !/usuário ou senha inválidos/i.test(_logLegadoAntes.json?.error || ""),
+      _logLegadoAntes.json?.error);
     const _spNoAuth = await req2("POST", "/api/admin/set-password", { email: "legado_sem_senha@test.com", novaSenha: "novaSenha1" });
     check("🔐 v172c: /api/admin/set-password SEM sessão → 401",
       _spNoAuth.status === 401, `status=${_spNoAuth.status}`);

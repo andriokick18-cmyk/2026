@@ -7584,6 +7584,14 @@ filtrar();
       const username=String(d.username||"").trim().toLowerCase();
       const senha=String(d.password||"");
       const u=getUser(username);
+      // 🆘 v172c-UX (12/09/2026): conta ANTIGA (login era só Google, migrada
+      // sem passwordHash) tomava a mesma mensagem genérica de "senha errada"
+      // que uma senha digitada errada de verdade — pra quem nunca teve senha
+      // nenhuma isso é indistinguível de um bug, e o único jeito de destravar
+      // (admin rodar /api/admin/set-password) é invisível pro usuário. Avisa
+      // direto pra chamar o suporte, sem abrir mão do delay anti-timing.
+      const _legado=!!u&&!isAdminEmail(username)&&!u.passwordHash;
+      if(_legado){await new Promise(r=>setTimeout(r,300));return json(res,403,{error:"Essa conta é de antes da senha (login era só pelo Google) e ainda não tem senha definida. Chame o suporte no WhatsApp +55 53 98145-3496 pra liberar o acesso — é rápido."});}
       const ok=!!u&&!isAdminEmail(username)&&(await _verifyPw(senha,u.passwordSalt,u.passwordHash));
       if(!ok){await new Promise(r=>setTimeout(r,300));return json(res,403,{error:"Usuário ou senha inválidos."});}
       const sid="usr_"+crypto.randomBytes(16).toString("hex");
