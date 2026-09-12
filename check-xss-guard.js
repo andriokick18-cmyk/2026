@@ -98,6 +98,11 @@ const ALLOWLIST = new Set([
   // de atributo já escapado à mão pro contexto de atributo (troca só a
   // aspa, que é o único caractere que quebraria esse atributo):
   "app.js:ba4553714a88", "app.js:39a9b3b1c3d0",
+  // Contador "N restantes/enviadas de M" (loadSheetMeta/updSheetCounter,
+  // fix v172e): só números (remaining/sentInSheet/sTrueTotal via
+  // toLocaleString) + nome/emoji de planilha (sheetLabel/_sheetLabelFor —
+  // mesma categoria "só admin nomeia planilha" já confiada acima):
+  "app.js:2c4e258286b0", "app.js:9c25a1550942",
 ]);
 
 function extractInnerHTMLStatements(src) {

@@ -5430,9 +5430,21 @@ async function getSenderToken(ownerEmail, requestedSender, allowedSenders) {
     // Monta pool completo: principal + extras ativos sem erro
     // Principal representado como objeto sintético para uniformidade
     const extrasOk = extras.filter(s => !s.tokenExpired && !s.blocked);
+    // 🐛 v172e (auditoria, 12/09/2026): countBySender é indexado por
+    // hist[].senderEmail, que pro envio do PRINCIPAL grava o Gmail REAL
+    // (resolveSendGmail — ver _doAutoSendInner) — nunca a identidade de
+    // login (username sem '@' pra conta v172c). Usar "ownerEmail" como
+    // chave de contagem do principal deixava countBySender[ownerEmail]
+    // sempre 0/undefined pra qualquer conta v172c, quebrando 3 coisas ao
+    // mesmo tempo: o rodízio 1-a-1 com extras (linha do sort abaixo), o
+    // teto de aquecimento (13a — conta nova nunca era realmente freada) e
+    // o teto de 450/dia por sender do admin. countKey é só pra CONTAR —
+    // "email"/o retorno pro principal continuam a identidade de sempre
+    // (mantém o filtro "allowed" e o contrato de retorno intactos).
+    const _principalCountKey = resolveSendGmail(p) || ownerEmail;
     let pool = [
-      { email: ownerEmail, isPrincipal: true, addedAt: p?.created_at },  // email principal sempre no pool
-      ...extrasOk.map(s => ({ ...s, isPrincipal: false }))
+      { email: ownerEmail, countKey: _principalCountKey, isPrincipal: true, addedAt: p?.created_at },  // email principal sempre no pool
+      ...extrasOk.map(s => ({ ...s, countKey: s.email, isPrincipal: false }))
     ];
     // Seleção do usuário: só os e-mails escolhidos participam do rodízio
     if (allowed) pool = pool.filter(c => allowed.includes(String(c.email).toLowerCase()));
@@ -5450,7 +5462,7 @@ async function getSenderToken(ownerEmail, requestedSender, allowedSenders) {
     // teto por conta virou só uma preferência de rodízio, não um bloqueio.
     const withinWarmup = pool.filter(c => {
       const cap = warmupCapForSender(c.addedAt);
-      return cap === null || (countBySender[c.email] || 0) < cap;
+      return cap === null || (countBySender[c.countKey] || 0) < cap;
     });
     if (withinWarmup.length) pool = withinWarmup;
     // else: mantém o pool inteiro (nenhuma conta some da fila por aquecimento)
@@ -5462,7 +5474,7 @@ async function getSenderToken(ownerEmail, requestedSender, allowedSenders) {
     // está dentro do próprio teto de 450/dia (perSenderAutoLimit) — mesma
     // filosofia do aquecimento: nunca esvazia o pool, só prefere.
     if (isAdminVip(p)) {
-      const withinDaily = pool.filter(c => (countBySender[c.email] || 0) < perSenderAutoLimit(p, c.email));
+      const withinDaily = pool.filter(c => (countBySender[c.countKey] || 0) < perSenderAutoLimit(p, c.countKey));
       if (withinDaily.length) pool = withinDaily;
       for (let i = pool.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -5470,7 +5482,7 @@ async function getSenderToken(ownerEmail, requestedSender, allowedSenders) {
       }
     } else {
       // Ordena por menor contagem hoje → alterna naturalmente 1,2,1,2...
-      pool.sort((a, b) => (countBySender[a.email] || 0) - (countBySender[b.email] || 0));
+      pool.sort((a, b) => (countBySender[a.countKey] || 0) - (countBySender[b.countKey] || 0));
     }
 
     for (const candidate of pool) {
@@ -5480,7 +5492,7 @@ async function getSenderToken(ownerEmail, requestedSender, allowedSenders) {
       }
       // Extra: usa token cacheado ou renova
       if (candidate.access_token && candidate.token_expiry && Date.now() < candidate.token_expiry - 120_000) {
-        console.log(`[sender] 🔄 Round-robin → ${candidate.email} (${countBySender[candidate.email]||0} hoje)`);
+        console.log(`[sender] 🔄 Round-robin → ${candidate.email} (${countBySender[candidate.countKey]||0} hoje)`);
         return { token: candidate.access_token, senderEmail: candidate.email };
       }
       try {

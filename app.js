@@ -79,7 +79,7 @@ let selJob=null,curJob=null;
 let _currentModalJob=null; // alias para curJob — atualizado por openModal
 let skip=0,total=0,loading=false,done=false;
 let tab="seasonal";
-let sJobs=[],sTotal=0,sSkip=0,sDone=false,sLoading=false;
+let sJobs=[],sTotal=0,sTrueTotal=0,sSkip=0,sDone=false,sLoading=false;
 let sCache={};
 let fQ="",fState="",fType="all",fStat="all",fSort="random",fWage=0,fWorkers=0,fCat="all";
 let fGrupos=[]; // Filtro por Grupo (randomização H-2B) — exclusivo Double Pro (MANUAL)
@@ -731,7 +731,7 @@ function setTab(t){
     g("#cat-chips-jobs").innerHTML="";
     loadJobs(true);
   } else {
-    sSkip=0;sTotal=0;sDone=false;sJobs=[];sLoading=false;
+    sSkip=0;sTotal=0;sTrueTotal=0;sDone=false;sJobs=[];sLoading=false;
     g("#jlist").innerHTML=mkSkels(6);
     loadSheetCategories(t);
     // Sincronizar autoQueueIds e sentIds ANTES de carregar vagas
@@ -1505,19 +1505,27 @@ async function loadSheetMeta(reset=false){
         var _jl=document.getElementById("jlist");if(_jl&&_jl.parentElement)_jl.parentElement.insertBefore(_bar,_jl);
       }
       _fj.forEach(function(j){sJobs.push(j);g("#jlist").insertAdjacentHTML("beforeend",mkSheetCard(j));});
-      sSkip+=d.jobs.length;sTotal=d.total||sJobs.length;_jobsToEnrich=d.jobs;
+      // 🐛 v172e (auditoria, 12/09/2026): d.total já vem do servidor SEM os
+      // enviados/fila (hideSent=1 filtra ANTES de contar — server.js
+      // "total já é o total filtrado"). d.remainingTotal é o bruto da
+      // planilha inteira, sem esse corte — usado só pro "de Y" abaixo.
+      sSkip+=d.jobs.length;sTotal=d.total||sJobs.length;sTrueTotal=d.remainingTotal||sTotal;_jobsToEnrich=d.jobs;
       if(d.jobs.length<PAGE){sDone=true;g("#lmore").innerHTML="";}else g("#lmore").innerHTML=`<div style="padding:14px;text-align:center"><button class="btn btn-secondary btn-sm" onclick="loadSheetMeta()">Carregar mais</button></div>`;
     }
     const cnt=g("#jcount");if(cnt){
       const sentInSheet=HIST.filter(h=>h.sheetSource===tab||h.source===tab).length;
       const inAutoQueue=[..._autoQueueIds].length;
-      const remaining=Math.max(0,sTotal-sentInSheet);
+      // 🐛 v172e: sTotal JÁ exclui enviados/fila (vem filtrado do servidor) —
+      // subtrair sentInSheet de novo dobrava o desconto e zerava "restantes"
+      // bem antes da planilha esgotar de verdade (achado real, planilhas
+      // grandes com centenas de envios). "restantes" É o próprio sTotal.
+      const remaining=sTotal;
       // v90: nome REAL da planilha ativa (antes: ternário fixo que mostrava
       // "Jul 2025" pra qualquer outra planilha, e com as estações invertidas)
       const sheetLabel=_sheetLabelFor(tab);
       const wageFilter=fWage>0?` · <span style="font-size:11px;color:var(--green);font-weight:700">💰 ≥$${fWage}/h</span>`:"";
       const stateFilter=fState?` · <span style="font-size:11px;color:var(--blue)">📍 ${fState}</span>`:"";
-      cnt.innerHTML=`<strong>${remaining.toLocaleString("pt-BR")}</strong> restantes · <span style="font-size:11px;color:var(--t3)">${sentInSheet>0?`<span style="color:var(--green)">✅ ${sentInSheet} enviadas</span> de ${sTotal.toLocaleString("pt-BR")}`:sTotal.toLocaleString("pt-BR")+` vagas`}</span> · <span style="font-size:11px;color:var(--blue)">${sheetLabel}</span>${wageFilter}${stateFilter}`;
+      cnt.innerHTML=`<strong>${remaining.toLocaleString("pt-BR")}</strong> restantes · <span style="font-size:11px;color:var(--t3)">${sentInSheet>0?`<span style="color:var(--green)">✅ ${sentInSheet} enviadas</span> de ${sTrueTotal.toLocaleString("pt-BR")}`:sTrueTotal.toLocaleString("pt-BR")+` vagas`}</span> · <span style="font-size:11px;color:var(--blue)">${sheetLabel}</span>${wageFilter}${stateFilter}`;
     }
     const sib=g("#sib-jobs");if(sib){sib.style.display="";sib.textContent=sTotal>999?"999+":String(sTotal);}
   }catch(e){g("#lmore").innerHTML=`<div style="padding:14px;text-align:center;font-size:13px;color:var(--red)">Erro. <span style="cursor:pointer;text-decoration:underline" onclick="loadSheetMeta()">Tentar novamente</span></div>`;}
@@ -1544,10 +1552,14 @@ function updSheetCounter(){
     return;
   }
   const cnt=g("#jcount");if(!cnt||!sTotal)return;
-  const sentInSheet=HIST.filter(h=>h.sheetSource===tab).length;
-  const remaining=Math.max(0,sTotal-sentInSheet);
+  // 🐛 v172e: mesma dupla-subtração do loadSheetMeta (sTotal já vem sem os
+  // enviados/fila) + faltava h.source===tab (envio AUTOMÁTICO grava só
+  // "source", nunca "sheetSource" — ficava de fora desta contagem).
+  const sentInSheet=HIST.filter(h=>h.sheetSource===tab||h.source===tab).length;
+  const remaining=sTotal;
+  const trueTotal=sTrueTotal||sTotal;
   const sheetLabel=_sheetLabelFor(tab); // v90: nome real da planilha ativa
-  cnt.innerHTML=`<strong>${remaining.toLocaleString("pt-BR")}</strong> restantes · <span style="font-size:11px;color:var(--t3)">${sentInSheet>0?`<span style="color:var(--green)">${sentInSheet} enviadas</span> de ${sTotal.toLocaleString("pt-BR")}`:sTotal.toLocaleString("pt-BR")+` total`}</span> · <span style="font-size:11px;color:var(--blue)">${sheetLabel}</span>`;
+  cnt.innerHTML=`<strong>${remaining.toLocaleString("pt-BR")}</strong> restantes · <span style="font-size:11px;color:var(--t3)">${sentInSheet>0?`<span style="color:var(--green)">${sentInSheet} enviadas</span> de ${trueTotal.toLocaleString("pt-BR")}`:trueTotal.toLocaleString("pt-BR")+` total`}</span> · <span style="font-size:11px;color:var(--blue)">${sheetLabel}</span>`;
 }
 
 function mkSheetCard(j){

@@ -86,7 +86,7 @@
 //    promessa de "direito de arrependimento de 7 dias" (removida também dos
 //    Termos — seção renumerada 1-12).
 //
-const CACHE_NAME = "h2bapply-2026-v26"; // v26: auditoria de segurança do login novo (v172b/v172c) — login-CSRF no OAuth de conectar Gmail (state sem amarrar na sessão de quem iniciou) fechado nos dois fluxos (conectar Gmail principal e extra), e senha mínima subiu de 4 pra 8 caracteres (cadastro e admin definindo senha de usuário).
+const CACHE_NAME = "h2bapply-2026-v27"; // v27: auditoria do motor de envio/matching — contador de "vagas restantes" parou de subtrair os enviados 2x (zerava bem antes da planilha esgotar de verdade) e passou a mostrar o total real da planilha (não o já-filtrado) no "de Y"; envio automático via getSenderToken corrigido para contar o e-mail principal pela chave real do histórico, não pelo username de login (rodízio, aquecimento e teto do admin ficavam sempre achando que o principal nunca tinha enviado nada hoje).
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).

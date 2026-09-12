@@ -2316,8 +2316,27 @@ async function testAuthWatchdogPush() {
       !_srvSrc.includes("if(!isAdminVip(p) && todayAuto>=autoLimit)") && !_srvSrc.includes("if(!isAdminVip(p)&&todayAuto>=autoLimit)return json(res,429"),
       "gate de limite diário ainda isenta admin em algum lugar");
     check("🎯 (estrutural) seleção de remetente do automático do ADMIN é ALEATÓRIA (nunca round-robin determinístico só pra ele) — usuário comum continua round-robin",
-      _srvSrc.includes("if (isAdminVip(p)) {") && /Math\.random\(\) \* \(i \+ 1\)/.test(_srvSrc) && _srvSrc.includes("pool.sort((a, b) => (countBySender[a.email]"),
+      _srvSrc.includes("if (isAdminVip(p)) {") && /Math\.random\(\) \* \(i \+ 1\)/.test(_srvSrc) && _srvSrc.includes("pool.sort((a, b) => (countBySender[a.countKey]"),
       "embaralhamento aleatório do pool de senders do admin não encontrado");
+    // 🐛 v172e (auditoria, 12/09/2026): getSenderToken contava o rodízio/
+    // aquecimento/teto-de-admin pela IDENTIDADE de login do principal
+    // (ownerEmail) — mas o histórico real grava o Gmail REAL conectado
+    // (resolveSendGmail) pra esse mesmo envio. Pra conta v172c (username
+    // sem '@'), countBySender[ownerEmail] nunca batia com a chave real do
+    // histórico e ficava sempre 0: o principal sempre "parecia" ter
+    // enviado 0 hoje, furando o rodízio 1-a-1 com extras, o teto de
+    // aquecimento (13a) e o teto de 450/dia por sender do admin.
+    check("🐛 v172e-FIX: pool do round-robin conta o principal pela chave REAL do histórico (resolveSendGmail), não pelo username de login",
+      _srvSrc.includes("const _principalCountKey = resolveSendGmail(p) || ownerEmail;") &&
+      _srvSrc.includes("{ email: ownerEmail, countKey: _principalCountKey, isPrincipal: true, addedAt: p?.created_at }") &&
+      _srvSrc.includes("...extrasOk.map(s => ({ ...s, countKey: s.email, isPrincipal: false }))"),
+      "getSenderToken não monta mais o pool com countKey resolvido — contagem do principal v172c voltaria a ficar sempre 0");
+    check("🐛 v172e-FIX: filtro de aquecimento, teto do admin e sort do rodízio leem countBySender pela chave resolvida (countKey), nunca mais por c.email cru",
+      _srvSrc.includes("return cap === null || (countBySender[c.countKey] || 0) < cap;") &&
+      _srvSrc.includes("const withinDaily = pool.filter(c => (countBySender[c.countKey] || 0) < perSenderAutoLimit(p, c.countKey));") &&
+      !_srvSrc.includes("(countBySender[c.email] || 0) < cap") &&
+      !_srvSrc.includes("(countBySender[c.email] || 0) < perSenderAutoLimit"),
+      "algum dos 3 usos (aquecimento/admin/sort) ainda lê countBySender pela identidade crua — a conta v172c continuaria sempre com contagem 0");
     check("🌱 aquecimento: conta de HOJE (dia 0) tem teto de 15/dia", _warmupFn(new Date().toISOString()) === 15, `cap=${_warmupFn(new Date().toISOString())}`);
     check("🌱 aquecimento: conta de 4 dias tem teto de 40/dia", _warmupFn(Date.now() - 4 * 86400_000) === 40, `cap=${_warmupFn(Date.now() - 4 * 86400_000)}`);
     check("🌱 aquecimento: conta de 10 dias tem teto de 100/dia", _warmupFn(Date.now() - 10 * 86400_000) === 100, `cap=${_warmupFn(Date.now() - 10 * 86400_000)}`);
