@@ -1055,6 +1055,29 @@ async function testAuthWatchdogPush() {
       JSON.stringify(vmsStart.json));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
 
+    // ═══ 🚨 v172i (auditoria 12/09/2026 — VAZAMENTO DE RECEITA real) ═══
+    // manual e automático vencem em datas INDEPENDENTES, mas getPlan()
+    // devolve um nome só — com o automático ativo e o manual VENCIDO ele
+    // devolvia 'vipro', e PLAN_LIMITS.vipro.manual=200 liberava 200 envios
+    // MANUAIS/dia de graça (plano legado "pro" auto-only caía nisso desde
+    // sempre; /api/send não tem segunda trava como o scheduleAuto tem).
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "soauto@test.com", refreshToken: "rt-soauto", vip: { manualExpires: Date.now() - 86400_000, autoExpires: Date.now() + 30 * 86400_000, plan: "vipro", active: true }, plan: "vipro" });
+    const soAutoSt = await get("/api/status");
+    const soAutoSend = await req2("POST", "/api/send", { to: "x@soauto-test.com", subject: "a", body: "b", jobTitle: "Cook", company: "Z" });
+    check("🚨 v172i: manual VENCIDO + automático ativo → manualLimit é 0 (nunca herda os 200 do 'vipro' do automático) e /api/send é barrado",
+      soAutoSt.json?.manualLimit === 0 && soAutoSt.json?.autoLimit > 0 && soAutoSend.status !== 200,
+      JSON.stringify({ manualLimit: soAutoSt.json?.manualLimit, autoLimit: soAutoSt.json?.autoLimit, send: soAutoSend.status, body: soAutoSend.body.slice(0, 120) }));
+    // O outro sentido: atalho `u.plan==='doublepro' && isVipActive(u)` (OU,
+    // não E) — doublepro com automático VENCIDO e só manual ativo devolvia
+    // autoLimit=400 e passava no gate de /api/auto/start.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "dpsomanual@test.com", refreshToken: "rt-dpsomanual", vip: { manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() - 86400_000, plan: "doublepro", active: true }, plan: "doublepro" });
+    const dpSt = await get("/api/status");
+    const dpStart = await req2("POST", "/api/auto/start", { queue: [{ to: "x@dpsomanual-test.com", title: "Cook", company: "Z" }], subjects: ["a"], emailBodies: ["b"] });
+    check("🚨 v172i: doublepro com automático VENCIDO → autoLimit é 0 (o atalho por u.plan não vaza os 400) e /api/auto/start dá 402; o manual ainda ativo continua 400",
+      dpSt.json?.autoLimit === 0 && dpSt.json?.manualLimit === 400 && dpStart.status === 402 && dpStart.json?.needsPlan === true,
+      JSON.stringify({ autoLimit: dpSt.json?.autoLimit, manualLimit: dpSt.json?.manualLimit, start: dpStart.status, body: dpStart.body.slice(0, 120) }));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
+
     // v48: INCIDENTE REAL "vagas sumiram" — o fixture semeou /data com
     // jul2025 TRUNCADO e h2a VAZIO. O boot tem que ter recuperado os dois
     // pelas cópias bundled do código (com e-mails), regravado /data e a

@@ -2422,8 +2422,23 @@ function limitesDoPlanoNovo(planKey){
 // RESSUSCITAVAM 20 manuais/10 automáticos grátis por trás das costas.
 // `??` só cai no fallback se o valor for null/undefined de verdade (plano
 // desconhecido, nunca deveria acontecer — todos os planos estão na tabela).
+// 🚨 v172i (auditoria 12/09/2026 — VAZAMENTO DE RECEITA real): getPlan()
+// devolve um NOME de plano só, mas manual e automático vencem em datas
+// independentes (vip.manualExpires × vip.autoExpires). Com o automático
+// ativo e o manual VENCIDO, getPlan() ainda devolve 'vipro' (o ramo
+// `if(auto) return 'vipro'` roda antes do `if(manual)`), e a tabela
+// PLAN_LIMITS.vipro.manual=200 liberava 200 envios MANUAIS/dia de graça
+// pra quem só pagou (ou só ainda tem) o automático — plano legado "pro"
+// (auto-only) caía nisso desde sempre. O atalho do doublepro
+// (`u.plan==='doublepro' && isVipActive(u)` — OU, não E) vazava 400 pelo
+// mesmo caminho nos 2 sentidos. Diferente do automático (que scheduleAuto
+// re-checa com isAutoVipActive), o manual NÃO tem segunda trava —
+// /api/send confia só neste número. Regra nova, nos 2 getters: a
+// dimensão que NÃO está ativa de verdade devolve 0 ANTES de olhar
+// qualquer tabela por nome de plano — nunca herda o limite da outra.
 const getManualLimit = u => {
   if (u?.vip?.limits && typeof u.vip.limits.manual==="number" && isManualVipActive(u)) return u.vip.limits.manual;
+  if (!isManualVipActive(u)) return 0; // isManualVipActive já devolve true pra admin
   return PLAN_LIMITS[getPlan(u)]?.manual ?? 0;
 };
 const getAutoLimit   = u => {
@@ -2442,7 +2457,11 @@ const getAutoLimit   = u => {
     const senders=[{email:resolveSendGmail(u)||u.email},...(u.senderEmails||[]).filter(s=>!s.blocked&&!s.tokenExpired)];
     return senders.reduce((sum,s)=>sum+perSenderAutoLimit(u,s.email),0);
   }
-  if (u?.vip?.limits && typeof u.vip.limits.auto==="number" && isAutoVipActive(u)) return u.vip.limits.auto ?? PLAN_LIMITS.free.auto;
+  if (u?.vip?.limits && typeof u.vip.limits.auto==="number" && isAutoVipActive(u)) return u.vip.limits.auto;
+  // 🚨 v172i: mesma regra do getManualLimit — automático vencido nunca herda
+  // o limite do atalho doublepro (u.plan salvo + OU do isVipActive) nem de
+  // nenhuma tabela por nome. (admin já saiu com return no bloco acima.)
+  if (!isAutoVipActive(u)) return 0;
   return PLAN_LIMITS[getPlan(u)]?.auto ?? 0;
 };
 // Teto diário de automático de UM sender específico do admin — usa o
