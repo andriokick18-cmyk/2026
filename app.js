@@ -4186,14 +4186,20 @@ async function updateFilterCount(){
 
 // ── recalcInterval: mostra previsão correta de 5-6 min ──────────
 function recalcInterval(){
-  const autoLimit=U.isAdmin?9999:(U.autoLimit||10);
+  // 🎯 v172b (ordem do dono, 12/09/2026): admin não é mais "sem limite" —
+  // 450/dia por e-mail conectado, com o padrão de intervalo em 5min (300s).
+  // U.autoLimit já vem do servidor somando 450 por sender (getAutoLimit).
+  const autoLimit=U.isAdmin?(U.autoLimit||450):(U.autoLimit||10);
   const el=g("#interval-main"),sub=g("#interval-sub");
   if(U.isAdmin){
-    const secs=U.adminSettings?.intervalSecs||180;
+    const extraSenders=(U.senderEmails||[]).filter(s=>s&&s.active!==false&&!s.tokenExpired&&!s.blocked).length;
+    const activeSenders=Math.min(6,Math.max(1,1+extraSenders));
+    const baseSecs=U.adminSettings?.intervalSecs||300;
+    const secs=Math.round(baseSecs/activeSenders);
     const mins=Math.floor(secs/60);const secsR=secs%60;
     const intLbl=mins>0?(secsR>0?`${mins}min ${secsR}s`:`${mins}min`):`${secs}s`;
-    if(el)el.textContent=`⚡ Admin: 1 e-mail a cada ${intLbl} (configurável)`;
-    if(sub)sub.textContent="Sem limite diário — envia até zerar a fila. Configure o intervalo na aba Admin do Perfil.";
+    if(el)el.textContent=`⚡ Admin: 1 e-mail a cada ${intLbl}${activeSenders>1?` (${activeSenders} Gmails revezando)`:""} (configurável)`;
+    if(sub)sub.textContent=`Seu limite: ${autoLimit} e-mails/dia (450 por Gmail conectado). Configure o intervalo na aba Admin do Perfil.`;
   } else {
     // Cada Gmail extra conectado (e com token válido) divide o intervalo pela
     // metade — o robô revezar entre as contas, então o ritmo GERAL acelera
@@ -4835,7 +4841,7 @@ function updateAutoUI(){
   const extraInfo=g("#auto-extra-info");
   if(extraInfo&&U.isAdmin){
     extraInfo.style.display="flex";
-    const secs=U.adminSettings?.intervalSecs||180;
+    const secs=U.adminSettings?.intervalSecs||300;
     const mins=Math.floor(secs/60);const secsR=secs%60;
     const intLbl=mins>0?(secsR>0?`⏱ ${mins}min ${secsR}s/envio`:`⏱ ${mins}min/envio`):`⚡ ${secs}s/envio`;
     const intBadge=g("#auto-interval-badge");if(intBadge)intBadge.textContent=intLbl;
@@ -6134,7 +6140,12 @@ function showGmailConnectWarnModal(fromTab){
   _cgfsFromTab=fromTab||"plans";
   fetch("/api/warmup",{credentials:"include"}).catch(function(){});
   var m=document.getElementById("gwm");
-  if(!m){location.href="/oauth/connect-send?from="+encodeURIComponent(_cgfsFromTab);return;}
+  // 🔒 se o modal de aviso obrigatório não existir na página (HTML velho em
+  // cache, id renomeado por engano), NUNCA pular direto pro Google sem
+  // consentimento — isso é o exato risco que este modal existe pra evitar.
+  // Falha visível + recarrega a página (pega a versão nova do HTML) em vez
+  // de seguir em silêncio.
+  if(!m){toast("⚠️ Não foi possível carregar o aviso de conexão do Gmail. Atualizando a página…","r",5000);setTimeout(function(){location.reload();},1200);return;}
   m.style.display="flex";
   _gwmArm();
 }
@@ -6454,9 +6465,11 @@ async function _loadAdminSettings(){
 }
 
 function _renderAdminForm(){
-  // Intervalo
+  // Intervalo — 🎯 v172b (ordem do dono, 12/09/2026): padrão do admin virou
+  // 5min (300s), não 3min (180s) — o mesmo default usado pelo servidor
+  // (mod-engine-core.js) quando adminSettings.intervalSecs não foi customizado.
   const inp=g("#adm-interval");
-  if(inp)inp.value=_adminSettings.intervalSecs||180;
+  if(inp)inp.value=_adminSettings.intervalSecs||300;
   updateAdminIntervalLabel();
   // Senders
   _renderAdminSenders();
@@ -6465,12 +6478,14 @@ function _renderAdminForm(){
 function updateAdminIntervalLabel(){
   const inp=g("#adm-interval");const lbl=g("#adm-interval-label");
   if(!inp||!lbl)return;
-  const v=parseInt(inp.value)||180;
+  const v=parseInt(inp.value)||300;
   const mins=Math.floor(v/60);const secs=v%60;
   let txt=mins>0?`${mins} min`:"";if(secs>0)txt+=(txt?" ":"")+`${secs} seg`;
+  // v172b: 300s (5min) é o padrão recomendado agora — cai em "Normal", não
+  // mais em "Conservador" (o limiar subiu de 300 pra 600 de propósito).
   lbl.textContent=v<60?"⚡ Ultra-rápido ("+txt+"/envio)"
-    :v<120?"🚀 Rápido ("+txt+"/envio)"
-    :v<300?"✅ Normal ("+txt+"/envio)"
+    :v<180?"🚀 Rápido ("+txt+"/envio)"
+    :v<600?"✅ Normal ("+txt+"/envio)"
     :"🐢 Conservador ("+txt+"/envio)";
 }
 
@@ -6538,7 +6553,7 @@ async function removeSenderAdmin(email){
 
 async function saveAdminSettings(){
   const inpSecs=g("#adm-interval");
-  const secs=inpSecs?Math.max(30,parseInt(inpSecs.value)||180):180;
+  const secs=inpSecs?Math.max(30,parseInt(inpSecs.value)||300):300;
   // Coletar limites por sender
   const allEmails=[U.email,...(U.senderEmails||[]).map(s=>s.email)];
   const senderLimits={};

@@ -74,8 +74,8 @@ Se precisar de ajuda, responda este e-mail que a gente resolve junto!
 Notamos aqui que seu plano VIP está valendo, mas o envio automático não está rodando. Provavelmente o Google pediu uma nova autorização (isso é normal e acontece de tempos em tempos).
 
 Reativar é simples:
-1. Entre em h2bapply.com
-2. Clique em "Entrar com Google" novamente
+1. Entre em h2bapply.com com seu usuário e senha
+2. Reconecte seu Gmail em Perfil → Conectar Gmail
 3. Ative o Envio Automático
 
 Cada dia parado é oportunidade de vaga perdida — os empregadores H-2B respondem rápido para quem chega primeiro! 🇺🇸

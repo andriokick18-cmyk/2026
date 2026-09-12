@@ -419,6 +419,30 @@ async function testAuthWatchdogPush() {
     check("🔐 v172c: conta ANTIGA loga normalmente DEPOIS que o admin carimbou a senha nova (destrancada de vez)",
       _logLegadoDepois.status === 200 && _logLegadoDepois.json?.ok === true, JSON.stringify(_logLegadoDepois.json));
     COOKIE = "";
+
+    // 🔎 v172d (auditoria independente, 12/09/2026): a troca do login pra
+    // usuário+senha (v172c) deixou texto/cópia velha na landing e um bug
+    // real de default no intervalo do admin — achados por uma verificação
+    // adversarial e corrigidos aqui, com guarda pra nunca voltar.
+    const _idxSrc172d = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+    const _appSrc172d = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+    const _srvSrc172d = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+    const _mntSrc172d = fs.readFileSync(path.join(__dirname, "mod-notif-templates.js"), "utf8");
+    check("🌐 v172d: landing/modal/onboarding sem NENHUM resquício de 'login por Google' (nem 'sem senha')",
+      !_idxSrc172d.includes("Entre com Google") && !_idxSrc172d.includes("a entrada é sempre pela sua conta Google") &&
+      !_idxSrc172d.includes("Sem senha") && !_idxSrc172d.includes("E-mail (conta Google)"),
+      "sobrou texto de login por Google na landing/modal/onboarding do index.html");
+    check("🌐 v172d: mensagem de reconexão (mod-notif-templates.js) não manda mais clicar 'Entrar com Google'",
+      !_mntSrc172d.includes("Entrar com Google"),
+      "sobrou instrução de login por Google em mod-notif-templates.js");
+    check("🌐 v172d: aviso obrigatório do Gmail-pra-enviar NUNCA pula o consentimento — se #gwm sumir do HTML, recarrega em vez de ir direto pro Google",
+      /if\(!m\)\{[^}]*location\.reload/.test(_appSrc172d) && !/if\(!m\)\{location\.href="\/oauth\/connect-send/.test(_appSrc172d),
+      "fallback de showGmailConnectWarnModal ainda pula direto pro Google sem consentimento");
+    check("🎯 v172d: padrão do intervalo do admin é 5min (300s) em TODOS os lugares — nunca mais o 180s/420s de antes da v172b",
+      _srvSrc172d.includes('intervalSecs)||300)') && _srvSrc172d.includes("isAdminVip(p)?(p.adminSettings?.intervalSecs||300):420") &&
+      !_srvSrc172d.includes("intervalSecs||180") && !_srvSrc172d.includes("intervalSecs)||180") &&
+      !_appSrc172d.includes("intervalSecs||180") && !_appSrc172d.includes("intervalSecs)||180") && !_appSrc172d.includes('||180):180'),
+      "sobrou default de 180s/420s do intervalo do admin em server.js/app.js");
     const _srvSrc156 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
     check("🌐 (estrutural) nenhum resquício de arquitetura multi-servidor no server.js (SERVER_ID/_getServersConfig/_resolveServerId/checkAccountOnPeers/financeiro-global)",
       !/\bSERVER_ID\b/.test(_srvSrc156) && !_srvSrc156.includes("_getServersConfig") && !_srvSrc156.includes("_resolveServerId") &&

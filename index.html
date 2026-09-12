@@ -1789,7 +1789,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       <button class="ag-back" id="ag-back" onclick="agBack()" aria-label="Voltar">←</button>
       <div class="ag-logo"><img src="/icon-192.png?v=3" alt="" style="width:24px;height:24px;border-radius:6px;object-fit:cover"> H2BApply</div>
       <div id="ag-body"></div>
-      <div class="ag-foot">🔒 Sem senha — a entrada é sempre pela sua conta Google.</div>
+      <div class="ag-foot">🔒 Seus dados ficam protegidos com senha criptografada.</div>
     </div>
   </div>
 
@@ -1839,7 +1839,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
         <div id="login-err" style="margin-top:8px;font-size:12px;color:var(--red)"></div>
         <div class="ln-trust-row">
           <span><i class="ti ti-lock"></i> 100% seguro</span>
-          <span><i class="ti ti-user-check"></i> Sem senha</span>
+          <span><i class="ti ti-clock"></i> Cadastro em 1 minuto</span>
           <span><i class="ti ti-wallet"></i> Cadastro grátis · envio é por plano</span>
         </div>
 
@@ -1955,9 +1955,9 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       <h2 class="ln-sec-title">Em 3 passos, você já está candidatando</h2>
       <div class="ln-steps">
         <div class="ln-step">
-          <div class="ln-step-ico"><i class="ti ti-brand-google" style="font-size:28px"></i></div>
-          <div class="ln-step-title">1. Entre com Google</div>
-          <div class="ln-step-desc">Login seguro com sua conta Gmail. Zero senha, zero formulário.</div>
+          <div class="ln-step-ico"><i class="ti ti-user-plus" style="font-size:28px"></i></div>
+          <div class="ln-step-title">1. Crie sua conta</div>
+          <div class="ln-step-desc">Usuário e senha — rápido, sem precisar de Gmail nem de cartão.</div>
         </div>
         <div class="ln-step-arrow">→</div>
         <div class="ln-step">
@@ -2158,7 +2158,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       </button>
       <div class="ln-trust-row" style="justify-content:center;margin-top:0">
         <span><i class="ti ti-lock"></i> 100% seguro</span>
-        <span><i class="ti ti-user-check"></i> Sem senha</span>
+        <span><i class="ti ti-clock"></i> Cadastro em 1 minuto</span>
         <span><i class="ti ti-wallet"></i> Cadastro grátis · envio é por plano</span>
       </div>
     </div>
@@ -5134,10 +5134,10 @@ html, body, #app, .bottom-nav, .sidebar{
         <span>🔒 Seus dados ficam protegidos e <strong>nunca</strong> são compartilhados. Seu nome é usado nos e-mails enviados às empresas — escreva como no passaporte.</span>
       </div>
 
-      <!-- Email (read-only, já logado) -->
+      <!-- Usuário (read-only, já logado) — v172c: login virou usuário+senha, não é mais um e-mail do Google -->
       <div class="field" style="margin-bottom:8px">
-        <label style="font-size:11px;font-weight:700;color:var(--t3)">📧 E-mail (conta Google)</label>
-        <input class="input" id="ob-email-display" type="email" readonly style="background:var(--sf2);color:var(--t2);cursor:default;font-size:12px">
+        <label style="font-size:11px;font-weight:700;color:var(--t3)">👤 Seu usuário</label>
+        <input class="input" id="ob-email-display" type="text" readonly style="background:var(--sf2);color:var(--t2);cursor:default;font-size:12px">
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
