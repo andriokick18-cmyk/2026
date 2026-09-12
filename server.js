@@ -4647,12 +4647,19 @@ async function _doAutoSendInner(email) {
     target.to = _finalEmail.email; // garante normalizado no MIME
 
     // ── Constrói MIME do zero (nunca reutiliza raw) ────────
+    // 🐛 v172c: fromEmail não pode ser String(email) cru — pra conta nova
+    // (login usuário+senha) "email" é o USERNAME, nunca um Gmail de verdade,
+    // e o From: saía malformado (sem @). Quando o envio é por um SENDER
+    // EXTRA (_autoSenderEmail !== email), o From certo é o Gmail real do
+    // extra; quando é o principal, é o Gmail conectado (p.gmailEmail) —
+    // "email" só sobra de fallback pra conta LEGADA, onde ele já É o Gmail.
+    const _autoFromEmail = (_autoSenderEmail && _autoSenderEmail !== email) ? _autoSenderEmail : (resolveSendGmail(p) || email);
     const raw = buildMime({
       to: target.to,
       subject,
       text: body,
       fromName: String(p.name || "H2BApply"),
-      fromEmail: String(email),
+      fromEmail: String(_autoFromEmail),
       attachments: attachments.map(a => ({ data: a.data, name: a.name })), // cópia explícita
     });
 
@@ -5149,7 +5156,7 @@ function generateIconPNG(size) {
 }
 
 // httpsReq: extraído para src/gmail.js (Fase 1 · Módulo 2)
-const { httpsReq, normalizeEmail: _normEmailMod, buildMime: _buildMimeMod, sanitizeHeaderField } = require("./mod-gmail.js");
+const { httpsReq, normalizeEmail: _normEmailMod, buildMime: _buildMimeMod, sanitizeHeaderField, resolveSendGmail } = require("./mod-gmail.js");
 const MAX_BODY_SIZE = 50 * 1024 * 1024; // 50MB — suficiente para PDFs base64
 function readBody(req){return new Promise((res,rej)=>{const p=[];let sz=0;req.on("data",c=>{sz+=c.length;if(sz>MAX_BODY_SIZE){rej(new Error("Payload too large"));return;}p.push(c);});req.on("end",()=>res(Buffer.concat(p).toString()));req.on("error",rej);});}
 function json(res,status,data){
@@ -5451,12 +5458,19 @@ async function _ensureSendToken(sid){
   if(!s.access_token)throw new Error("Conecte seu Gmail pra enviar candidaturas (Automático ou Manual → Conectar Gmail).");
   return s;
 }
-async function gmailSend(sid,opts){const s=await _ensureSendToken(sid);const raw=buildMime({...opts,fromEmail:s.user_email});const{status,body}=await httpsReq({hostname:"gmail.googleapis.com",path:"/gmail/v1/users/me/messages/send",method:"POST",headers:{"Authorization":"Bearer "+s.access_token,"Content-Type":"application/json"}},{raw});if(body?.error){const msg=body.error.message||JSON.stringify(body.error);throw new Error(msg);}if(status!==200)throw new Error("Gmail HTTP "+status);return body;}
+// 🐛 v172c: fromEmail do sender PRINCIPAL não pode mais ser s.user_email cru
+// — pra conta nova (login usuário+senha) isso é o USERNAME, não um Gmail de
+// verdade, e vazava um "From:" inválido pro Gmail (a API "me" até manda pela
+// conta certa, mas o cabeçalho From malformado é outra história). O Gmail
+// REAL conectado (gmailEmail, ver resolveSendGmail) tem prioridade;
+// s.user_email só sobra como fallback pra conta LEGADA, onde ele já É o Gmail.
+async function gmailSend(sid,opts){const s=await _ensureSendToken(sid);const owner=getUser(s.user_email);const raw=buildMime({...opts,fromEmail:resolveSendGmail(owner)||s.user_email});const{status,body}=await httpsReq({hostname:"gmail.googleapis.com",path:"/gmail/v1/users/me/messages/send",method:"POST",headers:{"Authorization":"Bearer "+s.access_token,"Content-Type":"application/json"}},{raw});if(body?.error){const msg=body.error.message||JSON.stringify(body.error);throw new Error(msg);}if(status!==200)throw new Error("Gmail HTTP "+status);return body;}
 
 // Envio com suporte a threading (respostas na mesma conversa)
 async function gmailSendWithThread(sid,opts){
   const s=await _ensureSendToken(sid);
-  const raw=buildMimeWithHeaders({...opts,fromEmail:s.user_email});
+  const owner=getUser(s.user_email);
+  const raw=buildMimeWithHeaders({...opts,fromEmail:resolveSendGmail(owner)||s.user_email});
   const payload={raw};
   // threadId vincula a mensagem ao thread correto no Gmail
   if(opts.threadId)payload.threadId=opts.threadId;
@@ -7572,17 +7586,21 @@ filtrar();
         const{body:uiCS}=await httpsReq({hostname:"www.googleapis.com",path:"/oauth2/v2/userinfo",method:"GET",headers:{"Authorization":"Bearer "+tkCS.access_token}});
         const _emailCS=String(uiCS.email||"").toLowerCase().trim();
         if(!_emailCS)return failCS("E-mail não obtido.");
-        // A conta autorizada TEM que ser a mesma já logada — isto não é
-        // trocar de conta, é dar permissão de envio pra ELA mesma. Diferente
-        // = revoga (aqui SIM vale a pena — é escopo sensível de verdade) e
-        // barra, mesmo padrão de proteção que o login já usava antes do v172.
-        if(_emailCS!==ownerEmailCS){
+        // v172c (bug real corrigido, 12/09/2026 — ver resolveSendGmail):
+        // conta nova não tem NENHUM Gmail ainda (login é usuário+senha, sem @)
+        // — esta é a 1ª conexão dela, aceita a conta Google que a pessoa
+        // escolher. Só trava RE-conexão com um Gmail DIFERENTE do que já
+        // estava conectado (ou, em conta legada, diferente do e-mail de
+        // login, que já era o Gmail real) — aí sim revoga (escopo sensível
+        // de verdade) e barra, mesmo padrão de proteção de sempre.
+        const _expectedGmailCS=resolveSendGmail(ownerCS);
+        if(_expectedGmailCS && _emailCS!==_expectedGmailCS){
           try{
             const _rvBCS="token="+encodeURIComponent(tkCS.refresh_token||tkCS.access_token);
             await httpsReq({hostname:"oauth2.googleapis.com",path:"/revoke",method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded","Content-Length":Buffer.byteLength(_rvBCS)}},_rvBCS);
-            _authEvent(_emailCS,"revoke_mismatch","Conectar-Gmail-pra-enviar revogado: logada como "+ownerEmailCS+", autenticou "+_emailCS);
+            _authEvent(_emailCS,"revoke_mismatch","Conectar-Gmail-pra-enviar revogado: esperava "+_expectedGmailCS+", autenticou "+_emailCS);
           }catch(eRvCS){console.warn("[oauth] revoke pós-mismatch (connect-send) falhou:",eRvCS.message);}
-          return failCS(`Você precisa autorizar com a MESMA conta que já está logada (${ownerEmailCS}), não com ${_emailCS}.`);
+          return failCS(`Você precisa autorizar com a MESMA conta Gmail já conectada (${_expectedGmailCS}), não com ${_emailCS}.`);
         }
         if(!tkCS.refresh_token && !ownerCS.refresh_token){
           // Google só manda refresh_token com prompt=consent (sempre pedido
@@ -7592,6 +7610,7 @@ filtrar();
           return failCS("O Google não devolveu a permissão de envio. Tente conectar de novo.");
         }
         setUser(ownerEmailCS,{
+          gmailEmail: _emailCS,
           refresh_token: tkCS.refresh_token || ownerCS.refresh_token,
           cached_access_token: tkCS.access_token,
           cached_token_expiry: Date.now()+(tkCS.expires_in||3600)*1000,
@@ -7662,9 +7681,13 @@ filtrar();
     const _fromTab=String(u.searchParams.get("from")||"").replace(/[^a-z0-9_-]/gi,"").slice(0,30)||"plans";
     sessions["__connectsend__"+st]={ownerEmail:s.user_email,created:Date.now(),fromTab:_fromTab};
     persistSessions(); // sobrevive a restart, mesmo padrão do __sender__
-    // login_hint = o PRÓPRIO e-mail já logado — não é escolha de conta nova,
-    // é autorizar a MESMA conta a mandar e-mail em nome dela mesma.
-    const qs=new URLSearchParams({client_id:CLIENT_ID,redirect_uri:_oauthBase(req)+"/oauth/callback",response_type:"code",scope:OAUTH_SCOPES,access_type:"offline",prompt:"consent",state:st,login_hint:s.user_email});
+    // login_hint = o Gmail JÁ conectado (reconexão) ou, pra conta LEGADA cujo
+    // e-mail de login já É um Gmail real, o próprio e-mail — nunca o username
+    // de login de uma conta v172c (nunca tem @, confundiria a tela do Google
+    // sem ajudar em nada). resolveSendGmail devolve null pra quem
+    // ainda não conectou nenhum Gmail: aí a pessoa escolhe livremente.
+    const _hintCS=resolveSendGmail(p);
+    const qs=new URLSearchParams({client_id:CLIENT_ID,redirect_uri:_oauthBase(req)+"/oauth/callback",response_type:"code",scope:OAUTH_SCOPES,access_type:"offline",prompt:"consent",state:st,...(_hintCS?{login_hint:_hintCS}:{})});
     res.writeHead(302,{Location:"https://accounts.google.com/o/oauth2/v2/auth?"+qs});return res.end();
   }
 

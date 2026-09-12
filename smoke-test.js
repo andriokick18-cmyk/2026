@@ -1599,11 +1599,13 @@ async function testAuthWatchdogPush() {
     // v172c (ORDEM DO DONO, 12/09/2026): login do site virou usuário+senha —
     // não existe mais "e-mail digitado é contrato" pra login (não tem Google
     // no meio). Essa proteção agora só faz sentido em /oauth/connect-send
-    // (gmail.send, gated por plano pago): a sessão já sabe qual é o e-mail
-    // (login_hint:s.user_email), autenticar OUTRO revoga e barra.
-    check("🛡️ v172c: (estrutural) /oauth/connect-send trava a conta com login_hint da sessão e revoga se autenticar outro e-mail",
-      _csBlock.includes("login_hint:s.user_email") && _srvSrc.includes("_emailCS!==ownerEmailCS") && _srvSrc.includes('path:"/revoke"'),
-      "connect-send protegido não encontrado no server.js");
+    // (gmail.send, gated por plano pago): trava RE-conexão com um Gmail
+    // diferente do já esperado (resolveSendGmail — null pra quem nunca
+    // conectou nenhum, nunca trava a 1ª conexão de conta nova — ver bug
+    // real v172c-FIX acima), autenticar outro Gmail já esperado revoga e barra.
+    check("🛡️ v172c-FIX: (estrutural) /oauth/connect-send usa resolveSendGmail (nunca a identidade de login crua) pro login_hint e pra travar reconexão, revoga se autenticar outro Gmail",
+      _csBlock.includes("resolveSendGmail(p)") && _srvSrc.includes("resolveSendGmail(ownerCS)") && _srvSrc.includes("_emailCS!==_expectedGmailCS") && _srvSrc.includes('path:"/revoke"'),
+      "connect-send protegido (resolveSendGmail) não encontrado no server.js");
     // v172c: cadastro/login por usuário+senha — nunca senha em texto puro
     // (scrypt), nunca @ no username (impossível colidir com e-mail de admin),
     // e as 2 rotas têm rate limit (força-bruta de senha/username).
@@ -2118,6 +2120,32 @@ async function testAuthWatchdogPush() {
       dg2.json?.ok === true && (dg2.json?.problemas || []).length === 0 &&
       (dg2.json?.info || []).some((x) => /CADASTRO NOVO/.test(x)),
       (dg2.body || "").slice(0, 250));
+
+    // ═══ 🐛 v172c-FIX (bug real, 12/09/2026): resolveSendGmail ═══
+    // Bug encontrado em auditoria: login normal virou usuário+senha (v172c)
+    // e o username escolhido (SEM @) ficava gravado como u.email/identidade
+    // — mas /oauth/connect-send e o motor de envio (manual e automático)
+    // comparavam/usavam esse valor como se fosse o Gmail de verdade.
+    // Resultado: 100% dos usuários criados depois do v172c eram BLOQUEADOS
+    // pra sempre ao tentar conectar o Gmail de envio (username nunca bate
+    // com um endereço @gmail.com real), e mesmo que bloqueassem essa trava,
+    // o "From:" do e-mail saía com o username em vez de um Gmail — o motor
+    // de candidaturas (razão de existir do site) ficava 100% quebrado pra
+    // conta nova. Corrigido com u.gmailEmail (carimbado na 1ª conexão bem
+    // sucedida) + resolveSendGmail (mod-gmail.js), fonte única usada em
+    // /oauth/connect-send (login_hint + trava de reconexão) e no motor de
+    // envio (manual e automático).
+    const { resolveSendGmail } = require("./mod-gmail.js");
+    check("🐛 resolveSendGmail: conta NOVA (username sem @, nunca conectou Gmail) → null (1ª conexão aceita qualquer conta)",
+      resolveSendGmail({email:"joaosilva123"}) === null);
+    check("🐛 resolveSendGmail: conta NOVA já conectou um Gmail antes (gmailEmail carimbado) → trava nesse Gmail",
+      resolveSendGmail({email:"joaosilva123",gmailEmail:"Joao.Silva@Gmail.com"}) === "joao.silva@gmail.com");
+    check("🐛 resolveSendGmail: conta LEGADA (e-mail de login já É um Gmail real, sem gmailEmail carimbado) → usa o próprio e-mail",
+      resolveSendGmail({email:"andrio.usa2026@gmail.com"}) === "andrio.usa2026@gmail.com");
+    check("🐛 resolveSendGmail: gmailEmail carimbado tem PRIORIDADE sobre o e-mail de login, mesmo em conta legada",
+      resolveSendGmail({email:"andrio.usa2026@gmail.com",gmailEmail:"outro@gmail.com"}) === "outro@gmail.com");
+    check("🐛 resolveSendGmail: sem registro nenhum (owner null/undefined) → null, nunca quebra",
+      resolveSendGmail(null) === null && resolveSendGmail(undefined) === null);
 
     // ═══ 🛡️ v73: AQUECIMENTO DE CONTA GMAIL NOVA (proteção anti-bloqueio) ═══
     // Pedido real do dono: "tem gente sendo bloqueada pelo Google". A defesa:

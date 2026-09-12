@@ -42,8 +42,25 @@ function sanitizeHeaderField(s, maxLen){
   return String(s==null?"":s).replace(/[\r\n\t]+/g," ").slice(0, maxLen||200);
 }
 
+// 🐛 v172c (bug real corrigido, 12/09/2026): login normal virou usuário+senha
+// e o username escolhido (SEM @, validado no cadastro pra nunca ser e-mail)
+// fica gravado como identidade (u.email/session.user_email) — mas quem
+// realmente ENVIA precisa de um endereço Gmail de verdade. Pra conta nova
+// isso só existe depois de conectar o Gmail em /oauth/connect-send, gravado
+// à parte em u.gmailEmail (NUNCA confundido com a identidade de login).
+// resolveSendGmail devolve o Gmail que essa conta já tem pra enviar/travar
+// reconexão: o gmailEmail carimbado, OU (conta LEGADA pré-v172c) o próprio
+// e-mail de login quando ele já é um Gmail de verdade — null só quando é
+// conta nova que ainda não conectou nenhum Gmail (1ª conexão, aceita
+// qualquer conta Google que a pessoa escolher).
+function resolveSendGmail(owner){
+  if (owner?.gmailEmail) return String(owner.gmailEmail).toLowerCase().trim();
+  const em = String(owner?.email||"").toLowerCase().trim();
+  return em.includes("@") ? em : null;
+}
+
 function buildMime({to,subject,text,fromName,fromEmail,attachments=[]}){ // v15-SEC: normaliza to
   to = normalizeEmail(to) || to;
   const bnd="----H2B"+crypto.randomBytes(8).toString("hex");const b64=s=>Buffer.from(s).toString("base64");const L=[`From: =?UTF-8?B?${b64(fromName)}?= <${fromEmail}>`,`To: ${to}`];L.push(`Subject: =?UTF-8?B?${b64(subject)}?=`,"MIME-Version: 1.0");if(!attachments.length){L.push("Content-Type: text/plain; charset=UTF-8","Content-Transfer-Encoding: 7bit","",text);}else{L.push(`Content-Type: multipart/mixed; boundary="${bnd}"`,"",`--${bnd}`,"Content-Type: text/plain; charset=UTF-8","Content-Transfer-Encoding: 7bit","",text,"");for(const a of attachments){const aMime=a.mime||"application/octet-stream";const aName=sanitizeHeaderField(a.name);L.push(`--${bnd}`,`Content-Type: ${aMime}; name="${aName}"`,"Content-Transfer-Encoding: base64",`Content-Disposition: attachment; filename="${aName}"`,"", ...(a.data.match(/.{1,76}/g)||[a.data]),"");}L.push(`--${bnd}--`);}return Buffer.from(L.join("\r\n")).toString("base64").replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");}
 
-module.exports = { httpsReq, normalizeEmail, buildMime, sanitizeHeaderField };
+module.exports = { httpsReq, normalizeEmail, buildMime, sanitizeHeaderField, resolveSendGmail };
