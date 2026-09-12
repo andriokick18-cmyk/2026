@@ -3245,6 +3245,15 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
               <div style="font-size:12.5px;color:var(--t2);line-height:1.65;background:var(--sf2);border:1px solid var(--border);border-radius:10px;padding:10px 12px" data-i18n="plan_step1_intro">
                 Você paga <strong>diretamente</strong> pelo plano escolhido — sem moeda intermediária. Veja os limites de cada plano, escolha o período e o preço final aparece na hora, antes de pagar.
               </div>
+              <!-- 🤖 (ordem do dono, 12/09/2026) explica o envio automático
+                   ANTES da pessoa escolher o plano — os limites já ficam
+                   explícitos em badge em cada card (ver _renderPlanosUI). -->
+              <details style="background:var(--sf2);border:1.5px solid var(--border2);border-radius:12px;padding:10px 14px">
+                <summary style="font-size:12.5px;font-weight:800;color:var(--t2);cursor:pointer" data-i18n="plan_auto_faq_q">🤖 Como funciona o Envio Automático?</summary>
+                <div style="font-size:12px;color:var(--t2);line-height:1.7;margin-top:8px" data-i18n="plan_auto_faq_a">
+                  O robô manda as candidaturas sozinho, pelo seu próprio Gmail, usando o currículo e os textos que você mesmo escreveu no seu perfil — ele nunca inventa nada. Você escolhe a fonte de vagas, ajusta os filtros e escolhe o perfil, toca em Iniciar e pode até fechar o app: ele continua enviando sozinho, um a cada ~7 minutos (ritmo humano, pra proteger sua conta Gmail de bloqueio pelo Google). Ao bater o limite diário do seu plano, ele pausa sozinho e volta a enviar no dia seguinte. O plano VIP é só manual (você escolhe e envia cada candidatura); VIPro e DoublePro já incluem o automático desde o primeiro dia.
+                </div>
+              </details>
               <!-- Seletor de plano+período — 100% montado por loadPlanos()/
                    _renderPlanosUI() a partir de GET /api/planos (preço e
                    limites nunca hardcoded aqui). -->

@@ -103,6 +103,11 @@ const ALLOWLIST = new Set([
   // toLocaleString) + nome/emoji de planilha (sheetLabel/_sheetLabelFor —
   // mesma categoria "só admin nomeia planilha" já confiada acima):
   "app.js:2c4e258286b0", "app.js:9c25a1550942",
+  // Cards de plano (_renderPlanosUI, badges de limite mais explícitos —
+  // ordem do dono, 12/09/2026): só números de PLAN_LIMITS_NEW (lim.manual/
+  // lim.auto), preço formatado por brl() e nome/dias de mapas INTERNOS
+  // fixos (NOME/DIAS_LBL) — nada de texto livre de fora:
+  "app.js:5a425b2d04a8",
 ]);
 
 function extractInnerHTMLStatements(src) {

@@ -86,7 +86,7 @@
 //    promessa de "direito de arrependimento de 7 dias" (removida também dos
 //    Termos — seção renumerada 1-12).
 //
-const CACHE_NAME = "h2bapply-2026-v28"; // v28: ordem do dono (12/09/2026) — chave Pix trocada pra uma chave aleatória do Diego (era o telefone do Andrio); cache-bust CRÍTICO aqui pra ninguém pagar numa chave velha por causa de app.js em cache.
+const CACHE_NAME = "h2bapply-2026-v29"; // v29: ordem do dono (12/09/2026 — "deixa mais explícito a quantidade de envios por cada plano... explique como funciona os envios automáticos") — cards de plano ganharam badges coloridos e explícitos de limite manual/automático (em vez de 1 linha cinza pequena) + FAQ explicando o Envio Automático na aba Planos.
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).
