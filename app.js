@@ -8194,8 +8194,12 @@ console.debug("[v19] Language system (PT/EN/ES) loaded");
 // Pix pro PicPay do Andrio (chave 53981453496), em qualquer plano/período.
 // 2026-07: consolidado numa chave só (telefone do Andrio) — antes o combo
 // mostrava a chave/e-mail do Jesus (jesuscristh@jim.com), removido a pedido.
-const PIX_KEY = '53981453496'; // Andrio — única chave Pix usada em todo o sistema
-const PIX_NAME = 'Andrio Kickhofel';
+// 🔑 Troca de titular (ordem do dono, 12/09/2026): chave Pix trocada pra
+// uma chave aleatória do Diego — todo o dinheiro das doações passa a cair
+// direto na conta dele, não mais na do Andrio. Continua sendo A ÚNICA
+// chave do sistema (nunca reintroduzir múltiplas chaves — regra da casa).
+const PIX_KEY = '7582fc3b-0f2f-423b-b994-a14d9de04264'; // Diego — única chave Pix usada em todo o sistema
+const PIX_NAME = 'Diego Cardoso';
 
 let _planComp64 = null; // base64 do comprovante
 let _planCompType = 'image/jpeg';

@@ -86,7 +86,7 @@
 //    promessa de "direito de arrependimento de 7 dias" (removida também dos
 //    Termos — seção renumerada 1-12).
 //
-const CACHE_NAME = "h2bapply-2026-v27"; // v27: auditoria do motor de envio/matching — contador de "vagas restantes" parou de subtrair os enviados 2x (zerava bem antes da planilha esgotar de verdade) e passou a mostrar o total real da planilha (não o já-filtrado) no "de Y"; envio automático via getSenderToken corrigido para contar o e-mail principal pela chave real do histórico, não pelo username de login (rodízio, aquecimento e teto do admin ficavam sempre achando que o principal nunca tinha enviado nada hoje).
+const CACHE_NAME = "h2bapply-2026-v28"; // v28: ordem do dono (12/09/2026) — chave Pix trocada pra uma chave aleatória do Diego (era o telefone do Andrio); cache-bust CRÍTICO aqui pra ninguém pagar numa chave velha por causa de app.js em cache.
 
 // Recursos estáticos que ficam em cache para uso offline.
 // HTML NÃO entra aqui — ver motivo acima (cookie de sessão).
