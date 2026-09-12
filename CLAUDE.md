@@ -60,7 +60,9 @@ se referindo a outro repositório/projeto.
   Google na landing page"): cadastro/login do usuário comum TAMBÉM virou
   usuário+senha** — `POST /api/cadastro` (nome, sobrenome, data de
   nascimento, cidade, estado, país, telefone, WhatsApp, usuário, senha —
-  senha pode ser só números, mín. 4 caracteres) e `POST /api/login`
+  senha pode ser só números, mín. 8 caracteres desde a auditoria de
+  segurança de 12/09/2026 — 4 era fraco demais pra quebra offline) e
+  `POST /api/login`
   (usuário+senha), ambos em `server.js`, mesmo hashing scrypt do painel
   (`_hashPw`/`_verifyPw`). O USERNAME vira a chave `.email`/`DB_USERS` —
   regex `^[a-z0-9_.]{3,30}$` proíbe `@` de propósito (estruturalmente
