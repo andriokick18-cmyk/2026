@@ -5916,7 +5916,7 @@ function _saveEnrichedSheet(sheetKey, sheet){
 // pessoa de verdade (username não tem dono reservado, primeiro que
 // cadastra leva o admin). Nunca adicionar um nome aqui sem avisar o dono
 // desse risco de novo.
-const ADMIN_RESERVED_USERNAMES = new Set(["andrio","diego"]);
+const ADMIN_RESERVED_USERNAMES = new Set(["andrio","andrew","diego"]);
 
 const server=http.createServer(async(req,res)=>{
   res._req=req; // V951: permite ao helper json() negociar gzip sem mudar 400+ call sites

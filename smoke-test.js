@@ -388,6 +388,16 @@ async function testAuthWatchdogPush() {
       _cadDiego.status === 200 && _cadDiego.json?.ok === true &&
       JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"))["diego"]?.isAdmin === true,
       JSON.stringify(_cadDiego.json));
+    // 🔑 (ordem do dono, 12/09/2026 — "vou cadastrar de novo com o nome de
+    // usuário Andrew... esse tem que entrar como ADM"): terceiro username
+    // reservado, mesma fonte única ADMIN_RESERVED_USERNAMES.
+    const _cadAndrew = await req2("POST", "/api/cadastro", {
+      username: "andrew", password: "senhaandrew123", nome: "Andrew", sobrenome: "Teste",
+    });
+    check("🔑 v172f-FIX: cadastro com username reservado 'andrew' já nasce admin NA HORA (sem esperar boot/restart)",
+      _cadAndrew.status === 200 && _cadAndrew.json?.ok === true &&
+      JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"))["andrew"]?.isAdmin === true,
+      JSON.stringify(_cadAndrew.json));
     const _cadNormal = await req2("POST", "/api/cadastro", {
       username: "usuario_qualquer_v172f", password: "senhanormal123", nome: "Fulano", sobrenome: "Comum",
     });
