@@ -2423,7 +2423,12 @@ const getAutoLimit   = u => {
     // enforcement de verdade (nenhum sender isolado passa do próprio
     // teto) mora em getSenderToken; isto aqui é só o total agregado
     // pras telas/gates que comparam "enviei hoje >= limite".
-    const senders=[{email:u.email},...(u.senderEmails||[]).filter(s=>!s.blocked&&!s.tokenExpired)];
+    // 🐛 v172e: mesma classe de bug do getSenderToken (auditoria 12/09) —
+    // pra admin v172c (login por username, sem @), u.email não é o Gmail
+    // que perSenderAutoLimit espera receber (um admin que customiza o
+    // teto do PRINCIPAL em adminSettings.senderLimits digita o Gmail real,
+    // que é o que aparece na tela — nunca o username de login).
+    const senders=[{email:resolveSendGmail(u)||u.email},...(u.senderEmails||[]).filter(s=>!s.blocked&&!s.tokenExpired)];
     return senders.reduce((sum,s)=>sum+perSenderAutoLimit(u,s.email),0);
   }
   if (u?.vip?.limits && typeof u.vip.limits.auto==="number" && isAutoVipActive(u)) return u.vip.limits.auto ?? PLAN_LIMITS.free.auto;

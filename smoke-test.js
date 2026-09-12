@@ -2348,6 +2348,9 @@ async function testAuthWatchdogPush() {
       /if\(_reservedManualSlot\)\{_releaseManualSlot\(s\.user_email\);_reservedManualSlot=false;\}\s*\n\s*return json\(res,400,\{error:"Seu currículo \(PDF\) não foi encontrado no servidor/.test(_srvSrc) &&
       /if\(_reservedManualSlot\)\{_releaseManualSlot\(s\.user_email\);_reservedManualSlot=false;\}\s*\n\s*return json\(res,429,\{error:"Essa conta Gmail atingiu o limite de segurança de hoje/.test(_srvSrc),
       "um dos 2 releases antes do return não foi encontrado — a reserva de slot pode voltar a vazar por até 60s nesses erros");
+    check("🐛 v172e-FIX: getAutoLimit(admin) resolve o Gmail real do principal antes de somar o teto por sender (mesma classe do bug do getSenderToken)",
+      _srvSrc.includes("const senders=[{email:resolveSendGmail(u)||u.email},...(u.senderEmails||[]).filter(s=>!s.blocked&&!s.tokenExpired)];"),
+      "getAutoLimit ainda soma o teto do principal pela identidade crua — admin v172c que customizasse o teto do próprio Gmail principal veria o total errado");
     check("🌱 aquecimento: conta de HOJE (dia 0) tem teto de 15/dia", _warmupFn(new Date().toISOString()) === 15, `cap=${_warmupFn(new Date().toISOString())}`);
     check("🌱 aquecimento: conta de 4 dias tem teto de 40/dia", _warmupFn(Date.now() - 4 * 86400_000) === 40, `cap=${_warmupFn(Date.now() - 4 * 86400_000)}`);
     check("🌱 aquecimento: conta de 10 dias tem teto de 100/dia", _warmupFn(Date.now() - 10 * 86400_000) === 100, `cap=${_warmupFn(Date.now() - 10 * 86400_000)}`);
