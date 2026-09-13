@@ -23,10 +23,17 @@ const MAX_RESUMES              = 10; // 11/07: 10 PDFs de currículo por conta (
 const MAX_COVERS               = 10;
 
 // ── Admins ──────────────────────────────────────────────────────────────
-const ADMIN_EMAIL   = (process.env.ADMIN_EMAIL || "andrio.kick18@gmail.com").trim().toLowerCase();
-const ADMIN_EMAIL_2 = (process.env.ADMIN_EMAIL_2 || "").trim().toLowerCase();
-// Admins adicionais hardcoded — adicione mais emails aqui se necessário
-const ADMIN_EMAILS_EXTRA = ["ndrkick.2@gmail.com","jesuscristh22@gmail.com","andrio.usa2026@gmail.com","ueudesmaresias@gmail.com"].map(e=>e.trim().toLowerCase()).filter(Boolean);
+// v175b (dono, 13/09/2026: "meu email adm é andrio.usa2026@gmail.com"):
+// ADMIN_EMAIL é o e-mail do DONO (login "andrio" do painel, avisos de compra,
+// username reservado "andrio"); ADMIN_EMAIL_2 é o do Diego (login "diego" —
+// antes vinha vazio por padrão e o login dele só funcionava com a env
+// definida). A env do Render, se existir, continua mandando.
+const ADMIN_EMAIL   = (process.env.ADMIN_EMAIL || "andrio.usa2026@gmail.com").trim().toLowerCase();
+const ADMIN_EMAIL_2 = (process.env.ADMIN_EMAIL_2 || "jesuscristh22@gmail.com").trim().toLowerCase();
+// Admins adicionais hardcoded (contas auxiliares — continuam admin, mas os
+// avisos de compra vão só pros 2 sócios acima). andrio.kick18 é o e-mail
+// antigo do dono: fica aqui pra nenhuma trilha/registro antigo virar "não-admin".
+const ADMIN_EMAILS_EXTRA = ["andrio.kick18@gmail.com","ndrkick.2@gmail.com","ueudesmaresias@gmail.com"].map(e=>e.trim().toLowerCase()).filter(Boolean);
 const ADMIN_EMAILS  = new Set([ADMIN_EMAIL, ADMIN_EMAIL_2, ...ADMIN_EMAILS_EXTRA].filter(Boolean));
 const isAdminEmail  = (e) => ADMIN_EMAILS.has((e||"").trim().toLowerCase());
 

@@ -419,7 +419,7 @@ async function testAuthWatchdogPush() {
     // cadastrar primeiro leva o admin" apontada na auditoria de 13/09).
     const _cadReservadoSemAdm = await cadastroCompleto({ username: "andrio", email: "reservado.v175@gmail.com", emailToken: await verificar("reservado.v175@gmail.com") });
     check("🔑 v175: username reservado 'andrio' com e-mail que NÃO é de admin → 400 (nunca vira admin por chegar primeiro)", _cadReservadoSemAdm.status === 400 && /reservado/i.test(_cadReservadoSemAdm.json?.error || ""), _cadReservadoSemAdm.body.slice(0, 100));
-    const _cadAndrio = await cadastroCompleto({ username: "andrio", email: "andrio.kick18@gmail.com", emailToken: await verificar("andrio.kick18@gmail.com") });
+    const _cadAndrio = await cadastroCompleto({ username: "andrio", email: "andrio.usa2026@gmail.com", emailToken: await verificar("andrio.usa2026@gmail.com") });
     check("🔑 v172f/v175: 'andrio' com o e-mail de admin confirmado nasce admin NA HORA (sem esperar boot/restart)",
       _cadAndrio.status === 200 && _cadAndrio.json?.ok === true && JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"))["andrio"]?.isAdmin === true, JSON.stringify(_cadAndrio.json));
     const _cadDiego = await cadastroCompleto({ username: "diego", nome: "Diego", email: "jesuscristh22@gmail.com", emailToken: await verificar("jesuscristh22@gmail.com") });
@@ -468,8 +468,8 @@ async function testAuthWatchdogPush() {
     // 📧 v175: aba Notificações do admin (status/teste/config/desconectar)
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
     const _ntSt = await get("/api/admin/notificacoes/status");
-    check("📧 v175: admin vê o status da conta de notificações numa chamada (conectada, e-mail, enviados hoje, destinatários dos avisos = e-mails de admin)",
-      _ntSt.json?.ok === true && _ntSt.json.conectada === true && _ntSt.json.email === "suporteh2bapply@gmail.com" && _ntSt.json.sentToday >= 8 && Array.isArray(_ntSt.json.destinatarios) && _ntSt.json.destinatarios.includes("andrio.kick18@gmail.com") && typeof _ntSt.json.oauthConfigurado === "boolean",
+    check("📧 v175: admin vê o status da conta de notificações numa chamada (conectada, e-mail, enviados hoje, destinatários dos avisos = só os 2 sócios: dono + Diego)",
+      _ntSt.json?.ok === true && _ntSt.json.conectada === true && _ntSt.json.email === "suporteh2bapply@gmail.com" && _ntSt.json.sentToday >= 8 && Array.isArray(_ntSt.json.destinatarios) && _ntSt.json.destinatarios.length === 2 && _ntSt.json.destinatarios.includes("andrio.usa2026@gmail.com") && _ntSt.json.destinatarios.includes("jesuscristh22@gmail.com") && typeof _ntSt.json.oauthConfigurado === "boolean",
       _ntSt.body.slice(0, 200));
     const _ntTeste = await req2("POST", "/api/admin/notificacoes/teste", { to: "smoke@test.com" });
     check("📧 v175: 'Enviar e-mail de teste pra mim' sai pela conta conectada (outbox tipo teste)", _ntTeste.json?.ok === true && lerOutbox().some((x) => x.tipo === "teste" && x.to === "smoke@test.com"), _ntTeste.body.slice(0, 100));
@@ -812,12 +812,18 @@ async function testAuthWatchdogPush() {
     const stAndrio = await get("/api/status");
     check("🔐 painel admin: sessão do login por senha É reconhecida como admin de verdade (isAdminVip/isAdminEmail, mesma trilha de sempre)",
       stAndrio.json?.connected === true && stAndrio.json?.isAdmin === true, JSON.stringify({ isAdmin: stAndrio.json?.isAdmin }));
-    // ADMIN_EMAIL_2 (Diego) não está configurado neste ambiente de teste —
-    // login com a senha CERTA do Diego tem que falhar com erro CLARO (nunca
-    // criar sessão com e-mail vazio, corromper o banco em silêncio).
+    // v175b (dono, 13/09/2026 — "Meu email adm é andrio.usa2026@gmail.com"):
+    // os 2 sócios agora têm e-mail PADRÃO no código (mod-config.js) — o
+    // Diego entra com a senha certa mesmo sem ADMIN_EMAIL_2 no ambiente, e a
+    // sessão nasce mapeada pro e-mail dele de verdade (nunca vazio). A
+    // guarda de "e-mail vazio → erro claro" continua viva na rota (500 com
+    // ADMIN_EMAIL_2 no texto) pra quem sobrescrever a env com string vazia.
     const alDiego = await req2("POST", "/api/admin-panel/login", { user: "diego", password: "teste-smoke-diego-2026" });
-    check("🔐 painel admin: senha certa do Diego, mas ADMIN_EMAIL_2 não configurado neste ambiente → erro claro (nunca sessão com e-mail vazio)",
-      alDiego.status === 500 && /ADMIN_EMAIL_2/.test(alDiego.json?.error || ""), JSON.stringify(alDiego.json));
+    check("🔐 painel admin: senha certa do Diego → 200 com o e-mail padrão do sócio (jesuscristh22@gmail.com), nunca sessão com e-mail vazio",
+      alDiego.status === 200 && alDiego.json?.ok === true && alDiego.json?.email === "jesuscristh22@gmail.com", JSON.stringify(alDiego.json));
+    check("🔐 painel admin: a rota ainda recusa com erro CLARO um login cujo e-mail ficou vazio (guarda estrutural — nunca sessão sem e-mail)",
+      fs.readFileSync(path.join(__dirname,"server.js"),"utf8").includes("if(!login.email)return json(res,500,{error:`Senha certa, mas ${login.nome} não tem e-mail configurado"),
+      "guarda de e-mail vazio sumiu da rota /api/admin-panel/login");
     // 🚨 v172c-SEC (auditoria de segurança, 12/09/2026 — CRÍTICO real): a
     // senha de FÁBRICA original vazou em TEXTO PURO na própria mensagem do
     // commit que a criou, num repositório PÚBLICO — qualquer um lendo o

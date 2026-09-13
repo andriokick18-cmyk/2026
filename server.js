@@ -5962,6 +5962,10 @@ function _parseNasc(v) {
   const idade = (Date.now() - dt.getTime()) / (365.25 * 86400_000); if (idade < 16 || idade > 100) return null;
   return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
+// Quem recebe o aviso de compra pela conta de notificações: os 2 SÓCIOS
+// (ADMIN_EMAIL = dono, ADMIN_EMAIL_2 = Diego) — ordem do dono, 13/09/2026
+// ("de compras para mim e pro Diego"). Contas admin auxiliares não recebem.
+const _notifDestinatarios = () => [...new Set([ADMIN_EMAIL, ADMIN_EMAIL_2].filter(e => e && e.includes("@")))];
 // Mensagem do aviso de pedido novo aos admins — fonte ÚNICA (conta de
 // notificações OU caminho legado pelo Gmail do admin).
 function _mensagemPedidoAdmin(pedido) {
@@ -6787,7 +6791,7 @@ ul li{margin-bottom:6px}
   if(pathname==="/api/admin/notificacoes/status"&&req.method==="GET"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
     const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
-    return json(res,200,{ok:true,...NOTIF.status(),destinatarios:[...ADMIN_EMAILS],oauthConfigurado:CONFIGURADO_OAUTH(),meuEmail:s.user_email});
+    return json(res,200,{ok:true,...NOTIF.status(),destinatarios:_notifDestinatarios(),oauthConfigurado:CONFIGURADO_OAUTH(),meuEmail:s.user_email});
   }
   if(pathname==="/api/admin/notificacoes/desconectar"&&req.method==="POST"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
@@ -9485,7 +9489,7 @@ filtrar();
           // como reserva enquanto a conta não estiver conectada.
           if(NOTIF.conectada()&&NOTIF.status().avisoPedidos){
             const _mN=_mensagemPedidoAdmin(pedido);let _okN=0;
-            for(const toEmail of [...ADMIN_EMAILS]){
+            for(const toEmail of _notifDestinatarios()){
               try{await NOTIF.sendMail({to:toEmail,subject:_mN.subject,text:_mN.text,attachments:_mN.attachments,tipo:"pedido"});_okN++;console.log("[pedido] ✅ aviso via conta de notificações →",toEmail);}
               catch(e){console.warn("[pedido] notif err →",toEmail,":",e.message);}
             }
@@ -13032,7 +13036,7 @@ setInterval(() => {
 // ══════════════════════════════════════════════════════════
 //  NOTIFICAÇÕES AUTOMÁTICAS POR EMAIL — H2BApply
 //  Avisa o usuário quando fila trava ou finaliza
-//  Usa Gmail do admin (andrio.kick18@gmail.com)
+//  Usa Gmail do admin (ADMIN_EMAIL — hoje andrio.usa2026@gmail.com)
 //  25+ variações de mensagem para nunca repetir
 // ══════════════════════════════════════════════════════════
 

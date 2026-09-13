@@ -148,7 +148,13 @@ se referindo a outro repositório/projeto.
   Textos novos do editor têm data-i18n + dicionário nas 3 línguas (a
   CATRACA do smoke continua no teto 7). PROIBIDO: cadastro sem e-mail
   confirmado, 2º canal de e-mail fora do mod-notif, e reintroduzir o
-  wizard antigo.
+  wizard antigo. **E-mails de admin (v175b, dono: "meu email adm é
+  andrio.usa2026@gmail.com")**: `ADMIN_EMAIL` padrão =
+  andrio.usa2026@gmail.com (dono; login "andrio" do painel), `ADMIN_EMAIL_2`
+  padrão = jesuscristh22@gmail.com (Diego; login "diego"); os avisos de
+  compra pela conta de notificações vão SÓ pros 2 (`_notifDestinatarios`);
+  andrio.kick18@gmail.com e as outras contas auxiliares seguem admin pelo
+  `ADMIN_EMAILS_EXTRA`, sem receber aviso. A env do Render manda, se existir.
 - **📋 Alimentação automática das planilhas (v174, dono, 13/09/2026 — "as
   planilhas devem ser alimentadas, igual elas já são hoje, com todas as
   informações de cada vaga; esse sistema você pode trazer do h2bapply.com
