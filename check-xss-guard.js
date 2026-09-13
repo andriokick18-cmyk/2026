@@ -104,6 +104,10 @@ const ALLOWLIST = new Set([
   // toLocaleString) + nome/emoji de planilha (sheetLabel/_sheetLabelFor —
   // mesma categoria "só admin nomeia planilha" já confiada acima):
   "app.js:2c4e258286b0", "app.js:9c25a1550942",
+  // v173 (reset dos filtros): o mesmo contador "N restantes de M" agora
+  // termina com vfResumoCurto() — só número de filtros ativos + texto fixo
+  // do LANG_DICT (nunca o valor digitado pela pessoa):
+  "app.js:14f800266ff6",
   // Cards de plano (_renderPlanosUI, badges de limite mais explícitos —
   // ordem do dono, 12/09/2026): só números de PLAN_LIMITS_NEW (lim.manual/
   // lim.auto), preço formatado por brl() e nome/dias de mapas INTERNOS

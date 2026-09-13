@@ -86,7 +86,7 @@
 //    promessa de "direito de arrependimento de 7 dias" (removida também dos
 //    Termos — seção renumerada 1-12).
 //
-const CACHE_NAME = "h2bapply-2026-v33"; // v33: v172n — planGateMsg com dimensão (auto/manual) certa; /api/sheet-meta avisa quando a planilha selecionada ainda não tem salário/e-mail do DOL; erro do automático explica "sem vaga com e-mail" quando é a planilha (não um bug); editor de perfil sem nome/descrição (adaptado ao site novo); aviso de quantos e-mails de envio o plano permite.
+const CACHE_NAME = "h2bapply-2026-v34"; // v34: v173 — RESET dos filtros de vagas (ordem do dono): painel único novo com contagem por opção (/api/vagas/filtros), chips, passo 2 do robô; modal antigo, seletores de estado/cidade e passo 2 antigo apagados.
 // v31 (histórico): // v31: v172h (dono, 12/09/2026 — "verifique todo o site, tem muitas regras soltas, tudo errado... eu não quero nada do site antigo") — varredura geral por copy stale: FAQ da Home e da landing (h_faq_qty, como-usar.html) diziam "plano gratuito: 20 manuais + 10 automáticos por dia" e "não precisa pagar, 10 automáticos grátis pra todo mundo" — contradizia de frente a regra de zero envio grátis; JSON-LD de SEO também prometia envio grátis limitado (falso). Corrigido nos 3 idiomas + tour + landing + JSON-LD, e mais 2 lugares que descreviam "planos VIP" como se incluíssem automático (é só manual — VIPro/DoublePro é que incluem).
 
 // Recursos estáticos que ficam em cache para uso offline.

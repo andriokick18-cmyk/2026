@@ -1590,6 +1590,88 @@ async function testAuthWatchdogPush() {
       _cats.length >= 20 && _cats.slice(0, 10).every((c) => c === "landscape"),
       JSON.stringify(_cats));
 
+    // ═══ 🔍 v173 (ORDEM DO DONO, 13/09/2026 — reset TOTAL dos filtros): motor
+    // único de facetas (mod-filtros.js) + /api/vagas/filtros + UI nova. As
+    // regras inegociáveis: E entre dimensões, OU dentro, contagem por opção
+    // calculada com os OUTROS filtros aplicados, contagem = verdade da lista,
+    // dimensão sem dado na planilha honesta, gate Double Pro no servidor. ═══
+    {
+      const vf0 = (await get("/api/vagas/filtros?sheet=jan2026")).json;
+      check("🔍 v173: /api/vagas/filtros sem filtro → total = planilha inteira, facetas de estado/categoria/salário presentes",
+        vf0?.ok === true && vf0.total === vf0.totalPlanilha && vf0.total > 1000 && vf0.facetas?.estado?.length > 5 && vf0.facetas?.categoria?.length > 3 && Array.isArray(vf0.facetas?.salario?.limiares),
+        JSON.stringify({ total: vf0?.total, planilha: vf0?.totalPlanilha }).slice(0, 120));
+      const e1 = vf0.facetas.estado[0], e2 = vf0.facetas.estado[1];
+      const vf1 = (await get(`/api/vagas/filtros?sheet=jan2026&estado=${encodeURIComponent(e1.v)}`)).json;
+      check("🔍 v173: 1 estado marcado → total = contagem daquela opção (a contagem por opção é a verdade)", vf1.total === e1.n, `${vf1.total} vs ${e1.n}`);
+      const vf2 = (await get(`/api/vagas/filtros?sheet=jan2026&estado=${encodeURIComponent(e1.v)}&estado=${encodeURIComponent(e2.v)}`)).json;
+      check("🔍 v173: 2 estados = OU (soma) — marcar uma 2ª opção do MESMO grupo nunca diminui", vf2.total === e1.n + e2.n && vf2.total >= vf1.total, `${vf2.total} vs ${e1.n}+${e2.n}`);
+      check("🔍 v173: a faceta de estado ignora o próprio filtro de estado (contagem do 1º segue igual com 2 marcados)", vf2.facetas.estado.find(x => x.v === e1.v)?.n === e1.n, JSON.stringify(vf2.facetas.estado.slice(0, 2)));
+      const cat = vf2.facetas.categoria.find(c => c.n > 0);
+      const vf3 = (await get(`/api/vagas/filtros?sheet=jan2026&estado=${encodeURIComponent(e1.v)}&estado=${encodeURIComponent(e2.v)}&categoria=${cat.v}`)).json;
+      check("🔍 v173: estado + categoria = E — total = contagem da categoria DENTRO dos estados (um filtro nunca 'elimina' o outro, só combina)", vf3.total === cat.n && vf3.total <= vf2.total, `${vf3.total} vs ${cat.n}`);
+      const l20 = vf3.facetas.salario.limiares.find(l => l.v === 20);
+      const vf4 = (await get(`/api/vagas/filtros?sheet=jan2026&estado=${encodeURIComponent(e1.v)}&estado=${encodeURIComponent(e2.v)}&categoria=${cat.v}&salarioMin=20`)).json;
+      const sm4 = (await get(`/api/sheet-meta?sheet=jan2026&estado=${encodeURIComponent(e1.v)}&estado=${encodeURIComponent(e2.v)}&categoria=${cat.v}&salarioMin=20&top=1`)).json;
+      check("🔍 v173: salário ≥$20 → total = contagem do limiar E a LISTA (/api/sheet-meta) devolve o MESMO total — uma verdade só (13n)",
+        vf4.total === l20.n && sm4.total === vf4.total, `facetas=${vf4.total} limiar=${l20.n} lista=${sm4.total}`);
+      const smLegacy = (await get(`/api/sheet-meta?sheet=jan2026&state=${encodeURIComponent(e1.v)},${encodeURIComponent(e2.v)}&category=${cat.v}&minWage=20&top=1`)).json;
+      check("🔍 v173: nomes LEGADOS de parâmetro (state/category/minWage — front antigo em cache) continuam funcionando na lista", smLegacy.total === vf4.total, `${smLegacy.total} vs ${vf4.total}`);
+      const vfJ = (await get("/api/vagas/filtros?sheet=jul2026")).json;
+      check("🔍 v173: jul2026 (Pending Processing) → disponibilidade honesta: salário=0, e-mail=0, cargo=0 — o front esconde/avisa em vez de mostrar '0 vagas' sem explicação",
+        vfJ.disponibilidade?.salario === 0 && vfJ.disponibilidade?.email === 0 && vfJ.disponibilidade?.cargo === 0 && vfJ.total === vfJ.totalPlanilha, JSON.stringify(vfJ.disponibilidade).slice(0, 140));
+      const vfJe = (await get("/api/vagas/filtros?sheet=jul2026&email=1")).json;
+      check("🔍 v173: jul2026 com 'só com e-mail' → 0 (honesto), e a faceta diz quantas estão sem e-mail", vfJe.total === 0 && vfJe.facetas.email.sem === vfJ.totalPlanilha, JSON.stringify(vfJe.facetas.email));
+      const vfH = (await get("/api/vagas/filtros?sheet=h2a-jun2026")).json;
+      const mes = vfH.facetas.inicio.find(m => m.n > 0);
+      const vfHm = (await get(`/api/vagas/filtros?sheet=h2a-jun2026&inicio=${mes.v}`)).json;
+      check("🔍 v173: H-2A tem mês de início e cidade (disponibilidade > 0) e filtrar por mês bate com a contagem da faceta", vfH.disponibilidade.inicio > 0 && vfH.disponibilidade.cidade > 0 && vfHm.total === mes.n, `${vfHm.total} vs ${mes.n}`);
+      const vfCb = (await get("/api/vagas/filtros?sheet=h2a-jun2026&cidadeBusca=spring")).json;
+      check("🔍 v173: busca dentro da lista de cidades (cidadeBusca) filtra as opções no servidor", vfCb.facetas.cidade.length > 0 && vfCb.facetas.cidade.every(c => /spring/i.test(c.v)), JSON.stringify(vfCb.facetas.cidade.slice(0, 2)));
+      // 💎 gate Double Pro no SERVIDOR: admin (DP) aplica grupo; usuário comum tem o parâmetro ignorado
+      const gA = vfJ.facetas.grupo.find(x => x.v === "A");
+      const vfGadm = (await get("/api/vagas/filtros?sheet=jul2026&grupo=A")).json;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "vffree@test.com", name: "VF Free" });
+      const vfGfree = (await get("/api/vagas/filtros?sheet=jul2026&grupo=A")).json;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      check("🔍 v173: 💎 grupo A–H é gate do SERVIDOR — admin/DoublePro filtra (total = contagem do grupo), usuário comum tem o parâmetro ignorado (total = planilha)",
+        vfGadm.isDP === true && vfGadm.total === gA.n && vfGfree.isDP === false && vfGfree.total === vfJ.totalPlanilha, `adm=${vfGadm.total}/${gA?.n} free=${vfGfree.total}`);
+      // rotas do sistema antigo morreram (nada de 2ª verdade)
+      const mortas = [];
+      for (const r of ["count-jobs", "sheet-facets", "sheet-titles", "sheet-categories", "my-availability"]) { const x = await get(`/api/${r}?sheet=jan2026`); if (x.status !== 404) mortas.push(`${r}=${x.status}`); }
+      check("🔍 v173: as 5 rotas do sistema de filtros antigo foram REMOVIDAS (404) — count-jobs, sheet-facets, sheet-titles, sheet-categories, my-availability", mortas.length === 0, mortas.join(","));
+      // motor offline: formato legado do job.filters (robô que já rodava antes do deploy) e invariantes
+      const { createFiltros } = require(path.join(__dirname, "mod-filtros.js"));
+      const F = createFiltros({ normalizeStateName: s => String(s || "").toUpperCase().trim(), cityMatchFn: () => null, regioes: {}, grupoDe: r => r.g || "", searchSheet: (arr) => ({ total: arr.length, items: arr }), categoriaLabel: k => k });
+      const leg = F.parse({ state: "FLORIDA,TEXAS", category: "landscape", minWage: "18", titles: ["Cook"], beginMonths: [6, 7], grupos: "A,B", city: "Key West", minWorkers: "5", keyword: "hotel", dolStatus: "Certified" });
+      check("🔍 v173: FILTROS.parse aceita o formato LEGADO do job.filters (state/category/minWage/titles/beginMonths/grupos/city/minWorkers/keyword/dolStatus) — robô que já rodava não perde o refill",
+        leg.estado.join() === "FLORIDA,TEXAS" && leg.categoria[0] === "landscape" && leg.salarioMin === 18 && leg.cargo[0] === "cook" && leg.inicio.join() === "6,7" && leg.grupo.join() === "A,B" && leg.cidade[0] === "Key West" && leg.vagasMin === 5 && leg.q === "hotel" && leg.status[0] === "Certified",
+        JSON.stringify(leg).slice(0, 160));
+      const rowsF = [{ c: "1", s: "FLORIDA", k: "food", w: "20", wunit: "h", e: "a@x.com", wk: 5 }, { c: "2", s: "FLORIDA", k: "food", w: "1500", wunit: "mo", e: "b@x.com", wk: 1 }, { c: "3", s: "TEXAS", k: "farm", w: "22", wunit: "h", e: "", wk: 10 }];
+      const facF = F.facetas(rowsF, F.parse(new URLSearchParams({ estado: "FLORIDA" })), {});
+      check("🔍 v173: motor — salário normalizado pra $/hora (1500/mês ≈ $8,67/h fica abaixo de $12), faceta de e-mail conta com/sem, estado ignora o próprio filtro",
+        facF.total === 2 && facF.facetas.salario.limiares.find(l => l.v === 12).n === 1 && facF.facetas.email.com === 2 && facF.facetas.email.sem === 0 && facF.facetas.estado.find(x => x.v === "TEXAS").n === 1,
+        JSON.stringify({ t: facF.total, l12: facF.facetas.salario.limiares.find(l => l.v === 12), em: facF.facetas.email, tx: facF.facetas.estado }).slice(0, 200));
+      // estrutural: fonte única no servidor + front novo sem resquício do antigo
+      const _srv173 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      const _refill = _srv173.slice(_srv173.indexOf("function tryAutoRefill("), _srv173.indexOf("function tryAutoRefill(") + 2500);
+      check("🔍 v173: (estrutural) lista, contagem e REFILL do robô usam o MESMO motor (FILTROS.filtrar + _excluirEnviadosFn) — nunca mais 3 cópias divergentes",
+        /FILTROS\.parse\(job\.filters/.test(_refill) && /FILTROS\.filtrar\(/.test(_refill) && (_srv173.match(/FILTROS\.filtrar\(/g) || []).length >= 2 && (_srv173.match(/_excluirEnviadosFn\(/g) || []).length >= 3 && !/f\.beginMonths|wantOutros/.test(_refill),
+        "refill/lista/contagem não convergem no motor único");
+      const _app173 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _idx173 = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+      check("🔍 v173: (estrutural) front NOVO vivo (vfOpen/vfParams/vfSnapshotAuto/vfAutoCount, #vf-overlay, #btn-vf-manual, #vf-chips-auto) e o ANTIGO apagado (openMasterFilters, renderWizardCats, selectCat, master-filters-overlay, seletores q-estado/q-cidade, inputs af-*)",
+        ["function vfOpen(", "function vfParams(", "function vfSnapshotAuto(", "async function vfAutoCount(", "function vfRenderChips("].every(f => _app173.includes(f)) &&
+        ['id="vf-overlay"', 'id="btn-vf-manual"', 'id="vf-chips-auto"', 'id="vf-count-auto"', 'onclick="vfOpen(\'auto\')"'].every(f => _idx173.includes(f)) &&
+        !/openMasterFilters|renderWizardCats|function selectCat\(|refreshAutoFilterCount|_mfCtxState|updateFilterCount|showAutoPreview/.test(_app173) &&
+        !/master-filters-overlay|id="q-estado"|id="dl-estados"|id="af-state"|id="af-min-wage"|cat-chips-jobs/.test(_idx173),
+        "resquício do sistema antigo ou peça nova faltando");
+      check("🔍 v173: (i18n, regra 6f) as strings novas do painel existem nas 3 línguas (vf_apply, vf_zero, vf_no_salary, vf_meses…)",
+        ["vf_apply", "vf_zero", "vf_no_salary", "vf_no_email_auto", "vf_meses", "vf_sec_categoria", "vf_ws2_sub"].every(k => (_app173.match(new RegExp(`"${k}":`, "g")) || []).length === 3),
+        "chave vf_* faltando em alguma língua");
+      check("🔍 v173: (estrutural) sort=wage usa a MESMA régua de $/hora do filtro (FILTROS.wageHora) com decorate-sort — nunca regex dentro do comparador",
+        /FILTROS\.wageHora\(r\)\}\)\)\.sort\(\(a,b\)=>b\.w-a\.w\)/.test(_srv173) && !/const pw=r=>\{\s*if\(!r\.w\)return -1;/.test(_srv173), "sort=wage divergiu do motor");
+    }
+
     // ═══ 📡 v134: RADAR DE VAGAS (aprovado pelo dono) + funil do limite ═══
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radaruser@test.com", name: "Radar User" });
     const rdVazio = await req2("POST", "/api/radar", { estados: [], cidade: "", q: "" });
@@ -1609,8 +1691,8 @@ async function testAuthWatchdogPush() {
     // chamadas de notificarRadares() no texto do server.js.
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radaruser@test.com", name: "Radar User" });
     // estado no formato NOME POR EXTENSO — é o que o front realmente manda
-    // (#f-state guarda "MASSACHUSETTS", não a sigla "MA"; ver _mfFillStateSelect
-    // em app.js) e é o mesmo formato do campo `s` das planilhas compactas.
+    // (o VF guarda "MASSACHUSETTS", não a sigla "MA" — normalizeStateName no
+    // servidor) e é o mesmo formato do campo `s` das planilhas compactas.
     await req2("POST", "/api/radar", { estados: ["MASSACHUSETTS"], cidade: "", q: "housekeeper" });
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     const rdUpload = await req2("POST", "/api/admin/sheet/upload", {

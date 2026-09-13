@@ -2664,14 +2664,6 @@ const sheetCache = new Map();
 const SHEET_TTL  = 60*60*1000;
 
 // Mapa de categorias para labels em português
-// ── Grupos de categorias semelhantes (para envio inteligente) ──
-const CATEGORY_GROUPS = [
-  { key:"outdoor",    label:"🌿 Ao Ar Livre",     cats:["landscape","forest","golf","farm"],     color:"#10b981" },
-  { key:"hospitality",label:"🏨 Hospitalidade",   cats:["housekeeper","amusement"],              color:"#8b5cf6" },
-  { key:"labor",      label:"🏗️ Trabalho Braçal", cats:["construction","seafood"],              color:"#f59e0b" },
-  { key:"water",      label:"🌊 Aquático",         cats:["lifeguard","seafood"],                  color:"#3b82f6" },
-];
-
 // v166 (Ordem 6f — público 100% brasileiro): label limpo pra emoji + termo
 // SÓ em português (o "/ EnglishWord" bilíngue poluía o chip de filtro). O
 // campo `en` fica intocado — não é usado em lugar nenhum do código hoje
@@ -3500,43 +3492,6 @@ ${JSON.stringify({
 </html>`;
 }
 
-function getSheetCategories(sheetName) {
-  const arr = getSheet(sheetName);
-  const counts = {};
-  arr.forEach(r => { const k=r.k||"other"; counts[k]=(counts[k]||0)+1; });
-  return Object.entries(counts)
-    .sort((a,b)=>b[1]-a[1])
-    .map(([k,count])=>({key:k,label:CATEGORY_LABELS[k]?.label||k,count}));
-}
-
-// ── TAXONOMIA REAL DE CARGOS (por título exato da vaga, não categoria fixa) ──
-// Pedido do dono: os filtros de categoria (só ~11 grupos) são grossos demais
-// e causam contaminação (ex.: Cook caindo em Housekeeper). Esta função monta
-// a lista de TODOS os títulos que realmente existem na planilha, contados,
-// e agrupa em "Outros" todo título que aparece 3x ou menos (cargo isolado) —
-// exatamente como pedido, pra não gerar uma lista de milhares de checkboxes
-// com 1 vaga cada. Usada pelo modal grande de filtros (manual + automático).
-function buildTitleTaxonomy(rows) {
-  const counts = new Map(); // chave: título normalizado (lowercase) → {label, count}
-  for (const r of rows) {
-    const raw = String(r.t || "").trim().replace(/\s+/g, " ");
-    if (!raw) continue;
-    const key = raw.toLowerCase();
-    if (!counts.has(key)) counts.set(key, { label: raw, count: 0 });
-    counts.get(key).count++;
-  }
-  const all = [...counts.values()];
-  const principais = all.filter(x => x.count > 3).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
-  const raros = all.filter(x => x.count <= 3).sort((a, b) => a.label.localeCompare(b.label));
-  const outrosCount = raros.reduce((s, x) => s + x.count, 0);
-  return {
-    titulos: principais.map(x => ({ title: x.label, count: x.count })),
-    outros: { count: outrosCount, titulos: raros.map(x => x.label) },
-    totalTitulosDistintos: all.length,
-    totalVagas: rows.length,
-  };
-}
-
 // Fisher-Yates shuffle — embaralha sem modificar o array original
 function shuffleArray(arr) {
   const a = [...arr];
@@ -3620,6 +3575,42 @@ function _cityMatchFn(filtro){
   }
   return ci=>{const c=_normBusca(ci);if(!c)return false;return c.includes(ql)||(cities&&cities.some(x=>c.includes(x)));};
 }
+// ═══ 🔍 v173 (ordem do dono, 13/09/2026 — reset TOTAL dos filtros): MOTOR
+// ÚNICO de filtros de vagas (mod-filtros.js). Lista do manual (/api/sheet-
+// meta), contagem ao vivo por opção (/api/vagas/filtros), fila do automático
+// e o REFILL (tryAutoRefill) leem e aplicam filtros pela MESMA função —
+// antes eram 3 cópias que divergiam. AND entre dimensões, OR dentro. ═══
+const { createFiltros: _createFiltros } = require("./mod-filtros.js");
+const FILTROS = _createFiltros({
+  normalizeStateName,
+  cityMatchFn: _cityMatchFn,
+  regioes: REGIOES_EUA,
+  grupoDe: r => { const cn = String(r.c || "").toUpperCase(); return (r.g && /^[A-H]$/.test(r.g)) ? r.g : (DB_GRUPOS_J26.mapa[cn]?.grupo || ""); },
+  searchSheet: (...a) => searchSheet(...a),
+  categoriaLabel: k => CATEGORY_LABELS[k]?.label || k,
+});
+// Corte por usuário (regra 8: empregador já contatado OU na fila do
+// automático NUNCA reaparece). Devolve null quando não há nada a cortar.
+// comProprios/comInvalidos: só o robô (nunca manda pra si mesmo nem pra
+// e-mail já conhecido como inválido).
+function _excluirEnviadosFn(email, { comProprios = false, comInvalidos = false } = {}) {
+  if (!email) return null;
+  const sSet = buildUserSentSet(email);
+  const aJob = getAutoJob(email);
+  const aSet = new Set((aJob?.queue || []).map(it => _normEmail(it.to || "")).filter(Boolean));
+  const own = comProprios ? _ownEmailsOf(email) : null;
+  if (!sSet.size && !aSet.size && !own && !comInvalidos) return null;
+  return r => {
+    const e = _normEmail(r.e || "");
+    if (!e) return false;
+    if (sSet.has(e) || aSet.has(e)) return true;
+    if (own && own.has(e)) return true;
+    if (comInvalidos && isEmailInvalid(e)) return true;
+    return false;
+  };
+}
+function _isDoublePro(u) { return !!(u && (u.isAdmin || getPlan(u) === "doublepro")); }
+
 function searchSheet(arr, q, state, category, skip, top, sort, matchCtx) {
   let list = arr;
   if (q && q.trim()) {
@@ -3709,21 +3700,10 @@ function searchSheet(arr, q, state, category, skip, top, sort, matchCtx) {
   //         equivalente/hora — senão $4.938/mês "ganha" de $30/h no sort.
   // start → começa antes primeiro (r.d ISO; sem data vai pro fim)
   else if (sort==="wage") {
-    const pw=r=>{
-      if(!r.w)return -1;
-      const m=String(r.w).match(/[0-9.]+/);if(!m)return -1;
-      const v=parseFloat(m[0]);
-      const un=String(r.wunit||"h").toLowerCase();
-      if(un.startsWith("mo"))return v/173;   // mês ≈ 173h
-      if(un.startsWith("w"))return v/40;     // semana ≈ 40h
-      if(un.startsWith("d"))return v/8;      // dia ≈ 8h
-      if(un.startsWith("y")||un.startsWith("a"))return v/2080; // ano ≈ 2080h
-      // Dado sujo da fonte: valor rotulado "hora" mas >200 é quase certamente
-      // mensal sem unidade ($2.058/h não existe no DOL; $75/h de piloto é o teto real)
-      if(v>200)return v/173;
-      return v; // "h" ou desconhecido → trata como hora
-    };
-    list=[...list].sort((a,b)=>pw(b)-pw(a));
+    // v173: régua ÚNICA de $/hora (FILTROS.wageHora — a mesma do filtro de
+    // salário) + decorate-sort-undecorate (lição do v162: nunca regex dentro
+    // do comparador).
+    list=list.map(r=>({r,w:FILTROS.wageHora(r)})).sort((a,b)=>b.w-a.w).map(x=>x.r);
   }
   else if (sort==="start") {
     list=[...list].sort((a,b)=>String(a.d||"9999").localeCompare(String(b.d||"9999")));
@@ -4185,48 +4165,18 @@ function tryAutoRefill(email,job){
     if(!job||(job.refills||0)>=50)return 0; // trava de segurança absoluta
     const rows=getSheet(job.source||"");
     if(!rows||!rows.length)return 0; // fonte não é planilha (fila manual) — sem refill
-    const f=job.filters||{};
-    const sentSet=buildUserSentSet(email);
-    const own=_ownEmailsOf(email);
+    // v173: os MESMOS filtros do início, pelo MESMO motor da lista e da
+    // contagem (FILTROS) — job.filters no formato novo OU legado (robô que
+    // já rodava antes do deploy). O robô só manda pra quem tem e-mail.
     const u2=getUser(email)||{};
-    const isDP=!!(u2.isAdmin||getPlan(u2)==="doublepro");
-    const states=String(f.state||"").split(",").map(s=>s.trim().toUpperCase()).filter(Boolean);
-    const cats=String(f.category||"").split(",").map(s=>s.trim()).filter(s=>s&&s!=="all");
-    const kw=String(f.keyword||"").toLowerCase().trim();
-    const months=Array.isArray(f.beginMonths)?f.beginMonths.map(Number).filter(m=>m>=1&&m<=12):[];
-    const titles=Array.isArray(f.titles)?f.titles.map(t=>String(t).toLowerCase().trim()).filter(Boolean):[];
-    const wantOutros=titles.includes("__outros__");
-    const titleSet=new Set(titles.filter(t=>t!=="__outros__"));
-    let freq=null;
-    if(wantOutros){freq=new Map();for(const r of rows){const t=(r.t||"").trim().toLowerCase();if(t)freq.set(t,(freq.get(t)||0)+1);}}
-    const grupos=isDP?String(f.grupos||(Array.isArray(f.grupos)?f.grupos.join(","):"")).toString().toUpperCase().replace(/[^A-H,]/g,""):"";
-    const gset=new Set(grupos.split(",").filter(Boolean));
-    const dolStatus=isDP?String(f.dolStatus||"").toLowerCase().slice(0,60):"";
-    const minWage=parseFloat(f.minWage)||0;
-    const parseW=w=>{if(!w)return 0;const m=String(w).match(/[0-9.]+/);return m?parseFloat(m[0]):0;};
-    const city=String(f.city||"").toLowerCase().trim();
-    const minWorkers=parseInt(f.minWorkers)||0;
-    const cap=Math.min(2000,parseInt(f.limit)||job.originalCount||500);
+    const f=FILTROS.parse(job.filters||{});
+    f.email=true;
+    const cap=Math.min(2000,parseInt(job.filters?.limit)||job.originalCount||500);
+    let base=FILTROS.filtrar(rows,f,{except:["q"],excluir:_excluirEnviadosFn(email,{comProprios:true,comInvalidos:true}),isDP:_isDoublePro(u2)});
+    if(f.q)base=searchSheet(base,f.q,"","",0,base.length,"").items;
     const fresh=[];
-    for(const r of rows){
+    for(const r of base){
       const em=String(r.e||"").toLowerCase().trim();
-      if(!em||!em.includes("@"))continue;
-      if(sentSet.has(_normEmail(em))||own.has(em)||isEmailInvalid(em))continue;
-      if(states.length&&!states.includes(String(r.s||"").toUpperCase()))continue;
-      if(city&&!(String(r.ci||"").toLowerCase().includes(city)))continue;
-      if(cats.length&&!cats.includes(r.k||"other"))continue;
-      if(minWage>0&&parseW(r.w)<minWage)continue;
-      if(minWorkers>0&&(r.wk||0)<minWorkers)continue;
-      if(kw&&!((r.t||"").toLowerCase().includes(kw)||(r.n||"").toLowerCase().includes(kw)))continue;
-      if(months.length){const mm=String(r.d||"").match(/^\d{4}-(\d{2})/);if(!mm||!months.includes(parseInt(mm[1],10)))continue;}
-      if(titleSet.size||wantOutros){
-        const t=(r.t||"").trim().toLowerCase();
-        if(!t)continue;
-        const okTitle=titleSet.has(t)||(wantOutros&&(freq.get(t)||0)<=3);
-        if(!okTitle)continue;
-      }
-      if(gset.size){const cn=String(r.c||"").toUpperCase();const g0=(r.g&&/^[A-H]$/.test(r.g))?r.g:(DB_GRUPOS_J26.mapa[cn]?.grupo||"");if(!g0||!gset.has(g0))continue;}
-      if(dolStatus&&!String(r.st||"").toLowerCase().includes(dolStatus))continue;
       const st=String(r.st||"").toUpperCase();
       if(st.includes("WITHDRAWN")||st.includes("DENIED")||st.includes("EXPIRED")||st.includes("INVALIDATED"))continue;
       fresh.push({
@@ -4261,18 +4211,6 @@ function rotateItem(items, lastIdx) {
 
 // Controle simples de concorrência: impede dois doAutoSend simultâneos para o mesmo email
 const autoSendLock = new Set();
-
-// ── PERFORMANCE: cache de filtros/categorias (evita recomputar a cada request) ──
-const _sheetCatCache = new Map(); // sheetName → { result, ts }
-const SHEET_CAT_TTL  = 5 * 60_000; // 5 min
-
-function getSheetCategoriesCached(sheetName) {
-  const cached = _sheetCatCache.get(sheetName);
-  if (cached && Date.now() - cached.ts < SHEET_CAT_TTL) return cached.result;
-  const result = getSheetCategories(sheetName);
-  _sheetCatCache.set(sheetName, { result, ts: Date.now() });
-  return result;
-}
 
 // ── PERFORMANCE: cache de stats do usuário (evita recomputar em todo /api/status) ──
 const _userStatsCache = new Map(); // email → { todayManual, todayAuto, ts }
@@ -7236,27 +7174,6 @@ filtrar();
     }catch(e){ return json(res,500,{error:"Erro ao gerar o arquivo: "+e.message}); }
   }
 
-  // ── /api/my-availability?sheet=X ─────────────────────────
-  // Disponibilidade da planilha PARA ESTE USUÁRIO, por categoria — alimenta
-  // os chips do wizard do automático (antes mostravam totais globais).
-  if(pathname==="/api/my-availability"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    const sheet=(u.searchParams.get("sheet")||"").trim();
-    const rows=getSheet(sheet)||[];
-    const _sentSet=buildUserSentSet(s.user_email);
-    let withEmail=0, sent=0;
-    const byCategory={};
-    for(const r of rows){
-      const e=_normEmail(r.e);
-      if(!e||!e.includes("@")) continue;
-      withEmail++;
-      if(_sentSet.has(e)){ sent++; continue; }
-      const cat=r.k||"other";
-      byCategory[cat]=(byCategory[cat]||0)+1;
-    }
-    return json(res,200,{ok:true,sheet,total:rows.length,withEmail,sent,available:withEmail-sent,byCategory});
-  }
-
   // ── /api/jobs ─────────────────────────────────────────
   if(pathname==="/api/jobs"){
     const opts={query:(u.searchParams.get("q")||"").trim(),state:(u.searchParams.get("state")||"").trim(),jobType:(u.searchParams.get("jobType")||"all"),jobStatus:(u.searchParams.get("jobStatus")||"all"),beginDate:(u.searchParams.get("beginDate")||""),sort:(u.searchParams.get("sort")||"desc")};
@@ -7302,26 +7219,16 @@ filtrar();
   if(pathname==="/api/sheet-meta"){
     const sheet=u.searchParams.get("sheet")||"";const arr=getSheet(sheet);
     const skip=Math.max(0,parseInt(u.searchParams.get("skip")||"0",10));const top=Math.min(2000,Math.max(1,parseInt(u.searchParams.get("top")||"25",10)));
-    const q=(u.searchParams.get("q")||"").trim();let state=(u.searchParams.get("state")||"").trim();const sort=u.searchParams.get("sort")||"random";
-    // v22-FILTROS: MÚLTIPLOS estados ("FLORIDA,TEXAS"). Com 2+, pré-filtra
-    // aqui e zera o param do searchSheet (que só entende 1). Com 1, segue
-    // o caminho antigo intacto.
-    let _stateList=state?state.split(",").map(x=>x.trim().toUpperCase()).filter(Boolean):[];
-    const category=(u.searchParams.get("category")||"").trim();
-    const minWage=parseFloat(u.searchParams.get("minWage")||"0")||0;
-    const minWorkers=parseInt(u.searchParams.get("minWorkers")||"0")||0;
-    const filterVisa=(u.searchParams.get("visa")||"").trim();
-    const filterHasEmail=(u.searchParams.get("hasEmail")||"").trim();
-    const filterJobStatus=(u.searchParams.get("jobStatus")||"").trim();
-    const filterCity=(u.searchParams.get("city")||"").trim().toLowerCase();
-    const filterCompany=(u.searchParams.get("company")||"").trim().toLowerCase();
-    // v27 (reclamação real): hideSent=1 → o SERVIDOR corta, ANTES da paginação,
-    // toda vaga cujo EMPREGADOR (e-mail) o usuário já contatou OU está na fila
-    // do automático. O filtro antigo era só no navegador e por NÚMERO da vaga —
-    // o mesmo empregador aparece em várias vagas, então o usuário enviava numa
-    // e as irmãs continuavam aparecendo ("fico pulando vaga já enviada").
-    // Regra do dono: enviada ou na fila = NUNCA mais aparece (manual e auto),
-    // até o usuário resetar (o reset limpa DB_SENT/HIST → o corte respeita).
+    const sort=u.searchParams.get("sort")||"random";
+    // v173: TODOS os filtros (estado/cidade/categoria/cargo/salário/vagas/mês
+    // de início/status/grupo/e-mail) passam pelo motor único FILTROS — a
+    // MESMA régua da contagem ao vivo (/api/vagas/filtros) e do refill do
+    // robô. A busca textual (q) fica com o searchSheet (relevância/região/
+    // categoria implícita) — o motor a exclui aqui de propósito.
+    // hideSent=1 → o SERVIDOR corta, ANTES da paginação, toda vaga cujo
+    // EMPREGADOR (e-mail) o usuário já contatou OU está na fila do automático
+    // (regra 8 do dono: enviada ou na fila NUNCA mais aparece, até resetar).
+    const f=FILTROS.parse(u.searchParams);
     const hideSent=(u.searchParams.get("hideSent")||"").trim()==="1";
     const baseArr=arr;
     const catTitles={landscape:"Landscape Worker",construction:"Construction Worker",
@@ -7329,99 +7236,14 @@ filtrar();
       golf:"Golf Course Worker",amusement:"Amusement Park Worker",
       forest:"Forestry Worker",lifeguard:"Lifeguard",
       food:"Food Service / Bartender",ski:"Ski Resort Worker",other:"Seasonal Worker"};
-    const parseW=w=>{if(!w)return 0;const m=String(w).match(/[0-9.]+/);return m?parseFloat(m[0]):0;};
-    // FIX WAGE: aplicar filtros pesados ANTES da paginação para retornar total correto
-    let preFiltered=baseArr;
-    if(hideSent){
-      const _sh=getSess(req);
-      if(_sh?.user_email){
-        const _sSet=buildUserSentSet(_sh.user_email);
-        const _aJob=getAutoJob(_sh.user_email);
-        const _aSet=new Set((_aJob?.queue||[]).map(it=>_normEmail(it.to||"")).filter(Boolean));
-        if(_sSet.size||_aSet.size)preFiltered=preFiltered.filter(r=>{
-          const e=_normEmail(r.e||"");
-          return !e||(!_sSet.has(e)&&!_aSet.has(e));
-        });
-      }
-    }
-    if(_stateList.length>1){const _sset=new Set(_stateList);preFiltered=preFiltered.filter(r=>_sset.has(String(r.s||"").toUpperCase()));state="";}
-    // 🚨 v172l (achado real, print do dono 13/09/2026 — "coloquei pra enviar
-    // pra vagas de $20 pra cima e não funcionou"): planilhas em estágio
-    // inicial do DOL (ex.: jul2026/H-2B "contatos em breve") têm salário E
-    // e-mail VAZIOS em TODAS as linhas — não é o filtro quebrado, é a
-    // planilha ainda não ter esse dado. Sem isto, o filtro só dizia
-    // "afrouxe algum critério", como se a pessoa tivesse pedido demais.
-    const _semSalarioNestaPlanilha = minWage>0 && preFiltered.length>0 && preFiltered.every(r=>parseW(r.w)<=0);
-    const _comEmailNestaSelecao = preFiltered.filter(r=>r.e&&String(r.e).includes("@")).length;
-    if(minWage>0) preFiltered=preFiltered.filter(r=>parseW(r.w)>=minWage);
-    if(minWorkers>0) preFiltered=preFiltered.filter(r=>(r.wk||0)>=minWorkers);
-    if(filterVisa) preFiltered=preFiltered.filter(r=>(r.st||"").toUpperCase().includes(filterVisa));
-    if(filterHasEmail==="1") preFiltered=preFiltered.filter(r=>r.e&&r.e.includes("@"));
-    if(filterHasEmail==="0") preFiltered=preFiltered.filter(r=>!r.e);
-    if(filterJobStatus==="active") preFiltered=preFiltered.filter(r=>{const st=(r.st||"").toUpperCase();return !st.includes("WITHDRAWN")&&!st.includes("DENIED")&&!st.includes("EXPIRED");});
-    if(filterJobStatus==="inactive") preFiltered=preFiltered.filter(r=>{const st=(r.st||"").toUpperCase();return st.includes("WITHDRAWN")||st.includes("DENIED")||st.includes("EXPIRED");});
-    if(filterCompany) preFiltered=preFiltered.filter(r=>(r.n||"").toLowerCase().includes(filterCompany));
-    if(filterCity){const _cm=_cityMatchFn(filterCity);if(_cm)preFiltered=preFiltered.filter(r=>_cm(r.ci));} // v113: cidade com região+normalização
-    // ── 💎 FILTROS DOUBLE PRO: Grupo de Randomização (A–H) e Status DOL ──
-    // Gate no SERVIDOR: quem não é DoublePro/admin tem os parâmetros ignorados
-    // (o front nunca decide plano). Grupo vem da coluna oficial r.g com fallback
-    // no mapa oficial DB_GRUPOS_J26 (nunca inferido por data — regra da casa).
-    const filterGrupos=(u.searchParams.get("grupos")||"").toUpperCase().replace(/[^A-H,]/g,"").trim();
-    const filterDolStatus=(u.searchParams.get("dolStatus")||"").trim().toLowerCase().slice(0,60);
-    if(filterGrupos||filterDolStatus){
-      const _sDp=getSess(req);const _uDp=_sDp?.user_email?getUser(_sDp.user_email):null;
-      const _isDP=!!(_uDp&&(_uDp.isAdmin||getPlan(_uDp)==="doublepro"));
-      if(_isDP){
-        if(filterGrupos){
-          const _gset=new Set(filterGrupos.split(",").filter(Boolean));
-          if(_gset.size)preFiltered=preFiltered.filter(r=>{
-            const cn=String(r.c||"").toUpperCase();
-            const g0=(r.g&&/^[A-H]$/.test(r.g))?r.g:(DB_GRUPOS_J26.mapa[cn]?.grupo||"");
-            return g0&&_gset.has(g0);
-          });
-        }
-        if(filterDolStatus)preFiltered=preFiltered.filter(r=>String(r.st||"").toLowerCase().includes(filterDolStatus));
-      }
-    }
-    // ── FILTRO POR CARGO EXATO (taxonomia real por título da vaga) ──
-    // titles=Cook,Line Cook,__outros__ — vem do modal grande de filtros (todo
-    // título de fato existente na planilha, não mais só as ~11 categorias fixas).
-    // __outros__ junta todo cargo que aparece 3x ou menos na planilha inteira.
-    const filterTitles=(u.searchParams.get("titles")||"").trim();
-    if(filterTitles){
-      const wantedRaw=filterTitles.split(",").map(t=>t.trim().toLowerCase()).filter(Boolean);
-      const wantOutros=wantedRaw.includes("__outros__");
-      const wantedSet=new Set(wantedRaw.filter(t=>t!=="__outros__"));
-      if(wantedSet.size||wantOutros){
-        const freq=new Map();
-        for(const r of baseArr){ const t=(r.t||"").trim().toLowerCase(); if(t) freq.set(t,(freq.get(t)||0)+1); }
-        preFiltered=preFiltered.filter(r=>{
-          const t=(r.t||"").trim().toLowerCase();
-          if(!t) return false;
-          if(wantedSet.has(t)) return true;
-          if(wantOutros && (freq.get(t)||0)<=3) return true;
-          return false;
-        });
-      }
-    }
-    // ── V953: FILTRO POR MÊS DE INÍCIO — "vagas que começam em setembro" ──
-    // O trabalhador sazonal planeja a vida pela data de início (r.d = Begin Date).
-    // Aceita lista: beginMonth=6,7,8. Vaga sem data não casa com o filtro.
-    const filterBeginMonth=(u.searchParams.get("beginMonth")||"").replace(/[^0-9,]/g,"").trim();
-    if(filterBeginMonth){
-      const _months=new Set(filterBeginMonth.split(",").map(x=>parseInt(x,10)).filter(m=>m>=1&&m<=12));
-      if(_months.size)preFiltered=preFiltered.filter(r=>{
-        const m=String(r.d||"").match(/^\d{4}-(\d{2})/);
-        return m&&_months.has(parseInt(m[1],10));
-      });
-    }
+    const _sMeta=getSess(req);
+    const _uMeta=_sMeta?.user_email?getUser(_sMeta.user_email):null;
+    const preFiltered=FILTROS.filtrar(baseArr,f,{except:["q"],excluir:hideSent?_excluirEnviadosFn(_sMeta?.user_email):null,isDP:_isDoublePro(_uMeta)});
     // 🎯 v82: contexto de match (perfil H2B + perfil por visto) do usuário
     // logado — null pra visitante sem sessão/perfil, cai sempre no
     // comportamento de sempre (sem score, sort=match vira ordem estável).
-    const _sMatch=getSess(req);
-    const matchCtx=_sMatch?.user_email?buildMatchCtx(getUser(_sMatch.user_email)):null;
-    // searchSheet faz q/state/category + paginação no array já pré-filtrado
-    const{total,items}=searchSheet(preFiltered,q,state,category,skip,top,sort,matchCtx);
+    const matchCtx=_uMeta?buildMatchCtx(_uMeta):null;
+    const{total,items}=searchSheet(preFiltered,f.q,"","",skip,top,sort,matchCtx);
     let filtered=items; // já paginado corretamente
     // total já é o total filtrado (pré-filtro + searchSheet)
     return json(res,200,{jobs:filtered.map(r=>{
@@ -7456,76 +7278,35 @@ filtrar();
         fromSheet:true,
         matchScore:_m?_m.score:null, matchWhy:_m?_m.why:null
       };
-    }),total,remainingTotal:baseArr.length,skip,sheet,
-      semSalarioNestaPlanilha:_semSalarioNestaPlanilha,
-      comEmailNestaSelecao:_comEmailNestaSelecao});
+    }),total,remainingTotal:baseArr.length,skip,sheet,filtrosAtivos:FILTROS.ativos(f)});
   }
 
-  // ── Facetas reais da planilha (Status DOL distintos + Grupos A–H com contagem) ──
-  // Alimenta o modal único de Filtros (manual E automático). Contagens são
-  // públicas; o USO dos filtros é gateado no /api/sheet-meta (Double Pro).
-  if(pathname==="/api/sheet-facets"){
-    const sheet=u.searchParams.get("sheet")||"";const arr=getSheet(sheet);
-    const stMap=new Map(),grMap=new Map(),stateMap=new Map();
-    for(const r of arr){
-      const st=String(r.st||"").trim();
-      if(st)stMap.set(st,(stMap.get(st)||0)+1);
-      const cn=String(r.c||"").toUpperCase();
-      const g0=(r.g&&/^[A-H]$/.test(r.g))?r.g:(DB_GRUPOS_J26.mapa[cn]?.grupo||"");
-      if(g0)grMap.set(g0,(grMap.get(g0)||0)+1);
-      // v166: contagem por ESTADO para o select "➕ Adicionar estado…" do modal
-      // de filtros mostrar "FLORIDA (312)" — mesmo padrão de agregação leve
-      // já usado acima para status/grupo, sem rota nova nem cálculo pesado.
-      const stt=normalizeStateName(r.s);
-      if(stt)stateMap.set(stt,(stateMap.get(stt)||0)+1);
-    }
-    // v22: datedCount — quantas vagas têm data de início. O front esconde o
-    // filtro de mês quando a planilha não tem datas (senão zera resultados
-    // sem explicação — jan2026/jul2025 não têm a coluna preenchida).
-    let _dated=0;for(const r of arr){if(r.d)_dated++;}
-    return json(res,200,{ok:true,
-      statuses:[...stMap.entries()].map(([v,count])=>({v,count})).sort((a,b)=>b.count-a.count).slice(0,30),
-      grupos:[...grMap.entries()].map(([g,count])=>({g,count})).sort((a,b)=>a.g.localeCompare(b.g)),
-      states:[...stateMap.entries()].map(([v,count])=>({v,count})).sort((a,b)=>b.count-a.count),
-      datedCount:_dated,total:arr.length
-    });
-  }
-
-  // Categorias dinâmicas de uma planilha
+  // Dicionário de rótulos de categoria (PT) — fonte única pros cards/chips
   if(pathname==="/api/category-groups"){
-    return json(res,200,{groups:CATEGORY_GROUPS,labels:CATEGORY_LABELS});
+    return json(res,200,{labels:CATEGORY_LABELS});
   }
-  if(pathname==="/api/count-jobs"){
-    const sheet=u.searchParams.get("sheet")||"";
-    const minWage=parseFloat(u.searchParams.get("minWage")||"0")||0;
-    const state=(u.searchParams.get("state")||"").toUpperCase();
-    const category=u.searchParams.get("category")||"all";
-    const hasEmail=u.searchParams.get("hasEmail")||"";
-    const arr=getSheet(sheet);
-    let filtered=arr;
-    const filterCityCount=(u.searchParams.get("city")||"").trim().toLowerCase();
-    if(state)filtered=filtered.filter(r=>(r.s||"").toUpperCase()===state);
-    if(category&&category!=="all"){const cats=category.split(",").map(c=>c.trim());filtered=filtered.filter(r=>cats.includes(r.k||"other"));}
-    if(hasEmail==="yes")filtered=filtered.filter(r=>r.e&&String(r.e).includes("@"));
-    if(filterCityCount){const _cm2=_cityMatchFn(filterCityCount);if(_cm2)filtered=filtered.filter(r=>_cm2(r.ci));} // v113
-    const total=filtered.length;
-    // Parse wage consistente com /api/sheet-meta
-    const parseW=w=>{if(!w)return 0;const m=String(w).match(/[0-9.]+/);return m?parseFloat(m[0]):0;};
-    const withWage=filtered.filter(r=>parseW(r.w)>=minWage&&parseW(r.w)>0);
-    return json(res,200,{total,filtered:minWage>0?withWage.length:total});
-  }
-  if(pathname==="/api/sheet-categories"){
-    const sheet=u.searchParams.get("sheet")||"";
-    return json(res,200,{categories:getSheetCategoriesCached(sheet)});
-  }
-  // GET /api/sheet-titles?sheet=jan2026 — taxonomia real de cargos (todos os
-  // títulos que existem de fato na planilha, contados, com "Outros" agrupando
-  // os isolados ≤3 ocorrências). Alimenta o modal grande de filtros.
-  if(pathname==="/api/sheet-titles"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    const sheet=(u.searchParams.get("sheet")||"").trim();
-    const rows = sheet==="all" ? getAllSheets() : getSheet(sheet);
-    return json(res,200,{ok:true,sheet,...buildTitleTaxonomy(rows)});
+  // ═══ 🔍 v173: CONTAGEM AO VIVO POR OPÇÃO (busca facetada) ═══
+  // GET /api/vagas/filtros?sheet=X&estado=FLORIDA&categoria=food&salarioMin=18…
+  // Devolve, numa passada só: total com TODOS os filtros; pra cada
+  // dimensão, a contagem de cada opção calculada com todos os OUTROS
+  // filtros aplicados (um filtro nunca "elimina" o outro — marcar um 2º
+  // estado SOMA); e a disponibilidade de dado por dimensão (planilha sem
+  // salário publicado → o front nem oferece o filtro, com aviso honesto).
+  // hideSent=1 → contagens já descontam enviadas/na fila (regra 8).
+  // cargoBusca/cidadeBusca = busca dentro da lista longa (cargos/cidades).
+  if(pathname==="/api/vagas/filtros"){
+    const sheet=(u.searchParams.get("sheet")||"").trim();const arr=getSheet(sheet);
+    const f=FILTROS.parse(u.searchParams);
+    const hideSent=(u.searchParams.get("hideSent")||"").trim()==="1";
+    const _sF=getSess(req);
+    const _uF=_sF?.user_email?getUser(_sF.user_email):null;
+    const r=FILTROS.facetas(arr,f,{
+      excluir:hideSent?_excluirEnviadosFn(_sF?.user_email):null,
+      isDP:_isDoublePro(_uF),
+      cargoBusca:(u.searchParams.get("cargoBusca")||"").slice(0,60),
+      cidadeBusca:(u.searchParams.get("cidadeBusca")||"").slice(0,60),
+    });
+    return json(res,200,{ok:true,sheet,totalPlanilha:arr.length,...r,filtros:f});
   }
   if(pathname==="/api/sheet-detail"){const c=(u.searchParams.get("case")||"").trim().toUpperCase();if(!c)return json(res,400,{error:"case obrigatório"});try{const r=await fetchByCase([c]);
     // v38 (dono, 22/07): e-mail descoberto AQUI é persistido na planilha — a
@@ -11168,7 +10949,7 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
         if (!jobSenders.length) jobSenders = null;
       }
       // mode removido — sempre 24/7
-const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,filteredCount:queue.length,profileId:jobProfileId,resumeIdx:jobResumeIdx,coverIdx:jobCoverIdx,bodyTemplate:d.bodyTemplate||p.settings?.body||"",subjects:Array.isArray(d.subjects)&&d.subjects.length?d.subjects:null,emailBodies:Array.isArray(d.emailBodies)&&d.emailBodies.length?d.emailBodies:null,status:"starting",lastSentAt:null,finishedAt:null,source:d.source||"manual",category:d.category||"all",filters:d.filters||{},queueFingerprint,rotState:{lastSubjIdx:-1,lastBodyIdx:-1},senders:jobSenders,lockedAutoLimit:getAutoLimit(p)};
+const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,filteredCount:queue.length,profileId:jobProfileId,resumeIdx:jobResumeIdx,coverIdx:jobCoverIdx,bodyTemplate:d.bodyTemplate||p.settings?.body||"",subjects:Array.isArray(d.subjects)&&d.subjects.length?d.subjects:null,emailBodies:Array.isArray(d.emailBodies)&&d.emailBodies.length?d.emailBodies:null,status:"starting",lastSentAt:null,finishedAt:null,source:d.source||"manual",category:d.category||"all",filters:d.filtros||d.filters||{},queueFingerprint,rotState:{lastSubjIdx:-1,lastBodyIdx:-1},senders:jobSenders,lockedAutoLimit:getAutoLimit(p)};
       setAutoJob(s.user_email,job);
       autoStats.set(s.user_email,{sent:0,failed:0,skipped:0,startedAt:Date.now()});
       addLog(s.user_email,{status:"sistema",jobTitle:`Envio automático iniciado: ${queue.length} vagas${skippedAlreadySent>0?` (${skippedAlreadySent} já enviadas foram puladas)`:""}`,company:`Fonte: ${d.source||"manual"} | Categoria: ${d.category||"all"}`,source:d.source||"manual",category:d.category||"all"});
