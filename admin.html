@@ -459,6 +459,17 @@ tbody tr:hover{background:var(--glass2)}
 
         <div class="panel">
           <div class="panel-head">
+            <div class="panel-title"><i class="ti ti-history"></i>Últimas ações dos robôs</div>
+            <div class="panel-actions"><select id="bl-filter" onchange="_plRenderBotLogs()" style="min-width:160px"><option value="">Todos os robôs</option></select></div>
+          </div>
+          <div class="panel-body">
+            <p class="pl-help">O que cada robô fez, mais recente primeiro — frescor, vagas novas H-2A, planilhas do mês, sentinela e vigias de token. Fica na memória do servidor (últimas 1.500 linhas).</p>
+            <div class="pl-log" id="bl-log"><div class="pl-log-empty">Sem atividade recente.</div></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
             <div class="panel-title"><i class="ti ti-files"></i>Planilhas</div>
           </div>
           <div class="panel-body">
@@ -1330,7 +1341,7 @@ boot();
    rascunhos com 1 clique. Poll adaptativo: 2,5s com robô rodando, 15s
    parado, e para ao sair da aba. Nada de template literal em innerHTML:
    tudo passa por esc(). */
-var _plTimer=null,_plColetaFimVisto=null; // null = ainda não vi o estado da coleta nesta aba
+var _plTimer=null,_plBotLogs=[],_plColetaFimVisto=null; // null = ainda não vi o estado da coleta nesta aba
 function _plG(id){return document.getElementById(id);}
 function _plSet(id,v){var e=_plG(id);if(e)e.textContent=v;}
 function _plNum(n){return Number(n||0).toLocaleString("pt-BR");}
@@ -1387,7 +1398,7 @@ async function plStatusTick(){
   var running=false;
   try{
     var d=await api("/api/admin/planilhas/status");
-    _plRenderRobos(d);_plRenderEnrich(d);_plRenderColeta(d);
+    _plRenderRobos(d);_plRenderEnrich(d);_plRenderColeta(d);_plBotLogs=d.botLogs||[];_plRenderBotLogs();
     running=!!(d.enrich.running||d.coleta.running||d.fresh.running||d.h2aNovas.running);
   }catch(e){}
   _plStop();_plTimer=setTimeout(plStatusTick,running?2500:15000);
@@ -1423,6 +1434,16 @@ function _plRenderRobos(d){
      btn:{id:"pl-btn-h2b-mes",fn:"plMensalRun('h2b')",ic:"ti-calendar-repeat",lbl:"Gerar/refazer a do mês",off:!!co.running}}
   ];
   _plG("pl-robos-list").innerHTML=cards.map(_plRoboCard).join("");
+}
+function _plRenderBotLogs(){
+  var sel=_plG("bl-filter"),log=_plG("bl-log");if(!sel||!log)return;
+  var atual=sel.value;var bots={};
+  _plBotLogs.forEach(function(l){if(l.bot&&!bots[l.bot])bots[l.bot]=l.botLabel||l.bot;});
+  var ids=Object.keys(bots).sort();
+  var opts='<option value="">Todos os robôs</option>'+ids.map(function(id){return'<option value="'+esc(id)+'">'+esc(bots[id])+'</option>';}).join("");
+  if(sel.innerHTML!==opts){sel.innerHTML=opts;sel.value=ids.indexOf(atual)>=0?atual:"";}
+  var rows=_plBotLogs.filter(function(l){return!sel.value||l.bot===sel.value;}).slice(0,80);
+  log.innerHTML=rows.length?rows.map(function(l){var d=new Date(l.ts);return'<div class="'+esc(l.type||"info")+'">'+esc(d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"})+" "+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}))+' <b>'+esc(l.botLabel||l.bot)+'</b> · '+esc(l.msg)+'</div>';}).join(""):'<div class="pl-log-empty">Sem atividade recente.</div>';
 }
 function _plRenderEnrich(d){
   var en=d.enrich||{};

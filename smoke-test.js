@@ -1800,6 +1800,12 @@ async function testAuthWatchdogPush() {
       const h2b2 = await req2("POST", "/api/admin/sheet/h2b-mensal-run", {});
       check("🧊 v174: rodar de novo DENTRO do mesmo mês sem force é recusado (409)",
         h2b2.status === 409 && h2b2.json?.skipped === true, `status=${h2b2.status} body=${h2b2.body.slice(0, 120)}`);
+      // 📜 log humano dos robôs — DB_BOT_LOGS era escrito por 7 robôs e nunca lido
+      const plSt1 = await get("/api/admin/planilhas/status");
+      const _bl = plSt1.json?.botLogs || [];
+      check("📜 v174: o painel recebe o log humano de TODOS os robôs (botLogs) — vagas novas H-2A, H-2A do mês e H-2B do mês aparecem com rótulo e tipo",
+        _bl.length >= 3 && ["h2a-novas", "h2a-bimestral", "h2b-mensal"].every((b) => _bl.some((l) => l.bot === b && l.botLabel && l.msg && l.ts)) && fs.readFileSync(path.join(__dirname, "admin.html"), "utf8").includes('id="bl-log"'),
+        JSON.stringify(_bl.slice(0, 3)).slice(0, 200));
       // 🔒 admin-only + estrutural
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
       const pl403 = await Promise.all([req2("POST", "/api/admin/sheet/h2a-bimestral-run", {}), req2("POST", "/api/admin/sheet/coleta-start", { sheetKey: "x" }), get("/api/admin/planilhas/status"), req2("POST", "/api/admin/sheet/coleta-publish", { key: "teste2099" })]);

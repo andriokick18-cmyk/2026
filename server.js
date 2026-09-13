@@ -6715,7 +6715,9 @@ ul li{margin-bottom:6px}
   if(pathname==="/api/admin/planilhas/status"&&req.method==="GET"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
     const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
-    return json(res,200,{ok:true,...PLANILHAS.statusPainel(),enrichLog:_enrichBot.log.slice(-80),coletaLog:PLANILHAS.dolColeta.log.slice(-80),latestH2b:latestH2bKey()});
+    // botLogs: o log humano de TODOS os robôs (DB_BOT_LOGS, mais novo primeiro)
+    // — frescor/H-2A novas/mensais/sentinela só falam por aqui.
+    return json(res,200,{ok:true,...PLANILHAS.statusPainel(),enrichLog:_enrichBot.log.slice(-80),coletaLog:PLANILHAS.dolColeta.log.slice(-80),botLogs:DB_BOT_LOGS.slice(0,80),latestH2b:latestH2bKey()});
   }
   if(pathname==="/api/admin/enrich/status"&&req.method==="GET"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});

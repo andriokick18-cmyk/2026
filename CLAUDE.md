@@ -140,7 +140,10 @@ se referindo a outro repositório/projeto.
   smoke (`DOL_FEED_BASE`); o sandbox não alcança o DOL — enriquecimento
   real só em produção. Upload manual do admin (`/api/admin/sheet/
   upload`) agora nasce `published:true` (antes o registro ficava sem o
-  campo e `/api/sheets-list` escondia a planilha de todo usuário).
+  campo e `/api/sheets-list` escondia a planilha de todo usuário). O log
+  humano de TODOS os robôs (`botLog` → `DB_BOT_LOGS`, ring 1500 em memória)
+  viaja no mesmo `/api/admin/planilhas/status` (`botLogs`) e aparece no
+  painel "Últimas ações dos robôs" da aba — antes era escrito e nunca lido.
 - **ZERO envio grátis, sem exceção** (dono, 11-12/09/2026, reforçado várias
   vezes: "nenhum usuário vai ter envio grátis... ninguém sendo free
   consegue enviar nada e nem fazer autenticação"). `PLAN_LIMITS`/
