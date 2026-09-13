@@ -106,6 +106,49 @@ se referindo a outro repositório/projeto.
   sem ordem nova.
 - **Português fixo**: o app não tem seletor de idioma nem detecta idioma
   do navegador — é só em português, de propósito.
+- **📧 Cadastro com e-mail verificado + conta de notificações (v175, dono,
+  13/09/2026 — "cadastro precisa ser obrigatoriamente preenchido completo;
+  apenas 1 WhatsApp; a pessoa só pode concluir o cadastro depois de
+  verificar o seu email; SuporteH2bapply@gmail.com vai ser o e-mail do
+  site que envia os códigos")**: (1) `mod-notif.js` guarda UMA conta
+  Google conectada pelo admin (Admin → Notificações → Conectar conta
+  Google, rota `/oauth/notif-connect`, state `__notif__` no
+  `/oauth/callback`, só escopo gmail.send, refresh_token cifrado em
+  `DATA_DIR/notif_account.json`) e é a ÚNICA origem de e-mail do sistema:
+  código de confirmação do cadastro, código de recuperação de senha e o
+  aviso de pedido novo pros e-mails de admin (com comprovante anexado;
+  toggle na aba). Usuário NÃO recebe nenhum outro e-mail (sendNotifEmail
+  segue no-op). No `npm test` nada sai pra internet: o módulo grava em
+  `notif_outbox.json` e o smoke lê o código de lá (`/api/test/notif-
+  conectar` conecta uma conta falsa, só com TEST_LOGIN_TOKEN). (2) Código
+  de 6 dígitos, 5 min, hash na memória, 5 tentativas, 60s entre envios, 3
+  envios/15min por e-mail, 30 pedidos/h por IP; confirmar devolve um token
+  HMAC (e-mail + finalidade + 30 min) que `POST /api/cadastro` EXIGE
+  (`emailToken`). (3) `/api/cadastro` obriga TODOS os campos (nome,
+  sobrenome, nascimento DD/MM/AAAA real 16-100 anos, cidade, estado, país,
+  WhatsApp ≥10 dígitos — vira `phone` também, campo Telefone separado
+  MORREU —, Gmail `…@gmail.com` único entre contas: é o Gmail que envia
+  as candidaturas, guardado em `emailContato`/`emailVerificadoEm`).
+  Username reservado (andrio/andrew/diego) só nasce admin se o e-mail
+  confirmado for de admin (fechou a janela "quem cadastrar primeiro leva o
+  admin"). `/api/login` aceita o e-mail cadastrado no lugar do usuário.
+  (4) Recuperação: `POST /api/senha/enviar-codigo` (resposta GENÉRICA,
+  sem enumeração) + `POST /api/senha/redefinir` (código + senha ≥8,
+  derruba todas as sessões antigas). (5) `/oauth/connect-send` manda
+  `login_hint=emailContato` e o callback RECUSA (com revoke) Google
+  diferente do e-mail cadastrado; o modal `#gwm` mostra o endereço em
+  destaque ("ENTRE COM ESTE E-MAIL"). Conta legada sem `emailContato`
+  segue a regra antiga. (6) O wizard de onboarding de 6 passos foi
+  REMOVIDO (pedia de novo o que o cadastro já pede); no lugar, a janela
+  `#cv-prompt-overlay` "Cadastre seu currículo agora" (1x por sessão, até
+  existir perfil) abre o editor de perfil, que agora nasce com 3 títulos +
+  3 textos ABERTOS (`_pePad`, mínimo da casa; do 4º em diante remove),
+  rótulos explicando título × corpo, aviso de que a cover letter NÃO é
+  obrigatória, e inglês/CNH (alimentam a nota de encaixe) como opcionais.
+  Textos novos do editor têm data-i18n + dicionário nas 3 línguas (a
+  CATRACA do smoke continua no teto 7). PROIBIDO: cadastro sem e-mail
+  confirmado, 2º canal de e-mail fora do mod-notif, e reintroduzir o
+  wizard antigo.
 - **📋 Alimentação automática das planilhas (v174, dono, 13/09/2026 — "as
   planilhas devem ser alimentadas, igual elas já são hoje, com todas as
   informações de cada vaga; esse sistema você pode trazer do h2bapply.com

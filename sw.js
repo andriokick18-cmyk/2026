@@ -86,7 +86,7 @@
 //    promessa de "direito de arrependimento de 7 dias" (removida também dos
 //    Termos — seção renumerada 1-12).
 //
-const CACHE_NAME = "h2bapply-2026-v37"; // v37: v174b — log humano dos robôs na aba. v36: v174 — aba "Planilhas & Robôs" no painel admin (alimentação automática das planilhas: coleta DOL, enriquecimento, frescor, vagas novas H-2A, planilhas do mês).
+const CACHE_NAME = "h2bapply-2026-v38"; // v38: v175 — cadastro com e-mail verificado por código, recuperação de senha, janela pós-cadastro, editor 3+3, aviso do e-mail no Gmail, aba Notificações. v37: v174b — log humano dos robôs na aba. v36: v174 — aba "Planilhas & Robôs" no painel admin (alimentação automática das planilhas: coleta DOL, enriquecimento, frescor, vagas novas H-2A, planilhas do mês).
 // v31 (histórico): // v31: v172h (dono, 12/09/2026 — "verifique todo o site, tem muitas regras soltas, tudo errado... eu não quero nada do site antigo") — varredura geral por copy stale: FAQ da Home e da landing (h_faq_qty, como-usar.html) diziam "plano gratuito: 20 manuais + 10 automáticos por dia" e "não precisa pagar, 10 automáticos grátis pra todo mundo" — contradizia de frente a regra de zero envio grátis; JSON-LD de SEO também prometia envio grátis limitado (falso). Corrigido nos 3 idiomas + tour + landing + JSON-LD, e mais 2 lugares que descreviam "planos VIP" como se incluíssem automático (é só manual — VIPro/DoublePro é que incluem).
 
 // Recursos estáticos que ficam em cache para uso offline.

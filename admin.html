@@ -287,6 +287,8 @@ tbody tr:hover{background:var(--glass2)}
       <button class="sb-item" data-view="pendentes" onclick="switchTab('pendentes')"><i class="ti ti-hourglass"></i> Pedidos Pendentes <span class="pill" id="pill-pendentes" style="display:none">0</span></button>
       <div class="sb-section">Vagas</div>
       <button class="sb-item" data-view="planilhas" onclick="switchTab('planilhas')"><i class="ti ti-table-import"></i> Planilhas &amp; Robôs</button>
+      <div class="sb-section">Sistema</div>
+      <button class="sb-item" data-view="notificacoes" onclick="switchTab('notificacoes')"><i class="ti ti-mail-forward"></i> Notificações <span class="pill" id="pill-notif" style="display:none;background:var(--red)">!</span></button>
     </nav>
     <div class="sb-foot">
       <div class="sb-user">
@@ -398,6 +400,62 @@ tbody tr:hover{background:var(--glass2)}
            devem ser alimentadas, igual elas já são hoje, com todas as informações
            de cada vaga"). Estado de cada robô, coleta manual do DOL, log do
            enriquecimento e a lista de planilhas com Publicar em 1 clique. ═══ -->
+      <!-- ═══ 📧 v175 — NOTIFICAÇÕES (ordem do dono, 13/09/2026): a conta
+           SuporteH2bapply@gmail.com é conectada AQUI pelo Google (só gmail.send)
+           e passa a enviar os códigos de cadastro/recuperação e os avisos de
+           pedido novo pro Andrio e pro Diego. ═══ -->
+      <div class="view" id="view-notificacoes">
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title"><i class="ti ti-brand-google"></i>Conta Google de notificações</div>
+            <div class="panel-actions"><button class="btn btn-sm" onclick="loadNotificacoes()"><i class="ti ti-refresh"></i> Atualizar</button></div>
+          </div>
+          <div class="panel-body">
+            <div id="nt-status"><div class="spin"></div></div>
+            <div class="pl-actions" style="margin-top:12px">
+              <button class="btn btn-primary" id="nt-conectar" onclick="notifConectar()"><i class="ti ti-brand-google"></i> Conectar conta Google</button>
+              <button class="btn" id="nt-teste" onclick="notifTeste()" style="display:none"><i class="ti ti-send"></i> Enviar e-mail de teste pra mim</button>
+              <button class="btn btn-red btn-sm" id="nt-desconectar" onclick="notifDesconectar()" style="display:none"><i class="ti ti-plug-off"></i> Desconectar</button>
+            </div>
+            <p class="pl-help" style="margin:12px 0 0" id="nt-oauth-note"></p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title"><i class="ti ti-list-check"></i>O que essa conta faz</div></div>
+          <div class="panel-body">
+            <div class="pl-robos">
+              <div class="pl-robo"><div class="pl-robo-t"><span>🔐 Código de confirmação no cadastro</span></div><div class="pl-robo-s">Quando alguém cria conta, digita o e-mail e clica em "Enviar verificação", esta conta manda um código de 6 dígitos que vale 5 minutos. Sem confirmar, o cadastro não conclui.</div></div>
+              <div class="pl-robo"><div class="pl-robo-t"><span>🔑 Código de recuperação de senha</span></div><div class="pl-robo-s">"Esqueci minha senha" na tela de login: o usuário recebe um código no e-mail cadastrado e define uma senha nova. Nada de senha no WhatsApp.</div></div>
+              <div class="pl-robo"><div class="pl-robo-t"><span>💳 Aviso de pedido novo pra você e pro Diego</span></div><div class="pl-robo-s">Cada pedido de plano com comprovante gera um e-mail com os dados do cliente e o comprovante anexado, pra todos os e-mails de admin abaixo. Dá pra desligar aqui.</div></div>
+              <div class="pl-robo"><div class="pl-robo-t"><span>🚫 O que ela NUNCA faz</span></div><div class="pl-robo-s">Não lê caixa de entrada de ninguém (permissão só de ENVIO — gmail.send), não manda propaganda, não envia candidatura de usuário (isso sai do Gmail de cada um). Limite do Gmail: 500 e-mails/dia.</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title"><i class="ti ti-settings"></i>Avisos de compra</div></div>
+          <div class="panel-body">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:600"><input type="checkbox" id="nt-aviso" onchange="notifToggleAvisos(this)" style="width:18px;height:18px;accent-color:var(--green)"> Avisar por e-mail quando entrar pedido novo com comprovante</label>
+            <p class="pl-help" style="margin:10px 0 4px">Quem recebe (e-mails de admin configurados no servidor):</p>
+            <div id="nt-destinatarios" class="pl-sheet-m"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title"><i class="ti ti-help-circle"></i>Como conectar (passo a passo)</div></div>
+          <div class="panel-body">
+            <ol style="font-size:13px;color:var(--t2);line-height:1.7;padding-left:20px">
+              <li>Clique em <b>Conectar conta Google</b>. Vai abrir a tela do Google.</li>
+              <li>Escolha (ou entre com) a conta <b>SuporteH2bapply@gmail.com</b> — não a sua pessoal.</li>
+              <li>Se aparecer "app não verificado": <b>Avançado → Acessar h2bapply.com</b>. Depois <b>Permitir</b> "Enviar e-mail em seu nome".</li>
+              <li>Você volta pra cá com a conta conectada. Clique em <b>Enviar e-mail de teste pra mim</b> pra confirmar que está saindo.</li>
+              <li>Pra trocar de conta: <b>Desconectar</b> e conectar de novo. Só existe 1 conta de notificações por vez.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+
       <div class="view" id="view-planilhas">
         <div class="stat-grid">
           <div class="stat-card blue"><div class="ic"><i class="ti ti-table"></i></div><div class="lbl">Vagas no ar</div><div class="val" id="pl-total-vagas">—</div><div class="sub" id="pl-total-sheets"></div></div>
@@ -731,6 +789,16 @@ async function boot(){
   mostrarTela("app");
   preencherTopoUsuario();
   carregarPendentes();
+  // 📧 v175: voltando do Google (Conectar conta de notificações)
+  try{
+    var q=new URLSearchParams(location.search);
+    if(q.get("notif")){
+      var okN=q.get("notif")==="ok";
+      history.replaceState({},"",location.pathname);
+      switchTab("notificacoes");
+      toast(okN?"✅ Conta "+(q.get("email")||"")+" conectada! Mande um e-mail de teste pra confirmar.":"❌ "+(q.get("msg")||"Não foi possível conectar a conta."),okN?"ok":"err");
+    } else { api("/api/admin/notificacoes/status").then(function(d){var pill=_plG("pill-notif");if(pill)pill.style.display=d.conectada?"none":"";}).catch(function(){}); }
+  }catch(e){}
 }
 
 function preencherTopoUsuario(){
@@ -773,7 +841,8 @@ var TITULOS={
   overview:{t:"Visão Geral",s:"Números exatos, direto do servidor"},
   usuarios:{t:"Usuários por Dias de VIP",s:"Todos os usuários, ordenados por dias restantes"},
   pendentes:{t:"Pedidos Pendentes",s:"Comprovantes aguardando aprovação"},
-  planilhas:{t:"Planilhas & Robôs",s:"As vagas se alimentam sozinhas do DOL — coleta, enriquecimento e frescor"}
+  planilhas:{t:"Planilhas & Robôs",s:"As vagas se alimentam sozinhas do DOL — coleta, enriquecimento e frescor"},
+  notificacoes:{t:"Notificações por e-mail",s:"A conta Google que envia os códigos e avisos do sistema"}
 };
 
 function switchTab(nome){
@@ -788,6 +857,7 @@ function switchTab(nome){
   document.getElementById("tb-sub").textContent=tit.s;
   toggleSidebar(false);
   if(nome==="planilhas")loadPlanilhas();else _plStop();
+  if(nome==="notificacoes")loadNotificacoes();
 }
 
 function toggleSidebar(abrir){
@@ -1541,6 +1611,52 @@ async function plStats(key){
       +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px"><div><div class="pl-help">Por categoria</div>'+(d.categorias||[]).slice(0,10).map(function(c){return row(c[0],c[1]);}).join("")+'</div><div><div class="pl-help">Por estado</div>'+(d.estados||[]).slice(0,10).map(function(c){return row(c[0],c[1]);}).join("")+'</div></div>';
     abrirModalInfo("📊 "+key,html);
   }catch(e){toast(e.message,"err");}
+}
+
+/* ═══════════════════ NOTIFICAÇÕES (v175) ═══════════════════ */
+async function loadNotificacoes(){
+  var box=_plG("nt-status");
+  try{
+    var d=await api("/api/admin/notificacoes/status");
+    var con=!!d.conectada;
+    var html="";
+    if(con){
+      html='<div class="pl-robo" style="border-left:3px solid var(--green)"><div class="pl-robo-t"><span>✅ Conectada: <b>'+esc(d.email)+'</b></span>'+_plBadge("ativa","green")+'</div>'
+        +'<div class="pl-robo-s">Conectada em '+esc(fmtData(d.connectedAt))+(d.connectedBy?' por '+esc(d.connectedBy):'')+'. Enviados hoje: <b>'+_plNum(d.sentToday)+'</b> de '+_plNum(d.limiteDiario)+' · total '+_plNum(d.sentTotal)+' · último envio '+esc(_plAgo(d.lastSendAt))+'.'
+        +(d.lastError?'<br><span style="color:var(--amber)">⚠️ Último erro ('+esc(_plAgo(d.lastErrorAt))+'): '+esc(d.lastError)+'</span>':'')+(d.modoTeste?'<br>🧪 modo teste: nada sai pra internet':'')+'</div></div>';
+    } else if(d.email&&d.rtInvalid){
+      html='<div class="pl-robo" style="border-left:3px solid var(--red)"><div class="pl-robo-t"><span>⚠️ Conta '+esc(d.email)+' perdeu a permissão</span>'+_plBadge("reconectar","red")+'</div><div class="pl-robo-s">O Google derrubou o acesso (senha trocada, permissão removida ou DATA_ENC_KEY mudou). Códigos e avisos NÃO estão saindo. Clique em Conectar conta Google de novo.'+(d.lastError?'<br>'+esc(d.lastError):'')+'</div></div>';
+    } else {
+      html='<div class="pl-robo" style="border-left:3px solid var(--amber)"><div class="pl-robo-t"><span>🔌 Nenhuma conta conectada</span>'+_plBadge("desligado","amber")+'</div><div class="pl-robo-s">Enquanto isso, ninguém consegue receber o código de cadastro nem recuperar a senha — o site avisa "verificação temporariamente indisponível". Conecte a conta SuporteH2bapply@gmail.com abaixo.</div></div>';
+    }
+    box.innerHTML=html;
+    _plG("nt-conectar").innerHTML='<i class="ti ti-brand-google"></i> '+(con?'Trocar conta Google':'Conectar conta Google');
+    _plG("nt-conectar").disabled=!d.oauthConfigurado;
+    _plG("nt-teste").style.display=con?"":"none";
+    _plG("nt-desconectar").style.display=(d.email)?"":"none";
+    _plG("nt-oauth-note").textContent=d.oauthConfigurado?"":"⚠️ GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET não estão configurados no servidor (Render → Environment). Sem eles o botão não abre o Google.";
+    _plG("nt-aviso").checked=d.avisoPedidos!==false;
+    _plG("nt-destinatarios").innerHTML=(d.destinatarios||[]).map(function(e){return'<span class="badge blue">'+esc(e)+'</span>';}).join(" ")||'<span class="badge gray">nenhum e-mail de admin configurado</span>';
+    var pill=_plG("pill-notif");if(pill)pill.style.display=con?"none":"";
+  }catch(e){box.innerHTML='<div class="empty"><i class="ti ti-alert-triangle"></i>'+esc(e.message)+'</div>';}
+}
+function notifConectar(){
+  if(!confirm("Vai abrir a tela do Google. Entre com a conta SuporteH2bapply@gmail.com (a conta de suporte, não a sua pessoal) e permita \"Enviar e-mail em seu nome\".\n\nContinuar?"))return;
+  location.href="/oauth/notif-connect";
+}
+async function notifDesconectar(){
+  if(!confirm("Desconectar a conta de notificações?\n\nCódigos de cadastro, recuperação de senha e avisos de pedido param de sair até conectar outra."))return;
+  try{await api("/api/admin/notificacoes/desconectar",{method:"POST",body:{}});toast("Conta desconectada.","ok");loadNotificacoes();}catch(e){toast(e.message,"err");}
+}
+async function notifTeste(){
+  var to=(STATE.me&&STATE.me.email)||"";
+  if(!to||to.indexOf("@")<0){to=prompt("Pra qual e-mail mandar o teste?")||"";if(!to)return;}
+  try{var d=await api("/api/admin/notificacoes/teste",{method:"POST",body:{to:to}});toast("📨 E-mail de teste enviado pra "+d.to+" — confira a caixa de entrada.","ok");loadNotificacoes();}
+  catch(e){toast(e.message,"err");loadNotificacoes();}
+}
+async function notifToggleAvisos(el){
+  try{var d=await api("/api/admin/notificacoes/config",{method:"POST",body:{avisoPedidos:!!el.checked}});toast(d.avisoPedidos?"Avisos de compra LIGADOS.":"Avisos de compra desligados.","ok");}
+  catch(e){toast(e.message,"err");el.checked=!el.checked;}
 }
 </script>
 </body>

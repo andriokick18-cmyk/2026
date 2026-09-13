@@ -254,6 +254,7 @@ const _msgLimiteSenders = (max) => max<=0
 const PORT          = parseInt(process.env.PORT || "3000", 10);
 const IS_PROD       = APP_URL.startsWith("https://");
 const CONFIGURED    = !!(CLIENT_ID && CLIENT_SECRET);
+const CONFIGURADO_OAUTH = () => CONFIGURED; // v175: usado pela aba Notificações (o painel explica o que falta)
 
 // ── Planos ────────────────────────────────────────────────
 //   free      → 20 manual  + 10 auto   /dia (Grátis)
@@ -5930,6 +5931,76 @@ const PLANILHAS = _createPlanilhas({
   isTest: !!process.env.TEST_LOGIN_TOKEN,
 });
 
+// ═══ 📧 v175 — E-MAILS DO SISTEMA + CÓDIGOS (ordem do dono, 13/09/2026):
+// a conta SuporteH2bapply@gmail.com (conectada pelo admin em Admin →
+// Notificações) envia o código de confirmação do cadastro, o código de
+// recuperação de senha e o aviso de pedido novo pro Andrio e pro Diego.
+// Nunca lê caixa de entrada (só gmail.send). Detalhes em mod-notif.js.
+const { createNotif: _createNotif } = require("./mod-notif.js");
+const NOTIF = _createNotif({
+  fs, path, DATA_DIR, httpsReq, buildMime: (o) => buildMime(o), encStr, decStr,
+  getClientId: () => CLIENT_ID, getClientSecret: () => CLIENT_SECRET,
+  isTest: !!process.env.TEST_LOGIN_TOKEN,
+  hmacSecret: process.env.DATA_ENC_KEY || crypto.randomBytes(32).toString("hex"),
+  appUrl: APP_URL,
+});
+// O e-mail cadastrado É o Gmail que vai enviar as candidaturas (manual e
+// automático) — por isso só aceita Gmail.
+const _isGmail = (e) => /^[a-z0-9._%+-]+@(gmail|googlemail)\.com$/.test(String(e || "").trim().toLowerCase());
+function _findUserByEmail(email) {
+  const e = String(email || "").trim().toLowerCase(); if (!e.includes("@")) return null;
+  for (const u of Object.values(DB_USERS)) { if (!u || u.deleted) continue; if (String(u.emailContato || "").toLowerCase() === e || String(u.email || "").toLowerCase() === e) return u; }
+  return null;
+}
+// Data de nascimento: aceita AAAA-MM-DD (input date) ou DD/MM/AAAA (digitado);
+// devolve ISO ou null se não for uma data real de alguém entre 16 e 100 anos.
+function _parseNasc(v) {
+  const t = String(v || "").trim(); let y, m, d;
+  let mm = t.match(/^(\d{4})-(\d{2})-(\d{2})$/); if (mm) { y = +mm[1]; m = +mm[2]; d = +mm[3]; }
+  else { mm = t.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); if (!mm) return null; d = +mm[1]; m = +mm[2]; y = +mm[3]; }
+  const dt = new Date(Date.UTC(y, m - 1, d)); if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+  const idade = (Date.now() - dt.getTime()) / (365.25 * 86400_000); if (idade < 16 || idade > 100) return null;
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+// Mensagem do aviso de pedido novo aos admins — fonte ÚNICA (conta de
+// notificações OU caminho legado pelo Gmail do admin).
+function _mensagemPedidoAdmin(pedido) {
+  const _pagoEmStr = pedido.pagoEm ? new Date(pedido.pagoEm).toLocaleDateString("pt-BR") : "Não informada";
+  const _realGmailForMail = resolveSendGmail(getUser(pedido.userEmail));
+  const subject = `💳 Novo pedido de plano — ${pedido.userName || pedido.userEmail} quer ${pedido.plano} por ${pedido.dias}d`;
+  const text = `💳 NOVO PEDIDO DE PLANO RECEBIDO!
+
+👤 Usuário: ${pedido.userName || "?"}
+🪪 Usuário (login): ${pedido.userEmail || "?"}
+📧 Gmail conectado: ${_realGmailForMail || "(ainda não conectou Gmail de envio)"}
+📱 WhatsApp: ${pedido.userWhatsapp || "?"}
+🏙️ Cidade: ${pedido.userCity || "?"}
+
+📦 Plano: ${pedido.plano.toUpperCase()} — ${pedido.dias} dias — R$${pedido.valorTotal}${pedido.desconto > 0 ? " (" + pedido.desconto + "% desconto)" : ""}
+💰 Data de pagamento informada pelo cliente: ${_pagoEmStr}   ⬅️ CONFIRA se bate com o comprovante
+📝 Nota: ${pedido.nota || "Sem observação"}
+🆔 Pedido: #${pedido.id.slice(-8).toUpperCase()}
+⏰ Recebido no sistema: ${new Date().toLocaleString("pt-BR")}
+${pedido.comprovante ? "📸 Comprovante: ANEXADO a este email" : "⚠️ Comprovante: NÃO enviado ainda"}
+
+✅ Para ativar: ${APP_URL}/admin → Pedidos Pendentes → Aprovar
+${pedido.criadoPor && pedido.criadoPor !== pedido.userEmail ? `\n🛠️ Registrado retroativamente por admin: ${pedido.criadoPor}` : ""}
+
+— Sistema H2BApply`;
+  // Anexo do comprovante (aceita base64 PURO — formato real salvo — ou data URL)
+  let attachments = [];
+  if (pedido.comprovante && typeof pedido.comprovante === "string") {
+    try {
+      let mimeType, base64Data;
+      const m = pedido.comprovante.match(/^data:([^;]+);base64,(.+)$/);
+      if (m) { mimeType = m[1]; base64Data = m[2]; } else { mimeType = pedido.comprovanteType || "image/jpeg"; base64Data = pedido.comprovante; }
+      const ext = mimeType.includes("pdf") ? "pdf" : mimeType.includes("png") ? "png" : mimeType.includes("webp") ? "webp" : "jpg";
+      if (base64Data && base64Data.length > 40) attachments = [{ name: `comprovante_${pedido.id.slice(-8).toUpperCase()}.${ext}`, data: base64Data, mime: mimeType }];
+    } catch (e) { console.warn("[pedido] erro processando comprovante:", e.message); }
+  }
+  return { subject, text, attachments };
+}
+
 
 // 🔑 Usernames reservados que nascem admin (ordem do dono, 12/09/2026).
 // Fonte ÚNICA — usada tanto no /api/cadastro (grant IMEDIATO, no instante
@@ -6712,6 +6783,37 @@ ul li{margin-bottom:6px}
   // ═══ 📋 v174 — ROTAS DOS ROBÔS DE PLANILHA (admin-only; POST com corpo
   // segue a regra da casa: JSON.parse(await readBody(req)) dentro de try/catch,
   // e o catch SEMPRE responde — nunca requisição pendurada). ═══
+  // ═══ 📧 v175 — ABA NOTIFICAÇÕES (admin) ═══
+  if(pathname==="/api/admin/notificacoes/status"&&req.method==="GET"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
+    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
+    return json(res,200,{ok:true,...NOTIF.status(),destinatarios:[...ADMIN_EMAILS],oauthConfigurado:CONFIGURADO_OAUTH(),meuEmail:s.user_email});
+  }
+  if(pathname==="/api/admin/notificacoes/desconectar"&&req.method==="POST"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
+    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
+    try{const r=await NOTIF.desconectar();try{logAdminAction(s.user_email,"notif_disconnect","(config)",{email:r.email||null},null,"Desconectou a conta de notificações");}catch(e){}return json(res,200,{ok:true,...r});}
+    catch(e){return json(res,500,{error:e.message});}
+  }
+  if(pathname==="/api/admin/notificacoes/teste"&&req.method==="POST"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
+    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
+    try{
+      const d=JSON.parse((await readBody(req))||"{}");
+      const to=String(d.to||s.user_email).trim().toLowerCase();
+      if(!to.includes("@"))return json(res,400,{error:"Informe um e-mail de destino."});
+      if(!NOTIF.conectada())return json(res,409,{error:"Nenhuma conta conectada — clique em Conectar conta Google primeiro."});
+      await NOTIF.sendMail({to,subject:"✅ Teste — notificações do H2BApply funcionando",text:`Este é um e-mail de teste enviado pelo painel admin do H2BApply em ${new Date().toLocaleString("pt-BR")}.\n\nSe você recebeu, a conta de notificações está conectada certinho: códigos de cadastro, recuperação de senha e avisos de pedido vão sair por ela.\n\n— H2BApply`,tipo:"teste"});
+      return json(res,200,{ok:true,to});
+    }catch(e){return json(res,502,{error:"Falha no envio: "+e.message});}
+  }
+  if(pathname==="/api/admin/notificacoes/config"&&req.method==="POST"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
+    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
+    try{const d=JSON.parse((await readBody(req))||"{}");if(typeof d.avisoPedidos!=="boolean")return json(res,400,{error:"avisoPedidos precisa ser true/false"});const v=NOTIF.setAvisoPedidos(d.avisoPedidos);return json(res,200,{ok:true,avisoPedidos:v});}
+    catch(e){return json(res,400,{error:"Corpo inválido: "+e.message});}
+  }
+
   if(pathname==="/api/admin/planilhas/status"&&req.method==="GET"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
     const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
@@ -7531,6 +7633,99 @@ filtrar();
   // painel admin (v172b). O Gmail de VERDADE só entra em cena DEPOIS,
   // quando a pessoa (já com plano pago) conecta o e-mail de ENVIO em
   // /oauth/connect-send — rota separada, TOTALMENTE inalterada.
+  // ══ 📧 v175 — VERIFICAÇÃO DE E-MAIL POR CÓDIGO (ordem do dono, 13/09/2026):
+  // "a pessoa só pode concluir o cadastro depois de verificar o seu email".
+  // Enviar → código de 6 dígitos (5 min) sai pela conta de notificações;
+  // Confirmar → token assinado que o /api/cadastro exige. Limites: 60s entre
+  // envios, 3 envios/15min por e-mail, 5 tentativas por código, 10 pedidos/h
+  // por IP. Resposta sempre honesta: se a conta de envio não está conectada,
+  // devolve 503 explicando — nunca finge que mandou.
+  if(pathname==="/api/email/enviar-codigo"&&req.method==="POST"){
+    const _ip=_clientIp(req);
+    if(rateLimit("codigo_"+_ip,30,3600_000))return json(res,429,{error:"Muitos pedidos de código deste aparelho. Aguarde 1 hora."});
+    try{
+      const d=JSON.parse((await readBody(req))||"{}");
+      const email=String(d.email||"").trim().toLowerCase();
+      if(!_isGmail(email))return json(res,400,{error:"Use um Gmail válido (…@gmail.com) — é por ele que o site envia suas candidaturas."});
+      if(_findUserByEmail(email))return json(res,409,{error:"Já existe uma conta com esse e-mail. Entre com seu usuário ou use \"Esqueci minha senha\"."});
+      if(!NOTIF.conectada())return json(res,503,{error:"A verificação por e-mail está temporariamente indisponível (conta de envio não conectada). Tente de novo em alguns minutos ou chame o suporte."});
+      const pode=NOTIF.podeEnviar("cadastro",email);
+      if(!pode.ok)return json(res,429,{error:pode.motivo==="aguarde"?`Aguarde ${pode.segundos}s pra pedir outro código.`:`Limite de códigos atingido pra esse e-mail. Tente de novo em ${Math.ceil(pode.segundos/60)} min.`,segundos:pode.segundos});
+      const c=NOTIF.gerarCodigo("cadastro",email);
+      const tpl=NOTIF.templateCodigoCadastro({codigo:c.codigo});
+      await NOTIF.sendMail({to:email,subject:tpl.subject,text:tpl.text,tipo:"codigo_cadastro"});
+      return json(res,200,{ok:true,email,expiraEm:c.expiraEm,reenvioEm:c.reenvioEm});
+    }catch(e){console.warn("[email/enviar-codigo]",e.message);return json(res,502,{error:"Não conseguimos enviar o e-mail agora ("+String(e.message).slice(0,80)+"). Tente de novo em instantes."});}
+  }
+  if(pathname==="/api/email/confirmar"&&req.method==="POST"){
+    const _ip=_clientIp(req);
+    if(rateLimit("codigoconf_"+_ip,40,3600_000))return json(res,429,{error:"Muitas tentativas. Aguarde um pouco."});
+    try{
+      const d=JSON.parse((await readBody(req))||"{}");
+      const email=String(d.email||"").trim().toLowerCase();
+      const r=NOTIF.confirmarCodigo("cadastro",email,d.codigo);
+      if(!r.ok)return json(res,400,{error:r.motivo,expirado:!!r.expirado,cancelado:!!r.cancelado});
+      return json(res,200,{ok:true,email,token:r.token});
+    }catch(e){return json(res,400,{error:"Corpo inválido: "+e.message});}
+  }
+  // ══ 🔑 v175 — RECUPERAÇÃO DE SENHA pelo e-mail cadastrado ══
+  // Resposta GENÉRICA no envio (nunca revela se o e-mail tem conta); o
+  // código só sai se a conta existir. Redefinir exige código válido, senha
+  // ≥8 e derruba todas as sessões antigas daquela conta.
+  if(pathname==="/api/senha/enviar-codigo"&&req.method==="POST"){
+    const _ip=_clientIp(req);
+    if(rateLimit("senhacod_"+_ip,10,3600_000))return json(res,429,{error:"Muitos pedidos deste aparelho. Aguarde 1 hora."});
+    try{
+      const d=JSON.parse((await readBody(req))||"{}");
+      const email=String(d.email||"").trim().toLowerCase();
+      if(!email.includes("@"))return json(res,400,{error:"Informe o e-mail cadastrado."});
+      if(!NOTIF.conectada())return json(res,503,{error:"A recuperação por e-mail está temporariamente indisponível. Chame o suporte no WhatsApp."});
+      const u=_findUserByEmail(email);
+      if(u&&!isAdminEmail(u.email)){
+        const pode=NOTIF.podeEnviar("senha",email);
+        if(!pode.ok)return json(res,429,{error:pode.motivo==="aguarde"?`Aguarde ${pode.segundos}s pra pedir outro código.`:"Limite de códigos atingido. Tente de novo em alguns minutos.",segundos:pode.segundos});
+        const c=NOTIF.gerarCodigo("senha",email);
+        const tpl=NOTIF.templateCodigoSenha({codigo:c.codigo});
+        try{await NOTIF.sendMail({to:email,subject:tpl.subject,text:tpl.text,tipo:"codigo_senha"});}
+        catch(e){console.warn("[senha/enviar-codigo]",e.message);return json(res,502,{error:"Não conseguimos enviar o e-mail agora. Tente de novo em instantes."});}
+      } else { await new Promise(r=>setTimeout(r,400)); } // mesmo tempo de resposta — sem enumeração
+      return json(res,200,{ok:true,msg:"Se existir uma conta com esse e-mail, o código foi enviado. Vale 5 minutos."});
+    }catch(e){return json(res,400,{error:"Corpo inválido: "+e.message});}
+  }
+  if(pathname==="/api/senha/redefinir"&&req.method==="POST"){
+    const _ip=_clientIp(req);
+    if(rateLimit("senharedef_"+_ip,30,3600_000))return json(res,429,{error:"Muitas tentativas. Aguarde um pouco."});
+    try{
+      const d=JSON.parse((await readBody(req))||"{}");
+      const email=String(d.email||"").trim().toLowerCase();
+      const nova=String(d.novaSenha||"");
+      if(nova.length<8)return json(res,400,{error:"A nova senha precisa ter pelo menos 8 caracteres."});
+      const r=NOTIF.confirmarCodigo("senha",email,d.codigo);
+      if(!r.ok)return json(res,400,{error:r.motivo});
+      const u=_findUserByEmail(email);
+      if(!u||isAdminEmail(u.email))return json(res,400,{error:"Conta não encontrada."});
+      const {salt,hash}=await _hashPw(nova);
+      setUser(u.email,{passwordSalt:salt,passwordHash:hash,passwordChangedAt:Date.now()});
+      let _derrubadas=0;for(const sid of Object.keys(sessions)){if(sessions[sid]?.user_email===u.email){delete sessions[sid];_derrubadas++;}}
+      persistSessionsDebounced(500);
+      _authEvent(u.email,"senha_redefinida",`Senha redefinida pelo e-mail cadastrado (${_derrubadas} sessão(ões) antiga(s) derrubada(s))`);
+      console.log(`[senha] 🔑 ${u.email} redefiniu a senha pelo e-mail (${_derrubadas} sessões derrubadas)`);
+      return json(res,200,{ok:true,username:u.username||u.email});
+    }catch(e){return json(res,400,{error:"Corpo inválido: "+e.message});}
+  }
+  // 🧪 só no npm test: "conecta" uma conta de notificações falsa (o envio
+  // real nunca sai — mod-notif grava no outbox). Mesma trava do /api/test/login.
+  if(pathname==="/api/test/notif-conectar"&&req.method==="POST"&&process.env.TEST_LOGIN_TOKEN){
+    try{const d=JSON.parse((await readBody(req))||"{}");if(d.token!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});
+      NOTIF.conectar({email:String(d.email||"suporteh2bapply@gmail.com").toLowerCase(),refresh_token:"teste-rt-"+crypto.randomBytes(4).toString("hex"),connectedBy:"smoke-test"});
+      return json(res,200,{ok:true,status:NOTIF.status()});}catch(e){return json(res,400,{error:e.message});}
+  }
+
+  // 🆕 CADASTRO por usuário+senha (v172c) — v175: TODOS os campos obrigatórios,
+  // 1 só WhatsApp e e-mail Gmail CONFIRMADO por código (emailToken) — ordem
+  // do dono, 13/09/2026: "cadastro precisa ser obrigatoriamente preenchido
+  // completo... apenas 1 número de telefone WhatsApp... a pessoa só pode
+  // concluir o cadastro depois de verificar o seu email".
   if(pathname==="/api/cadastro"&&req.method==="POST"){
     const _ip=_clientIp(req);
     if(rateLimit("cadastro_"+_ip,20,900_000))return json(res,429,{error:"Muitas tentativas. Aguarde 15 minutos."});
@@ -7540,46 +7735,44 @@ filtrar();
       const senha=String(d.password||"");
       const nome=String(d.nome||"").trim().slice(0,80);
       const sobrenome=String(d.sobrenome||"").trim().slice(0,80);
-      // Sem @ de propósito — nunca pode colidir com um e-mail real (e-mail
-      // só existe depois, quando conecta o Gmail de envio).
+      const email=String(d.email||"").trim().toLowerCase();
+      const cidade=String(d.cidade||"").trim().slice(0,80);
+      const estado=String(d.estado||"").trim().slice(0,60);
+      const pais=String(d.pais||"").trim().slice(0,60);
+      const whatsapp=String(d.whatsapp||"").replace(/[^\d+]/g,"").slice(0,20);
+      // Sem @ de propósito — nunca pode colidir com um e-mail real.
       if(!/^[a-z0-9_.]{3,30}$/.test(username))return json(res,400,{error:"Nome de usuário precisa ter 3 a 30 letras/números/ponto/underline (sem espaço, sem @)."});
-      // 🚨 v172c-SEC (auditoria de segurança, 12/09/2026): 4 caracteres era
-      // fraco demais — combinado com o vazamento corrigido de passwordHash/
-      // passwordSalt (sanitizeUserForClient), senhas curtas quebrariam
-      // offline em segundos. 8 é o mínimo aceitável hoje sem exigir
-      // complexidade (o site é 100% em português simples, regra 6f).
+      // 🚨 v172c-SEC: 8 é o mínimo aceitável sem exigir complexidade.
       if(senha.length<8)return json(res,400,{error:"A senha precisa ter pelo menos 8 caracteres."});
       if(!nome||!sobrenome)return json(res,400,{error:"Nome e sobrenome são obrigatórios."});
-      // Defesa extra: impossível "roubar" identidade de admin escolhendo o
-      // e-mail dele como nome de usuário (a validação sem @ acima já torna
-      // isso estruturalmente impossível, isto é só um cinto-e-suspensório).
+      const nascISO=_parseNasc(d.dataNascimento);
+      if(!nascISO)return json(res,400,{error:"Informe sua data de nascimento (DD/MM/AAAA)."});
+      if(!cidade||!estado||!pais)return json(res,400,{error:"Cidade, estado e país são obrigatórios."});
+      if(whatsapp.replace(/\D/g,"").length<10)return json(res,400,{error:"Informe seu WhatsApp com DDD (só números, ex.: 5511999999999)."});
+      if(!_isGmail(email))return json(res,400,{error:"Informe um Gmail válido (…@gmail.com) — é por ele que o site envia suas candidaturas."});
+      if(!NOTIF.validarToken(d.emailToken,"cadastro",email))return json(res,400,{error:"Confirme seu e-mail primeiro: clique em \"Enviar verificação\" e digite o código que chegou no seu Gmail."});
+      if(_findUserByEmail(email))return json(res,409,{error:"Já existe uma conta com esse e-mail. Entre com seu usuário ou use \"Esqueci minha senha\"."});
+      // Cinto-e-suspensório: impossível "roubar" identidade de admin pelo username.
       if(isAdminEmail(username))return json(res,400,{error:"Esse nome de usuário não pode ser usado."});
       if(getUser(username))return json(res,409,{error:"Esse nome de usuário já existe. Escolha outro ou entre na sua conta."});
+      // 🔑 usernames reservados (ADMIN_RESERVED_USERNAMES) nascem admin — v175:
+      // SÓ com o e-mail confirmado sendo um e-mail de admin (fecha a janela
+      // "quem cadastrar primeiro leva o admin" apontada na auditoria de 13/09).
+      const _nasceAdmin=ADMIN_RESERVED_USERNAMES.has(username);
+      if(_nasceAdmin&&!isAdminEmail(email))return json(res,400,{error:"Esse nome de usuário é reservado. Escolha outro."});
       const {salt,hash}=await _hashPw(senha);
-      // 🚨 v172c-SEC: _hashPw virou assíncrono (scrypt no threadpool, nunca
-      // trava o site inteiro — ver comentário acima da função) — isso abre
-      // uma janela real onde 2 cadastros com o MESMO username concorrentes
-      // passariam os 2 pelo getUser() de cima antes de qualquer um gravar.
-      // Reconfere aqui, direto antes de gravar, pra nunca sobrescrever um
-      // cadastro concorrente em silêncio.
+      // 🚨 v172c-SEC: _hashPw é assíncrono — reconfere unicidade antes de gravar.
+      if(_findUserByEmail(email))return json(res,409,{error:"Já existe uma conta com esse e-mail."});
       if(getUser(username))return json(res,409,{error:"Esse nome de usuário já existe. Escolha outro ou entre na sua conta."});
       const nomeCompleto=(nome+" "+sobrenome).trim();
-      // 🔑 (ordem do dono, 12/09/2026) usernames reservados (ADMIN_RESERVED_
-      // USERNAMES) nascem admin JÁ NA CRIAÇÃO — não dependem de nenhuma
-      // migração de boot rodar depois (o cadastro pode acontecer horas
-      // depois do último restart do servidor).
-      const _nasceAdmin=ADMIN_RESERVED_USERNAMES.has(username);
-      // 🔒 v172: mesma régua de sempre — conta nova nasce 100% free (0
-      // manual/0 auto), sem trial nenhum; só ENVIA depois de plano pago +
-      // conectar o Gmail em /oauth/connect-send.
+      // 🔒 v172: conta nova nasce 100% free (0 manual/0 auto), sem trial nenhum;
+      // só ENVIA depois de plano pago + conectar o Gmail em /oauth/connect-send.
       setUser(username,{
         email:username,username,name:nomeCompleto,nome,sobrenome,
-        dataNascimento:String(d.dataNascimento||"").slice(0,20),
-        city:String(d.cidade||"").trim().slice(0,80),
-        estado:String(d.estado||"").trim().slice(0,60),
-        country:String(d.pais||"Brasil").trim().slice(0,60)||"Brasil",
-        phone:String(d.telefone||"").trim().slice(0,30),
-        whatsapp:String(d.whatsapp||"").trim().slice(0,30),
+        emailContato:email,emailVerificadoEm:Date.now(),
+        dataNascimento:nascISO,
+        city:cidade,estado,country:pais,
+        phone:whatsapp,whatsapp,
         passwordSalt:salt,passwordHash:hash,
         created_at:new Date().toISOString(),plan:"free",vip:null,cvs:[],profiles:[],saved:[],
         onboarded:false,isAdmin:_nasceAdmin,language:"pt-BR",
@@ -7587,11 +7780,11 @@ filtrar();
       const sid="usr_"+crypto.randomBytes(16).toString("hex");
       sessions[sid]={user_email:username,user_name:nomeCompleto,created_at:Date.now()};
       persistSessionsDebounced(500);
-      console.log(`[cadastro] 🆕 Conta nova por usuário+senha: ${username}${_nasceAdmin?" (👑 admin — username reservado)":""}`);
-      try{ trackJourney(username,'first_login',{detail:"Novo. Cadastro usuário+senha (sem Google, sem trial)",meta:{name:nomeCompleto}}); }catch(e){}
+      console.log(`[cadastro] 🆕 Conta nova por usuário+senha: ${username} (${email})${_nasceAdmin?" (👑 admin — username reservado + e-mail de admin)":""}`);
+      try{ trackJourney(username,'first_login',{detail:"Novo. Cadastro usuário+senha com e-mail confirmado por código",meta:{name:nomeCompleto,email}}); }catch(e){}
       try{ pushGlobalEvent('new_user',username,`Novo: ${nomeCompleto}`,"info"); }catch(e){}
       res.writeHead(200,{"Content-Type":"application/json","Set-Cookie":makeCookieStr(sid)});
-      return res.end(JSON.stringify({ok:true,username}));
+      return res.end(JSON.stringify({ok:true,username,novaConta:true}));
     }catch(e){return json(res,500,{error:e.message});}
   }
   if(pathname==="/api/login"&&req.method==="POST"){
@@ -7601,22 +7794,25 @@ filtrar();
       const d=JSON.parse(await readBody(req));
       const username=String(d.username||"").trim().toLowerCase();
       const senha=String(d.password||"");
-      const u=getUser(username);
+      // v175: aceita também o E-MAIL cadastrado no lugar do usuário (quem
+      // esquece o username ainda entra) — a identidade continua sendo o username.
+      const u=getUser(username)||(username.includes("@")?_findUserByEmail(username):null);
+      const _ident=u?String(u.email||username):username;
       // 🆘 v172c-UX (12/09/2026): conta ANTIGA (login era só Google, migrada
       // sem passwordHash) tomava a mesma mensagem genérica de "senha errada"
       // que uma senha digitada errada de verdade — pra quem nunca teve senha
       // nenhuma isso é indistinguível de um bug, e o único jeito de destravar
       // (admin rodar /api/admin/set-password) é invisível pro usuário. Avisa
       // direto pra chamar o suporte, sem abrir mão do delay anti-timing.
-      const _legado=!!u&&!isAdminEmail(username)&&!u.passwordHash;
+      const _legado=!!u&&!isAdminEmail(_ident)&&!u.passwordHash;
       if(_legado){await new Promise(r=>setTimeout(r,300));return json(res,403,{error:"Essa conta é de antes da senha (login era só pelo Google) e ainda não tem senha definida. Chame o suporte no WhatsApp +55 53 98145-3496 pra liberar o acesso — é rápido."});}
-      const ok=!!u&&!isAdminEmail(username)&&(await _verifyPw(senha,u.passwordSalt,u.passwordHash));
+      const ok=!!u&&!isAdminEmail(_ident)&&(await _verifyPw(senha,u.passwordSalt,u.passwordHash));
       if(!ok){await new Promise(r=>setTimeout(r,300));return json(res,403,{error:"Usuário ou senha inválidos."});}
       const sid="usr_"+crypto.randomBytes(16).toString("hex");
-      sessions[sid]={user_email:username,user_name:u.name||username,created_at:Date.now()};
+      sessions[sid]={user_email:_ident,user_name:u.name||_ident,created_at:Date.now()};
       persistSessionsDebounced(500);
       res.writeHead(200,{"Content-Type":"application/json","Set-Cookie":makeCookieStr(sid)});
-      return res.end(JSON.stringify({ok:true,username}));
+      return res.end(JSON.stringify({ok:true,username:_ident}));
     }catch(e){return json(res,500,{error:e.message});}
   }
 
@@ -7740,14 +7936,18 @@ filtrar();
         // estava conectado (ou, em conta legada, diferente do e-mail de
         // login, que já era o Gmail real) — aí sim revoga (escopo sensível
         // de verdade) e barra, mesmo padrão de proteção de sempre.
-        const _expectedGmailCS=resolveSendGmail(ownerCS);
+        // v175 (ordem do dono, 13/09/2026): o e-mail cadastrado é o que envia —
+        // autorizar outra conta Google é barrado (e o token revogado), com a
+        // mensagem dizendo qual é o certo. Conta legada sem e-mail cadastrado
+        // segue a regra de sempre (1ª conexão livre, reconexão só com a mesma).
+        const _expectedGmailCS=ownerCS.emailContato||resolveSendGmail(ownerCS);
         if(_expectedGmailCS && _emailCS!==_expectedGmailCS){
           try{
             const _rvBCS="token="+encodeURIComponent(tkCS.refresh_token||tkCS.access_token);
             await httpsReq({hostname:"oauth2.googleapis.com",path:"/revoke",method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded","Content-Length":Buffer.byteLength(_rvBCS)}},_rvBCS);
             _authEvent(_emailCS,"revoke_mismatch","Conectar-Gmail-pra-enviar revogado: esperava "+_expectedGmailCS+", autenticou "+_emailCS);
           }catch(eRvCS){console.warn("[oauth] revoke pós-mismatch (connect-send) falhou:",eRvCS.message);}
-          return failCS(`Você precisa autorizar com a MESMA conta Gmail já conectada (${_expectedGmailCS}), não com ${_emailCS}.`);
+          return failCS(`Você entrou com ${_emailCS}, mas o e-mail da sua conta é ${_expectedGmailCS}. Saia do Google e entre com ${_expectedGmailCS} — é ele que envia suas candidaturas.`);
         }
         if(!tkCS.refresh_token && !ownerCS.refresh_token){
           // Google só manda refresh_token com prompt=consent (sempre pedido
@@ -7771,6 +7971,27 @@ filtrar();
         addLog(ownerEmailCS,{status:"sistema",jobTitle:"✅ Gmail conectado — já pode enviar candidaturas",company:"Conectar Gmail"});
         res.writeHead(302,{Location:"/?gmailConnected=1&tab="+encodeURIComponent(pendingCS.fromTab||"plans")});return res.end();
       }catch(eCS){return failCS("Erro ao conectar o Gmail: "+eCS.message);}
+    }
+    // ── 📧 v175: CONTA DE NOTIFICAÇÕES (admin) — callback ────────────────
+    if(sessions["__notif__"+_st]){
+      const pn=sessions["__notif__"+_st];delete sessions["__notif__"+_st];
+      const failN=m=>{res.writeHead(302,{Location:"/admin?notif=erro&msg="+encodeURIComponent(m)});res.end();};
+      if(Date.now()-pn.created>600_000)return failN("Sessão expirada. Tente conectar de novo.");
+      const _sN=getSess(req);const _pN=_sN?.user_email?getUser(_sN.user_email):null;
+      if(!_sN?.user_email||_sN.user_email!==pn.ownerEmail||!isAdminVip(_pN))return failN("Sessão inválida — entre no painel e clique em Conectar de novo.");
+      try{
+        const tbN=new URLSearchParams({code,client_id:CLIENT_ID,client_secret:CLIENT_SECRET,redirect_uri:_oauthBase(req)+"/oauth/callback",grant_type:"authorization_code"}).toString();
+        const{body:tkN}=await httpsReq({hostname:"oauth2.googleapis.com",path:"/token",method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded","Content-Length":Buffer.byteLength(tbN)}},tbN);
+        if(tkN.error)return failN(tkN.error_description||tkN.error);
+        if(!tkN.access_token)return failN("Token não recebido.");
+        const{body:uiN}=await httpsReq({hostname:"www.googleapis.com",path:"/oauth2/v2/userinfo",method:"GET",headers:{"Authorization":"Bearer "+tkN.access_token}});
+        const _emailN=String(uiN.email||"").toLowerCase().trim();
+        if(!_emailN)return failN("E-mail da conta não obtido.");
+        if(!tkN.refresh_token)return failN("O Google não devolveu a permissão permanente (refresh token). Em myaccount.google.com → Segurança → Apps com acesso, remova o H2BApply e conecte de novo.");
+        NOTIF.conectar({email:_emailN,refresh_token:tkN.refresh_token,connectedBy:_sN.user_email});
+        try{logAdminAction(_sN.user_email,"notif_connect","(config)",null,{email:_emailN},"Conectou a conta Google de notificações: "+_emailN);}catch(e){}
+        res.writeHead(302,{Location:"/admin?notif=ok&email="+encodeURIComponent(_emailN)});return res.end();
+      }catch(eN){return failN("Erro ao conectar a conta: "+eN.message);}
     }
     // v172c (ORDEM DO DONO, 12/09/2026): login normal virou usuário+senha
     // (/api/login) — /oauth/start nunca mais grava sessions["__p__"+st], e
@@ -7833,8 +8054,25 @@ filtrar();
     // de login de uma conta v172c (nunca tem @, confundiria a tela do Google
     // sem ajudar em nada). resolveSendGmail devolve null pra quem
     // ainda não conectou nenhum Gmail: aí a pessoa escolhe livremente.
-    const _hintCS=resolveSendGmail(p);
+    // v175: o e-mail CADASTRADO (confirmado por código) é o Gmail que envia —
+    // vai de login_hint pro Google já cravar a conta certa na tela.
+    const _hintCS=p.emailContato||resolveSendGmail(p);
     const qs=new URLSearchParams({client_id:CLIENT_ID,redirect_uri:_oauthBase(req)+"/oauth/callback",response_type:"code",scope:OAUTH_SCOPES,access_type:"offline",prompt:"consent",state:st,...(_hintCS?{login_hint:_hintCS}:{})});
+    res.writeHead(302,{Location:"https://accounts.google.com/o/oauth2/v2/auth?"+qs});return res.end();
+  }
+
+  // 📧 v175: inicia a conexão da CONTA DE NOTIFICAÇÕES (Admin → Notificações).
+  // Só admin; escopo gmail.send (nunca leitura); prompt=consent garante o
+  // refresh_token; select_account deixa escolher a conta de suporte na hora.
+  if(pathname==="/oauth/notif-connect"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
+    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado."});
+    if(!CONFIGURED){res.writeHead(302,{Location:"/admin?notif=erro&msg="+encodeURIComponent("OAuth do Google não configurado no servidor (GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET).")});return res.end();}
+    const st=crypto.randomBytes(20).toString("hex");
+    sessions["__notif__"+st]={ownerEmail:s.user_email,created:Date.now()};
+    persistSessions();
+    const _hintN=NOTIF.status().email||"";
+    const qs=new URLSearchParams({client_id:CLIENT_ID,redirect_uri:_oauthBase(req)+"/oauth/callback",response_type:"code",scope:OAUTH_SCOPES,access_type:"offline",prompt:"consent select_account",state:st,...(_hintN?{login_hint:_hintN}:{})});
     res.writeHead(302,{Location:"https://accounts.google.com/o/oauth2/v2/auth?"+qs});return res.end();
   }
 
@@ -9240,6 +9478,19 @@ filtrar();
       // Email para admins (em background)
       ;(async()=>{
         try{
+          // 📧 v175 (ordem do dono): a conta de notificações (Admin →
+          // Notificações) tem prioridade — o aviso de compra pro Andrio e
+          // pro Diego sai pelo Suporte, sem depender do Gmail pessoal de
+          // nenhum admin estar conectado. O caminho legado abaixo continua
+          // como reserva enquanto a conta não estiver conectada.
+          if(NOTIF.conectada()&&NOTIF.status().avisoPedidos){
+            const _mN=_mensagemPedidoAdmin(pedido);let _okN=0;
+            for(const toEmail of [...ADMIN_EMAILS]){
+              try{await NOTIF.sendMail({to:toEmail,subject:_mN.subject,text:_mN.text,attachments:_mN.attachments,tipo:"pedido"});_okN++;console.log("[pedido] ✅ aviso via conta de notificações →",toEmail);}
+              catch(e){console.warn("[pedido] notif err →",toEmail,":",e.message);}
+            }
+            if(_okN>0)return;
+          }
           let adminToken=null, adminTokenFrom=null;
           // 1) Token de sessão ativa do admin principal
           const adminSessEntry=Object.values(sessions).find(ss=>ss.user_email===ADMIN_EMAIL&&ss.access_token);
@@ -9260,53 +9511,8 @@ filtrar();
           if(!adminToken){console.warn("[pedido] ⚠️ NENHUM admin com token válido — aviso de pedido NÃO enviado. Reconecte o Gmail admin.");}
           if(adminToken){
             const _fromEmail = adminTokenFrom || ADMIN_EMAIL;
-            const _pagoEmStr = pedido.pagoEm ? new Date(pedido.pagoEm).toLocaleDateString("pt-BR") : "Não informada";
-            // 🐛 v172c: pedido.userEmail é a IDENTIDADE da sessão (username
-            // sem @ pra conta nova) — rotulado "Email" isso confundia o
-            // admin. Mostra o login separado do Gmail REAL já conectado
-            // (resolveSendGmail), quando existir.
-            const _realGmailForMail = resolveSendGmail(getUser(pedido.userEmail));
-            const emailSubject=`💳 Novo pedido de plano — ${pedido.userName||pedido.userEmail} quer ${pedido.plano} por ${pedido.dias}d`;
-            const emailText=`💳 NOVO PEDIDO DE PLANO RECEBIDO!
-
-👤 Usuário: ${pedido.userName||"?"}
-🪪 Usuário (login): ${pedido.userEmail||"?"}
-📧 Gmail conectado: ${_realGmailForMail||"(ainda não conectou Gmail de envio)"}
-📱 WhatsApp: ${pedido.userWhatsapp||"?"}
-🏙️ Cidade: ${pedido.userCity||"?"}
-
-📦 Plano: ${pedido.plano.toUpperCase()} — ${pedido.dias} dias — R$${pedido.valorTotal}${pedido.desconto>0?" ("+pedido.desconto+"% desconto)":""}
-💰 Data de pagamento informada pelo cliente: ${_pagoEmStr}   ⬅️ CONFIRA se bate com o comprovante
-📝 Nota: ${pedido.nota||"Sem observação"}
-🆔 Pedido: #${pedido.id.slice(-8).toUpperCase()}
-⏰ Recebido no sistema: ${new Date().toLocaleString("pt-BR")}
-${pedido.comprovante?"📸 Comprovante: ANEXADO a este email":"⚠️ Comprovante: NÃO enviado ainda"}
-
-✅ Para ativar: h2bapply.com/ad → Pedidos de Plano → Ativar
-${pedido.criadoPor&&pedido.criadoPor!==pedido.userEmail?`\n🛠️ Registrado retroativamente por admin: ${pedido.criadoPor}`:""}
-
-— Sistema H2BApply`;
-
-            // Preparar anexo do comprovante (aceita base64 PURO — formato real salvo —
-            // ou data URL). Antes só anexava se começasse com "data:", então o anexo
-            // nunca ia, apesar do texto dizer "ANEXADO".
-            let attachments = [];
-            if(pedido.comprovante && typeof pedido.comprovante === "string"){
-              try{
-                let mimeType, base64Data;
-                const m = pedido.comprovante.match(/^data:([^;]+);base64,(.+)$/);
-                if(m){ mimeType = m[1]; base64Data = m[2]; }
-                else { mimeType = pedido.comprovanteType || "image/jpeg"; base64Data = pedido.comprovante; }
-                const ext = mimeType.includes("pdf")?"pdf":mimeType.includes("png")?"png":mimeType.includes("webp")?"webp":"jpg";
-                if(base64Data && base64Data.length>40){
-                  attachments = [{
-                    name: `comprovante_${pedido.id.slice(-8).toUpperCase()}.${ext}`,
-                    data: base64Data,
-                    mime: mimeType,
-                  }];
-                }
-              }catch(e){ console.warn("[pedido] erro processando comprovante:",e.message); }
-            }
+            // fonte única da mensagem (a mesma da conta de notificações)
+            const {subject:emailSubject,text:emailText,attachments}=_mensagemPedidoAdmin(pedido);
 
             for(const toEmail of [...ADMIN_EMAILS]){
               try{
@@ -9899,7 +10105,7 @@ ${pedido.criadoPor&&pedido.criadoPor!==pedido.userEmail?`\n🛠️ Registrado re
     // principal. resolveSendGmail devolve o endereço certo (ou null se ainda
     // não conectou nenhum).
     const gmailEmail = resolveSendGmail(p);
-    return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,planRulesNotice:_prNotice,manualCdOff:p.manualCdOff===true,gmailConnected,gmailEmail,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",language:p.language||"pt-BR",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||300),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
+    return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,planRulesNotice:_prNotice,manualCdOff:p.manualCdOff===true,gmailConnected,gmailEmail,emailContato:p.emailContato||null,emailVerificado:!!p.emailVerificadoEm,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",language:p.language||"pt-BR",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||300),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
   }
 
   if(pathname==="/api/onboard"&&req.method==="POST"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});setUser(s.user_email,{onboarded:true});return json(res,200,{ok:true});}
@@ -13083,7 +13289,10 @@ const _addLogPatched = function(userEmail, entry) {
 // Injetado nos handlers de /api/admin
 
 
-// 🔕 v-2026: Notificações (push/e-mail) foram removidas nesta reconstrução.
+// 🔕 v-2026: Notificações (push/e-mail) AO USUÁRIO foram removidas nesta
+// reconstrução (v175: os únicos e-mails que saem do sistema são os da conta
+// de notificações — código de cadastro, código de senha e aviso de pedido
+// aos admins — ver mod-notif.js; sendNotifEmail continua no-op de propósito).
 // sendNotifEmail/pushToUser continuam existindo como stubs inertes só porque
 // watchdogs/sentinel/admin-health ainda recebem essas 2 funções por injeção
 // de dependência — automático/doações continuam 100% funcionais, só o AVISO

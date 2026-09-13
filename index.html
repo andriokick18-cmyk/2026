@@ -1757,6 +1757,22 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
     .ag-foot{font-size:10.5px;color:rgba(255,255,255,.4);text-align:center;line-height:1.6;margin-top:6px;padding:10px 6px 0;border-top:1px solid rgba(255,255,255,.07)}
     .ag-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
     .ag-grid2 .ag-input{margin-bottom:0}
+    /* 📧 v175 — cadastro com rótulos, e-mail verificado por código, recuperação de senha */
+    .ag-lbl{display:block;font-size:11.5px;font-weight:800;color:rgba(255,255,255,.62);text-transform:uppercase;letter-spacing:.04em;margin:0 0 5px 2px}
+    .ag-lbl b{color:#f59e0b;font-weight:900}
+    .ag-row{display:flex;gap:8px;align-items:stretch;margin-bottom:12px}
+    .ag-row .ag-input{margin-bottom:0;flex:1;min-width:0}
+    .ag-btn-sm{flex-shrink:0;border:none;border-radius:13px;padding:0 14px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;background:linear-gradient(135deg,#1d4ed8,#3b82f6);color:#fff;white-space:nowrap;min-height:48px}
+    .ag-btn-sm:disabled{opacity:.5;cursor:not-allowed}
+    .ag-hint{font-size:12px;color:rgba(255,255,255,.6);line-height:1.55;margin:-6px 0 12px 2px}
+    .ag-ok{display:flex;align-items:center;gap:8px;background:rgba(16,185,129,.12);border:1.5px solid rgba(16,185,129,.5);border-radius:13px;padding:11px 13px;font-size:13px;font-weight:800;color:#6ee7b7;margin-bottom:12px}
+    .ag-ok .ag-ok-ico{width:22px;height:22px;border-radius:50%;background:#10b981;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+    .ag-ok small{font-weight:600;color:rgba(255,255,255,.55);display:block;font-size:11px;word-break:break-all}
+    .ag-code{letter-spacing:.35em;font-size:22px!important;text-align:center;font-weight:800}
+    .ag-link{background:none;border:none;color:#93c5fd;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;padding:4px 2px;text-decoration:underline}
+    .ag-link:disabled{color:rgba(255,255,255,.35);cursor:default;text-decoration:none}
+    .ag-box{background:rgba(59,130,246,.08);border:1.5px solid rgba(59,130,246,.3);border-radius:13px;padding:12px 13px;margin-bottom:12px}
+    .ag-input[readonly]{opacity:.75}
   </style>
   <div id="auth-gate">
     <div class="ag-modal">
@@ -3725,6 +3741,17 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           </div>
         </div>
         <input type="hidden" id="pe-icon" value="🎯">
+        <!-- v175: as 2 respostas que alimentam a nota de encaixe das vagas viviam
+             no wizard antigo (removido); agora moram aqui, opcionais. -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+          <div class="field" style="margin:0">
+            <label style="font-size:11px;font-weight:700;color:var(--t2)" data-i18n="pe_eng_lbl">🗣️ Seu inglês (opcional)</label>
+            <select class="input" id="pe-english" style="font-size:12.5px"><option value="none" data-i18n="pe_eng_none">Não falo</option><option value="basic" data-i18n="pe_eng_basic">Básico</option><option value="intermediate" data-i18n="pe_eng_inter">Intermediário</option><option value="advanced" data-i18n="pe_eng_adv">Avançado</option></select>
+          </div>
+          <div class="field" style="margin:0;display:flex;align-items:flex-end">
+            <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--t2);cursor:pointer;padding:9px 0"><input type="checkbox" id="pe-cnh" style="width:16px;height:16px;accent-color:var(--blue)"> <span data-i18n="pe_cnh_lbl">Tenho CNH (carteira de motorista)</span></label>
+          </div>
+        </div>
 
 
         
@@ -3793,7 +3820,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
 
         <!-- ── COVER LETTER ── -->
         <div style="font-size:11px;font-weight:700;color:var(--t2);margin-top:16px;margin-bottom:6px;display:flex;align-items:center;gap:6px">📝 Cover Letter <span style="font-size:10px;background:#f3f4f6;color:#6b7280;padding:2px 8px;border-radius:99px;font-weight:600;border:1px solid #e5e7eb">OPCIONAL</span></div>
-<div style="font-size:11px;color:var(--t3);margin-bottom:8px" data-i18n="g_162">Carta de apresentação — não obrigatória, mas aumenta as chances de resposta.</div>
+<div style="font-size:12px;color:var(--t2);margin-bottom:8px;line-height:1.55;background:var(--sf2);border:1px solid var(--border);border-radius:8px;padding:7px 10px" data-i18n="pe_cover_note">📝 A cover letter (carta de apresentação) NÃO é obrigatória — só o résumé (seu currículo em PDF, logo acima) já basta pra se candidatar. Se tiver uma, ela vai junto e pode ajudar; se não tiver, pule esta parte sem problema.</div>
 
         <!-- Card: Cover Letter atual vinculada via coverIdx -->
         <div id="pe-cover-active-card" style="display:none;align-items:center;gap:10px;background:var(--purplel);border:1.5px solid var(--purpleb);border-radius:10px;padding:10px 13px;margin-bottom:10px">
@@ -3844,8 +3871,8 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
 
       <!-- ══ SEÇÃO: ASSUNTOS ══ -->
       <div style="padding:16px 18px 12px;border-bottom:1px solid var(--border)">
-        <div style="font-size:12px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px" data-i18n="g_164">③ Assuntos do E-mail</div>
-        <div style="font-size:11px;color:var(--t3);margin-bottom:8px">Sistema rotaciona automaticamente entre os textos <strong data-i18n="g_271">escritos por você</strong>. <strong style="color:var(--red)" data-i18n="g_165">Mínimo 3</strong> <span data-i18n="g_253">para evitar bloqueio por spam.</span></div>
+        <div style="font-size:12px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px" data-i18n="pe_subj_title">③ Título do e-mail (assunto)</div>
+        <div style="font-size:12px;color:var(--t2);margin-bottom:8px;line-height:1.55" data-i18n="pe_subj_help">O título é a linha que o empregador vê na caixa de entrada antes de abrir — curto e direto, em inglês, ex.: “Application for {vaga} — {nome}”. Escreva 3 versões diferentes (os 3 campos já estão abertos; pode adicionar mais). O sistema alterna entre elas a cada envio pra não parecer spam.</div>
 
         <!-- Variáveis rápidas -->
         <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">
@@ -3857,8 +3884,8 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
         </div>
 
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-          <span id="pe-subj-count-lbl" style="font-size:11px;font-weight:700;color:var(--t2)">0 assuntos</span>
-          <button onclick="peAddSubject()" style="background:var(--blue);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer"><i class="ti ti-plus"></i> Adicionar</button>
+          <span id="pe-subj-count-lbl" style="font-size:11px;font-weight:700;color:var(--t2)" data-i18n="pe_count0">0 de 3 preenchidos</span>
+          <button type="button" onclick="peAddSubject()" style="background:var(--blue);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer"><i class="ti ti-plus"></i> <span data-i18n="pe_subj_add">Adicionar outro título</span></button>
         </div>
         <div id="pe-subjects-list" style="display:flex;flex-direction:column;gap:6px"></div>
         <!-- v18-FIX: removidos os "modelos rápidos" (assuntos prontos/genéricos)
@@ -3866,10 +3893,9 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
              dono do site pediu pra tirar ("gente preguiçosa usa sempre, fica
              igual aos outros"). Escreva os SEUS 3 assuntos usando as variáveis
              acima ({vaga}, {empresa}, {nome}, {categoria}). -->
-        <div id="pe-subjects-empty" style="font-size:11px;color:var(--t3);padding:6px 0;font-style:italic" data-i18n="g_266">Nenhum assunto ainda. Escreva pelo menos 3 variações suas em "+ Adicionar" — use as variáveis acima pra personalizar automaticamente.</div>
         <div id="pe-subjects-warn" style="display:none;align-items:center;gap:7px;background:var(--redl);border:1.5px solid var(--redb);border-radius:var(--r);padding:8px 11px;font-size:12px;color:var(--red);font-weight:600;margin-top:6px">
           <i class="ti ti-alert-circle" style="font-size:15px;flex-shrink:0"></i>
-          Mínimo <strong>3 assuntos</strong> para evitar bloqueio por spam. Adicione mais variações.
+          <span data-i18n="pe_subj_warn">Escreva pelo menos 3 títulos diferentes (os campos com *) — é a proteção contra bloqueio por spam.</span>
         </div>
 
         <!-- Preview real do assunto -->
@@ -3881,8 +3907,8 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
 
       <!-- ══ SEÇÃO: MENSAGENS ══ -->
       <div style="padding:16px 18px 12px;border-bottom:1px solid var(--border)">
-        <div style="font-size:12px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px" data-i18n="g_167">④ Corpos de E-mail</div>
-        <div style="font-size:11px;color:var(--t3);margin-bottom:8px">O sistema alterna entre <strong data-i18n="g_272">as suas versões, escritas por você</strong>. <strong style="color:var(--red)">Mínimo 3</strong> <span data-i18n="g_255">para evitar spam.</span></div>
+        <div style="font-size:12px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px" data-i18n="pe_body_title">④ Corpo do e-mail (a mensagem)</div>
+        <div style="font-size:12px;color:var(--t2);margin-bottom:8px;line-height:1.55" data-i18n="pe_body_help">O corpo é a mensagem completa que o empregador lê ao abrir: quem você é, a vaga que quer, sua experiência e como falar com você. Em inglês, com as suas palavras. Escreva 3 versões diferentes (os 3 campos já estão abertos); as variáveis abaixo são trocadas automaticamente em cada envio.</div>
 
         <!-- Variáveis -->
         <div style="background:var(--purplel);border:1.5px solid var(--purpleb);border-radius:var(--r);padding:8px 10px;margin-bottom:8px;font-size:11px">
@@ -3909,14 +3935,13 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
              mantidos no código só como histórico morto (nenhum botão os chama mais). -->
 
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-          <span id="pe-body-count-lbl" style="font-size:11px;font-weight:700;color:var(--t2)">0 corpos</span>
-          <button onclick="peAddBody()" style="background:var(--blue);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer"><i class="ti ti-plus"></i> Adicionar</button>
+          <span id="pe-body-count-lbl" style="font-size:11px;font-weight:700;color:var(--t2)" data-i18n="pe_count0">0 de 3 preenchidos</span>
+          <button type="button" onclick="peAddBody()" style="background:var(--blue);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer"><i class="ti ti-plus"></i> <span data-i18n="pe_body_add">Adicionar outro texto</span></button>
         </div>
         <div id="pe-bodies-list" style="display:flex;flex-direction:column;gap:8px"></div>
-        <div id="pe-bodies-empty" style="font-size:11px;color:var(--t3);padding:6px 0;font-style:italic" data-i18n="g_267">Nenhum corpo de e-mail ainda. Escreva pelo menos 3 variações suas em "+ Adicionar" — use as variáveis acima pra personalizar automaticamente.</div>
         <div id="pe-bodies-warn" style="display:none;align-items:center;gap:7px;background:var(--redl);border:1.5px solid var(--redb);border-radius:var(--r);padding:8px 11px;font-size:12px;color:var(--red);font-weight:600;margin-top:6px">
           <i class="ti ti-alert-circle" style="font-size:15px;flex-shrink:0"></i>
-          Mínimo <strong data-i18n="g_169">3 corpos de e-mail</strong> para evitar spam. Adicione mais modelos.
+          <span data-i18n="pe_body_warn">Escreva pelo menos 3 textos diferentes (os campos com *) — é a proteção contra bloqueio por spam.</span>
         </div>
       </div>
 
@@ -4989,321 +5014,21 @@ html, body, #app, .bottom-nav, .sidebar{
 
 
 <!-- ══ ONBOARDING WIZARD ══ -->
-<div id="onboarding-overlay" style="position:fixed;inset:0;z-index:999;background:rgba(10,5,30,.85);display:none;align-items:center;justify-content:center;padding:max(16px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom));backdrop-filter:blur(6px);overflow-y:auto;-webkit-overflow-scrolling:touch">
-  <div style="background:var(--surface);border-radius:24px;width:100%;max-width:480px;max-height:calc(100dvh - 32px);overflow-y:auto;-webkit-overflow-scrolling:touch;box-shadow:0 24px 80px rgba(0,0,0,.5);flex-shrink:0;margin:auto">
-    <!-- Progress bar -->
-    <div style="height:4px;background:var(--sf3)">
-      <div id="ob-progress" style="height:100%;background:linear-gradient(90deg,#2563eb,#7c3aed);border-radius:2px;transition:width .4s ease;width:20%"></div>
-    </div>
-    <!-- Header (sem "Pular tudo" de propósito — v166: o onboarding não pode
-         mais ser 100% pulado sem criar nenhum perfil; ver gate em "h2a") -->
-    <div style="padding:20px 24px 0">
-      <div style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.08em" id="ob-step-label">Passo 1 de 6</div>
-    </div>
-
-    <!-- STEP 1: Dados Pessoais -->
-    <div id="ob-step-1" style="padding:18px 20px 20px">
-      <div style="width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#eff6ff,#dbeafe);display:flex;align-items:center;justify-content:center;font-size:27px;margin:0 auto 10px">👤</div>
-      <div style="font-size:18px;font-weight:800;text-align:center;margin-bottom:4px">Seus dados</div>
-      <div style="font-size:12px;color:var(--t2);text-align:center;margin-bottom:10px;line-height:1.5">Leva só 2 minutos. Campos com <strong style="color:var(--blue)">*</strong> são obrigatórios.</div>
-      <div style="background:var(--greenl);border:1px solid var(--greenb);border-radius:10px;padding:8px 10px;font-size:11px;color:var(--t2);line-height:1.5;margin-bottom:14px;display:flex;gap:6px;align-items:flex-start">
-        <i class="ti ti-lock" style="color:var(--green);font-size:13px;flex-shrink:0;margin-top:1px"></i>
-        <span>🔒 Seus dados ficam protegidos e <strong>nunca</strong> são compartilhados. Seu nome é usado nos e-mails enviados às empresas — escreva como no passaporte.</span>
-      </div>
-
-      <!-- Usuário (read-only, já logado) — v172c: login virou usuário+senha, não é mais um e-mail do Google -->
-      <div class="field" style="margin-bottom:8px">
-        <label style="font-size:11px;font-weight:700;color:var(--t3)">👤 Seu usuário</label>
-        <input class="input" id="ob-email-display" type="text" readonly style="background:var(--sf2);color:var(--t2);cursor:default;font-size:12px">
-      </div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-        <div class="field">
-          <label style="font-size:11px;font-weight:700;color:var(--t2)">👤 Nome completo *</label>
-          <input class="input" id="ob-name" type="text" placeholder="Como no passaporte">
-        </div>
-        <div class="field">
-          <label style="font-size:11px;font-weight:700;color:var(--t2)">🎂 Idade *</label>
-          <input class="input" id="ob-age" type="number" min="18" max="80" placeholder="Ex: 25" inputmode="numeric">
-        </div>
-      </div>
-
-      <div class="field" style="margin-bottom:8px">
-        <label style="font-size:11px;font-weight:700;color:var(--t2)">📱 WhatsApp * <span style="font-size:10px;color:var(--t3)">(com DDI)</span></label>
-        <input class="input" id="ob-phone" type="tel" inputmode="tel" placeholder="+55 11 99999-9999">
-        <div style="font-size:11px;color:var(--t3);margin-top:4px;line-height:1.5;display:flex;gap:5px;align-items:flex-start">
-          <i class="ti ti-bell" style="font-size:12px;color:var(--blue);flex-shrink:0;margin-top:1px"></i>
-          <span>Usamos só para contato — as respostas das empresas chegam direto no seu Gmail, o site não lê seu e-mail.</span>
-        </div>
-      </div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-        <div class="field">
-          <label style="font-size:11px;font-weight:700;color:var(--t2)">🏙️ Cidade *</label>
-          <input class="input" id="ob-city" type="text" placeholder="Sua cidade">
-        </div>
-        <div class="field">
-          <label style="font-size:11px;font-weight:700;color:var(--t2)">🌍 País *</label>
-          <input class="input" id="ob-country" type="text" placeholder="Brazil" value="Brazil">
-        </div>
-      </div>
-
-      <button onclick="obSavePersonal()" class="btn btn-primary w100" style="padding:13px;font-size:14px;margin-top:4px">Continuar →</button>
-    </div>
-
-    <!-- STEP 1B: Perfil H2B -->
-    <div id="ob-step-1b" style="padding:16px 20px 20px;display:none">
-      <div style="width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#eff6ff,#dbeafe);display:flex;align-items:center;justify-content:center;font-size:27px;margin:0 auto 10px">🇺🇸</div>
-      <div style="font-size:18px;font-weight:800;text-align:center;margin-bottom:6px">Seu Perfil H2B</div>
-      <div style="font-size:12px;color:var(--t2);text-align:center;margin-bottom:12px;line-height:1.5">Ajuda o sistema a encontrar vagas mais adequadas para você</div>
-      <div style="background:var(--bluel);border:1px solid var(--blueb);border-radius:10px;padding:8px 10px;font-size:11px;color:var(--t2);line-height:1.5;margin-bottom:16px;display:flex;gap:6px;align-items:flex-start">
-        <i class="ti ti-bulb" style="color:var(--blue);font-size:13px;flex-shrink:0;margin-top:1px"></i>
-        <span>Quanto mais completo seu perfil, melhores as vagas sugeridas. Tudo é opcional aqui — você pode pular e preencher depois no seu perfil.</span>
-      </div>
-
-      <!-- Inglês -->
-      <div style="margin-bottom:12px">
-        <div style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:6px">🗣️ Nível de inglês</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-          <button class="btn btn-secondary ob-toggle-eng on" id="ob-eng-none" onclick="obToggleEng('none')">🚫 Nenhum</button>
-          <button class="btn btn-secondary ob-toggle-eng" id="ob-eng-basic" onclick="obToggleEng('basic')">📖 Básico</button>
-          <button class="btn btn-secondary ob-toggle-eng" id="ob-eng-intermediate" onclick="obToggleEng('intermediate')">💬 Intermediário</button>
-          <button class="btn btn-secondary ob-toggle-eng" id="ob-eng-advanced" onclick="obToggleEng('advanced')">🌟 Avançado</button>
-        </div>
-      </div>
-
-      <!-- Área preferida -->
-      <div style="margin-bottom:12px">
-        <div style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:6px">🌿 Área preferida de trabalho</div>
-        <select class="input" id="ob-h2b-area" style="font-size:13px">
-          <option value="landscape">🌿 Paisagismo / Landscape</option>
-          <option value="hotel">🏨 Hotel / Housekeeping</option>
-          <option value="food">🍽️ Restaurante / Food Service</option>
-          <option value="farm">🌾 Fazenda / Agricultura</option>
-          <option value="construction">🏗️ Construção / Construction</option>
-          <option value="cleaning">🧹 Limpeza / Cleaning</option>
-          <option value="seafood">🦞 Frutos do mar / Seafood</option>
-          <option value="golf">⛳ Golfe / Golf Resort</option>
-          <option value="ski">⛷️ Ski Resort</option>
-          <option value="other">📋 Outra</option>
-        </select>
-      </div>
-
-      <!-- CNH + Disponibilidade -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;min-width:0">
-        <div>
-          <div style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:6px">🚗 Tem CNH?</div>
-          <div style="display:flex;gap:6px">
-            <button class="btn btn-secondary ob-toggle-cnh" id="ob-cnh-yes" onclick="obToggleCnh('yes')">✅ Sim</button>
-            <button class="btn btn-secondary ob-toggle-cnh on" id="ob-cnh-no" onclick="obToggleCnh('no')" data-i18n="g_19">❌ Não</button>
-          </div>
-        </div>
-        <div>
-          <div style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:6px">📅 Disponibilidade</div>
-          <select class="input" id="ob-avail" style="font-size:12px">
-            <option value="immediate">⚡ Imediato</option>
-            <option value="1month">📅 1 mês</option>
-            <option value="3months">🗓️ 3+ meses</option>
-          </select>
-        </div>
-      </div>
-
-      <button onclick="obSaveH2BProfile()" class="btn btn-primary w100" style="padding:13px;font-size:14px">Continuar →</button>
-      <button onclick="_goObStep('h2b')" style="margin-top:8px;width:100%;background:none;border:none;cursor:pointer;font-size:12px;color:var(--t3);font-family:inherit">Pular — preencher depois no perfil</button>
-    </div>
-
-    <!-- STEP H2B: cria/edita o perfil H-2B (documento + assuntos + corpos) -->
-    <div id="ob-step-h2b" style="padding:20px 24px 24px;display:none">
-      <div style="width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#eff6ff,#dbeafe);display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 12px">🎯</div>
-      <div style="font-size:20px;font-weight:800;text-align:center;margin-bottom:4px;color:var(--navy)">Perfil H-2B</div>
-      <div style="font-size:11px;font-weight:700;color:#2563eb;text-align:center;margin-bottom:10px">🏨 Hotelaria, construção, paisagismo, restaurante...</div>
-      <div style="font-size:13px;color:var(--t2);text-align:center;margin-bottom:14px;line-height:1.6">Escreva você mesmo — texto pronto faz sua candidatura parecer igual à de milhares de outras pessoas.</div>
-
-      <div style="background:var(--amberl);border:1px solid #fcd34d;border-radius:10px;padding:9px 11px;font-size:11px;color:var(--t2);line-height:1.6;margin-bottom:16px;display:flex;gap:6px;align-items:flex-start">
-        <i class="ti ti-bulb" style="color:#d97706;font-size:13px;flex-shrink:0;margin-top:1px"></i>
-        <span><strong>Basta anexar UM dos dois abaixo</strong> — currículo OU carta de apresentação. Pode anexar os dois também.</span>
-      </div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">
-        <div>
-          <div id="ob-h2b-res-badge" style="display:none;background:var(--greenl);border:1.5px solid var(--greenb);border-radius:8px;padding:8px;margin-bottom:6px;align-items:center;gap:6px">
-            <i class="ti ti-check" style="font-size:14px;color:var(--green)"></i>
-            <span style="font-size:11px;font-weight:700;color:var(--green)" id="ob-h2b-res-name">Enviado!</span>
-          </div>
-          <label style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:var(--bluel);border:2px dashed var(--blueb);border-radius:12px;padding:16px 8px;cursor:pointer;font-size:12px;font-weight:700;color:var(--blue);text-align:center">
-            <i class="ti ti-file-text" style="font-size:22px"></i> Currículo (PDF)
-            <span style="font-size:9.5px;font-weight:500;color:var(--t3)">máx. 5MB</span>
-            <input type="file" accept=".pdf" style="display:none" onchange="obPickDoc('h2b','res',this)">
-          </label>
-        </div>
-        <div>
-          <div id="ob-h2b-cov-badge" style="display:none;background:var(--greenl);border:1.5px solid var(--greenb);border-radius:8px;padding:8px;margin-bottom:6px;align-items:center;gap:6px">
-            <i class="ti ti-check" style="font-size:14px;color:var(--green)"></i>
-            <span style="font-size:11px;font-weight:700;color:var(--green)" id="ob-h2b-cov-name">Enviada!</span>
-          </div>
-          <label style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:var(--bluel);border:2px dashed var(--blueb);border-radius:12px;padding:16px 8px;cursor:pointer;font-size:12px;font-weight:700;color:var(--blue);text-align:center">
-            <i class="ti ti-mail" style="font-size:22px"></i> Carta (PDF)
-            <span style="font-size:9.5px;font-weight:500;color:var(--t3)">máx. 3MB</span>
-            <input type="file" accept=".pdf" style="display:none" onchange="obPickDoc('h2b','cov',this)">
-          </label>
-        </div>
-      </div>
-
-      <div style="background:var(--bluel);border:1px solid var(--blueb);border-radius:10px;padding:9px 11px;font-size:11px;color:var(--t2);line-height:1.6;margin-bottom:16px">
-        <div style="font-weight:700;color:var(--blue);margin-bottom:3px"><i class="ti ti-wand"></i> Variáveis automáticas</div>
-        O sistema substitui sozinho: <code style="background:var(--sf3);padding:1px 4px;border-radius:4px">{nome}</code> <code style="background:var(--sf3);padding:1px 4px;border-radius:4px">{vaga}</code> <code style="background:var(--sf3);padding:1px 4px;border-radius:4px">{empresa}</code> <code style="background:var(--sf3);padding:1px 4px;border-radius:4px">{pais}</code> <code style="background:var(--sf3);padding:1px 4px;border-radius:4px">{telefone}</code>. É só deixar no texto.
-      </div>
-      <div class="field" style="margin-bottom:14px">
-        <label>Assuntos do email <span style="font-weight:500;color:var(--t3)">— mínimo 3, escritos por você, cada envio usa um diferente</span></label>
-        <div id="ob-h2b-subjects-list" style="display:flex;flex-direction:column;gap:6px;margin-top:6px"></div>
-        <button type="button" onclick="obAddVtSubject('h2b')" style="margin-top:8px;font-size:12px;color:var(--blue);font-weight:700;background:none;border:none;cursor:pointer;font-family:inherit;padding:0">+ Adicionar outro assunto</button>
-        <div id="ob-h2b-subjects-warn" style="display:none;align-items:center;gap:7px;background:var(--redl);border:1.5px solid var(--redb);border-radius:var(--r);padding:8px 11px;font-size:12px;color:var(--red);font-weight:600;margin-top:8px">
-          <i class="ti ti-alert-circle" style="font-size:15px;flex-shrink:0"></i>
-          <span id="ob-h2b-subjects-warn-txt">Mínimo 3 assuntos diferentes entre si.</span>
-        </div>
-      </div>
-      <div class="field" style="margin-bottom:14px">
-        <label>Corpo do email <span style="font-weight:500;color:var(--t3)">— mínimo 3, escritos por você</span></label>
-        <div id="ob-h2b-bodies-list" style="display:flex;flex-direction:column;gap:10px;margin-top:6px"></div>
-        <button type="button" onclick="obAddVtBody('h2b')" style="margin-top:8px;font-size:12px;color:var(--blue);font-weight:700;background:none;border:none;cursor:pointer;font-family:inherit;padding:0">+ Adicionar outro corpo de email</button>
-        <div id="ob-h2b-bodies-warn" style="display:none;align-items:center;gap:7px;background:var(--redl);border:1.5px solid var(--redb);border-radius:var(--r);padding:8px 11px;font-size:12px;color:var(--red);font-weight:600;margin-top:8px">
-          <i class="ti ti-alert-circle" style="font-size:15px;flex-shrink:0"></i>
-          <span id="ob-h2b-bodies-warn-txt">Mínimo 3 corpos diferentes entre si.</span>
-        </div>
-      </div>
-      <div id="ob-h2b-pdf-warn" style="display:none;align-items:center;gap:7px;background:var(--redl);border:1.5px solid var(--redb);border-radius:var(--r);padding:8px 11px;font-size:12px;color:var(--red);font-weight:600;margin-bottom:10px">
-        <i class="ti ti-alert-circle" style="font-size:15px;flex-shrink:0"></i>
-        Anexe pelo menos um Currículo ou uma Carta (PDF) acima antes de salvar.
-      </div>
-      <button onclick="obSaveVisaProfile('h2b')" class="btn btn-primary w100" id="ob-btn-h2b" style="padding:13px;font-size:14px">Salvar Perfil H-2B →</button>
-      <button onclick="obSkipVisaProfile('h2b')" style="margin-top:8px;width:100%;background:none;border:none;cursor:pointer;font-size:12px;color:var(--t3);font-family:inherit">Pular este perfil</button>
-      <button onclick="_goObStep('1b')" style="margin-top:2px;width:100%;background:none;border:none;cursor:pointer;font-size:12px;color:var(--t3);font-family:inherit">← Voltar</button>
-    </div>
-
-    <!-- STEP H2A: mesma estrutura do H-2B, tema verde -->
-    <div id="ob-step-h2a" style="padding:20px 24px 24px;display:none">
-      <div style="width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#ecfdf5,#d1fae5);display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 12px">🌾</div>
-      <div style="font-size:20px;font-weight:800;text-align:center;margin-bottom:4px;color:var(--navy)">Perfil H-2A</div>
-      <div style="font-size:11px;font-weight:700;color:#059669;text-align:center;margin-bottom:10px">🌾 Agricultura, fazendas, colheita...</div>
-      <div style="font-size:13px;color:var(--t2);text-align:center;margin-bottom:14px;line-height:1.6">Escreva você mesmo — texto pronto faz sua candidatura parecer igual à de milhares de outras pessoas.</div>
-
-      <div id="ob-gate-warn" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:10px 12px;font-size:12px;font-weight:700;color:#b91c1c;margin-bottom:14px;line-height:1.5"></div>
-
-      <div style="background:var(--amberl);border:1px solid #fcd34d;border-radius:10px;padding:9px 11px;font-size:11px;color:var(--t2);line-height:1.6;margin-bottom:16px;display:flex;gap:6px;align-items:flex-start">
-        <i class="ti ti-bulb" style="color:#d97706;font-size:13px;flex-shrink:0;margin-top:1px"></i>
-        <span><strong>Basta anexar UM dos dois abaixo</strong> — currículo OU carta de apresentação. Pode anexar os dois também.</span>
-      </div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">
-        <div>
-          <div id="ob-h2a-res-badge" style="display:none;background:var(--greenl);border:1.5px solid var(--greenb);border-radius:8px;padding:8px;margin-bottom:6px;align-items:center;gap:6px">
-            <i class="ti ti-check" style="font-size:14px;color:var(--green)"></i>
-            <span style="font-size:11px;font-weight:700;color:var(--green)" id="ob-h2a-res-name">Enviado!</span>
-          </div>
-          <label style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:#ecfdf5;border:2px dashed #a7f3d0;border-radius:12px;padding:16px 8px;cursor:pointer;font-size:12px;font-weight:700;color:#059669;text-align:center">
-            <i class="ti ti-file-text" style="font-size:22px"></i> Currículo (PDF)
-            <span style="font-size:9.5px;font-weight:500;color:var(--t3)">máx. 5MB</span>
-            <input type="file" accept=".pdf" style="display:none" onchange="obPickDoc('h2a','res',this)">
-          </label>
-        </div>
-        <div>
-          <div id="ob-h2a-cov-badge" style="display:none;background:var(--greenl);border:1.5px solid var(--greenb);border-radius:8px;padding:8px;margin-bottom:6px;align-items:center;gap:6px">
-            <i class="ti ti-check" style="font-size:14px;color:var(--green)"></i>
-            <span style="font-size:11px;font-weight:700;color:var(--green)" id="ob-h2a-cov-name">Enviada!</span>
-          </div>
-          <label style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:#ecfdf5;border:2px dashed #a7f3d0;border-radius:12px;padding:16px 8px;cursor:pointer;font-size:12px;font-weight:700;color:#059669;text-align:center">
-            <i class="ti ti-mail" style="font-size:22px"></i> Carta (PDF)
-            <span style="font-size:9.5px;font-weight:500;color:var(--t3)">máx. 3MB</span>
-            <input type="file" accept=".pdf" style="display:none" onchange="obPickDoc('h2a','cov',this)">
-          </label>
-        </div>
-      </div>
-
-      <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:9px 11px;font-size:11px;color:var(--t2);line-height:1.6;margin-bottom:16px">
-        <div style="font-weight:700;color:#059669;margin-bottom:3px"><i class="ti ti-wand"></i> Variáveis automáticas</div>
-        O sistema substitui sozinho: <code style="background:var(--sf3);padding:1px 4px;border-radius:4px">{nome}</code> <code style="background:var(--sf3);padding:1px 4px;border-radius:4px">{vaga}</code> <code style="background:var(--sf3);padding:1px 4px;border-radius:4px">{empresa}</code> <code style="background:var(--sf3);padding:1px 4px;border-radius:4px">{pais}</code> <code style="background:var(--sf3);padding:1px 4px;border-radius:4px">{telefone}</code>. É só deixar no texto.
-      </div>
-      <div class="field" style="margin-bottom:14px">
-        <label>Assuntos do email <span style="font-weight:500;color:var(--t3)">— mínimo 3, escritos por você, cada envio usa um diferente</span></label>
-        <div id="ob-h2a-subjects-list" style="display:flex;flex-direction:column;gap:6px;margin-top:6px"></div>
-        <button type="button" onclick="obAddVtSubject('h2a')" style="margin-top:8px;font-size:12px;color:#059669;font-weight:700;background:none;border:none;cursor:pointer;font-family:inherit;padding:0">+ Adicionar outro assunto</button>
-        <div id="ob-h2a-subjects-warn" style="display:none;align-items:center;gap:7px;background:var(--redl);border:1.5px solid var(--redb);border-radius:var(--r);padding:8px 11px;font-size:12px;color:var(--red);font-weight:600;margin-top:8px">
-          <i class="ti ti-alert-circle" style="font-size:15px;flex-shrink:0"></i>
-          <span id="ob-h2a-subjects-warn-txt">Mínimo 3 assuntos diferentes entre si.</span>
-        </div>
-      </div>
-      <div class="field" style="margin-bottom:14px">
-        <label>Corpo do email <span style="font-weight:500;color:var(--t3)">— mínimo 3, escritos por você</span></label>
-        <div id="ob-h2a-bodies-list" style="display:flex;flex-direction:column;gap:10px;margin-top:6px"></div>
-        <button type="button" onclick="obAddVtBody('h2a')" style="margin-top:8px;font-size:12px;color:#059669;font-weight:700;background:none;border:none;cursor:pointer;font-family:inherit;padding:0">+ Adicionar outro corpo de email</button>
-        <div id="ob-h2a-bodies-warn" style="display:none;align-items:center;gap:7px;background:var(--redl);border:1.5px solid var(--redb);border-radius:var(--r);padding:8px 11px;font-size:12px;color:var(--red);font-weight:600;margin-top:8px">
-          <i class="ti ti-alert-circle" style="font-size:15px;flex-shrink:0"></i>
-          <span id="ob-h2a-bodies-warn-txt">Mínimo 3 corpos diferentes entre si.</span>
-        </div>
-      </div>
-      <div id="ob-h2a-pdf-warn" style="display:none;align-items:center;gap:7px;background:var(--redl);border:1.5px solid var(--redb);border-radius:var(--r);padding:8px 11px;font-size:12px;color:var(--red);font-weight:600;margin-bottom:10px">
-        <i class="ti ti-alert-circle" style="font-size:15px;flex-shrink:0"></i>
-        Anexe pelo menos um Currículo ou uma Carta (PDF) acima antes de salvar.
-      </div>
-      <button onclick="obSaveVisaProfile('h2a')" class="btn btn-primary w100" id="ob-btn-h2a" style="padding:13px;font-size:14px;background:linear-gradient(135deg,#059669,#10b981)">Salvar Perfil H-2A →</button>
-      <button onclick="obSkipVisaProfile('h2a')" style="margin-top:8px;width:100%;background:none;border:none;cursor:pointer;font-size:12px;color:var(--t3);font-family:inherit">Pular este perfil</button>
-      <button onclick="_goObStep('h2b')" style="margin-top:2px;width:100%;background:none;border:none;cursor:pointer;font-size:12px;color:var(--t3);font-family:inherit">← Voltar</button>
-    </div>
-
-    <!-- STEP TUT: tutorial rápido — Envio Manual x Envio Automático (10 fotos,
-         5+5; ainda não existem — cada <img> cai no placeholder cinza via
-         onerror até a foto real ser colocada em /tutorial-img/) -->
-    <div id="ob-step-tut" style="padding:20px 24px 24px;display:none">
-      <div style="width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#f5f3ff,#ede9fe);display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 12px">🎬</div>
-      <div style="font-size:20px;font-weight:800;text-align:center;margin-bottom:8px;color:var(--navy)">Como funciona o envio</div>
-      <div style="font-size:13px;color:var(--t2);text-align:center;margin-bottom:16px;line-height:1.6">Um resumo rápido de como usar as 2 formas de candidatar: manual e automático.</div>
-
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        <i class="ti ti-hand-click" style="color:var(--blue);font-size:16px"></i>
-        <span style="font-size:13px;font-weight:800;color:var(--blue)">Envio Manual — você escolhe cada vaga</span>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px">
-        <div class="ob-tut-card"><img src="/tut-img/ob-manual-1.png" alt="Buscar vagas" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>1. Busque vagas por categoria/estado</span></div>
-        <div class="ob-tut-card"><img src="/tut-img/ob-manual-2.png" alt="Ver detalhes da vaga" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>2. Veja os detalhes da vaga</span></div>
-        <div class="ob-tut-card"><img src="/tut-img/ob-manual-3.png" alt="Escolher perfil" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>3. Confirme o perfil (H-2B/H-2A)</span></div>
-        <div class="ob-tut-card"><img src="/tut-img/ob-manual-4.png" alt="Enviar candidatura" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>4. Clique em Enviar</span></div>
-        <div class="ob-tut-card" style="grid-column:span 2"><img src="/tut-img/ob-manual-5.png" alt="Confirmação de envio" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>5. Pronto — candidatura enviada!</span></div>
-      </div>
-
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        <i class="ti ti-robot" style="color:#7c3aed;font-size:16px"></i>
-        <span style="font-size:13px;font-weight:800;color:#7c3aed">Envio Automático — o robô candidata por você</span>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px">
-        <div class="ob-tut-card"><img src="/tut-img/ob-auto-1.png" alt="Configurar filtros" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>1. Escolha filtros (categoria/estado)</span></div>
-        <div class="ob-tut-card"><img src="/tut-img/ob-auto-2.png" alt="Ligar automático" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>2. Ligue o Envio Automático</span></div>
-        <div class="ob-tut-card"><img src="/tut-img/ob-auto-3.png" alt="Robô candidatando" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>3. O robô candidata sozinho, 24/7</span></div>
-        <div class="ob-tut-card"><img src="/tut-img/ob-auto-4.png" alt="Acompanhar log" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>4. Acompanhe o log em tempo real</span></div>
-        <div class="ob-tut-card" style="grid-column:span 2"><img src="/tut-img/ob-auto-5.png" alt="Progresso ao vivo" onerror="this.onerror=null;this.closest('.ob-tut-card').classList.add('ob-tut-ph')"><span>5. Acompanhe o progresso e as respostas no seu Gmail</span></div>
-      </div>
-
-      <button onclick="_goObStep('5')" class="btn btn-primary w100" style="padding:13px;font-size:14px">Entendi, continuar →</button>
-    </div>
-
-    <!-- STEP 5: Concluído -->
-    <div id="ob-step-5" style="padding:20px 24px 24px;display:none;text-align:center">
-      <div style="font-size:48px;margin-bottom:16px">🎉</div>
-      <div style="font-size:22px;font-weight:800;margin-bottom:8px;color:var(--navy)">Tudo pronto!</div>
-      <div style="font-size:13px;color:var(--t2);margin-bottom:6px;line-height:1.6">Sua conta está pronta! Você já pode <strong style="color:var(--blue)">criar seu perfil e ver as vagas</strong> — pra <strong>enviar candidaturas</strong> (manual ou automático), assine um plano e conecte seu Gmail em 1 clique.</div>
-      <div style="background:linear-gradient(135deg,#eff6ff,#f5f3ff);border:1.5px solid rgba(99,102,241,.2);border-radius:12px;padding:14px;margin-bottom:20px">
-        <div style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:8px">O que fazer agora:</div>
-        <div style="font-size:13px;text-align:left;display:flex;flex-direction:column;gap:6px">
-          <div style="display:flex;align-items:center;gap:8px"><i class="ti ti-search" style="color:var(--blue)"></i> Busque vagas por categoria</div>
-          <div style="display:flex;align-items:center;gap:8px"><i class="ti ti-credit-card" style="color:var(--purple)"></i> Assine um plano pra liberar o envio</div>
-          <div style="display:flex;align-items:center;gap:8px"><i class="ti ti-mail-opened" style="color:var(--green)"></i> Fique de olho no seu Gmail pelas respostas</div>
-        </div>
-      </div>
-      <button onclick="finishOnboarding()" class="btn btn-primary w100" style="padding:14px;font-size:15px;background:linear-gradient(135deg,#2563eb,#7c3aed)">
-        <i class="ti ti-rocket"></i> Começar a candidatar!
-      </button>
-    </div>
+<!-- ══ 📄 v175 — JANELA PÓS-CADASTRO: "Cadastre seu currículo agora" (ordem do
+     dono, 13/09/2026). Substitui o wizard antigo de 6 passos (que pedia de novo
+     nome/idade/WhatsApp já dados no cadastro). Só 2 caminhos: cadastrar agora
+     (abre o editor de perfil remodelado) ou pular por enquanto. ══ -->
+<div id="cv-prompt-overlay" style="position:fixed;inset:0;z-index:999;background:rgba(10,5,30,.85);display:none;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(6px);overflow-y:auto">
+  <div style="background:var(--surface);border-radius:24px;width:100%;max-width:440px;box-shadow:0 24px 80px rgba(0,0,0,.5);margin:auto;padding:26px 22px 20px;text-align:center">
+    <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#eff6ff,#dbeafe);display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 12px">📄</div>
+    <div style="font-family:'Sora',sans-serif;font-size:21px;font-weight:800;margin-bottom:8px;line-height:1.25" id="cv-prompt-title">Cadastre seu currículo agora</div>
+    <div style="font-size:13.5px;color:var(--t2);line-height:1.6;margin-bottom:18px">Pra se candidatar, o site precisa do seu <strong>currículo (PDF)</strong> e de <strong>3 títulos + 3 textos de e-mail</strong> escritos por você — é isso que vai pro empregador. Leva uns 10 minutos e dá pra editar depois.</div>
+    <button class="btn btn-primary w100" style="padding:14px;font-size:15px;margin-bottom:8px" onclick="cvPromptAgora()"><i class="ti ti-file-plus"></i> Cadastrar currículo agora</button>
+    <button class="btn w100" style="padding:12px;font-size:13.5px;background:var(--sf2);border:1.5px solid var(--border2);white-space:normal;line-height:1.3" onclick="cvPromptPular()">Pular por enquanto (faço depois no Perfil)</button>
+    <div style="font-size:11.5px;color:var(--t3);margin-top:12px;line-height:1.5">Sem currículo cadastrado, o envio manual e o automático ficam travados. Dúvida? <a href="/como-usar" target="_blank" rel="noopener" style="color:var(--blue);font-weight:700">📖 Veja o guia de uso com fotos</a>.</div>
   </div>
 </div>
+
 <div id="gwm" style="display:none;position:fixed;inset:0;z-index:99995;background:rgba(5,10,25,.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);align-items:center;justify-content:center;padding:14px;overflow-y:auto">
   <div style="background:#fff;border-radius:22px;max-width:440px;width:100%;padding:22px 18px 16px;box-shadow:0 24px 80px rgba(0,0,0,.5);margin:auto">
 
@@ -5341,6 +5066,16 @@ html, body, #app, .bottom-nav, .sidebar{
     <div style="background:#fef2f2;border:2px solid #ef4444;border-radius:14px;padding:13px 15px;margin-bottom:10px">
       <div style="font-size:14.5px;font-weight:900;color:#991b1b;margin-bottom:6px">🔒 Esse e-mail NÃO PODE SER TROCADO depois</div>
       <div style="font-size:13px;color:#7f1d1d;line-height:1.6;font-weight:600">A conta Google que você conectar agora vira o e-mail de ENVIO da sua conta pra sempre — usado tanto no envio manual quanto no automático. Escolha com cuidado ANTES de continuar.</div>
+    </div>
+
+    <!-- 📧 v175 (ordem do dono, 13/09/2026): o e-mail cadastrado (confirmado por
+         código) É o Gmail que envia — a pessoa precisa entrar com ELE na tela
+         do Google. Destaque impossível de não ver, com o endereço escrito.
+         Preenchido por showGmailConnectWarnModal; some pra conta legada. -->
+    <div id="gwm-email-block" style="display:none;background:#ecfdf5;border:2.5px solid #10b981;border-radius:14px;padding:13px 15px;margin-bottom:10px">
+      <div style="font-size:14.5px;font-weight:900;color:#065f46;margin-bottom:6px">📧 ENTRE COM ESTE E-MAIL NO GOOGLE:</div>
+      <div id="gwm-email" style="font-size:17px;font-weight:900;color:#047857;word-break:break-all;background:#fff;border:1.5px dashed #10b981;border-radius:10px;padding:8px 10px;text-align:center;margin-bottom:6px">—</div>
+      <div style="font-size:12.5px;color:#065f46;line-height:1.55;font-weight:600">É o e-mail que você cadastrou e confirmou. Se o Google mostrar outra conta, toque em "Usar outra conta" e entre com este — qualquer outra conta é recusada.</div>
     </div>
 
     <label style="display:flex;align-items:flex-start;gap:9px;background:#fffbeb;border:1.5px solid #fbbf24;border-radius:12px;padding:11px 13px;margin-bottom:10px;cursor:pointer">

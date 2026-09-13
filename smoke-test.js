@@ -361,65 +361,81 @@ async function testAuthWatchdogPush() {
     // ZERO Google na landing. E2E real: cria conta → usuário duplicado é
     // recusado → senha curta é recusada → username com @ é recusado → login
     // com senha certa entra → login com senha errada é recusado.
-    const _cadOk = await req2("POST", "/api/cadastro", {
-      username: "novo_user_v172c", password: "12345678", nome: "Fulano", sobrenome: "Silva",
-      dataNascimento: "1995-01-01", cidade: "Recife", estado: "PE", pais: "Brasil",
-      telefone: "+5581999999999", whatsapp: "+5581999999999",
-    });
-    check("🔐 v172c: POST /api/cadastro cria conta usuário+senha (sem Google) e já devolve sessão logada",
-      _cadOk.status === 200 && _cadOk.json?.ok === true && _cadOk.json?.username === "novo_user_v172c",
-      JSON.stringify(_cadOk.json));
+    // ═══ 📧 v175 (ordem do dono, 13/09/2026): cadastro COMPLETO e obrigatório,
+    // 1 só WhatsApp, e-mail Gmail confirmado por código de 6 dígitos (5 min).
+    // A conta de notificações é FALSA no teste: mod-notif grava no outbox em
+    // vez de chamar o Google — o teste lê o outbox, pega o código, confirma e
+    // só então o /api/cadastro aceita. Pipeline inteiro provado, sem rede.
+    const OUTBOX = path.join(DATA, "notif_outbox.json");
+    const lerOutbox = () => { try { return JSON.parse(fs.readFileSync(OUTBOX, "utf8")); } catch { return []; } };
+    const ultimoCodigo = (to, tipo) => { const m = lerOutbox().filter((x) => x.to === to && x.tipo === tipo).pop(); const c = m && String(m.text || "").match(/▶\s+(\d{6})\s+◀/); return c ? c[1] : null; };
+    const verificar = async (email) => { const r = await req2("POST", "/api/email/enviar-codigo", { email }); if (r.status !== 200) throw new Error("enviar-codigo " + r.status + " " + r.body.slice(0, 80)); const c = ultimoCodigo(email.toLowerCase(), "codigo_cadastro"); const k = await req2("POST", "/api/email/confirmar", { email, codigo: c }); return k.json?.token; };
+    const cadastroCompleto = (o) => req2("POST", "/api/cadastro", { password: "12345678", nome: "Fulano", sobrenome: "Silva", dataNascimento: "01/01/1995", cidade: "Recife", estado: "PE", pais: "Brasil", whatsapp: "5581999999999", ...o });
+    const _semConta = await req2("POST", "/api/email/enviar-codigo", { email: "fulano.v175@gmail.com" });
+    check("📧 v175: sem conta de notificações conectada, pedir código dá 503 HONESTO (nunca finge que enviou)", _semConta.status === 503, `status=${_semConta.status} ${_semConta.body.slice(0, 80)}`);
+    const _nc = await req2("POST", "/api/test/notif-conectar", { token: TEST_TOKEN, email: "suporteh2bapply@gmail.com" });
+    check("📧 v175: (teste) conta de notificações conectada — suporteh2bapply@gmail.com (outbox no lugar do Google)", _nc.json?.ok === true && _nc.json?.status?.conectada === true && _nc.json?.status?.modoTeste === true, _nc.body.slice(0, 140));
+    const _envNaoGmail = await req2("POST", "/api/email/enviar-codigo", { email: "fulano@hotmail.com" });
+    check("📧 v175: e-mail que não é Gmail é recusado no cadastro (é por ele que o site envia as candidaturas)", _envNaoGmail.status === 400, `status=${_envNaoGmail.status}`);
+    const _env1 = await req2("POST", "/api/email/enviar-codigo", { email: "Fulano.V175@gmail.com" });
+    const _cod1 = ultimoCodigo("fulano.v175@gmail.com", "codigo_cadastro");
+    const _mail1 = lerOutbox().find((x) => x.to === "fulano.v175@gmail.com");
+    check("📧 v175: Enviar verificação → e-mail com código de 6 dígitos sai pela conta de suporte (outbox), vale 5 min, reenvio em 60s, texto avisa que é o mesmo Gmail que vai enviar as candidaturas",
+      _env1.status === 200 && _env1.json?.expiraEm === 300 && _env1.json?.reenvioEm === 60 && /^\d{6}$/.test(_cod1 || "") && _mail1?.from === "suporteh2bapply@gmail.com" && /5 minutos/.test(_mail1?.text || "") && /ENVIAR suas candidaturas/.test(_mail1?.text || "") && String(_mail1?.subject || "").includes(_cod1 || "x"),
+      `status=${_env1.status} codigo=${_cod1} from=${_mail1?.from}`);
+    const _env2 = await req2("POST", "/api/email/enviar-codigo", { email: "fulano.v175@gmail.com" });
+    check("📧 v175: pedir outro código antes de 60s → 429 com a espera em segundos (anti-abuso da conta de suporte)", _env2.status === 429 && _env2.json?.segundos > 0, `status=${_env2.status}`);
+    const _confErr = await req2("POST", "/api/email/confirmar", { email: "fulano.v175@gmail.com", codigo: "000000" });
+    check("📧 v175: código errado → 400 dizendo quantas tentativas restam (5 no total, depois o código morre)", _confErr.status === 400 && /restante/.test(_confErr.json?.error || ""), _confErr.body.slice(0, 120));
+    const _semToken = await cadastroCompleto({ username: "novo_user_v172c", email: "fulano.v175@gmail.com" });
+    check("🔒 v175: cadastro SEM confirmar o e-mail (sem token) → 400 — impossível concluir sem verificar", _semToken.status === 400 && /Confirme seu e-mail/.test(_semToken.json?.error || ""), _semToken.body.slice(0, 120));
+    const _confOk = await req2("POST", "/api/email/confirmar", { email: "fulano.v175@gmail.com", codigo: _cod1 });
+    check("📧 v175: código certo → e-mail confirmado, devolve o token assinado de e-mail verificado", _confOk.status === 200 && typeof _confOk.json?.token === "string" && _confOk.json.token.includes("."), _confOk.body.slice(0, 100));
+    const _tokenFulano = _confOk.json?.token;
+    const _tokenOutro = await req2("POST", "/api/cadastro", { username: "novo_user_v172c", password: "12345678", nome: "Fulano", sobrenome: "Silva", dataNascimento: "01/01/1995", cidade: "Recife", estado: "PE", pais: "Brasil", whatsapp: "5581999999999", email: "outra.pessoa@gmail.com", emailToken: _tokenFulano });
+    check("🔒 v175: token de um e-mail NÃO serve pra cadastrar outro e-mail (HMAC amarra e-mail + finalidade + validade)", _tokenOutro.status === 400, `status=${_tokenOutro.status}`);
+    const _incompleto = await req2("POST", "/api/cadastro", { username: "novo_user_v172c", password: "12345678", nome: "Fulano", sobrenome: "Silva", email: "fulano.v175@gmail.com", emailToken: _tokenFulano });
+    check("📝 v175: cadastro incompleto (sem nascimento/cidade/WhatsApp) → 400 — todos os campos são obrigatórios", _incompleto.status === 400, `status=${_incompleto.status} ${_incompleto.body.slice(0, 80)}`);
+    const _nascRuim = await cadastroCompleto({ username: "novo_user_v172c", email: "fulano.v175@gmail.com", emailToken: _tokenFulano, dataNascimento: "31/02/1990" });
+    check("📝 v175: data de nascimento que não existe (31/02) → 400", _nascRuim.status === 400 && /nascimento/.test(_nascRuim.json?.error || ""), _nascRuim.body.slice(0, 80));
+    const _cadOk = await cadastroCompleto({ username: "novo_user_v172c", email: "fulano.v175@gmail.com", emailToken: _tokenFulano });
+    check("🔐 v175: cadastro COMPLETO com e-mail confirmado cria a conta e já devolve sessão logada",
+      _cadOk.status === 200 && _cadOk.json?.ok === true && _cadOk.json?.username === "novo_user_v172c" && _cadOk.json?.novaConta === true, JSON.stringify(_cadOk.json));
     const _novoUser = JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"))["novo_user_v172c"];
     check("🔐 v172c: usuário novo nasce com senha em HASH (scrypt) — nunca texto puro no banco",
       !!_novoUser?.passwordSalt && !!_novoUser?.passwordHash && _novoUser.passwordHash !== "12345",
       JSON.stringify({ temSalt: !!_novoUser?.passwordSalt, temHash: !!_novoUser?.passwordHash }));
-    const _cadDup = await req2("POST", "/api/cadastro", { username: "novo_user_v172c", password: "99999999", nome: "Outro", sobrenome: "Nome" });
-    check("🔐 v172c: cadastro com username JÁ EXISTENTE → 409 (nunca sobrescreve a conta)",
-      _cadDup.status === 409, `status=${_cadDup.status}`);
-    // 🔑 v172f (ordem do dono, 12/09/2026 — usuário real reportou: cadastrou
-    // "andrio" e a conta NÃO nasceu admin): a migração de boot (10,5s após
-    // START do processo) só pega conta que já existia ANTES do restart —
-    // um cadastro feito com o servidor já rodando há horas nunca seria
-    // pego até o PRÓXIMO deploy. Corrigido pra conceder admin JÁ NA
-    // CRIAÇÃO, sem depender de restart nenhum.
-    const _cadAndrio = await req2("POST", "/api/cadastro", {
-      username: "andrio", password: "senhaandrio123", nome: "Andrio", sobrenome: "Teste",
-    });
-    check("🔑 v172f-FIX: cadastro com username reservado 'andrio' já nasce admin NA HORA (sem esperar boot/restart)",
-      _cadAndrio.status === 200 && _cadAndrio.json?.ok === true &&
-      JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"))["andrio"]?.isAdmin === true,
-      JSON.stringify(_cadAndrio.json));
-    const _cadDiego = await req2("POST", "/api/cadastro", {
-      username: "diego", password: "senhadiego123", nome: "Diego", sobrenome: "Teste",
-    });
-    check("🔑 v172f-FIX: cadastro com username reservado 'diego' já nasce admin NA HORA (sem esperar boot/restart)",
-      _cadDiego.status === 200 && _cadDiego.json?.ok === true &&
-      JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"))["diego"]?.isAdmin === true,
-      JSON.stringify(_cadDiego.json));
-    // 🔑 (ordem do dono, 12/09/2026 — "vou cadastrar de novo com o nome de
-    // usuário Andrew... esse tem que entrar como ADM"): terceiro username
-    // reservado, mesma fonte única ADMIN_RESERVED_USERNAMES.
-    const _cadAndrew = await req2("POST", "/api/cadastro", {
-      username: "andrew", password: "senhaandrew123", nome: "Andrew", sobrenome: "Teste",
-    });
-    check("🔑 v172f-FIX: cadastro com username reservado 'andrew' já nasce admin NA HORA (sem esperar boot/restart)",
-      _cadAndrew.status === 200 && _cadAndrew.json?.ok === true &&
-      JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"))["andrew"]?.isAdmin === true,
-      JSON.stringify(_cadAndrew.json));
-    const _cadNormal = await req2("POST", "/api/cadastro", {
-      username: "usuario_qualquer_v172f", password: "senhanormal123", nome: "Fulano", sobrenome: "Comum",
-    });
-    check("🔑 v172f-FIX: cadastro com username NÃO reservado continua nascendo sem admin (não virou padrão pra todo mundo)",
-      _cadNormal.status === 200 &&
-      JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"))["usuario_qualquer_v172f"]?.isAdmin === false,
-      JSON.stringify(_cadNormal.json));
+    check("📧 v175: a conta guarda o e-mail confirmado (emailContato + carimbo), o WhatsApp único vira telefone também e o nascimento fica em ISO",
+      _novoUser?.emailContato === "fulano.v175@gmail.com" && _novoUser?.emailVerificadoEm > 0 && _novoUser?.whatsapp === "5581999999999" && _novoUser?.phone === "5581999999999" && _novoUser?.dataNascimento === "1995-01-01" && _novoUser?.city === "Recife",
+      JSON.stringify({ e: _novoUser?.emailContato, w: _novoUser?.whatsapp, n: _novoUser?.dataNascimento }));
+    const _st1 = (await get("/api/status")).json;
+    check("📧 v175: /api/status expõe emailContato/emailVerificado (o aviso 'entre com este e-mail' do Gmail usa isso)", _st1?.emailContato === "fulano.v175@gmail.com" && _st1?.emailVerificado === true, JSON.stringify({ e: _st1?.emailContato, v: _st1?.emailVerificado }));
+    const _envDup = await req2("POST", "/api/email/enviar-codigo", { email: "fulano.v175@gmail.com" });
+    check("📧 v175: e-mail que JÁ tem conta não recebe código de cadastro (409 — manda entrar ou recuperar a senha)", _envDup.status === 409, `status=${_envDup.status}`);
+    const _cadDup = await cadastroCompleto({ username: "novo_user_v172c", email: "outro.v175@gmail.com", emailToken: await verificar("outro.v175@gmail.com") });
+    check("🔐 v172c: cadastro com username JÁ EXISTENTE → 409 (nunca sobrescreve a conta)", _cadDup.status === 409, `status=${_cadDup.status}`);
+    // 🔑 usernames reservados (andrio/diego/andrew) — v175: só nascem admin com
+    // o e-mail CONFIRMADO sendo um e-mail de admin (fecha a janela "quem
+    // cadastrar primeiro leva o admin" apontada na auditoria de 13/09).
+    const _cadReservadoSemAdm = await cadastroCompleto({ username: "andrio", email: "reservado.v175@gmail.com", emailToken: await verificar("reservado.v175@gmail.com") });
+    check("🔑 v175: username reservado 'andrio' com e-mail que NÃO é de admin → 400 (nunca vira admin por chegar primeiro)", _cadReservadoSemAdm.status === 400 && /reservado/i.test(_cadReservadoSemAdm.json?.error || ""), _cadReservadoSemAdm.body.slice(0, 100));
+    const _cadAndrio = await cadastroCompleto({ username: "andrio", email: "andrio.kick18@gmail.com", emailToken: await verificar("andrio.kick18@gmail.com") });
+    check("🔑 v172f/v175: 'andrio' com o e-mail de admin confirmado nasce admin NA HORA (sem esperar boot/restart)",
+      _cadAndrio.status === 200 && _cadAndrio.json?.ok === true && JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"))["andrio"]?.isAdmin === true, JSON.stringify(_cadAndrio.json));
+    const _cadDiego = await cadastroCompleto({ username: "diego", nome: "Diego", email: "jesuscristh22@gmail.com", emailToken: await verificar("jesuscristh22@gmail.com") });
+    check("🔑 v172f/v175: 'diego' com o e-mail de admin confirmado nasce admin NA HORA",
+      _cadDiego.status === 200 && JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"))["diego"]?.isAdmin === true, JSON.stringify(_cadDiego.json));
+    const _cadAndrew = await cadastroCompleto({ username: "andrew", nome: "Andrew", email: "ueudesmaresias@gmail.com", emailToken: await verificar("ueudesmaresias@gmail.com") });
+    check("🔑 v172f/v175: 'andrew' (3º username reservado, mesma fonte única ADMIN_RESERVED_USERNAMES) nasce admin com e-mail de admin",
+      _cadAndrew.status === 200 && JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"))["andrew"]?.isAdmin === true, JSON.stringify(_cadAndrew.json));
+    const _cadNormal = await cadastroCompleto({ username: "usuario_qualquer_v172f", email: "comum.v175@gmail.com", emailToken: await verificar("comum.v175@gmail.com") });
+    check("🔑 v172f-FIX: username NÃO reservado continua nascendo sem admin (não virou padrão pra todo mundo)",
+      _cadNormal.status === 200 && JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"))["usuario_qualquer_v172f"]?.isAdmin === false, JSON.stringify(_cadNormal.json));
     COOKIE = "";
-    const _cadCurta = await req2("POST", "/api/cadastro", { username: "outro_user_v172c", password: "12", nome: "A", sobrenome: "B" });
-    check("🔐 v172c: cadastro com senha curta (<4) → 400",
-      _cadCurta.status === 400, `status=${_cadCurta.status}`);
-    const _cadArroba = await req2("POST", "/api/cadastro", { username: "tem@arroba", password: "12345678", nome: "A", sobrenome: "B" });
-    check("🔐 v172c: cadastro com @ no username → 400 (impossível colidir com e-mail de admin)",
-      _cadArroba.status === 400, `status=${_cadArroba.status}`);
+    const _cadCurta = await cadastroCompleto({ username: "outro_user_v172c", password: "12", email: "x.v175@gmail.com" });
+    check("🔐 v172c: cadastro com senha curta (<8) → 400", _cadCurta.status === 400, `status=${_cadCurta.status}`);
+    const _cadArroba = await cadastroCompleto({ username: "tem@arroba", email: "x.v175@gmail.com" });
+    check("🔐 v172c: cadastro com @ no username → 400 (impossível colidir com e-mail de admin)", _cadArroba.status === 400, `status=${_cadArroba.status}`);
     COOKIE = "";
     const _logOk = await req2("POST", "/api/login", { username: "novo_user_v172c", password: "12345678" });
     check("🔐 v172c: POST /api/login com usuário+senha certos → 200 e sessão nova",
@@ -428,6 +444,59 @@ async function testAuthWatchdogPush() {
     const _logBad = await req2("POST", "/api/login", { username: "novo_user_v172c", password: "senhaerrada" });
     check("🔐 v172c: POST /api/login com senha ERRADA → 403 (nunca entra)",
       _logBad.status === 403, `status=${_logBad.status}`);
+    COOKIE = "";
+    const _logEmail = await req2("POST", "/api/login", { username: "Fulano.V175@gmail.com", password: "12345678" });
+    check("🔐 v175: entrar com o E-MAIL cadastrado no lugar do usuário também funciona (a identidade continua sendo o username)", _logEmail.status === 200 && _logEmail.json?.username === "novo_user_v172c", _logEmail.body.slice(0, 100));
+    // 🔑 v175: recuperação de senha pelo e-mail cadastrado
+    COOKIE = "";
+    const _recNo = await req2("POST", "/api/senha/enviar-codigo", { email: "ninguem.v175@gmail.com" });
+    const _recOk = await req2("POST", "/api/senha/enviar-codigo", { email: "fulano.v175@gmail.com" });
+    const _codRec = ultimoCodigo("fulano.v175@gmail.com", "codigo_senha");
+    check("🔑 v175: recuperação — resposta GENÉRICA igual pra e-mail sem conta e com conta (sem enumeração); o código de senha só sai pra quem tem conta",
+      _recNo.status === 200 && _recOk.status === 200 && _recNo.body === _recOk.body && /^\d{6}$/.test(_codRec || "") && !lerOutbox().some((x) => x.to === "ninguem.v175@gmail.com"),
+      `no=${_recNo.status} ok=${_recOk.status} cod=${_codRec}`);
+    const _redefBad = await req2("POST", "/api/senha/redefinir", { email: "fulano.v175@gmail.com", codigo: "111111", novaSenha: "novasenha123" });
+    const _redefCurta = await req2("POST", "/api/senha/redefinir", { email: "fulano.v175@gmail.com", codigo: _codRec, novaSenha: "123" });
+    const _redefOk = await req2("POST", "/api/senha/redefinir", { email: "fulano.v175@gmail.com", codigo: _codRec, novaSenha: "novasenha123" });
+    COOKIE = "";
+    const _logVelha = await req2("POST", "/api/login", { username: "novo_user_v172c", password: "12345678" });
+    COOKIE = "";
+    const _logNova = await req2("POST", "/api/login", { username: "novo_user_v172c", password: "novasenha123" });
+    check("🔑 v175: código errado/senha curta não redefinem; código certo redefine, a senha velha morre e a nova entra",
+      _redefBad.status === 400 && _redefCurta.status === 400 && _redefOk.status === 200 && _logVelha.status === 403 && _logNova.status === 200,
+      JSON.stringify({ bad: _redefBad.status, curta: _redefCurta.status, ok: _redefOk.status, velha: _logVelha.status, nova: _logNova.status }));
+    // 📧 v175: aba Notificações do admin (status/teste/config/desconectar)
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
+    const _ntSt = await get("/api/admin/notificacoes/status");
+    check("📧 v175: admin vê o status da conta de notificações numa chamada (conectada, e-mail, enviados hoje, destinatários dos avisos = e-mails de admin)",
+      _ntSt.json?.ok === true && _ntSt.json.conectada === true && _ntSt.json.email === "suporteh2bapply@gmail.com" && _ntSt.json.sentToday >= 8 && Array.isArray(_ntSt.json.destinatarios) && _ntSt.json.destinatarios.includes("andrio.kick18@gmail.com") && typeof _ntSt.json.oauthConfigurado === "boolean",
+      _ntSt.body.slice(0, 200));
+    const _ntTeste = await req2("POST", "/api/admin/notificacoes/teste", { to: "smoke@test.com" });
+    check("📧 v175: 'Enviar e-mail de teste pra mim' sai pela conta conectada (outbox tipo teste)", _ntTeste.json?.ok === true && lerOutbox().some((x) => x.tipo === "teste" && x.to === "smoke@test.com"), _ntTeste.body.slice(0, 100));
+    const _ntOff = await req2("POST", "/api/admin/notificacoes/config", { avisoPedidos: false });
+    const _ntOn = await req2("POST", "/api/admin/notificacoes/config", { avisoPedidos: true });
+    check("📧 v175: toggle 'avisar pedido novo por e-mail' liga/desliga e persiste", _ntOff.json?.avisoPedidos === false && _ntOn.json?.avisoPedidos === true, `off=${_ntOff.body.slice(0, 60)} on=${_ntOn.body.slice(0, 60)}`);
+    const _ntDesc = await req2("POST", "/api/admin/notificacoes/desconectar", {});
+    const _ntSt2 = await get("/api/admin/notificacoes/status");
+    const _envSem = await req2("POST", "/api/email/enviar-codigo", { email: "depois.v175@gmail.com" });
+    check("📧 v175: desconectar → status conectada:false e o cadastro volta a avisar 503 (nunca finge que mandou código)", _ntDesc.json?.ok === true && _ntSt2.json?.conectada === false && _envSem.status === 503, `st=${_ntSt2.json?.conectada} env=${_envSem.status}`);
+    await req2("POST", "/api/test/notif-conectar", { token: TEST_TOKEN, email: "suporteh2bapply@gmail.com" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
+    const _nt403 = await get("/api/admin/notificacoes/status");
+    check("🔒 v175: usuário comum recebe 403 nas rotas de notificação (admin-only)", _nt403.status === 403, `status=${_nt403.status}`);
+    COOKIE = "";
+    // 🧱 estrutural: front + servidor do v175
+    {
+      const _idx = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+      const _app = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _adm = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
+      const _srv = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      check("🧱 v175: (estrutural) cadastro com verificação por código no front (agEnviarCodigo/agConfirmarCodigo, 1 só WhatsApp, sem campo telefone), 'Esqueci minha senha', janela pós-cadastro no lugar do wizard antigo, aviso do e-mail cadastrado no modal do Gmail, editor 3+3 e aba Notificações no admin",
+        _app.includes("function agEnviarCodigo(") && _app.includes("function agConfirmarCodigo(") && _app.includes("function agRecRedefinir(") && !_app.includes('id="ag-s-tel"') && _app.includes("function checkShowCvPrompt(") && !_app.includes("function showOnboarding(") && !_app.includes("function obSavePersonal(") &&
+        _idx.includes('id="cv-prompt-overlay"') && !_idx.includes('id="onboarding-overlay"') && _idx.includes('id="gwm-email-block"') && _idx.includes("③ Título do e-mail (assunto)") && _idx.includes("NÃO é obrigatória") && !_idx.includes('id="pe-subjects-empty"') &&
+        _app.includes("function _pePad(") && _adm.includes('data-view="notificacoes"') && _adm.includes("/oauth/notif-connect") && _srv.includes('sessions["__notif__"+_st]') && _srv.includes("login_hint") && _srv.includes("_hintCS=p.emailContato||resolveSendGmail(p)"),
+        "estrutura do v175 incompleta");
+    }
     COOKIE = "";
 
     // 🔐 v172c: /api/admin/set-password é a válvula de escape pra conta
@@ -1215,8 +1284,8 @@ async function testAuthWatchdogPush() {
     // scope:OAUTH_SCOPES (gmail.send) só existe em /oauth/add-sender (extra)
     // e /oauth/connect-send (principal, gated por plano pago). Regressão
     // aqui faria a landing voltar a abrir o Google pra login sem pagamento.
-    check("✉️ v172c: OAUTH_SCOPES (com gmail.send) só é usado em /oauth/add-sender e /oauth/connect-send — a landing não fala mais com o Google pra login",
-      _scopeUses === 2 && _sendOnlyConst === "true" && _scopesLine.includes("gmail.send") && !_scopesLine.includes("readonly") && !_scopesLine.includes("modify"),
+    check("✉️ v172c/v175: OAUTH_SCOPES (com gmail.send) só é usado em /oauth/add-sender, /oauth/connect-send e /oauth/notif-connect (admin) — a landing não fala mais com o Google pra login",
+      _scopeUses === 3 && _sendOnlyConst === "true" && _scopesLine.includes("gmail.send") && !_scopesLine.includes("readonly") && !_scopesLine.includes("modify"),
       `usos=${_scopeUses} | GMAIL_SEND_ONLY=${_sendOnlyConst} | OAUTH_SCOPES="${_scopesLine.slice(0, 90)}"`);
     // v172c: /oauth/start virou um dead-end fechado (302 pra "/", sem scope
     // nenhum) — ninguém consegue mais contornar o cadastro novo batendo
@@ -1818,6 +1887,17 @@ async function testAuthWatchdogPush() {
         _srvPl.includes("PLANILHAS.iniciarAgendadores()") && /runH2bMensal[\s\S]{0,400}autoPublish: false/.test(_modPl) && /runH2aMensal[\s\S]{0,400}autoPublish: true/.test(_modPl) && _srvPl.includes("PLANILHAS.autoEnrichCycle()") &&
         _admPl.includes('data-view="planilhas"') && _admPl.includes("function loadPlanilhas(") && _admPl.includes("/api/admin/planilhas/status") && _admPl.includes("/api/admin/sheet/coleta-publish"),
         "estrutura do v174 incompleta");
+    }
+
+    // 💳 v175: os pedidos criados acima (blocos de compra) geraram aviso por
+    // e-mail pros admins PELA CONTA DE NOTIFICAÇÕES (outbox), com assunto,
+    // dados do cliente e nº do pedido — fonte única _mensagemPedidoAdmin.
+    {
+      const _box = (() => { try { return JSON.parse(fs.readFileSync(path.join(DATA, "notif_outbox.json"), "utf8")); } catch { return []; } })();
+      const _ped = _box.filter((x) => x.tipo === "pedido");
+      check("💳 v175: cada pedido novo gera aviso por e-mail pros e-mails de admin pela conta de notificações (assunto 'Novo pedido de plano', nº do pedido, WhatsApp e link do painel)",
+        _ped.length >= 2 && _ped.some((x) => /Novo pedido de plano/.test(x.subject) && /Pedido: #/.test(x.text) && /\/admin/.test(x.text)) && _ped.every((x) => x.from === "suporteh2bapply@gmail.com" && /@/.test(x.to)),
+        JSON.stringify(_ped.slice(0, 2).map((x) => ({ to: x.to, s: String(x.subject).slice(0, 40) }))));
     }
 
     // ═══ 📡 v134: RADAR DE VAGAS (aprovado pelo dono) + funil do limite ═══
@@ -2581,7 +2661,7 @@ async function testAuthWatchdogPush() {
       _appSrc172d.includes("U?.gmailEmail||U?.email") || _appSrc172d.includes("U?.gmailEmail || U?.email"),
       "fill() ainda usa só U?.email pro {email} — candidatura manual voltaria a vazar o username pro empregador");
     check("🐛 v172c-FIX: /api/status devolve gmailEmail (Gmail real resolvido) — front finalmente consegue mostrar o Gmail certo",
-      _srvSrc.includes("const gmailEmail = resolveSendGmail(p);") && _srvSrc.includes("gmailConnected,gmailEmail,needsPlan"),
+      _srvSrc.includes("const gmailEmail = resolveSendGmail(p);") && _srvSrc.includes("gmailConnected,gmailEmail,emailContato:p.emailContato||null,emailVerificado:!!p.emailVerificadoEm,needsPlan"),
       "/api/status não expõe mais gmailEmail — dropdown/checklist de remetente e {email} manual ficariam sem fonte de verdade");
     check("🐛 v172c-FIX: dropdown 'Enviar por' e checklist do Automático mostram o Gmail real (rótulo), mantendo o value original",
       _appSrc172d.includes("lbl:(U.gmailEmail||U.email)+\" (principal)\"") && _appSrc172d.includes("label:U.gmailEmail||U.email"),

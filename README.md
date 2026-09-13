@@ -25,8 +25,13 @@ período, paga via Pix e sobe o comprovante diretamente.
   2x/dia e as planilhas do mês ("H-2A <Mês> <Ano>" publica sozinha acima do
   mínimo; "H-2B <Mês> <Ano>" fica sempre em rascunho). Aba "Planilhas &
   Robôs" no painel admin
-- Onboarding obrigatório com perfis separados H-2B e H-2A (pelo menos um dos
-  dois precisa ser criado antes de usar o app)
+- Cadastro completo e obrigatório com e-mail Gmail verificado por código de
+  6 dígitos (vale 5 min) enviado pela conta de notificações do site; o
+  e-mail confirmado é o mesmo Gmail que envia as candidaturas. Recuperação
+  de senha pelo e-mail cadastrado ("Esqueci minha senha")
+- Depois do cadastro, a janela "Cadastre seu currículo agora" abre o editor
+  de perfil (3 títulos + 3 textos de e-mail já abertos, currículo PDF; cover
+  letter opcional) — dá pra pular e fazer depois em Perfil
 - Compra direta de plano (VIP/VIPro/DoublePro): escolhe plano+período, vê o
   preço oficial, paga via Pix e sobe o comprovante. Se o valor bater, o
   plano ativa na hora por 3 dias (janela provisória) enquanto o pedido
@@ -35,6 +40,10 @@ período, paga via Pix e sobe o comprovante diretamente.
 - Painel admin (`/admin`) focado em contabilidade: total recebido, gastos por
   sócio, lista de usuários por dias de VIP restantes, aprovação de pedidos
   pendentes
+- Aba **Notificações** no painel: o admin conecta a conta Google de suporte
+  (só permissão de envio, gmail.send) que manda os códigos de cadastro e de
+  recuperação de senha e avisa Andrio e Diego por e-mail a cada pedido novo
+  com comprovante; botão de e-mail de teste e toggle dos avisos
 
 ## O que NÃO existe (removido de propósito nesta reconstrução)
 
