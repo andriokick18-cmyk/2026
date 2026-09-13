@@ -3016,14 +3016,17 @@ function getSheet(n) { return n==="jan2026"?SHEET_JAN:n==="jul2025"?SHEET_JUL:(n
 function latestH2bKey(){
   let best=null,bestScore=-1;
   const consider=(key)=>{
+    // v174: a "H-2B <Mês> <Ano>" do robô mensal (chave h2b-AAAAMM) também
+    // disputa — a mais recente vira a H-2B MAIS NOVA sozinha (lista + frescor).
     const m=String(key).toLowerCase().match(/(jan|jul)\s*(\d{4})/);
-    if(!m)return;
+    const m2=String(key).toLowerCase().match(/^h2b-(\d{4})(\d{2})$/);
+    if(!m&&!m2)return;
     const rows=getSheet(key);
     if(!Array.isArray(rows)||!rows.length)return;
     const meta=DB_SHEETS_META[key];
     if(meta&&meta.published===false)return; // rascunho não conta
     if(meta&&meta.historico===true)return;  // temporada histórica não disputa
-    const score=parseInt(m[2],10)*100+(m[1]==="jul"?7:1);
+    const score=m?parseInt(m[2],10)*100+(m[1]==="jul"?7:1):parseInt(m2[1],10)*100+parseInt(m2[2],10);
     if(score>bestScore){bestScore=score;best=key;}
   };
   ["jan2026","jul2025"].forEach(consider);
@@ -5909,6 +5912,24 @@ function _saveEnrichedSheet(sheetKey, sheet){
   }catch(e){ _enrichLog(`❌ Erro ao salvar: ${e.message}`,"error"); }
 }
 
+// ═══ 📋 v174 — ALIMENTAÇÃO AUTOMÁTICA DAS PLANILHAS (ordem do dono, 13/09/2026:
+// "as planilhas devem ser alimentadas, igual elas já são hoje, com todas as
+// informações de cada vaga — esse sistema você pode trazer do h2bapply.com
+// antigo"). Os 5 robôs moram em mod-planilhas.js (injeção por getters — as
+// planilhas em memória são REATRIBUÍDAS no loadSheets, então o módulo nunca
+// pode guardar referência direta). Aqui só a ligação e as rotas do painel.
+const { createPlanilhas: _createPlanilhas } = require("./mod-planilhas.js");
+const PLANILHAS = _createPlanilhas({
+  fs, path, DATA_DIR, SHEETS_DIR, SHEETS_META_FILE,
+  getSheet, getSheetH2A: () => SHEET_H2A, setSheetH2A: (arr) => { SHEET_H2A = arr; },
+  getExtras: () => SHEET_EXTRAS, getMeta: () => DB_SHEETS_META,
+  enrichBot: _enrichBot, enrichLog: _enrichLog, saveSheet: _saveEnrichedSheet,
+  httpsReq, botLog, pushToUser, ADMIN_EMAILS, detectCategory,
+  dedupe: _vagasDedupe, verify: _vagasVerify, manifest: _vagasManifest,
+  notificarRadares, latestH2bKey,
+  isTest: !!process.env.TEST_LOGIN_TOKEN,
+});
+
 
 // 🔑 Usernames reservados que nascem admin (ordem do dono, 12/09/2026).
 // Fonte ÚNICA — usada tanto no /api/cadastro (grant IMEDIATO, no instante
@@ -6688,6 +6709,111 @@ ul li{margin-bottom:6px}
 
   // ════ GESTÃO DE PLANILHAS DE VAGAS ════════════════════════
   // GET /api/admin/sheets — lista todas as planilhas
+  // ═══ 📋 v174 — ROTAS DOS ROBÔS DE PLANILHA (admin-only; POST com corpo
+  // segue a regra da casa: JSON.parse(await readBody(req)) dentro de try/catch,
+  // e o catch SEMPRE responde — nunca requisição pendurada). ═══
+  if(pathname==="/api/admin/planilhas/status"&&req.method==="GET"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
+    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
+    return json(res,200,{ok:true,...PLANILHAS.statusPainel(),enrichLog:_enrichBot.log.slice(-80),coletaLog:PLANILHAS.dolColeta.log.slice(-80),latestH2b:latestH2bKey()});
+  }
+  if(pathname==="/api/admin/enrich/status"&&req.method==="GET"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
+    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
+    const b=_enrichBot;
+    return json(res,200,{ok:true,running:b.running,sheetKey:b.sheetKey,total:b.total,done:b.done,okCount:b.ok,noEmail:b.noEmail,errors:b.errors,startedAt:b.startedAt,savedAt:b.savedAt,pct:b.total>0?Math.round((b.done/b.total)*100):0,log:b.log.slice(-100)});
+  }
+  if(pathname==="/api/admin/enrich/start"&&req.method==="POST"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
+    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
+    try{
+      const d=JSON.parse((await readBody(req))||"{}");
+      const key=String(d.sheetKey||"").trim();
+      const rows=getSheet(key);
+      if(!key||!Array.isArray(rows)||!rows.length)return json(res,404,{error:"Planilha não encontrada ou vazia: "+key});
+      if(_enrichBot.running)return json(res,409,{error:`O bot já está rodando na planilha "${_enrichBot.sheetKey}" — pare antes de trocar.`});
+      PLANILHAS.runEnrichBot(key,d.resume===true).catch(e=>_enrichLog("❌ "+e.message,"error"));
+      return json(res,200,{ok:true,sheetKey:key,resume:d.resume===true});
+    }catch(e){return json(res,400,{error:"Corpo inválido: "+e.message});}
+  }
+  if(pathname==="/api/admin/enrich/stop"&&req.method==="POST"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
+    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
+    const was=_enrichBot.running;_enrichBot.running=false;
+    if(was)_enrichLog("⏹ Parado pelo admin — o progresso já está salvo no disco; Enriquecer de novo retoma de onde parou.","warn");
+    return json(res,200,{ok:true,wasRunning:was});
+  }
+  if(pathname==="/api/admin/sheet/fresh-run"&&req.method==="POST"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
+    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
+    if(PLANILHAS.freshBot.running)return json(res,409,{error:"O robô de frescor já está rodando."});
+    if(_enrichBot.running)return json(res,409,{error:"Enriquecimento em andamento — o frescor espera ele terminar."});
+    PLANILHAS.runFreshCycle().catch(e=>console.error("[planilha-fresca] manual:",e.message));
+    return json(res,200,{ok:true,started:true});
+  }
+  if(pathname==="/api/admin/sheet/coleta-start"&&req.method==="POST"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
+    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
+    try{
+      const d=JSON.parse((await readBody(req))||"{}");
+      const visa=String(d.visa||"H-2B").toUpperCase()==="H-2A"?"H-2A":"H-2B";
+      const key=String(d.sheetKey||"").toLowerCase().replace(/[^a-z0-9_-]/g,"");
+      const name=String(d.sheetName||"").trim().slice(0,80)||key;
+      if(!key)return json(res,400,{error:"Chave da planilha obrigatória (letras, números, - e _)."});
+      if(["jan2026","jul2025","h2a-jun2026","h2a","h2ajun2026"].includes(key))return json(res,400,{error:"Essa chave é de uma planilha built-in — escolha outra."});
+      if(PLANILHAS.dolColeta.running)return json(res,409,{error:"Já existe uma coleta rodando — acompanhe o log e tente depois."});
+      const dateOk=(v)=>/^\d{4}-\d{2}-\d{2}$/.test(String(v||""))?String(v):"";
+      PLANILHAS.runDolColeta({visa,sheetKey:key,sheetName:name,beginFrom:dateOk(d.beginFrom),beginTo:dateOk(d.beginTo),publishedBy:s.user_email}).catch(e=>console.error("[coleta]",e.message));
+      return json(res,200,{ok:true,key,visa});
+    }catch(e){return json(res,400,{error:"Corpo inválido: "+e.message});}
+  }
+  if(pathname==="/api/admin/sheet/coleta-status"&&req.method==="GET"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
+    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
+    const c=PLANILHAS.dolColeta;
+    return json(res,200,{ok:true,running:c.running,log:c.log,startedAt:c.startedAt,finishedAt:c.finishedAt,key:c.key,count:c.count,error:c.error,progress:c.progress,
+      published:!!(c.key&&DB_SHEETS_META[c.key]?.published===true),bimestral:PLANILHAS.getEstadoH2a(),mensalH2b:PLANILHAS.getEstadoH2b()});
+  }
+  // Publicar um rascunho (coleta manual OU "H-2B <Mês> <Ano>" do robô) — 1 clique
+  // do admin libera pros usuários no Manual e no Automático. Idempotente.
+  if(pathname==="/api/admin/sheet/coleta-publish"&&req.method==="POST"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
+    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
+    try{
+      const d=JSON.parse((await readBody(req))||"{}");
+      const key=String(d.key||"").toLowerCase().replace(/[^a-z0-9_-]/g,"");
+      const rows=SHEET_EXTRAS[key];const meta=DB_SHEETS_META[key];
+      if(!key||!Array.isArray(rows)||!meta)return json(res,404,{error:"Planilha não encontrada: "+key});
+      if(meta.published===true)return json(res,200,{ok:true,key,count:rows.length,jaPublicada:true});
+      meta.published=true;meta.publishedAt=Date.now();meta.publishedBy=s.user_email;
+      fs.writeFileSync(SHEETS_META_FILE,JSON.stringify(DB_SHEETS_META,null,2));
+      addLog(s.user_email,{status:"sistema",jobTitle:`📢 Planilha publicada: ${meta.name||key}`,company:`${rows.length} vagas — Chave: ${key}`});
+      // 📡 v134: 1ª publicação = vaga nova chegando pros usuários → radar avisa
+      notificarRadares(rows,`publicacao:${key}`).catch(e=>console.warn("[radar] publicar:",e.message));
+      console.log(`[sheet] 📢 "${key}" publicada por ${s.user_email} (${rows.length} vagas)`);
+      return json(res,200,{ok:true,key,count:rows.length});
+    }catch(e){return json(res,400,{error:"Corpo inválido: "+e.message});}
+  }
+  // Planilhas do mês: gerar/refazer AGORA (background — a resposta volta na hora
+  // e o painel acompanha pelo coleta-status). 409 quando a do mês já existe e
+  // não veio force:true — nunca duplica planilha.
+  if((pathname==="/api/admin/sheet/h2a-bimestral-run"||pathname==="/api/admin/sheet/h2b-mensal-run")&&req.method==="POST"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
+    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
+    let d={};
+    try{const raw=await readBody(req);d=raw?JSON.parse(raw):{};}catch(e){return json(res,400,{error:"Corpo inválido: "+e.message});}
+    try{
+      const r=await (pathname.endsWith("h2a-bimestral-run")?PLANILHAS.runH2aMensal:PLANILHAS.runH2bMensal)("manual:"+s.user_email,d.force===true,true);
+      return json(res,r.skipped?409:r.ok?200:500,r);
+    }catch(e){return json(res,500,{ok:false,error:e.message});}
+  }
+  if(pathname==="/api/admin/sheet/h2a-novas-run"&&req.method==="POST"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
+    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
+    try{const r=await PLANILHAS.runH2aNovasCycle("manual:"+s.user_email);return json(res,r.ok?200:500,r);}
+    catch(e){return json(res,500,{ok:false,error:e.message});}
+  }
+
   if(pathname==="/api/admin/sheets"&&req.method==="GET"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
     const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
@@ -6701,30 +6827,27 @@ ul li{margin-bottom:6px}
         withDate:arr.filter(r=>r.d&&r.d!=="–").length,
       };
     };
-    const janStats=_enrichStats(SHEET_JAN);
-    const julStats=_enrichStats(SHEET_JUL);
-    const sheets = [
-      {key:"jan2026",name:"Janeiro 2026 (H-2B)",count:SHEET_JAN.length,builtin:true,active:true,
-        enriched:DB_SHEETS_META["jan2026"]?.enriched||janStats.withCity,
-        enrichedAt:DB_SHEETS_META["jan2026"]?.enrichedAt||null,
-        stats:janStats,
-        enrichPct:SHEET_JAN.length>0?Math.round((janStats.withCity/SHEET_JAN.length)*100):0},
-      {key:"jul2025",name:"Julho 2025 (H-2B)",count:SHEET_JUL.length,builtin:true,active:true,
-        enriched:DB_SHEETS_META["jul2025"]?.enriched||julStats.withCity,
-        enrichedAt:DB_SHEETS_META["jul2025"]?.enrichedAt||null,
-        stats:julStats,
-        enrichPct:SHEET_JUL.length>0?Math.round((julStats.withCity/SHEET_JUL.length)*100):0},
-      ...Object.entries(SHEET_EXTRAS).map(([key,arr])=>{
-        const st=_enrichStats(arr);
-        return{key,name:DB_SHEETS_META[key]?.name||key,count:arr.length,builtin:false,
-          active:true,uploaded:DB_SHEETS_META[key]?.uploaded,
-          enriched:DB_SHEETS_META[key]?.enriched||st.withCity,
-          enrichedAt:DB_SHEETS_META[key]?.enrichedAt,
-          stats:st,
-          enrichPct:arr.length>0?Math.round((st.withCity/arr.length)*100):0};
-      })
+    // v174: uma linha por planilha (built-ins incluindo a H-2A + extras) com
+    // published (o que /api/sheets-list usa pra mostrar ao usuário), origem e
+    // quantas têm e-mail — o painel "Planilhas & Robôs" mostra rascunho vs no ar.
+    const _mkRow=(key,name,arr,builtin,visaType)=>{
+      const st=_enrichStats(arr);const meta=DB_SHEETS_META[key]||{};
+      return{key,name,count:arr.length,builtin,active:true,visaType,
+        uploaded:meta.uploaded||null,source:meta.source||(builtin?"bundled":"upload"),
+        published:builtin?true:meta.published===true,
+        publishedAt:meta.publishedAt||null,
+        enriched:meta.enriched||st.withCity,enrichedAt:meta.enrichedAt||null,freshAt:meta.freshAt||null,
+        withEmail:arr.filter(r=>r.e&&String(r.e).includes("@")).length,
+        stats:st,enrichPct:arr.length>0?Math.round((st.withCity/arr.length)*100):0};
+    };
+    const sheets=[
+      _mkRow("jan2026","Janeiro 2026 (H-2B)",SHEET_JAN,true,"H-2B"),
+      _mkRow("jul2025","Julho 2025 (H-2B)",SHEET_JUL,true,"H-2B"),
+      _mkRow("h2a-jun2026","H-2A Agricultura",SHEET_H2A,true,"H-2A"),
+      ...Object.entries(SHEET_EXTRAS).map(([key,arr])=>_mkRow(key,DB_SHEETS_META[key]?.name||key,arr,false,
+        String(DB_SHEETS_META[key]?.visaType||arr[0]?.visa||"H-2B").toUpperCase().includes("H-2A")?"H-2A":"H-2B")),
     ];
-    const totalVagas = SHEET_JAN.length + SHEET_JUL.length + Object.values(SHEET_EXTRAS).reduce((s,a)=>s+a.length,0);
+    const totalVagas = sheets.reduce((n,sh)=>n+sh.count,0);
     const totalEnriched = sheets.reduce((s,sh)=>s+(sh.stats?.withCity||0),0);
     // Status do bot em tempo real
     const botStatus={running:_enrichBot.running,sheetKey:_enrichBot.sheetKey,done:_enrichBot.done,total:_enrichBot.total,pct:_enrichBot.total>0?Math.round((_enrichBot.done/_enrichBot.total)*100):0};
@@ -6788,15 +6911,17 @@ ul li{margin-bottom:6px}
     const fpath=path.join(SHEETS_DIR,fname);
     fs.writeFileSync(fpath,JSON.stringify(valid));
     SHEET_EXTRAS[safeKey]=valid;
-    DB_SHEETS_META[safeKey]={name,file:fname,uploaded:Date.now(),count:valid.length,uniqueCaseCount:valid.length,enriched:0};
+    // v174: upload do admin É a publicação (antes o registro nascia sem
+    // `published` e /api/sheets-list — que exige published===true — escondia
+    // a planilha de todo usuário em silêncio).
+    DB_SHEETS_META[safeKey]={name,file:fname,uploaded:Date.now(),count:valid.length,uniqueCaseCount:valid.length,enriched:0,
+      published:true,publishedAt:Date.now(),publishedBy:s.user_email,source:"upload",visaType:String(valid[0]?.visa||"H-2B").toUpperCase().includes("H-2A")?"H-2A":"H-2B"};
     fs.writeFileSync(SHEETS_META_FILE,JSON.stringify(DB_SHEETS_META,null,2));
     console.log(`[sheet] ✅ Nova planilha carregada: ${safeKey} (${valid.length} vagas únicas de ${vagas.length} recebidas${duplicatesMerged?`, ${duplicatesMerged} duplicata(s) mesclada(s)`:''})`);
     addLog(s.user_email,{status:"sistema",jobTitle:`📋 Nova planilha adicionada: ${name}`,company:`${valid.length} vagas únicas — Chave: ${safeKey}${duplicatesMerged?` (${duplicatesMerged} duplicata mesclada)`:''}`});
     // Dispara enriquecimento automático imediato (não espera o watchdog de 30min)
-    if(typeof _autoEnrichCycle === "function"){
-      setTimeout(()=>_autoEnrichCycle().catch(e=>console.error("[auto-enrich] trigger upload erro:",e.message)), 3000);
-      console.log(`[auto-enrich] 🔔 Enriquecimento de "${safeKey}" agendado em 3s`);
-    }
+    setTimeout(()=>PLANILHAS.autoEnrichCycle().catch(e=>console.error("[auto-enrich] trigger upload erro:",e.message)), 3000);
+    console.log(`[auto-enrich] 🔔 Enriquecimento de "${safeKey}" agendado em 3s`);
     // 🎯 Se essa é a planilha de Julho 2026 e já existem grupos oficiais
     // importados, aplica na hora — não precisa esperar a próxima importação.
     if(safeKey==="jul2026" && typeof j26ApplyGroupsToSheet==="function"){
@@ -6804,8 +6929,8 @@ ul li{margin-bottom:6px}
       if(r.applied>0) console.log(`[grupos-j26] ✅ ${r.applied} grupo(s) já existente(s) aplicado(s) na planilha recém-publicada.`);
     }
     // 📡 v134: vaga nova entrando no sistema tem que avisar quem tem radar
-    // ligado casando com ela — esse upload manual do admin é hoje o ÚNICO
-    // ponto de entrada de vaga nova nesta reconstrução (sem robô de coleta).
+    // ligado casando com ela (v174: os robôs de coleta/publicação e o de
+    // vagas novas H-2A avisam do mesmo jeito — mod-planilhas.js).
     notificarRadares(valid,`upload:${safeKey}`).catch(e=>console.warn("[radar] notificar upload:",e.message));
     return json(res,200,{ok:true,key:safeKey,count:valid.length,total:vagas.length,duplicatesMerged});
   }
@@ -6870,8 +6995,8 @@ ul li{margin-bottom:6px}
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
     const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
     const key=decodeURIComponent(pathname.split("/").pop());
-    const sheet=key==="jan2026"?SHEET_JAN:key==="jul2025"?SHEET_JUL:SHEET_EXTRAS[key];
-    if(!sheet)return json(res,404,{error:"Planilha não encontrada"});
+    const sheet=getSheet(key); // v174: fonte única — inclui a H-2A built-in
+    if(!sheet||!sheet.length)return json(res,404,{error:"Planilha não encontrada"});
     const fname=`${key}_enriquecida_${new Date().toISOString().slice(0,10)}.json`;
     res.writeHead(200,{
       "Content-Type":"application/json; charset=utf-8",
@@ -6886,8 +7011,8 @@ ul li{margin-bottom:6px}
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
     const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
     const key=pathname.split("/").pop();
-    const sheet=key==="jan2026"?SHEET_JAN:key==="jul2025"?SHEET_JUL:SHEET_EXTRAS[key];
-    if(!sheet)return json(res,404,{error:"Planilha não encontrada"});
+    const sheet=getSheet(key); // v174: fonte única — inclui a H-2A built-in
+    if(!sheet||!sheet.length)return json(res,404,{error:"Planilha não encontrada"});
     const cats={};sheet.forEach(r=>{const c=r.k||"other";cats[c]=(cats[c]||0)+1;});
     const states={};sheet.forEach(r=>{const c=r.s||"?";states[c]=(states[c]||0)+1;});
     const comCity=sheet.filter(r=>r.ci).length;
@@ -13402,14 +13527,12 @@ server.listen(PORT,"0.0.0.0",()=>{
   // e-mails já conhecidos como mortos), só a DESCOBERTA de novos bounces
   // por leitura de inbox parou.
 
-  // ── Auto-Enriquecimento DOL — Motor Autônomo ─────────────────────────
-  // REGRAS:
-  //   • Roda 1x por planilha (controle via DB_SHEETS_META[key].enrichedAt)
-  //   • Cobre TODAS as planilhas: builtins + extras uploadadas
-  //   • Invisível ao usuário — roda 100% server-side sem necessitar sessão
-  //   • Persiste no disco — sobrevive a restart/deploy
-  //   • Watchdog a cada 30min verifica novas planilhas pendentes
-  //   • Admin pode pausar via botão Parar; watchdog retoma automaticamente
+  // ── 📋 v174: robôs de planilha (mod-planilhas.js) — enriquecimento DOL vaga
+  // a vaga (15s, 12h, vigia 30min), frescor (5min, 6h), vagas novas H-2A
+  // (2min, 12h), H-2A do mês (8min, 12h) e H-2B do mês (20min, 12h). No npm
+  // test ficam desligados (o sandbox não alcança o DOL; cada robô é provado
+  // pelas rotas com o feed falso).
+  PLANILHAS.iniciarAgendadores();
 
   // 📊 Resumo Diário do Dono — push às 8h BRT com os números de ontem.
   scheduleResumoDono();

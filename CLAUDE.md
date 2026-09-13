@@ -17,8 +17,9 @@ perfis de currículo, compra direta de plano (Pix → comprovante →
 ativação, sem moeda intermediária), painel admin de contabilidade
 (também por usuário+senha, v172b). **NÃO existe** (removido de propósito nesta
 reconstrução): ranking/gamificação, IA/Gemini, Cérebro Contábil, aba de
-Notícias, chat, seletor de idioma, robôs de coleta de planilha, códigos
-promocionais, multi-servidor, menu/drawer hambúrguer.
+Notícias, chat, seletor de idioma, códigos promocionais, multi-servidor,
+menu/drawer hambúrguer. (Os robôs de coleta/alimentação de planilha VOLTARAM
+por ordem do dono em 13/09/2026 — ver regra 📋 abaixo.)
 
 Se uma tarefa mencionar qualquer uma dessas features removidas, pare e
 confirme com o dono antes de reintroduzir — é bem provável que ele esteja
@@ -105,6 +106,41 @@ se referindo a outro repositório/projeto.
   sem ordem nova.
 - **Português fixo**: o app não tem seletor de idioma nem detecta idioma
   do navegador — é só em português, de propósito.
+- **📋 Alimentação automática das planilhas (v174, dono, 13/09/2026 — "as
+  planilhas devem ser alimentadas, igual elas já são hoje, com todas as
+  informações de cada vaga; esse sistema você pode trazer do h2bapply.com
+  antigo")**: portado pra `mod-planilhas.js` (injeção de dependências por
+  getters — as planilhas em memória são REATRIBUÍDAS no loadSheets, o
+  módulo nunca guarda referência direta). 5 robôs, ligados em
+  `PLANILHAS.iniciarAgendadores()` no bloco de robôs do server.listen:
+  (1) ENRIQUECIMENTO vaga a vaga pela API do DOL (e-mail, cidade, datas,
+  nº de vagas, telefone, salário, SOC, funções, horas, URL) — 1 vaga por
+  vez, backoff em 403/429, salva no disco a CADA vaga e retoma pelo
+  disco (15s pós-boot, 12h, vigia 30min, e no upload de planilha);
+  (2) FRESCOR: status/datas/salário das vagas já completas (H-2B mais
+  nova + H-2A), 120 por ciclo (5min, 6h); (3) VAGAS NOVAS H-2A 2x/dia:
+  ENTRA vaga ativa nova (nunca duplica), SAI inativa (negada/retirada/
+  temporada encerrada), trava se >50% sumiria de uma vez; (4) COLETA do
+  feed ZIP do datahub (dedupe por case number, filtro de qualidade,
+  integridade) → RASCUNHO que o admin publica com 1 clique
+  (`coleta-publish`, idempotente, avisa o radar na 1ª publicação);
+  (5) PLANILHAS DO MÊS (núcleo único `runPlanilhaMensal`): "H-2A <Mês>
+  <Ano>" (chave `h2a-AAAAMM`) PUBLICA SOZINHA acima de
+  `H2A_BIM_MIN_PUBLICAR` (padrão 200) — exceção autorizada por escrito
+  SÓ do H-2A; "H-2B <Mês> <Ano>" (`h2b-AAAAMM`) fica SEMPRE em rascunho
+  (`autoPublish:false` no wrapper — se o dono autorizar por escrito, é
+  trocar ali, nunca no núcleo). A H-2B mensal publicada vira a "H-2B
+  mais nova" sozinha (`latestH2bKey` entende `h2b-AAAAMM`). Painel:
+  aba "Planilhas & Robôs" (`GET /api/admin/planilhas/status` — tudo numa
+  chamada; forçar cada robô; coleta manual com log ao vivo; publicar/
+  enriquecer/baixar/remover por planilha). REGRAS: todo robô só loga e
+  avisa em erro, NUNCA derruba o servidor nem apaga a planilha anterior
+  se a coleta falhar; no `npm test` os agendadores ficam DESLIGADOS
+  (`isTest`) e cada robô é provado pelas rotas com o feed falso do
+  smoke (`DOL_FEED_BASE`); o sandbox não alcança o DOL — enriquecimento
+  real só em produção. Upload manual do admin (`/api/admin/sheet/
+  upload`) agora nasce `published:true` (antes o registro ficava sem o
+  campo e `/api/sheets-list` escondia a planilha de todo usuário).
 - **ZERO envio grátis, sem exceção** (dono, 11-12/09/2026, reforçado várias
   vezes: "nenhum usuário vai ter envio grátis... ninguém sendo free
   consegue enviar nada e nem fazer autenticação"). `PLAN_LIMITS`/

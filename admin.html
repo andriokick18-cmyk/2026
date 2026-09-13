@@ -204,6 +204,31 @@ tbody tr:hover{background:var(--glass2)}
   .row-actions{flex-direction:column;align-items:stretch}
   .row-actions .btn{justify-content:center}
 }
+
+/* ── Planilhas & Robôs (v174) ── */
+.pl-help{font-size:13px;color:var(--t2);margin-bottom:12px;line-height:1.5}
+.pl-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:12px}
+.pl-form .field{margin:0}
+.pl-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pl-note{font-size:12.5px;color:var(--t2)}
+.pl-progress{background:var(--glass2);border-radius:99px;height:8px;overflow:hidden;margin:10px 0}
+.pl-bar{height:100%;width:0;background:var(--blue);border-radius:99px;transition:width .4s ease}
+.pl-log{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11.5px;line-height:1.6;background:rgba(0,0,0,.35);border:1px solid var(--border);border-radius:var(--r);padding:10px;max-height:240px;overflow-y:auto;word-break:break-word}
+.pl-log .ok{color:#34d399}.pl-log .warn{color:#fbbf24}.pl-log .error{color:#f87171}.pl-log .info{color:var(--t2)}
+.pl-log-empty{color:var(--t3)}
+.pl-robos{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:10px}
+.pl-robo{background:var(--glass);border:1px solid var(--border);border-radius:var(--rl);padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.pl-robo-t{font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap}
+.pl-robo-s{font-size:12px;color:var(--t2);line-height:1.45}
+.pl-robo-r{font-size:12.5px;line-height:1.45}
+.pl-robo .btn{align-self:flex-start;margin-top:4px}
+.pl-sheet{background:var(--glass);border:1px solid var(--border);border-left:3px solid var(--blue);border-radius:var(--rl);padding:12px 14px;margin-bottom:10px}
+.pl-sheet.draft{border-left-color:var(--amber)}
+.pl-sheet.h2a{border-left-color:var(--green)}
+.pl-sheet-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pl-sheet-n{font-weight:700;font-size:14px}
+.pl-sheet-m{font-size:12px;color:var(--t2);display:flex;gap:10px;flex-wrap:wrap;margin-top:2px}
+.pl-sheet-a{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
 </style>
 </head>
 <body>
@@ -260,6 +285,8 @@ tbody tr:hover{background:var(--glass2)}
       <button class="sb-item active" data-view="overview" onclick="switchTab('overview')"><i class="ti ti-layout-dashboard"></i> Visão Geral</button>
       <button class="sb-item" data-view="usuarios" onclick="switchTab('usuarios')"><i class="ti ti-users"></i> Usuários</button>
       <button class="sb-item" data-view="pendentes" onclick="switchTab('pendentes')"><i class="ti ti-hourglass"></i> Pedidos Pendentes <span class="pill" id="pill-pendentes" style="display:none">0</span></button>
+      <div class="sb-section">Vagas</div>
+      <button class="sb-item" data-view="planilhas" onclick="switchTab('planilhas')"><i class="ti ti-table-import"></i> Planilhas &amp; Robôs</button>
     </nav>
     <div class="sb-foot">
       <div class="sb-user">
@@ -363,6 +390,79 @@ tbody tr:hover{background:var(--glass2)}
               </table>
             </div>
             <div class="empty" id="pend-empty" style="display:none"><i class="ti ti-check"></i>Nenhum pedido pendente no momento.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ 📋 v174 — PLANILHAS & ROBÔS (ordem do dono, 13/09/2026: "as planilhas
+           devem ser alimentadas, igual elas já são hoje, com todas as informações
+           de cada vaga"). Estado de cada robô, coleta manual do DOL, log do
+           enriquecimento e a lista de planilhas com Publicar em 1 clique. ═══ -->
+      <div class="view" id="view-planilhas">
+        <div class="stat-grid">
+          <div class="stat-card blue"><div class="ic"><i class="ti ti-table"></i></div><div class="lbl">Vagas no ar</div><div class="val" id="pl-total-vagas">—</div><div class="sub" id="pl-total-sheets"></div></div>
+          <div class="stat-card green"><div class="ic"><i class="ti ti-mail-check"></i></div><div class="lbl">Com e-mail</div><div class="val" id="pl-com-email">—</div><div class="sub">prontas pra candidatura</div></div>
+          <div class="stat-card purple"><div class="ic"><i class="ti ti-map-pin"></i></div><div class="lbl">Enriquecidas (DOL)</div><div class="val" id="pl-com-cidade">—</div><div class="sub">cidade, datas, telefone, funções</div></div>
+          <div class="stat-card amber"><div class="ic"><i class="ti ti-robot"></i></div><div class="lbl">Robôs</div><div class="val" id="pl-robos">—</div><div class="sub" id="pl-robos-sub"></div></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title"><i class="ti ti-robot"></i>Robôs automáticos</div>
+            <div class="panel-actions"><button class="btn btn-sm" onclick="loadPlanilhas()"><i class="ti ti-refresh"></i> Atualizar</button></div>
+          </div>
+          <div class="panel-body">
+            <p class="pl-help">Tudo aqui roda sozinho no servidor. Os botões só forçam uma rodada agora — nada precisa de clique pra funcionar.</p>
+            <div class="pl-robos" id="pl-robos-list"><div class="spin"></div></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title"><i class="ti ti-cloud-download"></i>Coleta do DOL (planilha nova)</div>
+          </div>
+          <div class="panel-body">
+            <p class="pl-help">Baixa o feed oficial do seasonaljobs.dol.gov, tira duplicadas e vagas sem e-mail, e salva em <b>rascunho</b> — você revisa e publica com 1 clique na lista abaixo. Datas em branco = tudo que o feed trouxer.</p>
+            <div class="pl-form">
+              <div class="field"><label>Visto</label><select id="dc-visa"><option value="H-2B">H-2B</option><option value="H-2A">H-2A</option></select></div>
+              <div class="field"><label>Chave (única, sem espaços)</label><input type="text" id="dc-key" placeholder="ex.: h2b-outono-2026" maxlength="40"></div>
+              <div class="field"><label>Nome que o usuário vê</label><input type="text" id="dc-name" placeholder="ex.: H-2B Outono 2026" maxlength="80"></div>
+              <div class="field"><label>Início da vaga — de</label><input id="dc-from" type="date"></div>
+              <div class="field"><label>Início da vaga — até</label><input id="dc-to" type="date"></div>
+            </div>
+            <div class="pl-actions">
+              <button class="btn btn-primary" id="dc-start-btn" onclick="plColetaStart()"><i class="ti ti-download"></i> Coletar agora</button>
+              <span class="pl-note" id="dc-note"></span>
+            </div>
+            <div id="dc-area" style="display:none">
+              <div class="pl-progress"><div class="pl-bar" id="dc-bar"></div></div>
+              <div class="pl-log" id="dc-log"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title"><i class="ti ti-world-download"></i>Enriquecimento pelo DOL (vaga por vaga)</div>
+            <div class="panel-actions">
+              <span class="badge gray" id="en-badge">⏹ Parado</span>
+              <button class="btn btn-sm btn-red" id="en-stop" onclick="plEnrichStop()" style="display:none"><i class="ti ti-player-stop"></i> Parar</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <p class="pl-help">Pra cada ETA case number, consulta a API do DOL e completa e-mail, cidade, datas, nº de vagas, telefone, salário, funções e URL. Salva no disco a cada vaga e retoma de onde parou. Roda sozinho 15s após o boot, a cada 12h e no upload de planilha — o botão "Enriquecer DOL" de cada planilha só força.</p>
+            <div id="en-cur" class="pl-note" style="display:none"></div>
+            <div class="pl-progress"><div class="pl-bar" id="en-bar"></div></div>
+            <div class="pl-log" id="en-log"><div class="pl-log-empty">Sem atividade recente.</div></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title"><i class="ti ti-files"></i>Planilhas</div>
+          </div>
+          <div class="panel-body">
+            <div id="pl-list"><div class="spin"></div></div>
           </div>
         </div>
       </div>
@@ -661,7 +761,8 @@ async function atualizarTudo(){
 var TITULOS={
   overview:{t:"Visão Geral",s:"Números exatos, direto do servidor"},
   usuarios:{t:"Usuários por Dias de VIP",s:"Todos os usuários, ordenados por dias restantes"},
-  pendentes:{t:"Pedidos Pendentes",s:"Comprovantes aguardando aprovação"}
+  pendentes:{t:"Pedidos Pendentes",s:"Comprovantes aguardando aprovação"},
+  planilhas:{t:"Planilhas & Robôs",s:"As vagas se alimentam sozinhas do DOL — coleta, enriquecimento e frescor"}
 };
 
 function switchTab(nome){
@@ -675,6 +776,7 @@ function switchTab(nome){
   document.getElementById("tb-title").textContent=tit.t;
   document.getElementById("tb-sub").textContent=tit.s;
   toggleSidebar(false);
+  if(nome==="planilhas")loadPlanilhas();else _plStop();
 }
 
 function toggleSidebar(abrir){
@@ -1219,6 +1321,206 @@ document.addEventListener("keydown",function(ev){
 });
 
 boot();
+
+/* ═══════════════════ PLANILHAS & ROBÔS (v174) ═══════════════════
+   Ordem do dono (13/09/2026): as planilhas se alimentam sozinhas — coleta
+   do DOL, enriquecimento vaga a vaga, frescor, vagas novas H-2A e as
+   planilhas do mês. Esta aba mostra o estado de cada robô numa chamada só
+   (/api/admin/planilhas/status), deixa forçar qualquer um e publica os
+   rascunhos com 1 clique. Poll adaptativo: 2,5s com robô rodando, 15s
+   parado, e para ao sair da aba. Nada de template literal em innerHTML:
+   tudo passa por esc(). */
+var _plTimer=null,_plColetaFimVisto=null; // null = ainda não vi o estado da coleta nesta aba
+function _plG(id){return document.getElementById(id);}
+function _plSet(id,v){var e=_plG(id);if(e)e.textContent=v;}
+function _plNum(n){return Number(n||0).toLocaleString("pt-BR");}
+function _plAgo(ts){if(!ts)return"nunca";var s=Math.floor((Date.now()-ts)/1000);if(s<60)return s+"s atrás";if(s<3600)return Math.floor(s/60)+"min atrás";if(s<86400)return Math.floor(s/3600)+"h atrás";return Math.floor(s/86400)+"d atrás";}
+function _plStop(){if(_plTimer){clearTimeout(_plTimer);_plTimer=null;}}
+function _plBadge(txt,cls){return'<span class="badge '+cls+'">'+esc(txt)+'</span>';}
+function _plLogHtml(lines){
+  if(!lines||!lines.length)return'<div class="pl-log-empty">Sem atividade recente.</div>';
+  return lines.map(function(l){var t=new Date(l.ts||l.t).toLocaleTimeString("pt-BR");return'<div class="'+esc(l.type||"info")+'">'+esc(t)+" "+esc(l.msg)+"</div>";}).join("");
+}
+
+async function loadPlanilhas(){
+  var list=_plG("pl-list");
+  try{
+    var d=await api("/api/admin/sheets");
+    var sheets=d.sheets||[];
+    var noAr=0,comEmail=0,rasc=0;
+    sheets.forEach(function(x){comEmail+=x.withEmail||0;if(x.published)noAr+=x.count||0;else rasc++;});
+    _plSet("pl-total-vagas",_plNum(noAr));
+    _plSet("pl-total-sheets",sheets.length+" planilha"+(sheets.length===1?"":"s")+(rasc?" · "+rasc+" em rascunho":""));
+    _plSet("pl-com-email",_plNum(comEmail));
+    _plSet("pl-com-cidade",_plNum(d.totalEnriched));
+    list.innerHTML=sheets.length?sheets.map(_plSheetCard).join(""):'<div class="empty"><i class="ti ti-file-off"></i>Nenhuma planilha carregada.</div>';
+  }catch(e){list.innerHTML='<div class="empty"><i class="ti ti-alert-triangle"></i>'+esc(e.message)+'</div>';}
+  _plStop();plStatusTick();
+}
+
+function _plSheetCard(sh){
+  var pct=sh.enrichPct||0,st=sh.stats||{};
+  var cls="pl-sheet"+(sh.visaType==="H-2A"?" h2a":"")+(sh.published?"":" draft");
+  var tags=_plBadge(sh.published?"No ar":"Rascunho",sh.published?"green":"amber")+" "+_plBadge(sh.visaType||"H-2B","blue")
+    +(sh.builtin?" "+_plBadge("Built-in","gray"):"")+(sh.source==="coleta-feed"?" "+_plBadge("Coleta DOL","purple"):"");
+  var meta='<span>🗝️ '+esc(sh.key)+'</span><span><b>'+_plNum(sh.count)+'</b> vagas</span><span>📧 '+_plNum(sh.withEmail)+' com e-mail</span>'
+    +(sh.uploaded?'<span>Criada '+esc(fmtData(sh.uploaded))+'</span>':'')
+    +(sh.enrichedAt?'<span>Enriquecida '+esc(_plAgo(sh.enrichedAt))+'</span>':'')
+    +(sh.freshAt?'<span>Frescor '+esc(_plAgo(sh.freshAt))+'</span>':'');
+  var cor=pct>=100?"var(--green)":pct>30?"var(--amber)":"var(--blue)";
+  var bar='<div class="pl-sheet-m" style="margin-top:8px"><span>🔍 DOL: <b>'+pct+'%</b></span><span>🏙️ '+_plNum(st.withCity)+' cidades</span><span>📞 '+_plNum(st.withPhone)+' telefones</span><span>📅 '+_plNum(st.withDate)+' datas</span><span>📝 '+_plNum(st.withDesc)+' descrições</span></div>'
+    +'<div class="pl-progress" style="margin:6px 0 0"><div class="pl-bar" style="width:'+pct+'%;background:'+cor+'"></div></div>';
+  var k=esc(JSON.stringify(sh.key)),n=esc(JSON.stringify(sh.name||sh.key));
+  var acts='<div class="pl-sheet-a">'
+    +(sh.published?"":"<button class=\"btn btn-sm btn-green\" onclick='plPublicar("+k+")'><i class=\"ti ti-speakerphone\"></i> Publicar pros usuários</button>")
+    +"<button class=\"btn btn-sm\" onclick='plStats("+k+")'><i class=\"ti ti-chart-bar\"></i> Estatísticas</button>"
+    +"<button class=\"btn btn-sm\" onclick='plEnrichStart("+k+")'><i class=\"ti ti-world-download\"></i> "+(pct>0?"Re-enriquecer":"Enriquecer DOL")+"</button>"
+    +"<button class=\"btn btn-sm\" onclick='plBaixar("+k+")'><i class=\"ti ti-download\"></i> Baixar JSON</button>"
+    +(sh.builtin?"":"<button class=\"btn btn-sm btn-red\" onclick='plRemover("+k+","+n+")'><i class=\"ti ti-trash\"></i> Remover</button>")
+    +"</div>";
+  return'<div class="'+cls+'"><div class="pl-sheet-h"><div style="flex:1;min-width:200px"><div class="pl-sheet-n">'+esc(sh.name)+'</div><div class="pl-sheet-m">'+meta+'</div></div><div>'+tags+'</div></div>'+bar+acts+'</div>';
+}
+
+async function plStatusTick(){
+  var v=_plG("view-planilhas");
+  if(!v||!v.classList.contains("active")){_plStop();return;}
+  var running=false;
+  try{
+    var d=await api("/api/admin/planilhas/status");
+    _plRenderRobos(d);_plRenderEnrich(d);_plRenderColeta(d);
+    running=!!(d.enrich.running||d.coleta.running||d.fresh.running||d.h2aNovas.running);
+  }catch(e){}
+  _plStop();_plTimer=setTimeout(plStatusTick,running?2500:15000);
+}
+function _plRoboCard(o){
+  return'<div class="pl-robo"><div class="pl-robo-t"><span>'+o.emoji+' '+esc(o.titulo)+'</span>'+o.badge+'</div><div class="pl-robo-s">'+esc(o.desc)+'</div><div class="pl-robo-r">'+o.res+'</div>'
+    +(o.btn?'<button class="btn btn-sm" id="'+o.btn.id+'" onclick="'+o.btn.fn+'"'+(o.btn.off?" disabled":"")+'><i class="ti '+o.btn.ic+'"></i> '+esc(o.btn.lbl)+'</button>':'')+'</div>';
+}
+function _plRenderRobos(d){
+  var en=d.enrich||{},fr=d.fresh||{},hn=d.h2aNovas||{},ma=d.mensalH2a||{},mb=d.mensalH2b||{},co=d.coleta||{};
+  var rodando=[en.running&&"enriquecimento",co.running&&"coleta",fr.running&&"frescor",hn.running&&"vagas novas H-2A"].filter(Boolean);
+  _plSet("pl-robos",d.agendado?"Ligados":"Só manual");
+  _plSet("pl-robos-sub",rodando.length?"rodando agora: "+rodando.join(", "):d.agendado?"todos agendados, nenhum rodando agora":"agendadores desligados (modo teste)");
+  var cards=[
+    {emoji:"🤖",titulo:"Enriquecimento DOL",badge:_plBadge(en.running?"⚡ Rodando":"⏹ Parado",en.running?"green":"gray"),
+     desc:"Completa cada vaga pela API do DOL (e-mail, cidade, datas, nº de vagas, telefone, salário, funções, URL). 15s após o boot, a cada 12h e no upload de planilha; vigia a cada 30min.",
+     res:en.running?"Planilha <b>"+esc(en.sheetKey||"?")+"</b> — "+_plNum(en.done)+"/"+_plNum(en.total)+" (ok "+_plNum(en.ok)+" · sem e-mail "+_plNum(en.noEmail)+" · erros "+_plNum(en.errors)+")":"Último salvamento: "+esc(en.savedAt?fmtData(en.savedAt):"nunca")+". Use \"Enriquecer DOL\" de cada planilha pra forçar."},
+    {emoji:"🔄",titulo:"Planilha sempre fresca",badge:_plBadge(fr.running?"⚡ Rodando":"⏹ Parado",fr.running?"green":"gray"),
+     desc:"Confere no DOL status, datas e salário das vagas já completas (H-2B mais nova + H-2A), 120 por ciclo. 5min após o boot e a cada 6h.",
+     res:"Última rodada: "+esc(_plAgo(fr.lastRunAt))+(fr.sheetKey?" em <b>"+esc(fr.sheetKey)+"</b>":"")+" — "+_plNum(fr.checked)+" conferida(s), "+_plNum(fr.changed)+" atualizada(s).",
+     btn:{id:"pl-btn-fresh",fn:"plFreshRun()",ic:"ti-refresh",lbl:"Conferir agora",off:!!(fr.running||en.running)}},
+    {emoji:"🌾",titulo:"Vagas novas H-2A",badge:_plBadge(hn.running?"⚡ Rodando":hn.lastError?"⚠️ Erro":"⏹ Parado",hn.running?"green":hn.lastError?"amber":"gray"),
+     desc:"2x/dia sincroniza a planilha H-2A com o feed oficial: ENTRA vaga ativa nova (nunca duplica) e SAI inativa (negada/retirada/temporada encerrada). Trava se mais da metade sumiria de uma vez.",
+     res:"Última rodada: "+esc(_plAgo(hn.lastRunAt))+" — +"+_plNum(hn.lastAdded)+" novas · −"+_plNum(hn.lastRemoved)+" inativas (acumulado +"+_plNum(hn.totalAdded)+" / −"+_plNum(hn.totalRemoved)+", "+_plNum(hn.runs)+" rodadas). Planilha H-2A: <b>"+_plNum(hn.totalPlanilha)+"</b> vagas."+(hn.lastError?"<br>⚠️ "+esc(hn.lastError):""),
+     btn:{id:"pl-btn-h2a-novas",fn:"plH2aNovasRun()",ic:"ti-plant-2",lbl:"Buscar novas agora",off:!!hn.running}},
+    {emoji:"🌾",titulo:"H-2A do mês (publica sozinha)",badge:_plBadge(ma.lastKey?"Última: "+ma.lastKey:"Nunca rodou",ma.lastKey?"blue":"gray"),
+     desc:"Todo mês nasce a \"H-2A <Mês> <Ano>\" com as vagas dos últimos 90 dias (6 feeds do DOL). Publica sozinha se passar na guarda de qualidade; senão fica em rascunho.",
+     res:ma.lastRunAt?"Última: "+esc(fmtData(ma.lastRunAt))+" — "+_plNum(ma.lastCount)+" vagas, "+(ma.lastPublished?"publicada sozinha":"em rascunho")+".":"Roda 8min após o boot e checa a cada 12h.",
+     btn:{id:"pl-btn-h2a-mes",fn:"plMensalRun('h2a')",ic:"ti-calendar-repeat",lbl:"Gerar/refazer a do mês",off:!!co.running}},
+    {emoji:"🧊",titulo:"H-2B do mês (sempre rascunho)",badge:_plBadge(mb.lastKey?"Última: "+mb.lastKey:"Nunca rodou",mb.lastKey?"blue":"gray"),
+     desc:"Todo mês nasce a \"H-2B <Mês> <Ano>\" (últimos 90 dias). Fica SEMPRE em rascunho — você revisa e publica com 1 clique na lista de planilhas.",
+     res:mb.lastRunAt?"Última: "+esc(fmtData(mb.lastRunAt))+" — "+_plNum(mb.lastCount)+" vagas, "+(mb.lastPublished?"já publicada":"em rascunho")+".":"Roda 20min após o boot e checa a cada 12h.",
+     btn:{id:"pl-btn-h2b-mes",fn:"plMensalRun('h2b')",ic:"ti-calendar-repeat",lbl:"Gerar/refazer a do mês",off:!!co.running}}
+  ];
+  _plG("pl-robos-list").innerHTML=cards.map(_plRoboCard).join("");
+}
+function _plRenderEnrich(d){
+  var en=d.enrich||{};
+  var done=en.total>0&&en.done>=en.total;
+  var b=_plG("en-badge");
+  b.className="badge "+(en.running?"green":done?"blue":"gray");
+  b.textContent=en.running?"⚡ Rodando":done?"✅ Concluído":"⏹ Parado";
+  _plG("en-stop").style.display=en.running?"":"none";
+  var cur=_plG("en-cur");
+  if(en.running||en.sheetKey){cur.style.display="";cur.textContent=(en.running?"Processando ":"Última planilha: ")+(en.sheetKey||"?")+" — vaga "+_plNum(en.done)+" de "+_plNum(en.total)+(en.savedAt?" · salvo "+_plAgo(en.savedAt):"");}
+  else cur.style.display="none";
+  _plG("en-bar").style.width=(en.total>0?Math.round(en.done/en.total*100):0)+"%";
+  var log=_plG("en-log");var atEnd=log.scrollHeight-log.scrollTop-log.clientHeight<40;
+  log.innerHTML=_plLogHtml(d.enrichLog);if(atEnd)log.scrollTop=log.scrollHeight;
+}
+function _plRenderColeta(d){
+  var co=d.coleta||{};
+  if(co.running||co.finishedAt)_plG("dc-area").style.display="";
+  _plG("dc-bar").style.width=(co.running?Math.max(1,co.progress||1):co.finishedAt?100:0)+"%";
+  var log=_plG("dc-log");var atEnd=log.scrollHeight-log.scrollTop-log.clientHeight<40;
+  log.innerHTML=_plLogHtml(d.coletaLog);if(atEnd)log.scrollTop=log.scrollHeight;
+  var note=_plG("dc-note");
+  if(co.running)note.textContent="⏳ Coletando "+(co.key||"")+" — "+(co.progress||0)+"%";
+  else if(co.finishedAt&&co.error)note.textContent="❌ "+co.error;
+  else if(co.finishedAt)note.textContent="✅ "+_plNum(co.count)+" vagas em "+(co.key||"")+(co.published?" — já publicada.":" — em rascunho, publique na lista abaixo.");
+  else note.textContent="";
+  _plG("dc-start-btn").disabled=!!co.running;
+  // 1º tick da aba só memoriza o fim da última coleta (pode ser de antes de
+  // abrir a aba); a partir daí, todo fim NOVO recarrega a lista de planilhas.
+  if(_plColetaFimVisto===null)_plColetaFimVisto=co.finishedAt||0;
+  else if(co.finishedAt&&co.finishedAt!==_plColetaFimVisto){_plColetaFimVisto=co.finishedAt;loadPlanilhas();}
+}
+
+async function plColetaStart(){
+  var visa=_plG("dc-visa").value,key=(_plG("dc-key").value||"").trim().toLowerCase(),name=(_plG("dc-name").value||"").trim();
+  if(!key)return toast("Informe a chave da planilha.","err");
+  if(!confirm("Coletar do DOL agora a planilha \""+(name||key)+"\" ("+visa+")?\n\nEla fica em RASCUNHO — só aparece pros usuários depois que você publicar."))return;
+  var btn=_plG("dc-start-btn");btn.disabled=true;
+  try{
+    await api("/api/admin/sheet/coleta-start",{method:"POST",body:{visa:visa,sheetKey:key,sheetName:name,beginFrom:_plG("dc-from").value,beginTo:_plG("dc-to").value}});
+    _plG("dc-area").style.display="";_plG("dc-log").innerHTML="";
+    toast("Coleta iniciada — acompanhe o log.","ok");_plStop();plStatusTick();
+  }catch(e){toast(e.message,"err");btn.disabled=false;}
+}
+async function plPublicar(key){
+  if(!confirm("Publicar a planilha \""+key+"\" pra TODOS os usuários agora (Manual + Automático)?"))return;
+  try{var d=await api("/api/admin/sheet/coleta-publish",{method:"POST",body:{key:key}});toast("📢 Publicada: "+_plNum(d.count)+" vagas no ar.","ok");loadPlanilhas();}
+  catch(e){toast(e.message,"err");}
+}
+async function plMensalRun(tipo){
+  var h2a=tipo==="h2a";var btn=_plG(h2a?"pl-btn-h2a-mes":"pl-btn-h2b-mes");
+  if(!confirm(h2a?"Gerar/refazer a planilha H-2A deste mês agora?\n\nSe passar na guarda de qualidade ela PUBLICA sozinha.":"Gerar/refazer a planilha H-2B deste mês agora?\n\nEla fica em RASCUNHO até você publicar."))return;
+  if(btn)btn.disabled=true;
+  try{
+    var d=await api("/api/admin/sheet/"+(h2a?"h2a-bimestral-run":"h2b-mensal-run"),{method:"POST",body:{force:true}});
+    toast((h2a?"🌾":"🧊")+" Montando \""+(d.nome||d.key)+"\" — acompanhe no log da coleta.","ok");
+    _plG("dc-area").style.display="";_plStop();plStatusTick();
+  }catch(e){toast(e.message,"err");if(btn)btn.disabled=false;}
+}
+async function plH2aNovasRun(){
+  var btn=_plG("pl-btn-h2a-novas");if(btn)btn.disabled=true;
+  try{
+    var d=await api("/api/admin/sheet/h2a-novas-run",{method:"POST",body:{}});
+    toast((d.added||d.removidas)?"🌾 +"+_plNum(d.added)+" novas · −"+_plNum(d.removidas)+" inativas — total "+_plNum(d.total):"🌾 Nada mudou — "+_plNum(d.jaTinha)+" do feed já estavam (total "+_plNum(d.total)+")","ok");
+    loadPlanilhas();
+  }catch(e){toast(e.message,"err");if(btn)btn.disabled=false;}
+}
+async function plFreshRun(){
+  try{await api("/api/admin/sheet/fresh-run",{method:"POST",body:{}});toast("🔄 Conferindo status/datas/salário no DOL — acompanhe no card do robô.","ok");_plStop();plStatusTick();}
+  catch(e){toast(e.message,"err");}
+}
+async function plEnrichStart(key){
+  if(!confirm("Enriquecer \""+key+"\" pelo DOL agora?\n\n1 vaga por vez, educado com o DOL — pode levar horas numa planilha grande. Salva a cada vaga; dá pra parar e retomar quando quiser."))return;
+  try{await api("/api/admin/enrich/start",{method:"POST",body:{sheetKey:key,resume:true}});toast("🤖 Bot iniciado em \""+key+"\".","ok");_plStop();plStatusTick();}
+  catch(e){toast(e.message,"err");}
+}
+async function plEnrichStop(){
+  try{await api("/api/admin/enrich/stop",{method:"POST",body:{}});toast("⏹ Bot parado — progresso salvo.","ok");_plStop();plStatusTick();}
+  catch(e){toast(e.message,"err");}
+}
+function plBaixar(key){
+  var a=document.createElement("a");a.href="/api/admin/sheet/download/"+encodeURIComponent(key);a.download=key+".json";document.body.appendChild(a);a.click();a.remove();
+}
+async function plRemover(key,name){
+  if(!confirm("Remover a planilha \""+name+"\" ("+key+")?\n\nAs vagas dela somem do Manual e do Automático. Não dá pra desfazer."))return;
+  try{await api("/api/admin/sheet/"+encodeURIComponent(key),{method:"DELETE"});toast("Planilha removida.","ok");loadPlanilhas();}
+  catch(e){toast(e.message,"err");}
+}
+async function plStats(key){
+  try{
+    var d=await api("/api/admin/sheet/stats/"+encodeURIComponent(key));
+    var row=function(a,b){return'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:13px"><span>'+esc(a)+'</span><b>'+_plNum(b)+'</b></div>';};
+    var card=function(l,v){return'<div style="background:var(--glass2);border-radius:var(--r);padding:10px;text-align:center"><div style="font-size:20px;font-weight:800">'+_plNum(v)+'</div><div style="font-size:11px;color:var(--t2)">'+esc(l)+'</div></div>';};
+    var html='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">'+card("Total de vagas",d.total)+card("Com e-mail",d.comEmail)+card("Com cidade",d.comCity)+card("Com descrição",d.comDesc)+'</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px"><div><div class="pl-help">Por categoria</div>'+(d.categorias||[]).slice(0,10).map(function(c){return row(c[0],c[1]);}).join("")+'</div><div><div class="pl-help">Por estado</div>'+(d.estados||[]).slice(0,10).map(function(c){return row(c[0],c[1]);}).join("")+'</div></div>';
+    abrirModalInfo("📊 "+key,html);
+  }catch(e){toast(e.message,"err");}
+}
 </script>
 </body>
 </html>

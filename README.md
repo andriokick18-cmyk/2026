@@ -18,6 +18,13 @@ período, paga via Pix e sobe o comprovante diretamente.
   obrigatório por perfil)
 - Exibe vagas das planilhas DOL (Jan/2026, Jul/2025, Jul/2026, H-2A) e
   "Vagas ao Vivo" (busca direta ao DOL)
+- Alimenta as planilhas sozinho (v174, `mod-planilhas.js`): coleta do feed
+  oficial do DOL (rascunho → o admin publica com 1 clique), enriquecimento
+  vaga a vaga pela API do DOL (e-mail, cidade, datas, nº de vagas, telefone,
+  salário, funções, URL), frescor (status/datas/salário), vagas novas H-2A
+  2x/dia e as planilhas do mês ("H-2A <Mês> <Ano>" publica sozinha acima do
+  mínimo; "H-2B <Mês> <Ano>" fica sempre em rascunho). Aba "Planilhas &
+  Robôs" no painel admin
 - Onboarding obrigatório com perfis separados H-2B e H-2A (pelo menos um dos
   dois precisa ser criado antes de usar o app)
 - Compra direta de plano (VIP/VIPro/DoublePro): escolhe plano+período, vê o
@@ -32,8 +39,7 @@ período, paga via Pix e sobe o comprovante diretamente.
 ## O que NÃO existe (removido de propósito nesta reconstrução)
 
 Ranking/gamificação, chat com IA, Cérebro Contábil, aba de Notícias, seletor
-de idioma (o app é só em português), robôs de coleta automática de planilhas
-(as planilhas são estáticas), códigos promocionais, Vagas Salvas, aba
+de idioma (o app é só em português), códigos promocionais, Vagas Salvas, aba
 Enviadas (histórico continua existindo internamente pra evitar duplicatas,
 só não tem mais uma tela dedicada de navegação), menu/drawer hambúrguer.
 

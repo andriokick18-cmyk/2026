@@ -1700,6 +1700,120 @@ async function testAuthWatchdogPush() {
         "limite por plano não propagado no front/mensagens");
     }
 
+    // ═══ 📋 v174: ALIMENTAÇÃO AUTOMÁTICA DAS PLANILHAS (ordem do dono, 13/09) ═══
+    // Portado do site antigo: coleta do feed do DOL (rascunho → publicar),
+    // vagas novas H-2A (entra nova / sai inativa), planilhas do mês (H-2A
+    // publica sozinha acima do mínimo; H-2B SEMPRE rascunho) e o painel.
+    // Feed falso (FEED_PORT): 14 vagas válidas + 1 duplicada + 1 sem e-mail.
+    {
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
+      const plSt0 = await get("/api/admin/planilhas/status");
+      check("📋 v174: painel dos robôs responde numa chamada só (enrich/fresh/h2aNovas/coleta/mensais) e os agendadores ficam DESLIGADOS no npm test",
+        plSt0.json?.ok === true && plSt0.json.agendado === false && ["enrich", "fresh", "h2aNovas", "coleta", "mensalH2a", "mensalH2b"].every((k) => plSt0.json[k] && typeof plSt0.json[k] === "object"),
+        plSt0.body.slice(0, 200));
+      const enSt = await get("/api/admin/enrich/status");
+      const enBad = await req2("POST", "/api/admin/enrich/start", { sheetKey: "nao-existe-2099" });
+      check("📋 v174: enriquecimento — status parado (nunca gasta DOL sozinho no teste) e start numa planilha inexistente é 404",
+        enSt.json?.ok === true && enSt.json.running === false && enBad.status === 404, `st=${enSt.body.slice(0, 80)} start=${enBad.status}`);
+      // 📥 COLETA manual (rascunho → publicar)
+      const cs = await req2("POST", "/api/admin/sheet/coleta-start", { visa: "H-2B", sheetKey: "teste2099", sheetName: "Teste 2099" });
+      check("📥 v174: coleta-start aceita e dispara em background", cs.json?.ok === true && cs.json.key === "teste2099", cs.body.slice(0, 120));
+      let stC = null;
+      for (let i = 0; i < 40; i++) { await new Promise((r) => setTimeout(r, 250)); stC = (await get("/api/admin/sheet/coleta-status")).json; if (stC && stC.running === false && stC.finishedAt) break; }
+      check("📥 v174: coleta terminou: 14 vagas (dedupe tirou a duplicada, qualidade tirou a sem e-mail), 100% e em RASCUNHO",
+        stC?.running === false && !stC?.error && stC?.count === 14 && stC?.progress === 100 && stC?.published === false,
+        JSON.stringify({ count: stC?.count, error: stC?.error, published: stC?.published }));
+      const sl1 = await get("/api/sheets-list");
+      const admL = await get("/api/admin/sheets");
+      check("🔒 v174: rascunho NÃO aparece pros usuários, mas o admin vê com published:false (e a H-2A built-in agora está na lista do painel)",
+        !(sl1.json?.sheets || []).some((x) => x.key === "teste2099") && (admL.json?.sheets || []).some((x) => x.key === "teste2099" && x.published === false && x.withEmail === 14) && (admL.json?.sheets || []).some((x) => x.key === "h2a-jun2026" && x.builtin === true),
+        JSON.stringify((admL.json?.sheets || []).map((x) => [x.key, x.published])));
+      const pub = await req2("POST", "/api/admin/sheet/coleta-publish", { key: "teste2099" });
+      const sl2 = await get("/api/sheets-list");
+      const sm2 = await get("/api/sheet-meta?sheet=teste2099&skip=0&top=5");
+      check("📢 v174: publicar libera a planilha pros usuários (lista + Manual abre as vagas)",
+        pub.json?.ok === true && pub.json.count === 14 && (sl2.json?.sheets || []).some((x) => x.key === "teste2099" && x.count === 14) && Array.isArray(sm2.json?.jobs) && sm2.json.jobs.length > 0,
+        `pub=${pub.body.slice(0, 80)} meta=${sm2.body.slice(0, 80)}`);
+      const pub2 = await req2("POST", "/api/admin/sheet/coleta-publish", { key: "teste2099" });
+      check("📢 v174: publicar de novo é idempotente (jaPublicada) — o radar nunca é avisado 2x", pub2.json?.ok === true && pub2.json.jaPublicada === true, pub2.body.slice(0, 100));
+      // 🌾 VAGAS NOVAS H-2A — o total esperado sai do PRÓPRIO bundle com a
+      // MESMA regra de inatividade (status morto OU temporada encerrada).
+      const _h2aBundle = JSON.parse(fs.readFileSync(path.join(__dirname, "h2a_jun2026_compact.json"), "utf8"));
+      const _hojeISO = new Date().toISOString().slice(0, 10);
+      const _deadRe = /denied|withdrawn|invalidat|expired|cancel/i;
+      const h2aVivas = _h2aBundle.filter((r) => !_deadRe.test(String(r.st || "")) && !(r.de && /^\d{4}-\d{2}-\d{2}$/.test(r.de) && r.de < _hojeISO)).length;
+      const hn1 = await req2("POST", "/api/admin/sheet/h2a-novas-run", {});
+      check("🌾 v174: Vagas Novas H-2A sincroniza — entram as 14 novas do feed, saem as de temporada encerrada",
+        hn1.json?.ok === true && hn1.json.added === 14 && hn1.json.total === h2aVivas + 14, `esperado total=${h2aVivas + 14} | ` + hn1.body.slice(0, 160));
+      const hn2 = await req2("POST", "/api/admin/sheet/h2a-novas-run", {});
+      check("🌾 v174: 2ª rodada não duplica NADA (0 novas, total estável)",
+        hn2.json?.ok === true && hn2.json.added === 0 && hn2.json.jaTinha >= 14 && hn2.json.total === h2aVivas + 14, hn2.body.slice(0, 160));
+      fs.writeFileSync(path.join(DATA, "h2a_feed_withdraw.flag"), "1");
+      const hn3 = await req2("POST", "/api/admin/sheet/h2a-novas-run", {});
+      fs.unlinkSync(path.join(DATA, "h2a_feed_withdraw.flag"));
+      check("🌾 v174: vaga que virou 'withdrawn' no DOL é RETIRADA da planilha (status atualizado + removida)",
+        hn3.json?.ok === true && hn3.json.removidas === 1 && hn3.json.atualizadas >= 1 && hn3.json.total === h2aVivas + 13, hn3.body.slice(0, 160));
+      const slH2aN = await get("/api/sheets-list");
+      const _h2aRow = (slH2aN.json?.sheets || []).find((x) => x.key === "h2a-jun2026");
+      check("🌾 v174: vagas novas H-2A já contam como disponíveis pros usuários (planilha H-2A de sempre, sem aba nova)",
+        _h2aRow && _h2aRow.count === h2aVivas + 13 && _h2aRow.available >= 13, JSON.stringify(_h2aRow || {}).slice(0, 140));
+      // 📅 H-2A DO MÊS — publica sozinha (H2A_BIM_MIN_PUBLICAR=10 no env do teste)
+      const bim1 = await req2("POST", "/api/admin/sheet/h2a-bimestral-run", {});
+      check("🌾 v174: última rodada há 1 mês (fixture) → o disparo MENSAL responde NA HORA (started:true) com a chave do mês",
+        bim1.json?.ok === true && bim1.json.started === true && /^h2a-\d{6}$/.test(bim1.json.key || ""), bim1.body.slice(0, 160));
+      let bimSt = null;
+      for (let i = 0; i < 60; i++) { await new Promise((r) => setTimeout(r, 250)); bimSt = (await get("/api/admin/sheet/coleta-status")).json; if (bimSt && !bimSt.running && bimSt.finishedAt && bimSt.key === bim1.json?.key) break; }
+      check("🌾 v174: robô junta 6 feeds (90 dias), dedupa, PUBLICA sozinho (acima do mínimo) e reporta 100%",
+        bimSt && bimSt.error === null && bimSt.count === 14 && bimSt.published === true && bimSt.progress === 100 && bimSt.bimestral?.lastKey === bim1.json?.key && bimSt.bimestral?.lastPublished === true,
+        JSON.stringify({ error: bimSt?.error, count: bimSt?.count, published: bimSt?.published, lastKey: bimSt?.bimestral?.lastKey }));
+      const shlBim = await get("/api/sheets-list");
+      const _shBim = (shlBim.json?.sheets || []).find((x) => x.key === bim1.json?.key);
+      check("🌾 v174: a \"H-2A <Mês> <Ano>\" já aparece na lista dos usuários (visa H-2A, nome certo)",
+        _shBim && _shBim.count === 14 && _shBim.visa === "H-2A" && /^H-2A /.test(String(_shBim.name || "")), JSON.stringify(_shBim || {}).slice(0, 160));
+      const bim2 = await req2("POST", "/api/admin/sheet/h2a-bimestral-run", {});
+      check("🌾 v174: rodar de novo DENTRO do mesmo mês é recusado (409 skipped) — nunca duplica planilha",
+        bim2.status === 409 && bim2.json?.skipped === true, `status=${bim2.status} body=${bim2.body.slice(0, 120)}`);
+      const bim3 = await req2("POST", "/api/admin/sheet/h2a-bimestral-run", { force: true });
+      let bimSt3 = null;
+      for (let i = 0; i < 60; i++) { await new Promise((r) => setTimeout(r, 250)); bimSt3 = (await get("/api/admin/sheet/coleta-status")).json; if (bimSt3 && !bimSt3.running && bimSt3.finishedAt && bimSt3.startedAt > (bimSt?.startedAt || 0)) break; }
+      check("🌾 v174: force=true refaz a do mês do zero (MESMA chave, sem duplicar)",
+        bim3.json?.ok === true && bim3.json.key === bim1.json?.key && bimSt3?.count === 14 && bimSt3?.error === null,
+        `resp=${bim3.body.slice(0, 100)} status=${JSON.stringify({ count: bimSt3?.count, error: bimSt3?.error })}`);
+      // 🧊 H-2B DO MÊS — RASCUNHO SEMPRE (auto-publicar é exceção SÓ do H-2A)
+      const h2b1 = await req2("POST", "/api/admin/sheet/h2b-mensal-run", { force: true });
+      check("🧊 v174: robô H-2B mensal dispara em background (started:true) com a chave do mês",
+        h2b1.json?.ok === true && h2b1.json.started === true && /^h2b-\d{6}$/.test(h2b1.json.key || ""), h2b1.body.slice(0, 160));
+      let h2bSt = null;
+      for (let i = 0; i < 60; i++) { await new Promise((r) => setTimeout(r, 250)); h2bSt = (await get("/api/admin/sheet/coleta-status")).json; if (h2bSt && !h2bSt.running && h2bSt.finishedAt && h2bSt.key === h2b1.json?.key) break; }
+      check("🧊 v174: coleta os 6 feeds H-2B (14 válidas) e fica em RASCUNHO mesmo acima do mínimo — publicar sozinho segue SÓ do H-2A",
+        h2bSt && h2bSt.error === null && h2bSt.count === 14 && h2bSt.published === false && h2bSt.progress === 100 && h2bSt.mensalH2b?.lastKey === h2b1.json?.key && h2bSt.mensalH2b?.lastPublished === false,
+        JSON.stringify({ error: h2bSt?.error, count: h2bSt?.count, published: h2bSt?.published, lastKey: h2bSt?.mensalH2b?.lastKey }));
+      const shlH2bDraft = await get("/api/sheets-list");
+      check("🧊 v174: em rascunho, a H-2B do mês NÃO aparece pros usuários",
+        !(shlH2bDraft.json?.sheets || []).some((x) => x.key === h2b1.json?.key), JSON.stringify((shlH2bDraft.json?.sheets || []).map((x) => x.key)));
+      const h2bPub = await req2("POST", "/api/admin/sheet/coleta-publish", { key: h2b1.json?.key });
+      const shlH2bPub = await get("/api/sheets-list");
+      const _shH2b = (shlH2bPub.json?.sheets || []).find((x) => x.key === h2b1.json?.key);
+      check("🧊 v174: publicada com 1 clique, a \"H-2B <Mês> <Ano>\" aparece pra todo mundo e vira a H-2B MAIS NOVA (latestH2b)",
+        h2bPub.json?.ok === true && h2bPub.json.count === 14 && _shH2b && _shH2b.count === 14 && /^H-2B /.test(String(_shH2b.name || "")) && shlH2bPub.json?.latestH2b === h2b1.json?.key && _shH2b.latest === true,
+        JSON.stringify({ pub: h2bPub.body.slice(0, 80), row: _shH2b, latest: shlH2bPub.json?.latestH2b }));
+      const h2b2 = await req2("POST", "/api/admin/sheet/h2b-mensal-run", {});
+      check("🧊 v174: rodar de novo DENTRO do mesmo mês sem force é recusado (409)",
+        h2b2.status === 409 && h2b2.json?.skipped === true, `status=${h2b2.status} body=${h2b2.body.slice(0, 120)}`);
+      // 🔒 admin-only + estrutural
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
+      const pl403 = await Promise.all([req2("POST", "/api/admin/sheet/h2a-bimestral-run", {}), req2("POST", "/api/admin/sheet/coleta-start", { sheetKey: "x" }), get("/api/admin/planilhas/status"), req2("POST", "/api/admin/sheet/coleta-publish", { key: "teste2099" })]);
+      check("🔒 v174: usuário comum recebe 403 nos robôs de planilha (admin-only)", pl403.every((r) => r.status === 403), pl403.map((r) => r.status).join(","));
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      const _srvPl = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      const _modPl = fs.readFileSync(path.join(__dirname, "mod-planilhas.js"), "utf8");
+      const _admPl = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
+      check("📋 v174: (estrutural) agendadores ligados no boot (PLANILHAS.iniciarAgendadores), H-2B mensal NUNCA publica sozinha (autoPublish:false) e a H-2A sim, upload dispara o enriquecimento e o painel tem a aba Planilhas & Robôs",
+        _srvPl.includes("PLANILHAS.iniciarAgendadores()") && /runH2bMensal[\s\S]{0,400}autoPublish: false/.test(_modPl) && /runH2aMensal[\s\S]{0,400}autoPublish: true/.test(_modPl) && _srvPl.includes("PLANILHAS.autoEnrichCycle()") &&
+        _admPl.includes('data-view="planilhas"') && _admPl.includes("function loadPlanilhas(") && _admPl.includes("/api/admin/planilhas/status") && _admPl.includes("/api/admin/sheet/coleta-publish"),
+        "estrutura do v174 incompleta");
+    }
+
     // ═══ 📡 v134: RADAR DE VAGAS (aprovado pelo dono) + funil do limite ═══
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radaruser@test.com", name: "Radar User" });
     const rdVazio = await req2("POST", "/api/radar", { estados: [], cidade: "", q: "" });
@@ -1712,11 +1826,10 @@ async function testAuthWatchdogPush() {
     const rdOff = await req2("POST", "/api/radar", { remove: true });
     const rdGet2 = await get("/api/radar");
     check("📡 v134: desligar o radar remove de verdade", rdOff.json?.ok === true && rdGet2.json?.radar === null, rdGet2.body.slice(0, 100));
-    // Nesta reconstrução não existem robôs de coleta automática (README) —
-    // o único ponto onde vaga nova entra no sistema é o upload manual do
-    // admin (/api/admin/sheet/upload), então é ELE que precisa disparar o
-    // radar. Teste comportamental de ponta a ponta em vez de só contar
-    // chamadas de notificarRadares() no texto do server.js.
+    // v174: além do upload manual do admin, a coleta do DOL, a publicação de
+    // rascunho e as vagas novas H-2A também avisam o radar (bloco 📋 acima);
+    // aqui fica a prova comportamental do caminho do upload, de ponta a
+    // ponta, em vez de só contar chamadas de notificarRadares() no texto.
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radaruser@test.com", name: "Radar User" });
     // estado no formato NOME POR EXTENSO — é o que o front realmente manda
     // (o VF guarda "MASSACHUSETTS", não a sigla "MA" — normalizeStateName no
