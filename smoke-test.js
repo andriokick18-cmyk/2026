@@ -1672,6 +1672,34 @@ async function testAuthWatchdogPush() {
         /FILTROS\.wageHora\(r\)\}\)\)\.sort\(\(a,b\)=>b\.w-a\.w\)/.test(_srv173) && !/const pw=r=>\{\s*if\(!r\.w\)return -1;/.test(_srv173), "sort=wage divergiu do motor");
     }
 
+    // ═══ 📧 ORDEM DO DONO (13/09/2026): e-mails de envio por plano — grátis 0
+    // (nem vincula Gmail), VIP/VIPro 1 (só o principal), DoublePro 2, admin 6.
+    // Cortesia (code) e trial contam como sem plano pago. ═══
+    {
+      const _exp = Date.now() + 30 * 86400_000;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "snd-free@test.com", name: "Snd Free" });
+      const sFree = (await get("/api/status")).json;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "snd-vip@test.com", name: "Snd VIP", vip: { manualExpires: _exp, active: true, plan: "vip", source: "pix" }, plan: "vip" });
+      const sVip = (await get("/api/status")).json;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "snd-vipro@test.com", name: "Snd VIPro", vip: { manualExpires: _exp, autoExpires: _exp, active: true, plan: "vipro", source: "pix" }, plan: "vipro" });
+      const sVipro = (await get("/api/status")).json;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "snd-dp@test.com", name: "Snd DP", vip: { manualExpires: _exp, autoExpires: _exp, active: true, plan: "doublepro", source: "pix" }, plan: "doublepro" });
+      const sDp = (await get("/api/status")).json;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "snd-code@test.com", name: "Snd Code", vip: { manualExpires: _exp, autoExpires: _exp, active: true, plan: "doublepro", source: "code" }, plan: "doublepro" });
+      const sCode = (await get("/api/status")).json;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      const sAdm = (await get("/api/status")).json;
+      check("📧 ordem 13/09: e-mails de envio por plano — grátis 0 · VIP 1 · VIPro 1 · DoublePro 2 · cortesia (code) 0 · admin 6 (senderMax do /api/status = getMaxSenders, fonte única)",
+        sFree.senderMax === 0 && sVip.senderMax === 1 && sVipro.senderMax === 1 && sDp.senderMax === 2 && sCode.senderMax === 0 && sAdm.senderMax === 6,
+        JSON.stringify({ free: sFree.senderMax, vip: sVip.senderMax, vipro: sVipro.senderMax, dp: sDp.senderMax, code: sCode.senderMax, adm: sAdm.senderMax }));
+      const _srvSnd = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      const _appSnd = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      check("📧 ordem 13/09: (estrutural) as 3 travas de Gmail extra (add-sender + 2 callbacks) explicam pelo PLANO (_msgLimiteSenders), o front mostra o nº de e-mails nos cards de plano (plan_emails_*) e a legenda do robô cobre 0/1/2/admin nas 3 línguas",
+        (_srvSnd.match(/_msgLimiteSenders\(/g) || []).length >= 3 && /MAX_SENDER_EMAILS_DOUBLEPRO/.test(_srvSnd) && !/VIP Exclusivo/.test(fs.readFileSync(path.join(__dirname, "index.html"), "utf8")) &&
+        ["snd_hint_admin", "snd_hint_dp", "snd_hint_1", "snd_hint_0", "plan_emails_1", "plan_emails_2"].every(k => (_appSnd.match(new RegExp(`"${k}":`, "g")) || []).length === 3) && !/U\.senderMax\|\|1/.test(_appSnd),
+        "limite por plano não propagado no front/mensagens");
+    }
+
     // ═══ 📡 v134: RADAR DE VAGAS (aprovado pelo dono) + funil do limite ═══
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radaruser@test.com", name: "Radar User" });
     const rdVazio = await req2("POST", "/api/radar", { estados: [], cidade: "", q: "" });

@@ -7,9 +7,13 @@
 "use strict";
 
 // ── E-mails com limite de contas remetentes ─────────────────────────────
-const MAX_SENDER_EMAILS_FREE   = 1; // free: apenas o email principal (0 extras)
-const MAX_SENDER_EMAILS_VIP    = 2; // pagantes: email principal + 1 extra = 2 total
-const MAX_SENDER_EMAILS_ADMIN  = 6; // admins: email principal + 5 extras = 6 total
+// 📧 ORDEM DO DONO (13/09/2026): e-mails de envio por plano — grátis 0 (sem
+// plano não vincula Gmail nenhum), VIP e VIPro 1 (só o principal), DoublePro
+// 2 (principal + 1 extra), admin 6. getMaxSenders (server.js) é a fonte única.
+const MAX_SENDER_EMAILS_FREE      = 0;
+const MAX_SENDER_EMAILS_VIP       = 1; // VIP e VIPro: só o e-mail principal (0 extras)
+const MAX_SENDER_EMAILS_DOUBLEPRO = 2; // DoublePro: principal + 1 extra
+const MAX_SENDER_EMAILS_ADMIN     = 6; // admins: principal + 5 extras
 // 🎯 ordem do dono, 12/09/2026: automático do admin ganhou um teto DE
 // VERDADE (era 9999 = sem teto nenhum) — 450 envios/dia POR e-mail
 // conectado (principal ou extra), não um total único pra conta inteira.
@@ -72,7 +76,7 @@ const PLAN_LIMITS = {
 };
 
 module.exports = {
-  MAX_SENDER_EMAILS_FREE, MAX_SENDER_EMAILS_VIP, MAX_SENDER_EMAILS_ADMIN,
+  MAX_SENDER_EMAILS_FREE, MAX_SENDER_EMAILS_VIP, MAX_SENDER_EMAILS_DOUBLEPRO, MAX_SENDER_EMAILS_ADMIN,
   ADMIN_AUTO_DAILY_LIMIT_PER_SENDER,
   MAX_RESUMES, MAX_COVERS,
   ADMIN_EMAIL, ADMIN_EMAIL_2, ADMIN_EMAILS_EXTRA, ADMIN_EMAILS, isAdminEmail,

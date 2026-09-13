@@ -158,7 +158,7 @@ function _oauthBase(req){
   }catch(e){ return APP_URL; }
 }
 // ── Fase 1 · Módulo 1: configuração extraída para src/config.js ──────────
-const { MAX_SENDER_EMAILS_FREE, MAX_SENDER_EMAILS_VIP, MAX_SENDER_EMAILS_ADMIN,
+const { MAX_SENDER_EMAILS_FREE, MAX_SENDER_EMAILS_VIP, MAX_SENDER_EMAILS_DOUBLEPRO, MAX_SENDER_EMAILS_ADMIN,
         ADMIN_AUTO_DAILY_LIMIT_PER_SENDER,
         MAX_RESUMES, MAX_COVERS,
         ADMIN_EMAIL, ADMIN_EMAIL_2, ADMIN_EMAILS_EXTRA, ADMIN_EMAILS, isAdminEmail,
@@ -233,17 +233,24 @@ const ADMIN_PANEL_LOGINS = [
   const hash=crypto.scryptSync(process.env[envKey],salt,64).toString("hex");
   return {...l,salt,hash};
 });
-// getMaxSenders retorna o TOTAL de emails (principal + extras)
+// getMaxSenders retorna o TOTAL de emails de envio (principal + extras).
+// 📧 ORDEM DO DONO (13/09/2026): grátis 0 · VIP/VIPro 1 · DoublePro 2 · admin 6.
+// Trial e cortesia (vip.source 'trial'/'code') contam como SEM plano pago;
+// plano expirado também (isVipActive é checado em tempo real).
 const getMaxSenders = (u) => {
   if(u?.isAdmin || isAdminEmail(u?.email||"")) return MAX_SENDER_EMAILS_ADMIN;
-  // Gmail extra: SOMENTE plano PAGO e ATIVO. Trial e dias promocionais
-  // (vip.source 'trial' ou 'code') NÃO liberam Gmail extra, mesmo com VIP ativo.
-  // Plano expirado também não (isVipActive é checado em tempo real).
   const src = (u?.vip?.source||"").toLowerCase();
   const isPaidActive = isVipActive(u) && src !== 'trial' && src !== 'code';
-  if(isPaidActive) return MAX_SENDER_EMAILS_VIP;
-  return MAX_SENDER_EMAILS_FREE; // free, trial, bônus puro, expirado: só o principal
+  if(!isPaidActive) return MAX_SENDER_EMAILS_FREE;
+  return getPlan(u)==="doublepro" ? MAX_SENDER_EMAILS_DOUBLEPRO : MAX_SENDER_EMAILS_VIP;
 };
+// Mensagem única das 3 travas de Gmail extra (add-sender + 2 callbacks) — diz
+// o PORQUÊ pelo plano, não um "limite de N" seco.
+const _msgLimiteSenders = (max) => max<=0
+  ? "Sem plano ativo não dá pra vincular Gmail de envio — assine um plano na aba Planos."
+  : max===1
+    ? "Gmail extra é exclusivo do plano DoublePro (2 e-mails de envio) — seu plano usa só o e-mail principal."
+    : `Limite de ${max} e-mails de envio atingido.`;
 const PORT          = parseInt(process.env.PORT || "3000", 10);
 const IS_PROD       = APP_URL.startsWith("https://");
 const CONFIGURED    = !!(CLIENT_ID && CLIENT_SECRET);
@@ -7555,7 +7562,7 @@ filtrar();
           res.writeHead(200,{"Content-Type":"text/html; charset=utf-8","Content-Length":Buffer.byteLength(pageRe2),"Cache-Control":"no-cache"});return res.end(pageRe2);
         }
         const maxSnd3=getMaxSenders(getUser(ownerEmail2)||{});
-        if(1+existing2.length>=maxSnd3)return fail2(`Limite de ${maxSnd3} emails atingido.`);
+        if(1+existing2.length>=maxSnd3)return fail2(_msgLimiteSenders(maxSnd3));
         const newSender2={email:newEmail2,label:ui2.name||newEmail2,access_token:tk2.access_token,token_expiry:Date.now()+(tk2.expires_in||3600)*1000,refresh_token:tk2.refresh_token||null,addedAt:Date.now(),active:true,tokenExpired:false,blocked:false};
         if(!newSender2.refresh_token)console.warn(`[sender] ⚠️ refresh_token não recebido para ${newEmail2}`);
         setUser(ownerEmail2,{senderEmails:[...existing2,newSender2]});
@@ -7658,7 +7665,7 @@ filtrar();
     const totalSenders=1+(p.senderEmails||[]).length;
     const maxSnd=getMaxSenders(p);
     const _reauth=String(u.searchParams.get("reauth")||"")==="1";
-    if(totalSenders>=maxSnd && !_reauth){res.writeHead(302,{Location:"/?err="+encodeURIComponent(`Limite de ${maxSnd} emails atingido.`)});return res.end();}
+    if(totalSenders>=maxSnd && !_reauth){res.writeHead(302,{Location:"/?err="+encodeURIComponent(_msgLimiteSenders(maxSnd))});return res.end();}
     const st=crypto.randomBytes(20).toString("hex");
     // Salva o state com o email do dono para vincular no callback
     sessions["__sender__"+st]={ownerEmail:s.user_email,created:Date.now()};
@@ -7737,7 +7744,7 @@ filtrar();
       if(existing.find(s=>s.email===newEmail))return fail("Este Gmail já está adicionado à sua conta.");
       // Verificar limite
       const maxSnd2=getMaxSenders(getUser(ownerEmail)||{});
-      if(1+existing.length>=maxSnd2)return fail(`Limite de ${maxSnd2} emails atingido.`);
+      if(1+existing.length>=maxSnd2)return fail(_msgLimiteSenders(maxSnd2));
       const newSender={email:newEmail,label:ui.name||newEmail,access_token:tk.access_token,token_expiry:Date.now()+(tk.expires_in||3600)*1000,refresh_token:tk.refresh_token||null,addedAt:Date.now(),active:true,tokenExpired:false,blocked:false};
       if(!newSender.refresh_token)console.warn(`[sender] ⚠️ refresh_token não recebido para ${newEmail} — pode expirar sem renovar`);
       setUser(ownerEmail,{senderEmails:[...existing,newSender]});
