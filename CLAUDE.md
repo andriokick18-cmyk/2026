@@ -116,7 +116,10 @@ se referindo a outro repositório/projeto.
   (1) ENRIQUECIMENTO vaga a vaga pela API do DOL (e-mail, cidade, datas,
   nº de vagas, telefone, salário, SOC, funções, horas, URL) — 1 vaga por
   vez, backoff em 403/429, salva no disco a CADA vaga e retoma pelo
-  disco (15s pós-boot, 12h, vigia 30min, e no upload de planilha);
+  disco a partir da 1ª linha SEM e-mail (v174c — nunca "contagem − 5":
+  buracos espalhados seriam pulados), fila ordenada por IMPACTO (planilha
+  com mais vagas sem e-mail primeiro; a H-2A built-in entra na fila)
+  (15s pós-boot, 12h, vigia 30min, e no upload de planilha);
   (2) FRESCOR: status/datas/salário das vagas já completas (H-2B mais
   nova + H-2A), 120 por ciclo (5min, 6h); (3) VAGAS NOVAS H-2A 2x/dia:
   ENTRA vaga ativa nova (nunca duplica), SAI inativa (negada/retirada/

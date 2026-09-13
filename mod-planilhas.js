@@ -102,9 +102,15 @@ function createPlanilhas(deps) {
     if (enrichBot.running && !resume) { enrichLog("Bot já está rodando", "warn"); return; }
     const sheet = getSheet(sheetKey);
     if (!sheet || !sheet.length) { enrichLog(`Planilha não encontrada: ${sheetKey}`, "error"); return; }
-    // ponto de retomada REAL pelo disco: quantas já têm e-mail
-    const alreadyDone = sheet.filter(r => r.e && String(r.e).includes("@")).length;
-    const startIdx = resume ? Math.max(0, alreadyDone > 0 ? alreadyDone - 5 : 0) : 0;
+    // Ponto de retomada REAL pelo disco: começa na PRIMEIRA linha ainda sem
+    // e-mail (v174c — o "contagem − 5" do site antigo só funcionava quando os
+    // buracos estavam no fim; na H-2A as 133 vagas sem e-mail estão espalhadas
+    // e o bot pulava quase todas). Linha já completa (e-mail + cidade) é
+    // pulada no loop de qualquer jeito — nunca gasta DOL à toa.
+    const temEmail = (r) => !!(r.e && String(r.e).includes("@"));
+    const alreadyDone = sheet.filter(temEmail).length;
+    const primeiraSemEmail = sheet.findIndex(r => !temEmail(r));
+    const startIdx = resume && primeiraSemEmail > 0 ? primeiraSemEmail : 0;
     enrichBot.running = true; enrichBot.sheetKey = sheetKey; enrichBot.total = sheet.length; enrichBot.done = startIdx;
     enrichBot.ok = resume ? alreadyDone : 0; enrichBot.noEmail = resume ? (enrichBot.noEmail || 0) : 0; enrichBot.errors = resume ? (enrichBot.errors || 0) : 0;
     enrichBot.startedAt = (resume && enrichBot.startedAt) ? enrichBot.startedAt : Date.now();
@@ -119,7 +125,7 @@ function createPlanilhas(deps) {
       if (!enrichBot.running) break;
       const row = sheet[i]; const cn = String(row.c || "").toUpperCase(); enrichBot.done = i + 1;
       // pula quem JÁ está completo (e-mail + cidade) — nunca gasta DOL à toa
-      if (row.e && String(row.e).includes("@") && row.ci && !resume) { enrichBot.ok++; continue; }
+      if (temEmail(row) && row.ci) { enrichBot.ok++; continue; }
       let attempt = 0, processed = false;
       while (attempt < 6 && !processed && enrichBot.running) {
         if (attempt > 0) {
@@ -174,7 +180,12 @@ function createPlanilhas(deps) {
   async function autoEnrichCycle() {
     if (enrichBot.running) return;
     if (isTest) { console.log("[auto-enrich] 🧪 modo teste — o DOL não é alcançável no sandbox; enriquecimento só em produção"); return; }
-    const keys = ["jan2026", "jul2025", ...Object.keys(getExtras())];
+    // v174c: a H-2A built-in entra na fila e a ORDEM é por impacto — a planilha
+    // com MAIS vagas sem e-mail vai primeiro (vaga sem e-mail = candidatura
+    // impossível; prioridade nº1 da casa), não pela ordem de cadastro.
+    const keys = ["jan2026", "jul2025", "h2a-jun2026", ...Object.keys(getExtras())]
+      .map(k => { const sheet = getSheet(k) || []; return { k, withoutEmail: sheet.filter(r => !(r.e && String(r.e).includes("@"))).length }; })
+      .sort((a, b) => b.withoutEmail - a.withoutEmail).map(x => x.k);
     for (const sheetKey of keys) {
       if (enrichBot.running) break;
       const sheet = getSheet(sheetKey); if (!sheet || !sheet.length) continue;
