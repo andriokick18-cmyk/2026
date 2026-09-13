@@ -74,6 +74,7 @@ const ALVOS = [
 // aparece na falha (não invente uma).
 const ALLOWLIST = new Set([
   // Só número (contagem/limite/dias/score) interpolado — nada de texto:
+  "app.js:a921f7f09908", // refreshAutoFilterCount: só t.toLocaleString() (contagem numérica) + textos fixos
   "app.js:98b41cf16bcb", "app.js:b53d107f68e1", "app.js:2b7dd6f1e9f8", "app.js:a8c376c9c226", "app.js:65087d84f8fe",
   "app.js:480178d813df", "app.js:39fb917ed5c4", "app.js:e0c3e8be68bb", "app.js:dc811363e8a2", "app.js:f384dc715f29",
   "app.js:09ce6f37c941", "app.js:8c3e83eb18e0", "app.js:03f1c9fdd571", "app.js:bec1a605c6d4", "app.js:755e1aeff07d",

@@ -3084,8 +3084,11 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
             <!-- Seleção de e-mails de envio (rodízio 1 a 1 entre os escolhidos) -->
             <div id="auto-senders-box" style="display:none;background:var(--sf2);border:1.5px solid var(--border2);border-radius:var(--r);padding:12px 14px;margin-bottom:10px">
               <div style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:4px">📧 Enviar usando quais e-mails?</div>
-              <div style="font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.45"><span data-i18n="g_202">O envio alterna</span> <strong>1 por 1</strong> entre os e-mails marcados (1 do primeiro, 1 do segundo... e recomeça). Desmarque um e-mail se ele estiver bloqueado pelo Gmail.</div>
-              <div id="auto-senders-list" style="display:flex;flex-direction:column;gap:6px"></div>
+              <div id="auto-senders-hint" style="font-size:11px;color:var(--t3);margin-bottom:6px;line-height:1.4;font-weight:600"></div>
+              <div id="auto-senders-list-wrap">
+                <div style="font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.45"><span data-i18n="g_202">O envio alterna</span> <strong>1 por 1</strong> entre os e-mails marcados (1 do primeiro, 1 do segundo... e recomeça). Desmarque um e-mail se ele estiver bloqueado pelo Gmail.</div>
+                <div id="auto-senders-list" style="display:flex;flex-direction:column;gap:6px"></div>
+              </div>
             </div>
 
             <!-- Start button — mega CTA destacado -->
@@ -3788,15 +3791,9 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       <div style="padding:16px 18px 12px;border-bottom:1px solid var(--border)">
         <div style="font-size:12px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px" data-i18n="g_152">① Informações Básicas</div>
 
-        <div class="field" style="display:flex;gap:10px;align-items:flex-start">
-          <div style="flex:1">
-            <label><span data-i18n="g_251">Nome do perfil</span> <span style="color:var(--red)">*</span></label>
-            <input class="input" id="pe-name" placeholder="Ex: Landscape H-2B, General, Construction..." autocomplete="off">
-          </div>
-          <div>
-            <label data-i18n="g_153">Ícone</label>
-            <button id="pe-icon-btn" onclick="peToggleIconPicker()" style="width:44px;height:44px;border:1.5px solid var(--border2);border-radius:var(--r);background:var(--sf2);cursor:pointer;font-size:22px;display:flex;align-items:center;justify-content:center;transition:all .15s" title="Escolher ícone">🎯</button>
-          </div>
+        <div class="field" style="display:flex;gap:10px;align-items:center">
+          <button id="pe-icon-btn" onclick="peToggleIconPicker()" style="width:44px;height:44px;border:1.5px solid var(--border2);border-radius:var(--r);background:var(--sf2);cursor:pointer;font-size:22px;display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0" title="Escolher ícone">🎯</button>
+          <div style="font-size:12.5px;color:var(--t2);line-height:1.4">Escolha um ícone (opcional) — o nome do perfil (H-2B ou H-2A) é automático, você tem só 1 de cada.</div>
         </div>
         <!-- Picker de ícones -->
         <div id="pe-icon-picker" style="display:none;background:var(--sf);border:1.5px solid var(--border2);border-radius:var(--rl);padding:10px;margin-bottom:10px;box-shadow:0 8px 24px rgba(0,0,0,.12)">
@@ -3836,10 +3833,6 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
         </div>
         <input type="hidden" id="pe-icon" value="🎯">
 
-        <div class="field">
-          <label><span data-i18n="g_252">Descrição</span> <span style="color:var(--t3);font-weight:400" data-i18n="optional_lbl">(opcional)</span></label>
-          <input class="input" id="pe-desc" placeholder="Ex: Perfil para vagas de paisagismo no verão">
-        </div>
 
         
 

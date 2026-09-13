@@ -2051,9 +2051,22 @@ async function testAuthWatchdogPush() {
       JSON.stringify({ med: mc5pl?.medianaAprovacaoHoras, n: mc5pl?.precos?.length }).slice(0, 100));
 
     // ═══ 💼 MC5 — PARTE 3 (29/08): UMA RÉGUA SÓ NAS TELAS DO ADMIN ═════════
+    // 🕐 v172m (achado real, 13/09/2026): esta checagem dependia de gsm1/2/3
+    // (dataGasto FIXA em agosto/2026, usadas de propósito pelos testes de
+    // DRE/fechamento do mês "2026-08" mais acima) também caírem dentro da
+    // janela ROLANTE "últimos 30 dias a partir de agora" — verdade só
+    // enquanto "agora" ainda estava perto de agosto/2026. Assim que o
+    // calendário real passou disso, a janela parou de alcançar essas datas
+    // fixas e o teste começou a falhar por coincidência de calendário, não
+    // por bug de produto. Lança um gasto de verdade com data RELATIVA a
+    // Date.now() (mesmo padrão do gasto USD do MC5-P5 logo abaixo) — nunca
+    // fica velho, e sem mexer nas fixtures estáticas (que o MC4-P1, mais
+    // acima, já conferiu com somas EXATAS — um gasto novo ali quebraria
+    // aquela conta).
+    const gJan = await req2("POST", "/api/admin/financeiro", { action: "add_gasto", gasto: { valor: 40, categoria: "servidor", descricao: "Backup mensal (teste P3)", pagoPor: "andrio", dataGasto: new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString() } });
     const dr3 = (await get("/api/admin/dono-resumo")).json;
-    check("💼 MC5-P3 (bug real): 'gastos 30d' da Visão do Dono lia dataPagamento (gasto usa dataGasto) e mostrava R$0 SEMPRE — agora soma de verdade (fixtures ≥ R$35,50) e o líquido 30d fecha (dias30 − gastos30)",
-      dr3?.ok === true && dr3.gastos30 >= 35.49 &&
+    check("💼 MC5-P3 (bug real): 'gastos 30d' da Visão do Dono lia dataPagamento (gasto usa dataGasto) e mostrava R$0 SEMPRE — agora soma de verdade (gasto real ≥ R$35,50 lançado há 5 dias) e o líquido 30d fecha (dias30 − gastos30)",
+      gJan.json?.ok === true && dr3?.ok === true && dr3.gastos30 >= 35.49 &&
       Math.abs(dr3.liquido30 - (dr3.entradas?.dias30 - dr3.gastos30)) < 0.011,
       JSON.stringify({ g30: dr3?.gastos30, liq: dr3?.liquido30 }).slice(0, 100));
     const finP3 = (await get("/api/admin/financeiro")).json;

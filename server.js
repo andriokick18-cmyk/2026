@@ -2385,9 +2385,23 @@ function isVipActive(u) { return isManualVipActive(u) || isAutoVipActive(u); }
 // de plano (/api/send, /api/auto/start, scheduleAuto) cita a data real de
 // vencimento quando o usuário já teve um plano — nunca um "expirou"
 // genérico pra quem já sabe exatamente quando isso aconteceu.
-function planGateMsg(p, semPlanoMsg) {
-  const venceuEm = Math.max(p?.vip?.autoExpires||0, p?.vip?.manualExpires||0, p?.vip?.expiresAt||0);
-  if (venceuEm > 0) return `Seu plano venceu em ${new Date(venceuEm).toLocaleDateString("pt-BR")}. ${semPlanoMsg}`;
+// 🚨 v172k (auditoria 13/09/2026, achado real): a versão original pegava
+// Math.max(autoExpires,manualExpires,expiresAt) sem saber QUAL dimensão
+// estava sendo negada — um VIP Manual ATIVO (manualExpires no FUTURO)
+// tentando ligar o automático lia "Seu plano venceu em <data futura>",
+// porque o Math.max pegava a data do manual (que nem venceu) só porque
+// era a maior das três. `dimensao` ('auto'|'manual') diz qual expiração é
+// a relevante pro gate que está chamando; só fala "venceu" quando ELA
+// mesma já passou. Se a dimensão pedida nunca esteve ativa mas OUTRA está
+// (o caso real: VIP só-manual pedindo automático), a mensagem é sobre o
+// que falta, nunca sobre uma data que ainda não chegou.
+function planGateMsg(p, semPlanoMsg, dimensao) {
+  const now = Date.now();
+  const manualExp = p?.vip?.manualExpires || 0;
+  const autoExp = p?.vip?.autoExpires || 0;
+  const relevante = dimensao === "auto" ? autoExp : dimensao === "manual" ? manualExp : Math.max(manualExp, autoExp, p?.vip?.expiresAt || 0);
+  if (relevante > 0 && relevante <= now) return `Seu plano venceu em ${new Date(relevante).toLocaleDateString("pt-BR")}. ${semPlanoMsg}`;
+  if (dimensao === "auto" && manualExp > now) return `Seu plano VIP é só manual — ${semPlanoMsg}`;
   return semPlanoMsg;
 }
 
@@ -3925,8 +3939,8 @@ function scheduleAuto(email) {
   if(!isAdminVip(p) && !isAutoVipActive(p)){
     setAutoJob(email,{...job,active:false,status:"paused_no_vip",finishedAt:Date.now()});
     autoTimers.delete(email);
-    addLog(email,{status:"sistema",jobTitle:"⛔ Envio automático pausado",company:planGateMsg(p,"Assine um plano na aba Planos pra continuar enviando automaticamente.")});
-    console.log(`[auto] ${email} sem VIP automático ativo (${planGateMsg(p,"plano nunca ativo")}) — robô PARADO (paused_no_vip), sem reagendar`);
+    addLog(email,{status:"sistema",jobTitle:"⛔ Envio automático pausado",company:planGateMsg(p,"Assine um plano na aba Planos pra continuar enviando automaticamente.","auto")});
+    console.log(`[auto] ${email} sem VIP automático ativo (${planGateMsg(p,"plano nunca ativo","auto")}) — robô PARADO (paused_no_vip), sem reagendar`);
     return;
   }
 
@@ -7331,6 +7345,14 @@ filtrar();
       }
     }
     if(_stateList.length>1){const _sset=new Set(_stateList);preFiltered=preFiltered.filter(r=>_sset.has(String(r.s||"").toUpperCase()));state="";}
+    // 🚨 v172l (achado real, print do dono 13/09/2026 — "coloquei pra enviar
+    // pra vagas de $20 pra cima e não funcionou"): planilhas em estágio
+    // inicial do DOL (ex.: jul2026/H-2B "contatos em breve") têm salário E
+    // e-mail VAZIOS em TODAS as linhas — não é o filtro quebrado, é a
+    // planilha ainda não ter esse dado. Sem isto, o filtro só dizia
+    // "afrouxe algum critério", como se a pessoa tivesse pedido demais.
+    const _semSalarioNestaPlanilha = minWage>0 && preFiltered.length>0 && preFiltered.every(r=>parseW(r.w)<=0);
+    const _comEmailNestaSelecao = preFiltered.filter(r=>r.e&&String(r.e).includes("@")).length;
     if(minWage>0) preFiltered=preFiltered.filter(r=>parseW(r.w)>=minWage);
     if(minWorkers>0) preFiltered=preFiltered.filter(r=>(r.wk||0)>=minWorkers);
     if(filterVisa) preFiltered=preFiltered.filter(r=>(r.st||"").toUpperCase().includes(filterVisa));
@@ -7434,7 +7456,9 @@ filtrar();
         fromSheet:true,
         matchScore:_m?_m.score:null, matchWhy:_m?_m.why:null
       };
-    }),total,remainingTotal:baseArr.length,skip,sheet});
+    }),total,remainingTotal:baseArr.length,skip,sheet,
+      semSalarioNestaPlanilha:_semSalarioNestaPlanilha,
+      comEmailNestaSelecao:_comEmailNestaSelecao});
   }
 
   // ── Facetas reais da planilha (Status DOL distintos + Grupos A–H com contagem) ──
@@ -10057,7 +10081,7 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
     // camadas: plano pago ativo (isVipActive) e Gmail conectado (refresh_token).
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Sessão expirada."});
     const p=getUser(s.user_email)||{};
-    if(!isAdminVip(p)&&!isVipActive(p))return json(res,402,{error:planGateMsg(p,"Você precisa de um plano ativo pra enviar candidaturas."),needsPlan:true});
+    if(!isAdminVip(p)&&!isVipActive(p))return json(res,402,{error:planGateMsg(p,"Você precisa de um plano ativo pra enviar candidaturas.","manual"),needsPlan:true});
     // 🔒 v172: admin pula a trava de PLANO (isAdminVip já vale como plano
     // máximo), mas NÃO pula a de Gmail conectado — sem token de verdade
     // ninguém envia nada, admin incluso; bypassar aqui só trocaria um erro
@@ -10890,7 +10914,7 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
     // 🔒 v172 (ORDEM DO DONO, 11/09/2026): autoLimit=0 é o caso NOVO (plano
     // free não manda mais nada) — merece mensagem própria, "atingiu 0/dia"
     // confundiria quem nunca teve chance de mandar nenhum.
-    if(!isAdminVip(p)&&autoLimit<=0)return json(res,402,{error:planGateMsg(p,"Você precisa de um plano com envio automático (VIPro ou DoublePro) pra usar o robô."),needsPlan:true});
+    if(!isAdminVip(p)&&autoLimit<=0)return json(res,402,{error:planGateMsg(p,"Você precisa de um plano com envio automático (VIPro ou DoublePro) pra usar o robô.","auto"),needsPlan:true});
     // 🎯 ordem do dono, 12/09/2026: o teto do admin (450/dia por e-mail
     // conectado, somado em getAutoLimit) agora é REAL e vale pra ele
     // também — só a trava de PLANO (linha acima) continua isentando admin.
@@ -11075,7 +11099,16 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
       }
       if(!queue.length){
         if(skippedAlreadySent>0) return json(res,400,{error:`Todas as ${skippedAlreadySent} vagas dessa seleção já foram enviadas por você antes. Escolha outra fonte, categoria ou filtro para encontrar vagas novas.`,allAlreadySent:true,skippedAlreadySent});
-        return json(res,400,{error:"Nenhuma vaga com e-mail encontrada. As planilhas JAN2026 e JUL2025 já têm e-mails embutidos. Verifique se os arquivos foram carregados corretamente.",noEmail:true});
+        // 🚨 v172l (achado real, print do dono 13/09/2026): a mensagem antiga
+        // era genérica e citava JAN2026/JUL2025 mesmo quando o problema era
+        // outra planilha (ex.: jul2026/H-2B, "contatos em breve" — o e-mail
+        // simplesmente ainda não foi liberado pelo governo pra NENHUMA vaga
+        // dela). noEmailCount já vinha sendo contado; agora a mensagem usa
+        // ele pra dizer a causa real em vez de sugerir "arquivo corrompido".
+        if(noEmailCount>0 && noEmailCount===d.cases.length){
+          return json(res,400,{error:`Nenhuma dessas ${d.cases.length} vaga(s) tem e-mail de contato ainda — o governo (DOL) ainda não liberou os dados dessa planilha. Escolha outra fonte de vagas (Jan 2026, Jul 2025 ou H-2A) pra usar o automático agora.`,noEmail:true});
+        }
+        return json(res,400,{error:"Nenhuma vaga com e-mail encontrada nessa seleção. Tente outra planilha, categoria ou filtro.",noEmail:true});
       }
       // BUG-015 CORRIGIDO: proteção contra fila duplicada só bloqueia se o job anterior terminou
       // nos últimos 60s (era 5min) E não foi parado/cancelado manualmente pelo usuário.
