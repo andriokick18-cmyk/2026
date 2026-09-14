@@ -1721,6 +1721,41 @@ async function testAuthWatchdogPush() {
       check("🚨 v177-FIX4 (estrutural): a 2ª cópia (inalcançável) das validações de tamanho/base64 do comprovante saiu do objeto do pedido — a regra vive num lugar só, que responde 400 com o motivo em vez de descartar em silêncio",
         !/Limitar tamanho: max 8MB em base64/.test(_srv2) && _srv2.includes('comprovante:(typeof d.comprovante==="string"&&d.comprovante)?d.comprovante:null'),
         "validação de comprovante ainda está duplicada dentro do objeto do pedido");
+
+      // ═══ 🚨 v177-FIX6 (6ª leva): telas do usuário e rótulos do admin ═══
+      // O convite pra cadastrar currículo e o aviso obrigatório de WhatsApp
+      // exigiam uma chave de sessionStorage que SÓ o cadastro grava — em
+      // qualquer login normal os dois ficavam mudos, mesmo pra quem está com
+      // zero perfil (ou seja: não consegue se candidatar a nada).
+      const _lgBad = await req2("POST", "/api/settings", { language: "xx-HACK" });
+      const _lgBadSt = (await get("/api/status")).json;
+      const _lgOk = await req2("POST", "/api/settings", { language: "pt-BR" });
+      const _lgOkSt = (await get("/api/status")).json;
+      check("🚨 v177-FIX6: /api/settings só aceita idioma da whitelist (pt/en/es, normalizado de 'pt-BR') — antes gravava QUALQUER string de até 10 chars no campo que o front aplica direto",
+        _lgBad.json?.ok === true && _lgBadSt?.language !== "xx-HACK" && _lgBadSt?.language !== "xx" &&
+        _lgOk.json?.ok === true && _lgOkSt?.language === "pt",
+        JSON.stringify({ bad: _lgBadSt?.language, ok: _lgOkSt?.language }));
+
+      const _appF6 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _admF6 = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
+      check("🚨 v177-FIX6 (estrutural): checkShowCvPrompt e checkWppRequired não dependem mais de 'h2b_terms_session' (gravado SÓ no cadastro) — em login normal os dois voltam a rodar; a proteção contra aparecer por cima dos Termos continua sendo o próprio terms-overlay",
+        (_appF6.match(/if\(!sessionStorage\.getItem\("h2b_terms_session"\)\)\s*return;/g) || []).length === 0 &&
+        _appF6.includes('const termsOverlay=document.getElementById("terms-overlay");'),
+        "algum dos dois ainda exige a chave de sessão do cadastro pra aparecer");
+      check("🚨 v177-FIX6 (estrutural): o convite de currículo não nasce mais por cima do editor de perfil já aberto, e o aviso de WhatsApp é cobrado assim que o convite é fechado no 'Agora não' (antes rodava 1 vez só, aos 2,5s, e desistia se o convite estivesse na tela)",
+        _appF6.includes('const _edAberto=document.getElementById("modal");') &&
+        _appF6.includes("setTimeout(()=>{try{checkWppRequired();}catch(e){}},300);"),
+        "proteção do editor aberto ou a 2ª chance do aviso de WhatsApp sumiram");
+      check("🚨 v177-FIX6 (estrutural): doLogout limpa também o sessionStorage — em aparelho/aba compartilhado a Conta B herdava o 'já pulei o convite de currículo' da Conta A e nunca via o convite, com zero perfil",
+        _appF6.includes('["h2b_cv_prompt_pulado","h2b_terms_session","h2bNovaConta"].forEach(k=>{try{sessionStorage.removeItem(k);}catch(e){}})'),
+        "logout ainda deixa as chaves de sessão da conta anterior no aparelho");
+      check("🚨 v177-FIX6 (estrutural): rótulos honestos no painel — o toggle de aviso de compra dispara COM OU SEM comprovante (o rótulo prometia escopo menor) e o motivo do cancelamento diz que o usuário vê o texto ao abrir o site, sem aviso automático (pushToUser é no-op nesta reconstrução)",
+        _admF6.includes("pedido novo (com ou sem comprovante)") &&
+        _admF6.includes("NÃO manda aviso automático"),
+        "rótulo do toggle ou o aviso do cancelamento voltaram a prometer o que o sistema não faz");
+      check("🚨 v177-FIX6 (estrutural): CACHE_NAME do sw.js subiu junto com a mudança em app.js/admin.html (regra da casa — senão o aparelho mistura JS velho com HTML novo)",
+        /const CACHE_NAME = "h2bapply-2026-v(4[3-9]|[5-9]\d|\d{3,})"/.test(fs.readFileSync(path.join(__dirname, "sw.js"), "utf8")),
+        "sw.js ainda está no cache antigo (v42 ou menor)");
     }
     // Comprovante já usado (fingerprint) — mesma trilha do MC5-P1, sem
     // duplicar setup: cria um 2º usuário VIP com Gmail conectado e tenta

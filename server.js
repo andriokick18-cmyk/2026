@@ -10276,7 +10276,15 @@ filtrar();
       if(d.whatsapp!==undefined)upd.whatsapp=String(d.whatsapp).slice(0,50);
       if(d.age!==undefined){const a=parseInt(d.age)||0;if(a>=10&&a<=100)upd.age=a;}
       if(d.city!==undefined)upd.city=String(d.city).slice(0,100);
-      if(d.language!==undefined)upd.language=String(d.language).slice(0,10);
+      // 🚨 v177-FIX6 (auditoria 14/09/2026): aceitava QUALQUER string de até 10
+      // chars como idioma e devolvia ela no /api/status, onde o front aplica
+      // cegamente o que existir no dicionário. Whitelist das 3 línguas reais,
+      // normalizada pra 2 letras ("pt-BR"→"pt"); qualquer outra coisa é
+      // ignorada, nunca gravada.
+      if(d.language!==undefined){
+        const _lg=String(d.language).slice(0,2).toLowerCase();
+        if(["pt","en","es"].includes(_lg))upd.language=_lg;
+      }
       // h2bProfile: objeto completo
       if(d.h2bProfile){
         const cur=getUser(s.user_email)||{};

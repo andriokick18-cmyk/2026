@@ -4954,6 +4954,11 @@ async function doLogout(){
   // mais seguro limpar os desta conta ao sair — nunca sobra resquício pro
   // próximo login usar por engano. Roda ANTES de zerar U (precisa do e-mail).
   try{["h2b","h2a"].forEach(vt=>{try{localStorage.removeItem(_peDraftKey(vt));localStorage.removeItem(_obDraftKey(vt));}catch(e){}});}catch(e){}
+  // 🚨 v177-FIX6 (auditoria 14/09/2026): o logout limpava só os rascunhos em
+  // localStorage e nunca tocava no sessionStorage — num aparelho/aba
+  // compartilhado, a Conta B herdava o "já pulei o convite de currículo" da
+  // Conta A e nunca via o convite, mesmo com zero perfil.
+  try{["h2b_cv_prompt_pulado","h2b_terms_session","h2bNovaConta"].forEach(k=>{try{sessionStorage.removeItem(k);}catch(e){}});}catch(e){}
   await fetch("/api/disconnect",{credentials:"include"});U={connected:false};clearInterval(autoInterval);showLanding();
 }
 // v167: achado E2E CRÍTICO — depois da reestruturação v166 (nav reduzida a
@@ -6710,13 +6715,24 @@ function checkShowCvPrompt(){
   try{
     const termsOverlay=document.getElementById("terms-overlay");
     if(termsOverlay&&termsOverlay.style.display==="flex")return;
-    if(!sessionStorage.getItem("h2b_terms_session"))return;
+    // 🚨 v177-FIX6 (auditoria 14/09/2026): aqui exigia sessionStorage
+    // "h2b_terms_session", que só é gravado no fluxo de CADASTRO (showTerms).
+    // Em qualquer LOGIN normal — inclusive numa aba nova, no mesmo aparelho —
+    // a chave não existe e o convite pra cadastrar o currículo NUNCA aparecia,
+    // mesmo pra quem está com zero perfil (ou seja: não consegue se candidatar
+    // a nada). O que o gate queria evitar — prompt por cima dos Termos — já é
+    // garantido pela checagem do terms-overlay logo acima.
     const hasProfiles=(UPROFILES.length?UPROFILES:U.profiles||[]).filter(p=>p.active!==false).length>0;
     if(hasProfiles){
       if(!U.onboarded){try{localStorage.setItem("h2b_onboarded","1");}catch(e){}fetch("/api/onboard",{method:"POST",credentials:"include"}).then(()=>{U.onboarded=true;}).catch(()=>{});}
       return;
     }
     if(sessionStorage.getItem("h2b_cv_prompt_pulado"))return;
+    // 🚨 v177-FIX6: o overlay (z-index 999) nascia por cima de QUALQUER tela —
+    // quem navegasse sozinho pro editor de perfil dentro do 1,5s levava o
+    // convite em cima do próprio trabalho que o convite pede pra fazer.
+    const _edAberto=document.getElementById("modal");
+    if(_edAberto&&getComputedStyle(_edAberto).display!=="none")return;
     const ov=g("#cv-prompt-overlay");if(!ov)return;
     const novo=sessionStorage.getItem("h2bNovaConta")==="1";
     const t2=g("#cv-prompt-title");if(t2)t2.textContent=novo?"Conta criada! Cadastre seu currículo agora":"Cadastre seu currículo agora";
@@ -6733,6 +6749,11 @@ function cvPromptAgora(){
 function cvPromptPular(){
   const ov=g("#cv-prompt-overlay");if(ov)ov.style.display="none";
   try{sessionStorage.setItem("h2b_cv_prompt_pulado","1");sessionStorage.removeItem("h2bNovaConta");}catch(e){}
+  // 🚨 v177-FIX6: o aviso obrigatório de WhatsApp roda UMA vez (2,5s após
+  // abrir o app) e desiste se o convite do currículo estiver na tela naquele
+  // instante — quem estivesse decidindo aqui nunca mais era cobrado nessa
+  // sessão. Fechando o convite, a checagem acontece.
+  setTimeout(()=>{try{checkWppRequired();}catch(e){}},300);
   gaEvent("cv_prompt_pular",{});
   toast("Sem problema — quando quiser, vá em Perfil → Criar perfil H-2B.","g");
 }
@@ -8254,8 +8275,9 @@ function checkWppRequired(){
   // Não mostrar se os termos ainda não foram aceitos
   var termsOverlay = document.getElementById("terms-overlay");
   if(termsOverlay && termsOverlay.style.display === "flex") return;
-  // Não mostrar se o sessionStorage não tem flag de termos aceitos
-  if(!sessionStorage.getItem("h2b_terms_session")) return;
+  // 🚨 v177-FIX6: mesmo caso do checkShowCvPrompt — o gate por
+  // "h2b_terms_session" (só gravado no cadastro) fazia o aviso obrigatório de
+  // WhatsApp nunca aparecer em login nenhum. O terms-overlay já foi checado.
   // Verificar se já tem WhatsApp ou telefone
   const hasWpp = (U.whatsapp||'').trim().length > 5;
   const hasPhone = (U.phone||'').trim().length > 5;

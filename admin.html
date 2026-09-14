@@ -436,7 +436,7 @@ tbody tr:hover{background:var(--glass2)}
         <div class="panel">
           <div class="panel-head"><div class="panel-title"><i class="ti ti-settings"></i>Avisos de compra</div></div>
           <div class="panel-body">
-            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:600"><input type="checkbox" id="nt-aviso" onchange="notifToggleAvisos(this)" style="width:18px;height:18px;accent-color:var(--green)"> Avisar por e-mail quando entrar pedido novo com comprovante</label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:600"><input type="checkbox" id="nt-aviso" onchange="notifToggleAvisos(this)" style="width:18px;height:18px;accent-color:var(--green)"> Avisar por e-mail quando entrar pedido novo (com ou sem comprovante)</label>
             <p class="pl-help" style="margin:10px 0 4px">Quem recebe (os 2 sócios — ADMIN_EMAIL e ADMIN_EMAIL_2 no servidor):</p>
             <div id="nt-destinatarios" class="pl-sheet-m"></div>
           </div>
@@ -1213,7 +1213,7 @@ async function cancelarPedido(id){
   var avisoProvisorio=pd&&pd.autoAtivado
     ?"⚠️ Este usuário JÁ ESTÁ USANDO o plano agora (ativação provisória automática) — cancelar aqui retira o plano dele imediatamente.\n\n"
     :"";
-  var motivo=prompt(avisoProvisorio+"Motivo do cancelamento (o usuário vai ver este texto):");
+  var motivo=prompt(avisoProvisorio+"Motivo do cancelamento.\n\nO usuário vê este texto em \"Meus pedidos\" quando abrir o site — o sistema NÃO manda aviso automático pra ele:");
   if(motivo===null)return;
   motivo=motivo.trim();
   if(motivo.length<3){
