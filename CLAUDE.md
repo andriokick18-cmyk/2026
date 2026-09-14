@@ -175,6 +175,59 @@ se referindo a outro repositório/projeto.
   logada + `pushGlobalEvent("admin_bootstrap_email",...)`. PROIBIDO:
   estender esse bypass pra qualquer e-mail que não seja `isAdminEmail`,
   ou tirar o log/auditoria dele.
+- **🚨 v177 — AUDITORIA COMPLETA DE 135 AGENTES (dono, 14/09/2026 —
+  "confirme se tudo está funcionando... use seu sistema para se fazer no
+  mínimo 50 perguntas... mesmo que leve horas")**: rodei um workflow com
+  135 subagentes cobrindo 14 áreas do site, 122 perguntas específicas,
+  cada achado verificado por um 2º agente cético tentando refutar — 103
+  confirmados (39 graves), 4 descartados. Duas entregas:
+  **(1) 1ª leva de correções seguras** (mesmo commit v177-FIX): regex de
+  robô parado em mod-sentinel.js cobrindo os 3 status reais de auth
+  quebrada (URGENTE — VIP pagante com automático morto ficava invisível
+  pro vigia); toggle "avisar pedido novo" passou a bloquear os 2 canais
+  de uma vez (antes só desviava pro Gmail pessoal do admin quando
+  desligado); caminho legado do aviso agora usa `_notifDestinatarios()`
+  (só os 2 sócios — antes vazava pros 3 e-mails auxiliares); conta admin
+  nascida por username reservado (v175/v176) passou a ser reconhecida
+  por `isAdminVip(u)` nas guardas de "Esqueci minha senha" (fechava uma
+  escalada real: quem tivesse o Gmail conectado resetava a senha da
+  conta admin inteira sem nunca precisar do ADMIN_PANEL_PASS) e no TTL
+  de sessão (24h, não mais 7 dias); `/api/admin-panel/login` passou a
+  reusar a conta pelo username reservado quando ela já existe (antes
+  criava uma 2ª conta paralela pro mesmo admin, chave e-mail vs
+  username); tutorial corrigido (prometia 10 envios/dia grátis —
+  free é 0/0). 10 checks novos no smoke.
+  **(2) Leitura real do comprovante por IA** — achado mais grave da
+  auditoria: desde o v161 ("cura da camada Gemini") a leitura automática
+  do comprovante era 100% código-morto em produção — só existia dentro
+  do gancho `TEST_LOGIN_TOKEN`; fora dele `preCheckComprovante` sempre
+  devolvia `null`, então "ativação provisória automática" e o texto dos
+  Termos prometendo confirmação automática nunca eram reais pra nenhum
+  usuário. Perguntei ao dono como resolver (implementar de verdade vs.
+  só corrigir o texto vs. deixar pra depois) — ele escolheu implementar.
+  `preCheckComprovante` agora chama o Gemini de verdade
+  (`GEMINI_API_KEY`, modelo `gemini-2.0-flash` por padrão,
+  `GEMINI_MODEL` opcional) com `responseSchema` estruturado — a IA SÓ
+  extrai dado bruto (valor/data/pagador/recebedor/instituição/
+  transacaoId); quem decide CONFERE×DIVERGENCIA é sempre o código,
+  comparando o valor lido com `pedido.valorTotal` (regra da casa:
+  "matemática sempre determinística, IA nunca decide número" — nenhuma
+  mudança nessa filosofia, só a peça que faltava foi religada). Sem
+  `GEMINI_API_KEY` configurada, continua HONESTAMENTE pendente (nunca
+  finge que leu — mesmo comportamento de sempre). Falha de rede/resposta
+  quebrada do Gemini grava veredito `ERRO` (nunca trava, nunca inventa).
+  `_geminiComprovanteRequestBody`/`_geminiComprovanteParse` são funções
+  PURAS (sem I/O) exercitadas via o gancho `/api/test/gemini-check` —
+  8 checks novos provam CONFERE/DIVERGENCIA/ILEGIVEL/ERRO com respostas
+  do Gemini simuladas, sem a suíte NUNCA tocar rede de verdade.
+  **Pendente do dono**: configurar `GEMINI_API_KEY` no Render (grátis em
+  https://aistudio.google.com/apikey) — sem ela o comprovante segue
+  pendente de conferência manual, sem quebrar nada.
+  **⚠️ Backlog restante da auditoria (não implementado ainda, prioridade
+  decrescente)**: painel admin sem UI pra corrigir valor de pedido, ver
+  histórico de aprovados/cancelados, conceder/revogar VIP manualmente
+  (só via API direta hoje); ~60 achados médios/baixos catalogados
+  (detalhes completos no relatório entregue ao dono em 14/09/2026).
 - **📋 Alimentação automática das planilhas (v174, dono, 13/09/2026 — "as
   planilhas devem ser alimentadas, igual elas já são hoje, com todas as
   informações de cada vaga; esse sistema você pode trazer do h2bapply.com

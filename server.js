@@ -7768,6 +7768,18 @@ filtrar();
       NOTIF.conectar({email:String(d.email||"suporteh2bapply@gmail.com").toLowerCase(),refresh_token:"teste-rt-"+crypto.randomBytes(4).toString("hex"),connectedBy:"smoke-test"});
       return json(res,200,{ok:true,status:NOTIF.status()});}catch(e){return json(res,400,{error:e.message});}
   }
+  // 🤖 v177: gancho de teste pra exercitar a lógica PURA de montar a
+  // pergunta pro Gemini e ler a resposta dele — sem nunca chamar a rede de
+  // verdade (mesma filosofia dos outros /api/test/*: o smoke test tem que
+  // continuar 100% offline). Prova a lógica que decide CONFERE×DIVERGENCIA
+  // com uma resposta do Gemini SIMULADA.
+  if(pathname==="/api/test/gemini-check"&&req.method==="POST"&&process.env.TEST_LOGIN_TOKEN){
+    try{const d=JSON.parse((await readBody(req))||"{}");if(d.token!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});
+      const pedido=d.pedido||{};
+      const reqBody=_geminiComprovanteRequestBody(pedido);
+      const pc=d.respBody!==undefined?_geminiComprovanteParse(d.respBody,pedido):null;
+      return json(res,200,{ok:true,reqBody,pc});}catch(e){return json(res,400,{error:e.message});}
+  }
 
   // 🆕 CADASTRO por usuário+senha (v172c) — v175: TODOS os campos obrigatórios,
   // 1 só WhatsApp e e-mail Gmail CONFIRMADO por código (emailToken) — ordem
@@ -13438,6 +13450,72 @@ function setPedidoPreCheck(pedidoId, pc){
 // 💼 MC5-P2 item 5b: leitura ruim que o USUÁRIO pode resolver (foto ilegível
 // ou sem comprovante) vira push pedindo reenvio — 1x por pedido, só doação
 // pendente. DIVERGENCIA fica de fora de propósito (não se avisa fraudador).
+// 🤖 v177 (dono, 14/09/2026 — auditoria achou a leitura por IA 100% morta
+// em produção desde o v161 ("aprovação sempre manual"); o dono escolheu
+// explicitamente "implementar a leitura real por IA agora" em vez de só
+// corrigir o texto). Prompt fixo, em PT — pede SÓ os dados brutos do
+// comprovante. O código, NUNCA a IA, decide CONFERE×DIVERGENCIA (regra da
+// casa: "matemática sempre determinística, IA nunca decide número") —
+// comparando o valor lido com pedido.valorTotal.
+const GEMINI_COMPROVANTE_PROMPT = `Você está analisando um comprovante de pagamento PIX (recibo brasileiro) anexado por um cliente pra confirmar uma doação no site H2BApply. Leia a imagem/PDF com atenção e responda SOMENTE com os dados que você consegue ver — nunca invente nem arredonde.
+
+Regras:
+- "legivel": false se a imagem estiver ilegível, cortada, corrompida, ou não parecer um comprovante de pagamento de verdade — nesse caso deixe os outros campos null.
+- "valor": o VALOR PAGO em reais, como número (ex.: 150.00). Se não conseguir ler o valor com certeza, deixe null e marque legivel:false — nunca chute um número.
+- "data"/"hora": data e hora da transação, como aparecem no comprovante (texto livre).
+- "pagador"/"recebedor": nome de quem pagou e de quem recebeu, como aparecem no comprovante.
+- "instituicao": banco/instituição financeira do comprovante.
+- "transacaoId": o identificador da transação/E2E do PIX, se aparecer (geralmente uma sequência alfanumérica longa).`;
+const GEMINI_COMPROVANTE_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    legivel: { type: "BOOLEAN" },
+    valor: { type: "NUMBER", nullable: true },
+    data: { type: "STRING", nullable: true },
+    hora: { type: "STRING", nullable: true },
+    pagador: { type: "STRING", nullable: true },
+    recebedor: { type: "STRING", nullable: true },
+    instituicao: { type: "STRING", nullable: true },
+    transacaoId: { type: "STRING", nullable: true },
+  },
+  required: ["legivel"],
+};
+// Monta o corpo da chamada — função PURA (sem I/O), testável isolada do
+// httpsReq real (o smoke test não tem como chamar o Gemini de verdade).
+function _geminiComprovanteRequestBody(pedido){
+  const raw=String(pedido.comprovante||"");
+  const m=raw.match(/^data:([^;]+);base64,(.+)$/);
+  const mimeType=m?m[1]:(pedido.comprovanteType||"image/jpeg");
+  const base64Data=m?m[2]:raw;
+  return {
+    contents:[{parts:[
+      {text:GEMINI_COMPROVANTE_PROMPT},
+      {inline_data:{mime_type:mimeType,data:base64Data}},
+    ]}],
+    generationConfig:{temperature:0,responseMimeType:"application/json",responseSchema:GEMINI_COMPROVANTE_SCHEMA},
+  };
+}
+// Traduz a resposta crua do Gemini pro MESMO formato que o gancho de teste
+// já produz (pc = {veredito,valorLido,...}) — função PURA, testável com uma
+// resposta simulada, sem precisar de rede nenhuma.
+function _geminiComprovanteParse(respBody,pedido){
+  const base={dataLida:null,horaLida:null,pagadorLido:null,recebedorLido:null,instituicaoLida:null,transacaoIdLida:null,bateComEsperado:false,alertas:[],precoEsperado:pedido.valorTotal||0,valorInformado:pedido.valorTotal||0};
+  try{
+    const text=respBody&&respBody.candidates&&respBody.candidates[0]&&respBody.candidates[0].content&&respBody.candidates[0].content.parts&&respBody.candidates[0].content.parts[0]&&respBody.candidates[0].content.parts[0].text;
+    if(!text)return {...base,veredito:"ERRO",valorLido:null,resumo:"A IA não devolveu leitura nenhuma (resposta vazia) — confira manualmente."};
+    const d=JSON.parse(text);
+    if(d.legivel===false||d.valor==null||!Number.isFinite(Number(d.valor))){
+      return {...base,veredito:"ILEGIVEL",valorLido:null,dataLida:d.data||null,horaLida:d.hora||null,pagadorLido:d.pagador||null,recebedorLido:d.recebedor||null,instituicaoLida:d.instituicao||null,transacaoIdLida:d.transacaoId||null,resumo:"Comprovante ilegível pra IA — confira manualmente."};
+    }
+    const lido=Number(d.valor);
+    const bate=Math.abs(lido-(pedido.valorTotal||0))<0.01;
+    return {...base,veredito:bate?"CONFERE":"DIVERGENCIA",valorLido:lido,dataLida:d.data||null,horaLida:d.hora||null,
+      pagadorLido:d.pagador||null,recebedorLido:d.recebedor||null,instituicaoLida:d.instituicao||null,transacaoIdLida:d.transacaoId||null,
+      bateComEsperado:bate,resumo:bate?`IA leu R$${lido.toFixed(2)} — bate com o pedido.`:`IA leu R$${lido.toFixed(2)}, mas o pedido é de R$${(pedido.valorTotal||0).toFixed(2)}.`};
+  }catch(e){
+    return {...base,veredito:"ERRO",valorLido:null,resumo:"Erro lendo a resposta da IA: "+e.message};
+  }
+}
 async function preCheckComprovante(pedido, opts){
   const ativar=!!(opts&&opts.ativar);
   // ── 🧾 2.0-P2: IMPRESSÃO DIGITAL SEMPRE — o hash SHA-256 do comprovante é
@@ -13466,9 +13544,35 @@ async function preCheckComprovante(pedido, opts){
       if(ativar&&pc.veredito==="CONFERE")autoAtivarProvisorio(pedido.id);
       return pc;
     }
+    // (o gancho de teste NUNCA cai pro caminho real do Gemini abaixo — a
+    // suíte inteira precisa continuar 100% offline, sem rede nenhuma)
+    return null;
   }
-
-  return null;
+  // 🤖 v177: sem GEMINI_API_KEY configurada no Render, fica HONESTAMENTE
+  // pendente — nunca inventa leitura (mesmo comportamento de sempre).
+  if(!process.env.GEMINI_API_KEY){
+    console.warn("[precheck] sem GEMINI_API_KEY configurada — comprovante fica pendente de conferência manual.");
+    return null;
+  }
+  if(!pedido.comprovante) return null;
+  try{
+    const body=_geminiComprovanteRequestBody(pedido);
+    const model=process.env.GEMINI_MODEL||"gemini-2.0-flash";
+    const r=await httpsReq({hostname:"generativelanguage.googleapis.com",path:`/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`,method:"POST",headers:{"Content-Type":"application/json"}},body);
+    if(r.status!==200){
+      console.warn("[precheck] Gemini respondeu",r.status,JSON.stringify(r.body).slice(0,200));
+      setPedidoPreCheck(pedido.id,{veredito:"ERRO",valorLido:null,dataLida:null,horaLida:null,pagadorLido:null,recebedorLido:null,instituicaoLida:null,transacaoIdLida:null,bateComEsperado:false,resumo:`A IA falhou ao ler (HTTP ${r.status}) — confira manualmente.`,alertas:[],precoEsperado:pedido.valorTotal||0,valorInformado:pedido.valorTotal||0});
+      return null;
+    }
+    const pc=_geminiComprovanteParse(r.body,pedido);
+    setPedidoPreCheck(pedido.id,pc);
+    if(ativar&&pc.veredito==="CONFERE")autoAtivarProvisorio(pedido.id);
+    return pc;
+  }catch(e){
+    console.warn("[precheck] erro chamando Gemini:",e.message);
+    try{setPedidoPreCheck(pedido.id,{veredito:"ERRO",valorLido:null,dataLida:null,horaLida:null,pagadorLido:null,recebedorLido:null,instituicaoLida:null,transacaoIdLida:null,bateComEsperado:false,resumo:"Erro de rede/tempo lendo o comprovante — confira manualmente. ("+e.message+")",alertas:[],precoEsperado:pedido.valorTotal||0,valorInformado:pedido.valorTotal||0});}catch{}
+    return null;
+  }
 }
 
 // ── ATIVAÇÃO PROVISÓRIA AUTOMÁTICA (dono, 21/07/2026) ────────────────────────

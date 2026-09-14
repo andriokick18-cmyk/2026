@@ -1609,6 +1609,50 @@ async function testAuthWatchdogPush() {
         !/for\(const toEmail of \[\.\.\.ADMIN_EMAILS\]\)/.test(_srvSrc177.replace(/\s/g, "")), "caminho legado ainda manda pra [...ADMIN_EMAILS] inteiro");
     }
 
+    // ═══ 🤖 v177 (dono, 14/09/2026 — "implementar a leitura real por IA
+    // agora"): a análise por Gemini estava 100% morta em produção (achado
+    // MAIS grave da auditoria — o site promete verificação automática que
+    // nunca rodava com tráfego real). Implementada de verdade agora; o
+    // smoke test nunca chama o Gemini pela rede (continua 100% offline) —
+    // exercita a lógica PURA de montar a pergunta e ler a resposta via o
+    // gancho /api/test/gemini-check, com respostas do Gemini SIMULADAS. ═══
+    {
+      const _gReqPng = await req2("POST", "/api/test/gemini-check", { token: TEST_TOKEN, pedido: { comprovante: "data:image/png;base64,QUJD", valorTotal: 100 } });
+      check("🤖 v177: monta o pedido pro Gemini extraindo mime/base64 de um data-URL (image/png)",
+        _gReqPng.json?.reqBody?.contents?.[0]?.parts?.[1]?.inline_data?.mime_type === "image/png" &&
+        _gReqPng.json?.reqBody?.contents?.[0]?.parts?.[1]?.inline_data?.data === "QUJD" &&
+        typeof _gReqPng.json?.reqBody?.contents?.[0]?.parts?.[0]?.text === "string" && _gReqPng.json.reqBody.contents[0].parts[0].text.length > 20 &&
+        _gReqPng.json?.reqBody?.generationConfig?.responseSchema?.required?.includes("legivel"),
+        JSON.stringify(_gReqPng.json?.reqBody?.contents?.[0]?.parts?.[1]));
+      const _gReqPdf = await req2("POST", "/api/test/gemini-check", { token: TEST_TOKEN, pedido: { comprovante: "QUJD", comprovanteType: "application/pdf", valorTotal: 100 } });
+      check("🤖 v177: sem data-URL, usa comprovanteType como mime (aceita PDF cru, não só imagem)",
+        _gReqPdf.json?.reqBody?.contents?.[0]?.parts?.[1]?.inline_data?.mime_type === "application/pdf" && _gReqPdf.json?.reqBody?.contents?.[0]?.parts?.[1]?.inline_data?.data === "QUJD",
+        JSON.stringify(_gReqPdf.json?.reqBody?.contents?.[0]?.parts?.[1]));
+
+      const _gConfere = await req2("POST", "/api/test/gemini-check", { token: TEST_TOKEN, pedido: { valorTotal: 150 }, respBody: { candidates: [{ content: { parts: [{ text: JSON.stringify({ legivel: true, valor: 150, data: "14/09/2026", hora: "10:32", pagador: "Fulano de Tal", recebedor: "H2BApply", instituicao: "Banco X", transacaoId: "E2E123456789ABC" }) }] } }] } });
+      check("🤖 v177: valor lido BATE com o pedido → CONFERE (o código decide, não a IA — matemática determinística)",
+        _gConfere.json?.pc?.veredito === "CONFERE" && _gConfere.json?.pc?.bateComEsperado === true && _gConfere.json?.pc?.valorLido === 150 && _gConfere.json?.pc?.pagadorLido === "Fulano de Tal" && _gConfere.json?.pc?.transacaoIdLida === "E2E123456789ABC",
+        JSON.stringify(_gConfere.json?.pc));
+
+      const _gDiverge = await req2("POST", "/api/test/gemini-check", { token: TEST_TOKEN, pedido: { valorTotal: 150 }, respBody: { candidates: [{ content: { parts: [{ text: JSON.stringify({ legivel: true, valor: 80 }) }] } }] } });
+      check("🤖 v177: valor lido NÃO bate com o pedido → DIVERGENCIA",
+        _gDiverge.json?.pc?.veredito === "DIVERGENCIA" && _gDiverge.json?.pc?.bateComEsperado === false && _gDiverge.json?.pc?.valorLido === 80, JSON.stringify(_gDiverge.json?.pc));
+
+      const _gIlegivel = await req2("POST", "/api/test/gemini-check", { token: TEST_TOKEN, pedido: { valorTotal: 150 }, respBody: { candidates: [{ content: { parts: [{ text: JSON.stringify({ legivel: false }) }] } }] } });
+      check("🤖 v177: IA marca ilegível → ILEGIVEL, sem valorLido nenhum (nunca chuta número)", _gIlegivel.json?.pc?.veredito === "ILEGIVEL" && _gIlegivel.json?.pc?.valorLido === null, JSON.stringify(_gIlegivel.json?.pc));
+
+      const _gErro = await req2("POST", "/api/test/gemini-check", { token: TEST_TOKEN, pedido: { valorTotal: 150 }, respBody: {} });
+      check("🤖 v177: resposta do Gemini vazia/sem candidates → ERRO (nunca trava, nunca inventa)", _gErro.json?.pc?.veredito === "ERRO" && _gErro.json?.pc?.valorLido === null, JSON.stringify(_gErro.json?.pc));
+
+      const _gQuebrado = await req2("POST", "/api/test/gemini-check", { token: TEST_TOKEN, pedido: { valorTotal: 150 }, respBody: { candidates: [{ content: { parts: [{ text: "isso não é JSON nenhum" }] } }] } });
+      check("🤖 v177: resposta que não é JSON válido → ERRO (nunca lança exceção pro chamador)", _gQuebrado.json?.pc?.veredito === "ERRO", JSON.stringify(_gQuebrado.json?.pc));
+
+      const _srcGem = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      check("🤖 v177: (estrutural) a suíte NUNCA alcança o caminho real do Gemini — o gancho de teste retorna antes disso, e o próprio código comenta essa garantia",
+        _srcGem.includes("(o gancho de teste NUNCA cai pro caminho real do Gemini abaixo") && _srcGem.includes('if(!process.env.GEMINI_API_KEY){'),
+        "guarda de isolamento do teste sumiu do código");
+    }
+
     // ═══ 🛡️ v79 (Diego, 29/07 — áudio no WhatsApp: "ativei DoublePro pro
     // Esdras várias vezes e não entra, volta pro VipPro") ═══
     // CAUSA RAIZ: /api/admin/set-plan chamava addManualVipDays/addAutoVipDays
