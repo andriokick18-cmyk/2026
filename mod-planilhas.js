@@ -224,9 +224,29 @@ function createPlanilhas(deps) {
     }
     return JSON.stringify([row.st, row.d, row.de, row.w, row.wk, row.e]) !== before;
   }
+  // 🚨 v177-FIX7 (auditoria 14/09/2026): o frescor só olhava a H-2B mais nova
+  // (latestH2bKey) e a chave FIXA "h2a-jun2026". A planilha H-2A do MÊS
+  // (h2a-AAAAMM), que o robô mensal publica SOZINHA acima de 200 vagas, não
+  // batia com nenhum dos dois padrões: nascia e envelhecia sem NENHUMA
+  // reconferência de status/data/salário — justo a planilha mais nova, a que
+  // os usuários mais usam. Entra a mais recente já publicada (rascunho não).
+  function latestH2aMensalKey() {
+    let best = null, bestScore = -1;
+    for (const k of Object.keys(getExtras() || {})) {
+      const m = String(k).toLowerCase().match(/^h2a-(\d{4})(\d{2})$/);
+      if (!m) continue;
+      const meta = getMeta()[k];
+      if (meta && meta.published === false) continue;
+      const rows = getSheet(k);
+      if (!Array.isArray(rows) || !rows.length) continue;
+      const score = parseInt(m[1], 10) * 100 + parseInt(m[2], 10);
+      if (score > bestScore) { bestScore = score; best = k; }
+    }
+    return best;
+  }
   async function runFreshCycle() {
     if (enrichBot.running || freshBot.running) return; // enriquecimento tem prioridade
-    const keys = [...new Set([latestH2bKey(), "h2a-jun2026"].filter(Boolean))];
+    const keys = [...new Set([latestH2bKey(), "h2a-jun2026", latestH2aMensalKey()].filter(Boolean))];
     const meta = getMeta();
     let pick = null, oldest = Infinity;
     for (const k of keys) { const arr = getSheet(k); if (!arr || !arr.length) continue; const at = meta[k]?.freshAt || 0; if (at < oldest) { oldest = at; pick = k; } }
@@ -314,7 +334,17 @@ function createPlanilhas(deps) {
         compact.push(c);
       }
       dcLog(`✅ ${compact.length} vagas válidas (${descartadas} sem e-mail/qualidade${foraJanela ? `, ${foraJanela} fora da janela de datas` : ""}${outroVisto ? `, ${outroVisto} de outro visto` : ""})`);
-      if (compact.length < 10) throw new Error(`só ${compact.length} vagas válidas — resposta suspeita do DOL, NADA foi salvo (planilha anterior intacta)`);
+      // 🚨 v177-FIX7 (auditoria 14/09/2026): a mensagem culpava SEMPRE o DOL,
+      // mesmo quando quem descartou quase tudo foi a janela de datas que o
+      // PRÓPRIO admin configurou na coleta manual — ele ia procurar problema
+      // no lado de fora em vez de alargar o filtro. Agora o erro nomeia a
+      // causa real quando o filtro é o responsável pela maioria dos cortes.
+      if (compact.length < 10) {
+        const _culpaJanela = foraJanela > 0 && foraJanela >= (descartadas + outroVisto);
+        throw new Error(_culpaJanela
+          ? `só ${compact.length} vagas válidas — ${foraJanela} ficaram FORA da janela de datas que você escolheu (início entre ${beginFrom || "—"} e ${beginTo || "—"}). Alargue ou tire o filtro de datas e rode de novo. NADA foi salvo (planilha anterior intacta)`
+          : `só ${compact.length} vagas válidas — resposta suspeita do DOL, NADA foi salvo (planilha anterior intacta)`);
+      }
       dolColeta.progress = 85;
       const check = verify(compact, { caseField: "c" });
       if (!check.ok) throw new Error("guarda de integridade achou duplicata após o dedupe — NADA foi salvo");

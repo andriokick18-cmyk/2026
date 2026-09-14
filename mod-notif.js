@@ -146,7 +146,11 @@ function createNotif(deps) {
   }
   function confirmarCodigo(finalidade, email, codigo) {
     const k = key(finalidade, email); const v = pend.get(k);
-    if (!v) return { ok: false, motivo: "nenhum código pedido pra esse e-mail — clique em Enviar verificação" };
+    // 🚨 v177-FIX7 (auditoria 14/09/2026): os códigos vivem SÓ na memória do
+    // processo, e este repo faz deploy a cada commit (o Render também acorda do
+    // zero no plano free) — quem estava no meio do cadastro levava um "peça um
+    // código novo" sem nunca entender o porquê. A mensagem agora NOMEIA a causa.
+    if (!v) return { ok: false, motivo: "nenhum código pedido pra esse e-mail — clique em Enviar verificação. (Se você acabou de pedir um, o site foi reiniciado no meio do cadastro: peça outro código, o formulário continua preenchido.)" };
     if (Date.now() > v.exp) { pend.delete(k); return { ok: false, motivo: "código expirado (vale 5 minutos) — peça um novo", expirado: true }; }
     const c = String(codigo || "").replace(/\D/g, "");
     if (c.length !== 6 || hashCode(c) !== v.hash) {

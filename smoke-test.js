@@ -1756,6 +1756,37 @@ async function testAuthWatchdogPush() {
       check("🚨 v177-FIX6 (estrutural): CACHE_NAME do sw.js subiu junto com a mudança em app.js/admin.html (regra da casa — senão o aparelho mistura JS velho com HTML novo)",
         /const CACHE_NAME = "h2bapply-2026-v(4[3-9]|[5-9]\d|\d{3,})"/.test(fs.readFileSync(path.join(__dirname, "sw.js"), "utf8")),
         "sw.js ainda está no cache antigo (v42 ou menor)");
+
+      // ═══ 🚨 v177-FIX7: DUPLA ATIVAÇÃO sob concorrência DE VERDADE ═══
+      // A guarda (pd.ativadoEm) depende de NÃO existir await entre a checagem
+      // e a gravação. Isso era só uma leitura do código — nenhum teste provava
+      // com 2 requisições vivas ao mesmo tempo no MESMO pedido (é dinheiro:
+      // aprovar 2× credita os dias e a entrada no caixa em dobro).
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "dupativa@test.com", name: "Dup Ativa" });
+      const _daPed = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Dup Ativa", userWhatsapp: "11 99999", userCity: "SP", comprovante: Buffer.from("dup-ativa-unico").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      const _daP1 = reqSlow("PATCH", "/api/pedido/" + _daPed.json?.pedidoId, { status: "ativo", recebidoPor: "andrio" }, 400);
+      await new Promise((r) => setTimeout(r, 150));
+      const _daP2 = await req2("PATCH", "/api/pedido/" + _daPed.json?.pedidoId, { status: "ativo", recebidoPor: "andrio" });
+      const _daR1 = await _daP1;
+      const _daOks = [_daR1, _daP2].filter((r) => r.json?.ok === true).length;
+      const _daBarrado = [_daR1, _daP2].find((r) => r.status === 409);
+      const _daDet = (await get("/api/pedido/" + _daPed.json?.pedidoId)).json;
+      const _daCaixa = ((await get("/api/admin/financeiro")).json?.pagamentos || []).filter((x) => x.pedidoId === _daPed.json?.pedidoId && x.tipo !== "ajuste");
+      check("🚨 v177-FIX7: 2 aprovações CONCORRENTES do MESMO pedido (os 2 sócios clicando junto, rede lenta) — uma ativa, a outra leva 409 jaAtivado, os dias entram UMA vez e o caixa recebe UM lançamento só",
+        _daOks === 1 && !!_daBarrado && _daBarrado.json?.jaAtivado === true &&
+        _daCaixa.length === 1 && (_daDet?.usuario?.diasRestantes || 0) <= 31 && (_daDet?.usuario?.diasRestantes || 0) >= 29,
+        JSON.stringify({ oks: _daOks, barrado: _daBarrado?.status, caixa: _daCaixa.length, dias: _daDet?.usuario?.diasRestantes }).slice(0, 180));
+
+      const _confBad = await req2("POST", "/api/email/confirmar", { email: "ninguem-pediu-codigo@gmail.com", codigo: "123456" });
+      check("🚨 v177-FIX7: código de cadastro que 'sumiu' explica a causa REAL (o site reiniciou — os códigos vivem só na memória e este repo faz deploy a cada commit) em vez de um 'peça um código novo' sem motivo",
+        _confBad.status === 400 && /reiniciado/i.test(_confBad.json?.error || "") && /formulário continua preenchido/i.test(_confBad.json?.error || ""),
+        (_confBad.json?.error || "").slice(0, 140));
+
+      const _srvF7 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      check("🚨 v177-FIX7 (estrutural): aviso de compra que falha pra UM dos sócios fica gravado NO PEDIDO (avisoFalhas) + erro alto no log — antes, com o outro sócio recebendo, a rodada era dada por boa e quem ficou sem aviso não tinha como saber",
+        _srvF7.includes("DB_PEDIDOS[_iF].avisoFalhas=_falhasN.map") && _srvF7.includes("AVISO NÃO CHEGOU pra"),
+        "falha de aviso por destinatário voltou a morrer num console.warn");
     }
     // Comprovante já usado (fingerprint) — mesma trilha do MC5-P1, sem
     // duplicar setup: cria um 2º usuário VIP com Gmail conectado e tenta
@@ -2224,6 +2255,22 @@ async function testAuthWatchdogPush() {
       check("📜 v174: o painel recebe o log humano de TODOS os robôs (botLogs) — vagas novas H-2A, H-2A do mês e H-2B do mês aparecem com rótulo e tipo",
         _bl.length >= 3 && ["h2a-novas", "h2a-bimestral", "h2b-mensal"].every((b) => _bl.some((l) => l.bot === b && l.botLabel && l.msg && l.ts)) && fs.readFileSync(path.join(__dirname, "admin.html"), "utf8").includes('id="bl-log"'),
         JSON.stringify(_bl.slice(0, 3)).slice(0, 200));
+      // ═══ 🚨 v177-FIX7 (7ª leva da auditoria) ═══
+      // Coleta manual com janela de datas que corta quase tudo: o erro
+      // culpava SEMPRE o DOL, nunca o filtro que o próprio admin escolheu.
+      const _csJan = await req2("POST", "/api/admin/sheet/coleta-start", { visa: "H-2B", sheetKey: "teste-janela", sheetName: "Teste Janela", beginFrom: "2030-01-01", beginTo: "2030-12-31" });
+      let _stJan = null;
+      for (let i = 0; i < 40; i++) { await new Promise((r) => setTimeout(r, 250)); _stJan = (await get("/api/admin/sheet/coleta-status")).json; if (_stJan && _stJan.running === false && _stJan.finishedAt && _stJan.key === "teste-janela") break; }
+      const _slJan = await get("/api/sheets-list");
+      check("🚨 v177-FIX7: coleta em que a JANELA DE DATAS do próprio admin cortou quase tudo falha nomeando o filtro (com as datas escolhidas) em vez de culpar o DOL — e, como sempre, nada é salvo",
+        _csJan.json?.ok === true && _stJan && /fora da janela de datas/i.test(_stJan.error || "") && /2030-01-01/.test(_stJan.error || "") &&
+        !(_slJan.json?.sheets || []).some((x) => x.key === "teste-janela"),
+        JSON.stringify({ erro: (_stJan?.error || "").slice(0, 140) }));
+      const _modFresh = fs.readFileSync(path.join(__dirname, "mod-planilhas.js"), "utf8");
+      check("🚨 v177-FIX7 (estrutural): o robô de frescor passou a cobrir a planilha H-2A DO MÊS (h2a-AAAAMM, a que se publica sozinha) — antes só olhava a H-2B mais nova e a chave fixa h2a-jun2026, então a planilha mais nova do site envelhecia sem NENHUMA reconferência de status/data/salário",
+        _modFresh.includes("function latestH2aMensalKey()") &&
+        _modFresh.includes('[latestH2bKey(), "h2a-jun2026", latestH2aMensalKey()]'),
+        "runFreshCycle voltou a ignorar as planilhas H-2A mensais");
       // 🔒 admin-only + estrutural
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
       const pl403 = await Promise.all([req2("POST", "/api/admin/sheet/h2a-bimestral-run", {}), req2("POST", "/api/admin/sheet/coleta-start", { sheetKey: "x" }), get("/api/admin/planilhas/status"), req2("POST", "/api/admin/sheet/coleta-publish", { key: "teste2099" })]);

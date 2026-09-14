@@ -7894,7 +7894,10 @@ filtrar();
       if(!cidade||!estado||!pais)return json(res,400,{error:"Cidade, estado e país são obrigatórios."});
       if(whatsapp.replace(/\D/g,"").length<10)return json(res,400,{error:"Informe seu WhatsApp com DDD (só números, ex.: 5511999999999)."});
       if(!_isGmail(email))return json(res,400,{error:"Informe um Gmail válido (…@gmail.com) — é por ele que o site envia suas candidaturas."});
-      if(!NOTIF.validarToken(d.emailToken,"cadastro",email))return json(res,400,{error:"Confirme seu e-mail primeiro: clique em \"Enviar verificação\" e digite o código que chegou no seu Gmail."});
+      // 🚨 v177-FIX7: o token "e-mail verificado" é assinado com um segredo que
+      // NASCE JUNTO COM O PROCESSO — um deploy entre o "confirmar código" e o
+      // "criar conta" invalida um token legítimo. A mensagem agora explica.
+      if(!NOTIF.validarToken(d.emailToken,"cadastro",email))return json(res,400,{error:"Confirme seu e-mail primeiro: clique em \"Enviar verificação\" e digite o código que chegou no seu Gmail. (Se você já confirmou agora há pouco, o site foi reiniciado no meio do cadastro — é só confirmar de novo, seus dados continuam preenchidos.)"});
       if(_findUserByEmail(email))return json(res,409,{error:"Já existe uma conta com esse e-mail. Entre com seu usuário ou use \"Esqueci minha senha\"."});
       // Cinto-e-suspensório: impossível "roubar" identidade de admin pelo username.
       if(isAdminEmail(username))return json(res,400,{error:"Esse nome de usuário não pode ser usado."});
@@ -9657,10 +9660,23 @@ filtrar();
           // nenhum admin estar conectado. O caminho legado abaixo continua
           // como reserva enquanto a conta não estiver conectada.
           if(NOTIF.conectada()){
-            const _mN=_mensagemPedidoAdmin(pedido);let _okN=0;
+            const _mN=_mensagemPedidoAdmin(pedido);let _okN=0;const _falhasN=[];
             for(const toEmail of _notifDestinatarios()){
               try{await NOTIF.sendMail({to:toEmail,subject:_mN.subject,text:_mN.text,attachments:_mN.attachments,tipo:"pedido"});_okN++;console.log("[pedido] ✅ aviso via conta de notificações →",toEmail);}
-              catch(e){console.warn("[pedido] notif err →",toEmail,":",e.message);}
+              catch(e){_falhasN.push({to:toEmail,erro:String(e.message||e).slice(0,160)});console.warn("[pedido] notif err →",toEmail,":",e.message);}
+            }
+            // 🚨 v177-FIX7 (auditoria 14/09/2026): quando o aviso saía pro Andrio
+            // mas falhava pro Diego, o `_okN>0` dava a rodada por boa e o sócio
+            // que ficou sem aviso não tinha COMO saber (só um console.warn que
+            // ninguém lê, e o lastError da conta é sobrescrito no envio seguinte).
+            // A falha por destinatário agora fica gravada NO PEDIDO — a trilha
+            // vive o mesmo tempo que o dinheiro dela.
+            if(_falhasN.length){
+              try{
+                const _iF=DB_PEDIDOS.findIndex(x=>x&&x.id===pedido.id);
+                if(_iF>=0){DB_PEDIDOS[_iF].avisoFalhas=_falhasN.map(f=>({...f,em:Date.now()}));persistPedidos();}
+              }catch{}
+              console.error(`[pedido] ⚠️ AVISO NÃO CHEGOU pra ${_falhasN.length} sócio(s) no pedido ${pedido.id}: ${_falhasN.map(f=>f.to).join(", ")} — conferir a aba Notificações (cota de 500/dia do Gmail, conta desconectada, etc.)`);
             }
             if(_okN>0)return;
           }
