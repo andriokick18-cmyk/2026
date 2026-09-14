@@ -9746,6 +9746,13 @@ filtrar();
 
       // Validar senha de editor ao ativar
       if(d.status==="ativo"){
+        // 🎯 v178: pedido CANCELADO (inclusive pelo auto-cancelamento por
+        // valor divergente, logo abaixo) nunca pode ser ativado depois — o
+        // caminho certo é o cliente criar um pedido novo com o valor
+        // certo, nunca "reviver" este.
+        if(pd.canceladoEm){
+          return json(res,409,{error:`⛔ Este pedido foi CANCELADO${pd.notaAdmin?" ("+String(pd.notaAdmin).slice(0,140)+")":""} e não pode ser ativado. Se o cliente pagou o valor certo, ele precisa fazer um pedido novo.`,jaCancelado:true,canceladoPor:pd.canceladoPor,canceladoEm:pd.canceladoEm});
+        }
         // GUARD DUPLA ATIVAÇÃO: se este pedido JÁ foi ativado, recusa com erro claro.
         // Evita que Andrew e Diego ativem o mesmo pedido e contem os dias 2×.
         // Seguro contra corrida: pd.ativadoEm é setado de forma SÍNCRONA mais abaixo,
@@ -9797,13 +9804,18 @@ filtrar();
         if(!d.confirmarComprovanteUsado){
           const _hash=pd.comprovanteHash||null;
           const _tx=String((pd.preCheck||{}).transacaoIdLida||"").replace(/\s+/g,"").toUpperCase();
+          // 🎯 v178: inclui "cancelado" na busca — desde que o v178 passou a
+          // AUTO-CANCELAR pedido com valor divergente, o mesmo arquivo/
+          // transação reaparecer em OUTRO pedido depois de um cancelamento
+          // (automático ou manual) continua sendo reuso suspeito; filtrar só
+          // "pago"/"ativo" deixaria de flagar exatamente esse caso.
           const _usado=DB_PEDIDOS.find(x=>x&&x.id!==pd.id
-            &&["pago","ativo"].includes(String(x.status||"").toLowerCase())
+            &&["pago","ativo","cancelado"].includes(String(x.status||"").toLowerCase())
             &&((_hash&&x.comprovanteHash===_hash)
               ||(_tx.length>=6&&String((x.preCheck||{}).transacaoIdLida||"").replace(/\s+/g,"").toUpperCase()===_tx)));
           if(_usado){
             return json(res,409,{comprovanteUsado:true,pedidoDup:_usado.id,emailDup:_usado.userEmail,
-              error:`🔴 COMPROVANTE JÁ USADO: ${(_hash&&_usado.comprovanteHash===_hash)?"o MESMO arquivo":"a MESMA transação PIX"} já está no pedido #${String(_usado.id||"").slice(-8).toUpperCase()} (${_usado.userEmail}), pago/ativo. Só confirme se tiver CERTEZA que são pagamentos diferentes.`});
+              error:`🔴 COMPROVANTE JÁ USADO: ${(_hash&&_usado.comprovanteHash===_hash)?"o MESMO arquivo":"a MESMA transação PIX"} já apareceu no pedido #${String(_usado.id||"").slice(-8).toUpperCase()} (${_usado.userEmail}, status "${_usado.status}"). Só confirme se tiver CERTEZA que são pagamentos diferentes.`});
           }
         }
         // v57 (dono, 25/07) — atualizado p/ v172b (12/09): sem senha extra aqui — a
@@ -9904,74 +9916,10 @@ filtrar();
       }
 
       if(d.status==="cancelado"){
-        // GUARD DUPLO CANCELAMENTO (mesma classe de bug da guarda de dupla
-        // ativação acima): sem isso, clicar cancelar 2x no mesmo pedido —
-        // ou dois admins cancelando quase junto — estornava dias de VIP
-        // DUAS VEZES (pd.diasTotal nunca zera), descontando dias do usuário
-        // que não têm relação com este pedido. _anularNoCaixa já era
-        // idempotente (filtra !anuladoPor); faltava a mesma trava pro
-        // estorno de dias.
-        if(pd.canceladoEm){
-          const quemC=pd.canceladoPor||"o outro editor";
-          const quandoC=new Date(pd.canceladoEm).toLocaleString("pt-BR");
-          console.log(`[pedido] ⛔ duplo cancelamento barrado: ${pd.id} (já cancelado por ${quemC})`);
-          return json(res,409,{error:`⛔ Este pedido JÁ FOI CANCELADO por ${quemC} em ${quandoC}. Não dá pra cancelar de novo (evita estornar os dias duas vezes).`,jaCancelado:true,canceladoPor:quemC,canceladoEm:pd.canceladoEm});
-        }
-        pd.canceladoPor=s.user_email;pd.canceladoEm=Date.now();
-        // 💼 MC5-P2 item 1: a notícia RUIM também avisa — era o ÚNICO evento
-        // de dinheiro 100% mudo (aprovação/troca/missão/transferência têm
-        // push; o cancelamento não tinha nada e a pessoa descobria "cadê
-        // meus 💎?" pelo WhatsApp). O motivo vem da notaAdmin do admin.
-        // ── 🧾 MC5-P6: o caixa NUNCA apaga — cancelamento vira AJUSTE− ─────
-        // Desde 18/07/2026 o cancelamento REMOVIA a entrada automática do
-        // caixa via filter (a receita ficava certa, mas a história do
-        // dinheiro sumia — a MESMA classe que o 3.0-P5 matou no cérebro).
-        // Agora usa a função ÚNICA _anularNoCaixa do Cérebro Contábil (fonte
-        // única — nunca uma 2ª lógica de "tirar do caixa"): o original fica
-        // PRESERVADO marcado anuladoPor e entra o par negativo de AJUSTE —
-        // canônico e ledger seguem com o MESMO líquido da exclusão antiga
-        // (provado no smoke), só que agora dá pra auditar o que aconteceu.
-        const _pagsVivas=(DB_FINANCEIRO.pagamentos||[]).filter(x=>x&&x.pedidoId===pd.id&&x.tipo!=="ajuste"&&!x.anuladoPor);
-        if(_pagsVivas.length){
-          try{
-            const _nAnul=_anularNoCaixa(pd.id,true,s.user_email,"CANCEL-"+pd.id.slice(-8).toUpperCase(),
-              "Pedido #"+pd.id.slice(-8).toUpperCase()+" cancelado"+(d.notaAdmin?" — "+String(d.notaAdmin).slice(0,120):"")+" (entrada anulada por AJUSTE — o caixa nunca apaga)");
-            console.log(`[financeiro] pedido ${pd.id} cancelado — ${_nAnul} entrada(s) ANULADA(S) por AJUSTE− (original preservado no caixa)`);
-          }catch(eA){console.error("[financeiro] anular caixa do cancelado:",eA.message);}
-        }
-        // ── Estorno de DIAS (dono, 18/07/2026): os dias SEGUEM o pedido ──
-        // A ativação credita pd.diasTotal a partir da data do pagamento (ou
-        // empilha na renovação). Cancelou o pedido, estorna exatamente o que
-        // ele creditou — caso real: 3 pedidos duplicados = 90d de um único
-        // pagamento de 30d; cancelar os 2 extras devolve o cliente aos 30d
-        // contados do 1º pagamento. Só mexe em VIP de origem paga.
-        if(pd.ativadoEm && (pd.diasTotal||0)>0){
-          const tgtC=getUser(pd.userEmail);
-          if(tgtC&&tgtC.vip&&["payment","pago"].includes(String(tgtC.vip.source||""))){
-            const DAYc=86400_000;
-            const v={...tgtC.vip};
-            if((v.manualExpires||0)>0)v.manualExpires=v.manualExpires-pd.diasTotal*DAYc;
-            if(["vipro","doublepro"].includes(pd.plano)&&(v.autoExpires||0)>0)v.autoExpires=v.autoExpires-pd.diasTotal*DAYc;
-            v.note=(String(v.note||"")+" · estorno "+pd.diasTotal+"d (pedido #"+pd.id.slice(-8).toUpperCase()+" cancelado)").slice(-220);
-            setUser(pd.userEmail,{vip:v});
-            console.log(`[pedido] ${pd.id} cancelado — estornados ${pd.diasTotal}d de VIP de ${pd.userEmail}`);
-          }
-        }
-        // ── Revogação da ativação PROVISÓRIA: o robô liberou pelo comprovante,
-        // mas o admin decidiu cancelar (fraude, engano) — o provisório cai JUNTO.
-        if(pd.autoAtivado && !pd.ativadoEm){
-          const tgtP=getUser(pd.userEmail);
-          if(tgtP&&tgtP.vip&&tgtP.vip.source==="auto-provisorio"&&tgtP.vip.pedidoId===pd.id){
-            const agora=Date.now();
-            setUser(pd.userEmail,{plan:"free",vip:{...tgtP.vip,active:false,
-              manualExpires:Math.min(tgtP.vip.manualExpires||0,agora),
-              autoExpires:Math.min(tgtP.vip.autoExpires||0,agora),
-              note:(String(tgtP.vip.note||"")+" · ⛔ provisório revogado (pedido cancelado pelo admin)").slice(-220)}});
-            addLog(pd.userEmail,{status:"sistema",
-              jobTitle:"⛔ Ativação provisória revogada — pedido cancelado pelo admin",
-              company:`Pedido #${pd.id.slice(-8).toUpperCase()}`});
-            console.log(`[auto-ativa] ⛔ provisório de ${pd.userEmail} revogado (pedido ${pd.id} cancelado)`);
-          }
+        const _rC=_cancelarPedidoInterno(pd,{por:s.user_email,notaAdmin:d.notaAdmin});
+        if(!_rC.ok){
+          console.log(`[pedido] ⛔ duplo cancelamento barrado: ${pd.id} (já cancelado por ${_rC.body.canceladoPor})`);
+          return json(res,_rC.status,_rC.body);
         }
       }
       persistPedidos(); // v18-FIX: idem — pd já é a referência viva do array, sem reescrita por índice
@@ -13056,6 +13004,72 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}if(DB_APP_INDEX[te]){delete DB
   res.writeHead(404,{"Content-Type":"application/json"});res.end(JSON.stringify({error:"404"}));
 });
 
+// 🎯 v178 (dono, 14/09/2026 — "não vai ter correção de pedidos... o valor
+// não bate, simplesmente não vai ter que alterar nada, esse cadastro vai
+// ter que ser excluído, vai ter que ser criado um novo pelo usuário"):
+// fonte ÚNICA de cancelamento de pedido — usada pela rota PATCH (admin
+// manual) E pelo auto-cancelamento por divergência de valor que a IA
+// detecta (preCheckComprovante/_autoCancelarSeDivergente, mais abaixo).
+// Extraída do corpo antigo do branch status==="cancelado" pra nunca
+// duplicar esta lógica (caixa, estorno de dias, revogação de provisório).
+// 🐛 v178-FIX: nasceu por engano DENTRO do callback do http.createServer
+// (função aninhada, só existia durante 1 requisição) — preCheckComprovante
+// chamava ela de FORA desse escopo e o ReferenceError morria em silêncio
+// dentro do .catch(()=>{}) do fire-and-forget, então NENHUM pedido
+// divergente era cancelado de verdade. Precisa estar no escopo do MÓDULO
+// (aqui, fora do createServer) pra ser visível dos dois lados.
+function _cancelarPedidoInterno(pd,opts){
+  const {por,notaAdmin}=opts||{};
+  // GUARD DUPLO CANCELAMENTO: sem isso, clicar cancelar 2x no mesmo pedido
+  // — ou 2 admins cancelando quase junto, ou o auto-cancelamento correndo
+  // com uma ação manual — estornava dias de VIP DUAS VEZES.
+  if(pd.canceladoEm){
+    return {ok:false,status:409,body:{error:`⛔ Este pedido JÁ FOI CANCELADO por ${pd.canceladoPor||"o outro editor"} em ${new Date(pd.canceladoEm).toLocaleString("pt-BR")}. Não dá pra cancelar de novo (evita estornar os dias duas vezes).`,jaCancelado:true,canceladoPor:pd.canceladoPor,canceladoEm:pd.canceladoEm}};
+  }
+  pd.canceladoPor=por||"sistema";pd.canceladoEm=Date.now();pd.status="cancelado";
+  if(notaAdmin)pd.notaAdmin=notaAdmin;
+  // ── 🧾 MC5-P6: o caixa NUNCA apaga — cancelamento vira AJUSTE− ─────────
+  const _pagsVivas=(DB_FINANCEIRO.pagamentos||[]).filter(x=>x&&x.pedidoId===pd.id&&x.tipo!=="ajuste"&&!x.anuladoPor);
+  if(_pagsVivas.length){
+    try{
+      const _nAnul=_anularNoCaixa(pd.id,true,por||"sistema","CANCEL-"+pd.id.slice(-8).toUpperCase(),
+        "Pedido #"+pd.id.slice(-8).toUpperCase()+" cancelado"+(notaAdmin?" — "+String(notaAdmin).slice(0,120):"")+" (entrada anulada por AJUSTE — o caixa nunca apaga)");
+      console.log(`[financeiro] pedido ${pd.id} cancelado — ${_nAnul} entrada(s) ANULADA(S) por AJUSTE− (original preservado no caixa)`);
+    }catch(eA){console.error("[financeiro] anular caixa do cancelado:",eA.message);}
+  }
+  // ── Estorno de DIAS: os dias SEGUEM o pedido ───────────────────────────
+  if(pd.ativadoEm&&(pd.diasTotal||0)>0){
+    const tgtC=getUser(pd.userEmail);
+    if(tgtC&&tgtC.vip&&["payment","pago"].includes(String(tgtC.vip.source||""))){
+      const DAYc=86400_000;
+      const v={...tgtC.vip};
+      if((v.manualExpires||0)>0)v.manualExpires=v.manualExpires-pd.diasTotal*DAYc;
+      if(["vipro","doublepro"].includes(pd.plano)&&(v.autoExpires||0)>0)v.autoExpires=v.autoExpires-pd.diasTotal*DAYc;
+      v.note=(String(v.note||"")+" · estorno "+pd.diasTotal+"d (pedido #"+pd.id.slice(-8).toUpperCase()+" cancelado)").slice(-220);
+      setUser(pd.userEmail,{vip:v});
+      console.log(`[pedido] ${pd.id} cancelado — estornados ${pd.diasTotal}d de VIP de ${pd.userEmail}`);
+    }
+  }
+  // ── Revogação da ativação PROVISÓRIA (o robô liberou pelo comprovante,
+  // mas o pedido caiu — fraude, engano, ou valor divergente) ────────────
+  if(pd.autoAtivado&&!pd.ativadoEm){
+    const tgtP=getUser(pd.userEmail);
+    if(tgtP&&tgtP.vip&&tgtP.vip.source==="auto-provisorio"&&tgtP.vip.pedidoId===pd.id){
+      const agora=Date.now();
+      setUser(pd.userEmail,{plan:"free",vip:{...tgtP.vip,active:false,
+        manualExpires:Math.min(tgtP.vip.manualExpires||0,agora),
+        autoExpires:Math.min(tgtP.vip.autoExpires||0,agora),
+        note:(String(tgtP.vip.note||"")+" · ⛔ provisório revogado (pedido cancelado)").slice(-220)}});
+      addLog(pd.userEmail,{status:"sistema",
+        jobTitle:"⛔ Ativação provisória revogada — pedido cancelado",
+        company:`Pedido #${pd.id.slice(-8).toUpperCase()}`});
+      console.log(`[auto-ativa] ⛔ provisório de ${pd.userEmail} revogado (pedido ${pd.id} cancelado)`);
+    }
+  }
+  persistPedidos();
+  return {ok:true};
+}
+
 // ── Cleanup ───────────────────────────────────────────────
 setInterval(()=>{const n=Date.now();let c=0;Object.keys(sessions).forEach(k=>{const s=sessions[k],a=n-(s.ts||s.created_at||0),
   // 🚨 v177-FIX (auditoria 14/09/2026): isAdminEmail(s.user_email) checava
@@ -13516,6 +13530,26 @@ function _geminiComprovanteParse(respBody,pedido){
     return {...base,veredito:"ERRO",valorLido:null,resumo:"Erro lendo a resposta da IA: "+e.message};
   }
 }
+// 🎯 v178 (dono, 14/09/2026 — "não vai ter correção de pedidos... o valor
+// não bate, simplesmente não vai ter que alterar nada, esse cadastro vai
+// ter que ser excluído, vai ter que ser criado um novo pelo usuário"):
+// fonte ÚNICA — chamada tanto pelo gancho de teste quanto pelo Gemini de
+// verdade (nunca 2 comportamentos diferentes entre teste e produção). A
+// IA LEU com confiança e o valor NÃO bate → cancela NA HORA, sem revisão
+// manual nenhuma. Só DIVERGENCIA cancela sozinho — ILEGIVEL/ERRO continuam
+// pendentes pra revisão humana (a IA não tem certeza do que leu; cancelar
+// aí puniria um comprovante legítimo com foto ruim — o caminho certo pra
+// isso é reenviar a foto, rota já existente).
+function _autoCancelarSeDivergente(pedido,pc){
+  if(pc.veredito!=="DIVERGENCIA")return;
+  const _idxD=DB_PEDIDOS.findIndex(p=>p.id===pedido.id);
+  if(_idxD<0)return;
+  const _pdD=DB_PEDIDOS[_idxD];
+  if(_pdD.canceladoEm||_pdD.ativadoEm)return;
+  const _rD=_cancelarPedidoInterno(_pdD,{por:"sistema (IA — valor divergente)",
+    notaAdmin:`Cancelado automaticamente: o comprovante mostra R$${(pc.valorLido||0).toFixed(2)}, mas o plano escolhido custa R$${(pedido.valorTotal||0).toFixed(2)}. Se você pagou o valor certo, confira se enviou o comprovante certo; se pagou um valor diferente, faça uma nova doação com o valor correto.`});
+  if(_rD.ok)console.log(`[precheck] 🚫 pedido ${pedido.id} CANCELADO automaticamente — valor divergente (lido R$${pc.valorLido}, esperado R$${pedido.valorTotal||0})`);
+}
 async function preCheckComprovante(pedido, opts){
   const ativar=!!(opts&&opts.ativar);
   // ── 🧾 2.0-P2: IMPRESSÃO DIGITAL SEMPRE — o hash SHA-256 do comprovante é
@@ -13541,6 +13575,10 @@ async function preCheckComprovante(pedido, opts){
         pagadorLido:m[3]||null,recebedorLido:null,instituicaoLida:null,transacaoIdLida:m[2]||null,
         bateComEsperado:bate,resumo:`(teste) leu R$${lido}`,alertas:[],precoEsperado:null,valorInformado:pedido.valorTotal||0};
       setPedidoPreCheck(pedido.id,pc);
+      // v178: mesmo gancho de sempre — o teste tem que se comportar EXATAMENTE
+      // como o Gemini de verdade (fonte única _autoCancelarSeDivergente),
+      // senão a suíte prova um comportamento que a produção não tem.
+      _autoCancelarSeDivergente(pedido,pc);
       if(ativar&&pc.veredito==="CONFERE")autoAtivarProvisorio(pedido.id);
       return pc;
     }
@@ -13566,6 +13604,7 @@ async function preCheckComprovante(pedido, opts){
     }
     const pc=_geminiComprovanteParse(r.body,pedido);
     setPedidoPreCheck(pedido.id,pc);
+    _autoCancelarSeDivergente(pedido,pc);
     if(ativar&&pc.veredito==="CONFERE")autoAtivarProvisorio(pedido.id);
     return pc;
   }catch(e){

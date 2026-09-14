@@ -2392,19 +2392,31 @@ async function testAuthWatchdogPush() {
     const mc5p1 = await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, consentimento: true, userName: "MC5 A", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:100:E2EMC5AAA1:Pagador MC5", comprovante: Buffer.from("comp-mc5-a").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     await new Promise((r) => setTimeout(r, 400)); // preCheck roda em background
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    // 🎯 v178 (dono, 14/09/2026 — "não vai ter correção de pedidos... o
+    // valor não bate, simplesmente não vai ter que alterar nada, esse
+    // cadastro vai ter que ser excluído, vai ter que ser criado um novo
+    // pelo usuário"): o robô leu R$100 mas o pedido é de R$150 — antes disso
+    // ficava pendente esperando um admin decidir (confirmarDivergencia);
+    // agora CANCELA sozinho, sem revisão manual nenhuma, e explica o motivo.
+    const mc5p1Get = await get("/api/pedido/" + mc5p1.json?.pedidoId);
     const mc5Ap1 = await req2("PATCH", "/api/pedido/" + mc5p1.json?.pedidoId, { status: "ativo", recebidoPor: "andrio" });
-    const mc5Ap2 = await req2("PATCH", "/api/pedido/" + mc5p1.json?.pedidoId, { status: "ativo", recebidoPor: "andrio", confirmarDivergencia: true });
-    check("💼 MC5-P1: aprovar com leitura DIVERGENTE (robô leu R$100, pedido diz R$150) leva 409 confirmável mostrando os DOIS números — e só aprova com confirmarDivergencia:true (o humano decide VENDO)",
+    check("🎯 v178: valor DIVERGENTE (robô leu R$100 × pedido R$150) cancela o pedido SOZINHO, na hora — sem correção manual, sem admin decidir — com o motivo explicado pro cliente",
       mc5p1.json?.ok === true && !mc5p1.json?.duplicado &&
-      mc5Ap1.status === 409 && mc5Ap1.json?.divergencia === true && Math.abs((mc5Ap1.json?.valorLido ?? 0) - 100) < 0.01 &&
-      mc5Ap2.json?.ok === true,
-      JSON.stringify({ a: mc5Ap1.status, div: mc5Ap1.json?.divergencia, lido: mc5Ap1.json?.valorLido, b: mc5Ap2.json?.ok }).slice(0, 140));
+      mc5p1Get.json?.pedido?.status === "cancelado" && mc5p1Get.json?.pedido?.canceladoPor === "sistema (IA — valor divergente)" &&
+      /R\$100\.00.*R\$150\.00/.test(mc5p1Get.json?.pedido?.notaAdmin || ""),
+      JSON.stringify({ status: mc5p1Get.json?.pedido?.status, por: mc5p1Get.json?.pedido?.canceladoPor, nota: mc5p1Get.json?.pedido?.notaAdmin }).slice(0, 200));
+    check("🎯 v178: tentar ativar um pedido JÁ cancelado (pelo auto-cancelamento) é barrado com 409 jaCancelado — não existe mais caminho pra 'aprovar mesmo assim' um valor errado",
+      mc5Ap1.status === 409 && mc5Ap1.json?.jaCancelado === true && mc5Ap1.json?.canceladoPor === "sistema (IA — valor divergente)",
+      JSON.stringify(mc5Ap1.json).slice(0, 160));
+    check("🎯 v178: (estrutural) só DIVERGENCIA cancela sozinho — ILEGIVEL/ERRO continuam pendentes pra revisão humana (a IA não tem certeza do que leu; cancelar aí puniria um comprovante legítimo com foto ruim)",
+      _srvSrc.includes('function _autoCancelarSeDivergente(pedido,pc){\n  if(pc.veredito!=="DIVERGENCIA")return;'),
+      "guarda de escopo do auto-cancelamento mudou");
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5b@test.com", name: "MC5 B" });
     const mc5p2 = await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, consentimento: true, userName: "MC5 B", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:150:E2EMC5AAA1:Pagador MC5", comprovante: Buffer.from("comp-mc5-b-refoto").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     await new Promise((r) => setTimeout(r, 400));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     const mc5Ap3 = await req2("PATCH", "/api/pedido/" + mc5p2.json?.pedidoId, { status: "ativo", recebidoPor: "diego" });
-    check("💼 MC5-P1: MESMA transação PIX (E2E) já ativa em OUTRO usuário, arquivo re-fotografado diferente — a aprovação barra com 409 'comprovante já usado' apontando o pedido e o e-mail originais (antes só a auditoria das 02h pegava, DEPOIS dos 💎 creditados)",
+    check("💼 MC5-P1 + v178: MESMA transação PIX (E2E) reaparece em OUTRO usuário — mesmo o pedido original tendo sido CANCELADO (pelo auto-cancelamento por valor divergente, não aprovado), a aprovação barra com 409 'comprovante já usado' apontando o pedido e o e-mail originais (reuso suspeito não some só porque a 1ª tentativa foi rejeitada)",
       mc5Ap3.status === 409 && mc5Ap3.json?.comprovanteUsado === true && mc5Ap3.json?.pedidoDup === mc5p1.json?.pedidoId && mc5Ap3.json?.emailDup === "mc5a@test.com",
       JSON.stringify(mc5Ap3.json).slice(0, 180));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5c@test.com", name: "MC5 C" });
@@ -2475,10 +2487,11 @@ async function testAuthWatchdogPush() {
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5a@test.com", name: "MC5 A" });
     const mc5vis = (await get("/api/pedidos")).json;
     const _rowA = (mc5vis?.pedidos || []).find((p2) => p2.id === mc5p1.json?.pedidoId);
-    check("💼 MC5-P2: /api/pedidos do usuário virou WHITELIST — sem preCheck cru (vazava e-mail de OUTRO usuário no dupAlerta), sem notaAdmin/criadoPor internos; comprovanteStatus derivado SEGURO (divergência vira 'analise' — nunca se avisa quem tenta fraude)",
+    check("💼 MC5-P2 + v178: /api/pedidos do usuário virou WHITELIST — sem preCheck cru (vazava e-mail de OUTRO usuário no dupAlerta), sem notaAdmin/criadoPor internos; comprovanteStatus derivado SEGURO ('analise'); e o pedido aparece CANCELADO com o motivo real do auto-cancelamento (v178) visível no motivoCancelamento — a pessoa sabe exatamente por que precisa fazer um pedido novo",
       _rowA && !("preCheck" in _rowA) && !("notaAdmin" in _rowA) && !("criadoPor" in _rowA) &&
-      _rowA.comprovanteStatus === "analise" && _rowA.comprovante === true && typeof _rowA.valorTotal === "number",
-      JSON.stringify(_rowA).slice(0, 200));
+      _rowA.comprovanteStatus === "analise" && _rowA.comprovante === true && typeof _rowA.valorTotal === "number" &&
+      _rowA.status === "cancelado" && /R\$100\.00.*R\$150\.00/.test(_rowA.motivoCancelamento || ""),
+      JSON.stringify(_rowA).slice(0, 260));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     await req2("PATCH", "/api/pedido/" + mc5d1.json?.pedidoId, { status: "cancelado", notaAdmin: "valor não confere com o comprovante" });
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5c@test.com", name: "MC5 C" });

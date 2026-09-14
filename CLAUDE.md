@@ -224,10 +224,47 @@ se referindo a outro repositório/projeto.
   https://aistudio.google.com/apikey) — sem ela o comprovante segue
   pendente de conferência manual, sem quebrar nada.
   **⚠️ Backlog restante da auditoria (não implementado ainda, prioridade
-  decrescente)**: painel admin sem UI pra corrigir valor de pedido, ver
-  histórico de aprovados/cancelados, conceder/revogar VIP manualmente
-  (só via API direta hoje); ~60 achados médios/baixos catalogados
-  (detalhes completos no relatório entregue ao dono em 14/09/2026).
+  decrescente)**: painel admin sem UI pra ver histórico de aprovados/
+  cancelados, conceder/revogar VIP manualmente (só via API direta hoje);
+  ~60 achados médios/baixos catalogados (detalhes completos no relatório
+  entregue ao dono em 14/09/2026).
+- **🚫 v178 — SEM CORREÇÃO DE PEDIDO: valor errado cancela, não conserta
+  (dono, 14/09/2026, respondendo o item acima — "não vai ter correção de
+  pedidos... se a pessoa errar o pedido não vai ser aceito, pronto...
+  esse pedido vai ter que ser excluído, vai ter que ser criado um novo
+  pelo usuário")**: decisão de produto que FECHA a pergunta "vai ter UI
+  pra corrigir valor de pedido?" — a resposta é não, nunca vai ter,
+  porque não existe mais pedido com valor errado pra corrigir: o Gemini
+  (v177) lê o comprovante e, se o valor NÃO bate com o preço do plano
+  (DIVERGENCIA — leitura confiável, não é o caso de ILEGIVEL/ERRO, que
+  continuam pendentes pra revisão humana porque a IA não tem certeza do
+  que leu), o pedido é CANCELADO na hora, sozinho, sem nenhuma decisão
+  de admin — `_autoCancelarSeDivergente()` chama a fonte única
+  `_cancelarPedidoInterno()` (extraída do antigo branch
+  `status==="cancelado"` do PATCH /api/pedido/:id — usada tanto pelo
+  cancelamento manual do admin quanto pelo automático, nunca 2 lógicas).
+  O cliente vê o motivo exato (`motivoCancelamento`, "comprovante mostra
+  R$X, plano custa R$Y") em Minhas doações e precisa criar um pedido
+  novo com o valor certo — não existe (e nunca vai existir) um caminho
+  de "corrigir o valor e aprovar mesmo assim" pra esse caso. Ativar um
+  pedido já cancelado (por qualquer motivo) é bloqueado com 409
+  `jaCancelado`. O detector de "comprovante já usado" (v2.0-P2) passou a
+  considerar também pedidos cancelados como possível duplicata (antes só
+  pago/ativo) — senão o mesmo arquivo/transação reaparecer depois de um
+  auto-cancelamento passava batido. **🐛 v178-FIX (achado pelos próprios
+  testes antes de qualquer deploy)**: a 1ª versão de
+  `_cancelarPedidoInterno` nasceu por engano DENTRO do callback do
+  `http.createServer` (função aninhada, só existia durante 1
+  requisição) — chamada de FORA desse escopo (por
+  `_autoCancelarSeDivergente`) dava `ReferenceError`, engolido em
+  silêncio pelo `.catch(()=>{})` do fire-and-forget: nenhum pedido
+  divergente era cancelado de verdade, apesar do código "parecer"
+  certo. Corrigido movendo a função pro escopo do MÓDULO. Lição: função
+  chamada de fora do request handler NUNCA pode ser declarada dentro
+  dele — os testes reais (não só `node --check`) são o que pega esse
+  tipo de bug. PROIBIDO: reintroduzir qualquer caminho de "editar valor
+  de pedido divergente e aprovar" — a régua da casa agora é
+  cancelar-e-refazer, não corrigir.
 - **📋 Alimentação automática das planilhas (v174, dono, 13/09/2026 — "as
   planilhas devem ser alimentadas, igual elas já são hoje, com todas as
   informações de cada vaga; esse sistema você pode trazer do h2bapply.com
