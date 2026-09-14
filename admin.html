@@ -1655,8 +1655,14 @@ async function notifTeste(){
   catch(e){toast(e.message,"err");loadNotificacoes();}
 }
 async function notifToggleAvisos(el){
+  // 🚨 v177-FIX (auditoria 14/09/2026): não recarregava o estado real do
+  // servidor depois do toggle — se o pedido "sucedesse" com um valor
+  // diferente do que a caixinha mostrava (ex.: 409 sem conta conectada
+  // caindo no catch, ou qualquer outra divergência), a tela ficava
+  // mentindo pro admin sobre o que está realmente configurado.
   try{var d=await api("/api/admin/notificacoes/config",{method:"POST",body:{avisoPedidos:!!el.checked}});toast(d.avisoPedidos?"Avisos de compra LIGADOS.":"Avisos de compra desligados.","ok");}
-  catch(e){toast(e.message,"err");el.checked=!el.checked;}
+  catch(e){toast(e.message,"err");}
+  loadNotificacoes();
 }
 </script>
 </body>

@@ -6814,7 +6814,7 @@ ul li{margin-bottom:6px}
   if(pathname==="/api/admin/notificacoes/config"&&req.method==="POST"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
     const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
-    try{const d=JSON.parse((await readBody(req))||"{}");if(typeof d.avisoPedidos!=="boolean")return json(res,400,{error:"avisoPedidos precisa ser true/false"});const v=NOTIF.setAvisoPedidos(d.avisoPedidos);return json(res,200,{ok:true,avisoPedidos:v});}
+    try{const d=JSON.parse((await readBody(req))||"{}");if(typeof d.avisoPedidos!=="boolean")return json(res,400,{error:"avisoPedidos precisa ser true/false"});const v=NOTIF.setAvisoPedidos(d.avisoPedidos);if(v===null)return json(res,409,{error:"Nenhuma conta de notificações conectada — conecte antes de configurar o aviso."});return json(res,200,{ok:true,avisoPedidos:v});}
     catch(e){return json(res,400,{error:"Corpo inválido: "+e.message});}
   }
 
@@ -7619,11 +7619,24 @@ filtrar();
       const ok=login&&senha&&(await _verifyPw(senha,login.salt,login.hash));
       if(!ok){await new Promise(r=>setTimeout(r,300));return json(res,403,{error:"Usuário ou senha inválidos."});}
       if(!login.email)return json(res,500,{error:`Senha certa, mas ${login.nome} não tem e-mail configurado no ambiente (ADMIN_EMAIL${login.user==="diego"?"_2":""}). Configure e reinicie o servidor.`});
-      if(!getUser(login.email))setUser(login.email,{email:login.email,name:login.nome,created_at:new Date().toISOString(),plan:"free",vip:null,cvs:[],profiles:[],saved:[],onboarded:true,isAdmin:true});
+      // 🚨 v177-FIX (auditoria 14/09/2026, ALTA): antes SEMPRE criava/usava a
+      // conta pela chave do E-MAIL (login.email) — se o mesmo admin já tinha
+      // se cadastrado pelo site (v175/v176, username reservado "andrio"/
+      // "diego"), esta rota criava uma SEGUNDA conta paralela (chave
+      // diferente: o e-mail), com seu próprio isAdmin/vip/diamante/sessão —
+      // e de quebra passava a bloquear o bootstrap do v176 pra sempre (o
+      // e-mail já "tem conta" na visão do /api/email/enviar-codigo). Agora
+      // prefere a conta que já existe pelo USERNAME reservado (login.user é
+      // sempre "andrio"/"diego") QUANDO ela já é admin — nunca duas contas
+      // pro mesmo admin daqui pra frente. A resposta HTTP continua expondo
+      // o e-mail de verdade (login.email); só a CHAVE interna da sessão muda.
+      const _existenteAdmin=getUser(login.user);
+      const _key=(_existenteAdmin&&_existenteAdmin.isAdmin)?login.user:login.email;
+      if(!getUser(_key))setUser(_key,{email:_key,name:login.nome,created_at:new Date().toISOString(),plan:"free",vip:null,cvs:[],profiles:[],saved:[],onboarded:true,isAdmin:true});
       const sid="adm_"+crypto.randomBytes(16).toString("hex");
-      sessions[sid]={user_email:login.email,user_name:login.nome,created_at:Date.now()};
+      sessions[sid]={user_email:_key,user_name:login.nome,created_at:Date.now()};
       persistSessionsDebounced(500);
-      console.log(`[admin-panel] 🔐 Login por senha: ${login.user} (${login.email})`);
+      console.log(`[admin-panel] 🔐 Login por senha: ${login.user} (${_key}${_key!==login.email?", e-mail real "+login.email:""})`);
       res.writeHead(200,{"Content-Type":"application/json","Set-Cookie":makeCookieStr(sid)});
       return res.end(JSON.stringify({ok:true,email:login.email}));
     }catch(e){return json(res,500,{error:e.message});}
@@ -7708,7 +7721,15 @@ filtrar();
       if(!email.includes("@"))return json(res,400,{error:"Informe o e-mail cadastrado."});
       if(!NOTIF.conectada())return json(res,503,{error:"A recuperação por e-mail está temporariamente indisponível. Chame o suporte no WhatsApp."});
       const u=_findUserByEmail(email);
-      if(u&&!isAdminEmail(u.email)){
+      // 🚨 v177-FIX (auditoria 14/09/2026, ALTA): isAdminEmail(u.email) só
+      // protege conta admin do formato ANTIGO (chave = Gmail real). Uma
+      // conta admin do v175/v176 (username reservado, "andrio"/"diego")
+      // tem u.email===username (sem @) — isAdminEmail nunca batia, e quem
+      // tivesse acesso ao Gmail conectado (emailContato) conseguia pedir
+      // código e redefinir a senha da conta admin inteira pelo autoatendimento
+      // comum, sem nunca precisar da senha do painel /admin dedicado.
+      // isAdminVip(u) cobre os 2 formatos (checa u.isAdmin OU isAdminEmail).
+      if(u&&!isAdminVip(u)){
         const pode=NOTIF.podeEnviar("senha",email);
         if(!pode.ok)return json(res,429,{error:pode.motivo==="aguarde"?`Aguarde ${pode.segundos}s pra pedir outro código.`:"Limite de códigos atingido. Tente de novo em alguns minutos.",segundos:pode.segundos});
         const c=NOTIF.gerarCodigo("senha",email);
@@ -7730,7 +7751,7 @@ filtrar();
       const r=NOTIF.confirmarCodigo("senha",email,d.codigo);
       if(!r.ok)return json(res,400,{error:r.motivo});
       const u=_findUserByEmail(email);
-      if(!u||isAdminEmail(u.email))return json(res,400,{error:"Conta não encontrada."});
+      if(!u||isAdminVip(u))return json(res,400,{error:"Conta não encontrada."}); // v177-FIX: mesma régua acima — cobre conta admin dos 2 formatos
       const {salt,hash}=await _hashPw(nova);
       setUser(u.email,{passwordSalt:salt,passwordHash:hash,passwordChangedAt:Date.now()});
       let _derrubadas=0;for(const sid of Object.keys(sessions)){if(sessions[sid]?.user_email===u.email){delete sessions[sid];_derrubadas++;}}
@@ -9505,12 +9526,21 @@ filtrar();
       // Email para admins (em background)
       ;(async()=>{
         try{
+          // 🚨 v177-FIX (auditoria 14/09/2026): o toggle "Avisar por e-mail
+          // quando entrar pedido novo" só guardava o bloco da conta de
+          // notificações — com ele DESLIGADO (mas a conta conectada), a
+          // execução caía direto no caminho legado abaixo e mandava mesmo
+          // assim, pelo Gmail pessoal do admin. "Desligar" não desligava
+          // nada, só trocava de remetente. Agora o toggle é checado UMA
+          // VEZ, ANTES dos dois caminhos — desligado, NENHUM aviso sai por
+          // NENHUM canal, exatamente o que o texto do toggle promete.
+          if(!NOTIF.status().avisoPedidos){console.log("[pedido] 🔕 avisoPedidos desligado — nenhum aviso de compra enviado.");return;}
           // 📧 v175 (ordem do dono): a conta de notificações (Admin →
           // Notificações) tem prioridade — o aviso de compra pro Andrio e
           // pro Diego sai pelo Suporte, sem depender do Gmail pessoal de
           // nenhum admin estar conectado. O caminho legado abaixo continua
           // como reserva enquanto a conta não estiver conectada.
-          if(NOTIF.conectada()&&NOTIF.status().avisoPedidos){
+          if(NOTIF.conectada()){
             const _mN=_mensagemPedidoAdmin(pedido);let _okN=0;
             for(const toEmail of _notifDestinatarios()){
               try{await NOTIF.sendMail({to:toEmail,subject:_mN.subject,text:_mN.text,attachments:_mN.attachments,tipo:"pedido"});_okN++;console.log("[pedido] ✅ aviso via conta de notificações →",toEmail);}
@@ -9541,7 +9571,14 @@ filtrar();
             // fonte única da mensagem (a mesma da conta de notificações)
             const {subject:emailSubject,text:emailText,attachments}=_mensagemPedidoAdmin(pedido);
 
-            for(const toEmail of [...ADMIN_EMAILS]){
+            // 🚨 v177-FIX (auditoria 14/09/2026): mandava pra [...ADMIN_EMAILS]
+            // inteiro (inclui os 3 e-mails auxiliares de ADMIN_EMAILS_EXTRA) —
+            // o caminho legado nunca respeitava a mesma régua "só os 2 sócios"
+            // que _notifDestinatarios() já garante no caminho novo (v175b).
+            // Qualquer disparo do legado (conta desconectada, ou reserva de
+            // token) mandava nome/WhatsApp/valor/comprovante do cliente pras
+            // contas auxiliares, contrariando o CLAUDE.md.
+            for(const toEmail of _notifDestinatarios()){
               try{
                 // buildMime com anexo se comprovante existir
                 const raw=buildMime({
@@ -13008,7 +13045,15 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}if(DB_APP_INDEX[te]){delete DB
 });
 
 // ── Cleanup ───────────────────────────────────────────────
-setInterval(()=>{const n=Date.now();let c=0;Object.keys(sessions).forEach(k=>{const s=sessions[k],a=n-(s.ts||s.created_at||0),ttl=(!s.pending&&isAdminEmail(s.user_email))?ADMIN_SESS_TTL:SESS_TTL;if((s.pending&&a>600_000)||(!s.pending&&a>ttl)){delete sessions[k];c++;}});if(c)console.log(`[cleanup] ${c} sessão(ões)`);persistSessionsDebounced(1000); // V955: snapshot periódico (captura refresh de tokens)
+setInterval(()=>{const n=Date.now();let c=0;Object.keys(sessions).forEach(k=>{const s=sessions[k],a=n-(s.ts||s.created_at||0),
+  // 🚨 v177-FIX (auditoria 14/09/2026): isAdminEmail(s.user_email) checava
+  // só o e-mail — pra uma conta admin nascida por /api/cadastro (username
+  // reservado, v175/v176), sessions[sid].user_email é o USERNAME ("andrio"),
+  // nunca bate em isAdminEmail, e a sessão caía no SESS_TTL de 7 dias em vez
+  // do ADMIN_SESS_TTL de 24h — reabrindo a janela de exposição que o
+  // ADMIN_SESS_TTL foi criado pra fechar, justo no login mais comum do
+  // próprio admin. isAdminVip(getUser(...)) cobre os 2 formatos de conta.
+  ttl=(!s.pending&&isAdminVip(getUser(s.user_email)))?ADMIN_SESS_TTL:SESS_TTL;if((s.pending&&a>600_000)||(!s.pending&&a>ttl)){delete sessions[k];c++;}});if(c)console.log(`[cleanup] ${c} sessão(ões)`);persistSessionsDebounced(1000); // V955: snapshot periódico (captura refresh de tokens)
 // v21-FIX: a limpeza do rateMap abaixo estava GRUDADA no comentário da linha
 // acima desde a V955 — virou comentário e NUNCA rodou: o mapa de rate-limit
 // acumulava uma entrada por usuário×ação pra sempre (vazamento lento de RAM).

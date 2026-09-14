@@ -71,7 +71,12 @@ function createNotif(deps) {
     console.log(`[notif] 🔌 conta de notificações desconectada: ${email}`);
     return { ok: true, email };
   }
-  function setAvisoPedidos(on) { if (!acc) return false; acc.avisoPedidos = !!on; saveAcc(); return acc.avisoPedidos; }
+  // 🚨 v177-FIX (auditoria 14/09/2026): devolvia `false` tanto pra "desliguei
+  // com sucesso" quanto pra "não tem conta conectada, nada foi salvo" — o
+  // chamador não tinha como distinguir os dois, então o painel achava que o
+  // toggle tinha funcionado quando na verdade não fez nada. Agora `null`
+  // significa especificamente "sem conta conectada".
+  function setAvisoPedidos(on) { if (!acc) return null; acc.avisoPedidos = !!on; saveAcc(); return acc.avisoPedidos; }
 
   // ── token de acesso (renova sozinho) ─────────────────────────────────
   async function accessToken() {

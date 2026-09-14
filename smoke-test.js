@@ -1540,6 +1540,75 @@ async function testAuthWatchdogPush() {
       !(stCancelado.json?.vip?.manualExpires > Date.now() + 3600_000) && !(stCancelado.json?.vip?.autoExpires > Date.now() + 3600_000),
       JSON.stringify(stCancelado.json?.vip));
 
+    // ═══ 🚨 v177-FIX (auditoria 14/09/2026 — workflow de 135 agentes, 122
+    // perguntas, 103 achados confirmados): 6 correções no motor de
+    // notificação de compra e nas guardas de conta admin. ═══
+    {
+      // (1) avisoPedidos DESLIGADO bloqueia o aviso em QUALQUER canal — antes
+      // só desviava do NOTIF pro Gmail pessoal do admin (caminho legado
+      // rodava incondicionalmente).
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      const _cfgOff = await req2("POST", "/api/admin/notificacoes/config", { avisoPedidos: false });
+      check("🚨 v177-FIX: config avisoPedidos:false aceita normalmente (conta conectada)", _cfgOff.json?.ok === true && _cfgOff.json?.avisoPedidos === false, _cfgOff.body.slice(0, 100));
+      const _outAntes177 = lerOutbox().filter((x) => x.tipo === "pedido").length;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "toggle177@test.com", name: "Toggle177" });
+      const pdToggleOff = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Toggle177" });
+      await new Promise((r) => setTimeout(r, 400)); // aviso roda em background (IIFE assíncrona)
+      const _outDepois177 = lerOutbox().filter((x) => x.tipo === "pedido").length;
+      check("🚨 v177-FIX: avisoPedidos DESLIGADO → nenhum aviso de pedido novo sai por NENHUM canal (o toggle promete 'avisar', não 'trocar de remetente')",
+        pdToggleOff.json?.ok === true && _outDepois177 === _outAntes177, JSON.stringify({ antes: _outAntes177, depois: _outDepois177 }));
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      const _cfgOn = await req2("POST", "/api/admin/notificacoes/config", { avisoPedidos: true });
+      check("🚨 v177-FIX: religar o toggle volta a permitir o aviso (config não fica travada em false)", _cfgOn.json?.avisoPedidos === true, _cfgOn.body.slice(0, 100));
+
+      // (2) config avisoPedidos SEM conta conectada dá erro CLARO (409), não
+      // um `{ok:true}` mentiroso que não mudou nada de verdade.
+      await req2("POST", "/api/admin/notificacoes/desconectar", {});
+      const _cfgSemConta = await req2("POST", "/api/admin/notificacoes/config", { avisoPedidos: false });
+      check("🚨 v177-FIX: mudar avisoPedidos SEM conta de notificações conectada → 409 honesto (antes fingia sucesso sem salvar nada)", _cfgSemConta.status === 409, `status=${_cfgSemConta.status}`);
+      await req2("POST", "/api/test/notif-conectar", { token: TEST_TOKEN, email: "suporteh2bapply@gmail.com" });
+      await req2("POST", "/api/admin/notificacoes/config", { avisoPedidos: true }); // restaura o padrão pro resto da suíte
+
+      // (3) o e-mail de um admin dos 2 formatos (chave=Gmail antigo, chave=
+      // username novo) NUNCA recebe código de "Esqueci minha senha" — fecha
+      // a brecha onde quem tivesse acesso ao Gmail conectado da conta
+      // 'andrio'/'diego' (emailContato) conseguia resetar a senha do site
+      // inteiro sem nunca precisar da senha do painel /admin.
+      const _outSenhaAntes = lerOutbox().filter((x) => x.tipo === "codigo_senha" && x.to === "jesuscristh22@gmail.com").length;
+      const _recDiego = await req2("POST", "/api/senha/enviar-codigo", { email: "jesuscristh22@gmail.com" });
+      check("🚨 v177-FIX (SEGURANÇA, ALTA): e-mail de admin (conta 'diego', criada pelo cadastro v176 — chave=username, não Gmail) NÃO recebe código de redefinição de senha pelo autoatendimento comum",
+        _recDiego.status === 200 && lerOutbox().filter((x) => x.tipo === "codigo_senha" && x.to === "jesuscristh22@gmail.com").length === _outSenhaAntes,
+        JSON.stringify({ status: _recDiego.status, novosEmails: lerOutbox().filter((x) => x.tipo === "codigo_senha" && x.to === "jesuscristh22@gmail.com").length - _outSenhaAntes }));
+
+      // (4) login por senha do painel admin REUSA a conta 'diego' já criada
+      // pelo cadastro (v176) — nunca cria uma 2ª conta paralela (chave do
+      // e-mail) pro mesmo admin.
+      const _usersAntesLogin = JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"));
+      check("🚨 v177-FIX (pré-condição): a conta 'diego' já existe (criada mais cedo pelo cadastro v176) antes do login do painel admin", _usersAntesLogin["diego"]?.isAdmin === true, "conta 'diego' ausente — pré-condição do teste falhou");
+      const alDiego177 = await req2("POST", "/api/admin-panel/login", { user: "diego", password: "teste-smoke-diego-2026" });
+      const _usersDepoisLogin = JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"));
+      check("🚨 v177-FIX (ALTA): login por senha do painel admin ('diego') REUSA a conta já criada pelo cadastro (nunca duplica em 2 chaves — a mesma pessoa não vira 2 contas)",
+        alDiego177.status === 200 && alDiego177.json?.email === "jesuscristh22@gmail.com" && !_usersDepoisLogin["jesuscristh22@gmail.com"],
+        JSON.stringify({ status: alDiego177.status, criouContaParalela: !!_usersDepoisLogin["jesuscristh22@gmail.com"] }));
+      COOKIE = "";
+    }
+    // (5)+(6) estruturais: regex de robô parado cobre os 3 status reais de
+    // auth quebrada, e a sessão de admin nascida por username (v175/v176)
+    // usa a MESMA régua de TTL curto (24h) que uma sessão de admin por
+    // e-mail já usava — nunca cair de volta pro TTL de 7 dias de usuário
+    // comum só porque a chave da conta é o username.
+    {
+      const _sentSrc = fs.readFileSync(path.join(__dirname, "mod-sentinel.js"), "utf8");
+      const _srvSrc177 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      check("🚨 v177-FIX (estrutural, URGENTE): mod-sentinel.js reconhece os 3 status reais de robô parado por auth quebrada (paused_no_session/paused_oauth_expired/paused_account_suspended) — antes nenhum dos 3 disparava o alerta de 'robô parado, dono precisa saber'",
+        /paused_no_session\|paused_oauth_expired\|paused_account_suspended/.test(_sentSrc.replace(/\s/g, "")) || (_sentSrc.includes("paused_no_session") && _sentSrc.includes("paused_oauth_expired") && _sentSrc.includes("paused_account_suspended")),
+        "regex de jobParado ainda não cobre os 3 status reais");
+      check("🚨 v177-FIX (estrutural, ALTA): limpeza periódica de sessão usa isAdminVip(getUser(...)) pro TTL curto de admin — cobre conta admin por username (v175/v176), não só por e-mail",
+        _srvSrc177.includes("isAdminVip(getUser(s.user_email)))?ADMIN_SESS_TTL:SESS_TTL"), "TTL de sessão de admin ainda depende só de isAdminEmail(s.user_email)");
+      check("🚨 v177-FIX (estrutural): caminho legado do aviso de pedido usa _notifDestinatarios() (só os 2 sócios) pro destinatário — nunca mais [...ADMIN_EMAILS] (vazava pros 3 e-mails auxiliares)",
+        !/for\(const toEmail of \[\.\.\.ADMIN_EMAILS\]\)/.test(_srvSrc177.replace(/\s/g, "")), "caminho legado ainda manda pra [...ADMIN_EMAILS] inteiro");
+    }
+
     // ═══ 🛡️ v79 (Diego, 29/07 — áudio no WhatsApp: "ativei DoublePro pro
     // Esdras várias vezes e não entra, volta pro VipPro") ═══
     // CAUSA RAIZ: /api/admin/set-plan chamava addManualVipDays/addAutoVipDays

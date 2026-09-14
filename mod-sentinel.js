@@ -53,8 +53,18 @@ async function healthSentinelRun(){
     // os casos de pausa, inclusive as intencionais. Agora só conta como
     // desync real quando não há job nenhum ou o status é um dos que realmente
     // significam "quebrado" (não uma pausa escolhida por alguém).
+    // 🚨 v177-FIX (auditoria 14/09/2026): o regex nunca incluía os 3 status
+    // reais que o server.js de fato atribui a robô quebrado por auth —
+    // paused_no_session (sessão expirou), paused_oauth_expired (watchdog) e
+    // paused_account_suspended (conta Google suspensa) — só o antigo
+    // "paused_no_refresh_token", que nenhuma rota usa mais. Um VIP pagante
+    // com o automático morto por qualquer um desses 3 motivos era invisível
+    // pra S.vipDesync/healthSentinelRun: nenhum push, nenhum alerta ao
+    // admin, ninguém do time via o caso — dinheiro pago, robô parado, em
+    // silêncio, potencialmente por semanas (regra 15: "admin = dinheiro
+    // primeiro").
     const jobParado = !job ||
-      /^(inativo|finished|paused_auth_error|paused_token_revoked|paused_no_refresh_token)$/.test(job.status||"");
+      /^(inativo|finished|paused_auth_error|paused_token_revoked|paused_no_refresh_token|paused_no_session|paused_oauth_expired|paused_account_suspended)$/.test(job.status||"");
     const tokenOk = !!(u.cached_access_token && u.cached_token_expiry && now < u.cached_token_expiry);
     const diasInativo = Math.round((now-(u.lastSeenAt||0))/86400000);
 
