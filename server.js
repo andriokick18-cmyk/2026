@@ -8103,8 +8103,19 @@ filtrar();
           try{
             const _rvBCS="token="+encodeURIComponent(tkCS.refresh_token||tkCS.access_token);
             await httpsReq({hostname:"oauth2.googleapis.com",path:"/revoke",method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded","Content-Length":Buffer.byteLength(_rvBCS)}},_rvBCS);
-            _authEvent(_emailCS,"revoke_mismatch","Conectar-Gmail-pra-enviar revogado: esperava "+_expectedGmailCS+", autenticou "+_emailCS);
-          }catch(eRvCS){console.warn("[oauth] revoke pós-mismatch (connect-send) falhou:",eRvCS.message);}
+            // 🚨 v177-FIX8 (auditoria 14/09/2026): o evento era gravado no
+            // authTimeline de _emailCS — a conta Google que a pessoa escolheu
+            // POR ENGANO, que quase nunca existe em DB_USERS. Resultado: o
+            // raio-X de autenticação do DONO da conta (o único que alguém abre)
+            // nunca via o mismatch. Vai pro dono, citando a conta errada.
+            _authEvent(ownerEmailCS,"revoke_mismatch","Conectar-Gmail-pra-enviar revogado: esperava "+_expectedGmailCS+", autenticou "+_emailCS);
+          }catch(eRvCS){
+            // Revoke falho deixava só um console.warn efêmero — o token da
+            // conta errada ficava órfão no Google sem NENHUM rastro. Agora fica
+            // registrado na conta do dono, com o erro cru.
+            console.warn("[oauth] revoke pós-mismatch (connect-send) falhou:",eRvCS.message);
+            try{_authEvent(ownerEmailCS,"revoke_falhou","Revoke do token de "+_emailCS+" (conta errada) NÃO completou: "+String(eRvCS.message||eRvCS).slice(0,160)+" — o acesso pode ter ficado órfão no Google.");}catch{}
+          }
           return failCS(`Você entrou com ${_emailCS}, mas o e-mail da sua conta é ${_expectedGmailCS}. Saia do Google e entre com ${_expectedGmailCS} — é ele que envia suas candidaturas.`);
         }
         if(!tkCS.refresh_token && !ownerCS.refresh_token){

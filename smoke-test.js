@@ -1787,6 +1787,37 @@ async function testAuthWatchdogPush() {
       check("🚨 v177-FIX7 (estrutural): aviso de compra que falha pra UM dos sócios fica gravado NO PEDIDO (avisoFalhas) + erro alto no log — antes, com o outro sócio recebendo, a rodada era dada por boa e quem ficou sem aviso não tinha como saber",
         _srvF7.includes("DB_PEDIDOS[_iF].avisoFalhas=_falhasN.map") && _srvF7.includes("AVISO NÃO CHEGOU pra"),
         "falha de aviso por destinatário voltou a morrer num console.warn");
+
+      // ═══ 🚨 v177-FIX8 (8ª leva): plano LEGADO (vip.expiresAt único) e
+      // rótulo honesto do plano. Os ramos de compatibilidade de
+      // isManualVipActive/isAutoVipActive (que leem vip.active + vip.expiresAt
+      // + vip.plan, sem manualExpires/autoExpires) nunca tinham sido exercidos
+      // por teste nenhum — nenhuma fixture usava vip.expiresAt. ═══
+      const _legFut = Date.now() + 30 * 86400_000;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "legpro@test.com", name: "Legado Pro", vip: { active: true, expiresAt: _legFut, plan: "pro" }, plan: "pro" });
+      const _legProSt = (await get("/api/status")).json;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "legvip@test.com", name: "Legado Vip", vip: { active: true, expiresAt: _legFut, plan: "vip" }, plan: "vip" });
+      const _legVipSt = (await get("/api/status")).json;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "legvipro@test.com", name: "Legado Vipro", vip: { active: true, expiresAt: _legFut, plan: "vipro" }, plan: "vipro" });
+      const _legVproSt = (await get("/api/status")).json;
+      check("🚨 v177-FIX8: plano LEGADO (vip.expiresAt único, sem manualExpires/autoExpires) respeita a separação manual×automático — 'pro' = só automático (0 manuais/dia), 'vip' = só manual, 'vipro' = os dois; ramos de compatibilidade que nunca tinham sido testados",
+        _legProSt?.manualLimit === 0 && _legProSt?.autoLimit === 200 && _legProSt?.vip?.manualActive === false && _legProSt?.vip?.autoActive === true &&
+        _legVipSt?.manualLimit === 200 && _legVipSt?.autoLimit === 0 && _legVipSt?.vip?.autoActive === false &&
+        _legVproSt?.manualLimit === 200 && _legVproSt?.autoLimit === 200,
+        JSON.stringify({ pro: [_legProSt?.manualLimit, _legProSt?.autoLimit], vip: [_legVipSt?.manualLimit, _legVipSt?.autoLimit], vipro: [_legVproSt?.manualLimit, _legVproSt?.autoLimit] }));
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+
+      const _appF8 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      check("🚨 v177-FIX8 (estrutural): o badge de plano do Perfil usa planBadgeHTML() (fonte única, honesta: ⭐ VIP e/ou 🤖 Pro pelo que está REALMENTE ativo) — antes rotulava pelo NOME do plano, e quem só tinha automático via '⭐🤖 VIPro' com 0 envios manuais por dia",
+        _appF8.includes("const _pb=g(\"#prof-plan-badges\");\n  if(_pb)_pb.innerHTML=planBadgeHTML();") &&
+        !/planLabels=\{free:"Free",vip:"⭐ VIP",vipro:"⭐🤖 VIPro"/.test(_appF8),
+        "o badge do Perfil voltou a rotular pelo nome do plano, com mapa próprio");
+      check("🚨 v177-FIX8 (estrutural): mismatch de conta Google no Conectar-Gmail registra no authTimeline do DONO (antes ia pro e-mail digitado por engano, que quase nunca existe em DB_USERS — o raio-X do dono nunca via nada) e revoke que falha deixa rastro em vez de só um console.warn",
+        _srvF7.includes('_authEvent(ownerEmailCS,"revoke_mismatch"') && _srvF7.includes('_authEvent(ownerEmailCS,"revoke_falhou"'),
+        "trilha do revoke pós-mismatch voltou pro e-mail errado / sumiu");
+      check("🚨 v177-FIX8 (estrutural): CACHE_NAME do sw.js subiu de novo junto com a mudança em app.js",
+        /const CACHE_NAME = "h2bapply-2026-v(4[4-9]|[5-9]\d|\d{3,})"/.test(fs.readFileSync(path.join(__dirname, "sw.js"), "utf8")),
+        "sw.js não subiu junto com a mudança em app.js");
     }
     // Comprovante já usado (fingerprint) — mesma trilha do MC5-P1, sem
     // duplicar setup: cria um 2º usuário VIP com Gmail conectado e tenta

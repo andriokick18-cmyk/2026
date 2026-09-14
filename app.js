@@ -2464,8 +2464,15 @@ function loadProfile(){
   const _psa=g("#prof-stat-auto");if(_psa)_psa.textContent=(U.totalAutoHist||0).toLocaleString("pt-BR");
   const _psr=g("#prof-stat-replies");if(_psr)_psr.textContent=(U.totalSent||0).toLocaleString("pt-BR");
   // Badges do plano
+  // 🚨 v177-FIX8 (auditoria 14/09/2026): aqui rotulava pelo NOME do plano
+  // (U.plan) com um mapa próprio — e getPlan() devolve "vipro" tanto pra quem
+  // tem manual+automático quanto pra quem só tem o automático (manual vencido,
+  // ou o legado "pro"). O usuário via "⭐🤖 VIPro" com 0 envios manuais por dia
+  // e nenhum "Nd restantes" do lado (a chip só olhava manualExpires). Passa a
+  // usar planBadgeHTML(), a fonte ÚNICA já honesta do site: mostra ⭐ VIP e/ou
+  // 🤖 Pro pelo que está REALMENTE ativo, com os dias de cada um.
   const _pb=g("#prof-plan-badges");
-  if(_pb){const pl=U.plan||"free";const planColors={free:"rgba(255,255,255,.15)",vip:"rgba(167,139,250,.4)",vipro:"rgba(99,102,241,.4)",doublepro:"rgba(250,204,21,.35)",pro:"rgba(6,182,212,.4)"};const planLabels={free:"Free",vip:"⭐ VIP",vipro:"⭐🤖 VIPro",doublepro:"🚀 DoublePro",pro:"🤖 Pro"};_pb.innerHTML=`<span style="background:${planColors[pl]||"rgba(255,255,255,.15)"};border:1px solid rgba(255,255,255,.25);border-radius:99px;padding:2px 10px;font-size:10px;font-weight:700;color:#fff">${planLabels[pl]||pl}</span>`+(U.vip?.manualExpires&&U.vip.manualExpires>Date.now()?`<span style="background:rgba(52,211,153,.25);border:1px solid rgba(52,211,153,.4);border-radius:99px;padding:2px 10px;font-size:10px;font-weight:700;color:#6ee7b7">${Math.ceil((U.vip.manualExpires-Date.now())/86400000)}d restantes</span>`:"");}
+  if(_pb)_pb.innerHTML=planBadgeHTML();
   _initAdminTab(); // Mostrar/ocultar aba admin conforme perfil do usuário
   const pav=g("#pav");if(pav){if(U.picture){pav.innerHTML=`<img alt="" referrerpolicy="no-referrer" src="${esc(U.picture)}" style="width:100%;height:100%;object-fit:cover">`;pav.style.cssText="width:60px;height:60px;border-radius:50%;overflow:hidden;border:3px solid rgba(255,255,255,.3);flex-shrink:0";}else{pav.textContent=(U.name||"?")[0].toUpperCase();}}
   const ppb=g("#p-plan-badge");if(ppb)ppb.innerHTML=planBadgeHTML();
