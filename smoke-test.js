@@ -548,6 +548,8 @@ async function testAuthWatchdogPush() {
     check("🆘 v172c-UX: conta ANTIGA recebe mensagem ESPECÍFICA (chamar o suporte), não o genérico 'usuário ou senha inválidos' que confundiria quem nunca teve senha nenhuma",
       /suporte/i.test(_logLegadoAntes.json?.error || "") && !/usuário ou senha inválidos/i.test(_logLegadoAntes.json?.error || ""),
       _logLegadoAntes.json?.error);
+    check("🚨 v177-FIX2: a mesma mensagem cita 'Esqueci minha senha' como caminho mais rápido — /api/senha/enviar-codigo já destrava essa conta sozinha, sem precisar do WhatsApp",
+      /esqueci minha senha/i.test(_logLegadoAntes.json?.error || ""), _logLegadoAntes.json?.error);
     const _spNoAuth = await req2("POST", "/api/admin/set-password", { email: "legado_sem_senha@test.com", novaSenha: "novaSenha1" });
     check("🔐 v172c: /api/admin/set-password SEM sessão → 401",
       _spNoAuth.status === 401, `status=${_spNoAuth.status}`);
@@ -1641,6 +1643,10 @@ async function testAuthWatchdogPush() {
         /<span>\$\{esc\(icon\)\}<\/span>/.test(_app2), "app.js ainda tem ${icon} sem esc() dentro do innerHTML= do painel automático");
       check("🚨 v177-FIX2 (estrutural): boot avisa alto no log se _notifDestinatarios() tiver menos de 2 e-mails (ADMIN_EMAIL/ADMIN_EMAIL_2 vazio/malformado no Render passava batido em silêncio, avisando só o Andrio de pedidos novos)",
         _srv2.includes("_notifDestinatarios().length < 2"), "sanity check do boot não existe mais");
+      check("🚨 v177-FIX3 (estrutural): rate-limit do login do painel admin agora inclui o USERNAME tentado na chave — antes era só o IP, compartilhado entre andrio/diego (erro de digitação de um consumia o limite do outro no mesmo escritório/Wi-Fi)",
+        _srv2.includes('rateLimit("adminpanel_"+_ip+"_"+user,10,900_000)'), "chave do rate-limit do painel admin ainda não inclui o username");
+      check("🚨 v177-FIX2 (estrutural): erro NOS PASSOS PÓS-ENVIO (indexApp/markSent/cálculo de limite) nunca mais cai no catch que traduz erro de Gmail — a candidatura JÁ FOI ENVIADA (r existe) antes desse ponto, então uma exceção aqui tem seu PRÓPRIO catch que devolve ok:true (com aviso), nunca 'falha' pra um envio que já aconteceu",
+        _srv2.includes("candidatura JÁ SAIU pelo Gmail"), "bookkeeping pós-envio ainda cai no catch geral (mensagem de 'falha' num envio que já saiu)");
     }
     // Comprovante já usado (fingerprint) — mesma trilha do MC5-P1, sem
     // duplicar setup: cria um 2º usuário VIP com Gmail conectado e tenta
@@ -1912,6 +1918,14 @@ async function testAuthWatchdogPush() {
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
       check("🔍 v173: 💎 grupo A–H é gate do SERVIDOR — admin/DoublePro filtra (total = contagem do grupo), usuário comum tem o parâmetro ignorado (total = planilha)",
         vfGadm.isDP === true && vfGadm.total === gA.n && vfGfree.isDP === false && vfGfree.total === vfJ.totalPlanilha, `adm=${vfGadm.total}/${gA?.n} free=${vfGfree.total}`);
+      // 🚨 v177-FIX2 (auditoria 14/09/2026): o gate isDP já impedia o FILTRO
+      // de status/grupo de restringir a lista pra quem não é DP (check
+      // acima), mas a FACETA (distribuição/contagem por opção — dado
+      // exclusivo de verdade) era calculada e devolvida SEMPRE, mesmo pro
+      // usuário grátis — só o front escondia atrás do cadeado.
+      check("🚨 v177-FIX2: faceta de status/grupo (💎 DoublePro) só é calculada e devolvida no JSON quando isDP===true — usuário comum não recebe mais esse dado exclusivo (nem escondido no front, ausente na resposta)",
+        Array.isArray(vfGadm.facetas?.grupo) && vfGadm.facetas.grupo.length > 0 && vfGfree.facetas?.grupo === undefined && vfGfree.facetas?.status === undefined,
+        JSON.stringify({ admGrupo: vfGadm.facetas?.grupo?.length, freeGrupo: vfGfree.facetas?.grupo, freeStatus: vfGfree.facetas?.status }));
       // rotas do sistema antigo morreram (nada de 2ª verdade)
       const mortas = [];
       for (const r of ["count-jobs", "sheet-facets", "sheet-titles", "sheet-categories", "my-availability"]) { const x = await get(`/api/${r}?sheet=jan2026`); if (x.status !== 404) mortas.push(`${r}=${x.status}`); }

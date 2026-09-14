@@ -7649,7 +7649,6 @@ filtrar();
   // embutido de fábrica.
   if(pathname==="/api/admin-panel/login"&&req.method==="POST"){
     const _ip=_clientIp(req);
-    if(rateLimit("adminpanel_"+_ip,10,900_000))return json(res,429,{error:"Muitas tentativas. Aguarde 15 minutos."});
     // 🚨 v177-FIX2 (auditoria 14/09/2026): o delay anti-timing de 300ms era
     // SOMADO depois da checagem — usuário inexistente (short-circuit, sem
     // scrypt) respondia em ~300ms puros, enquanto usuário válido com senha
@@ -7662,6 +7661,15 @@ filtrar();
       const d=JSON.parse(await readBody(req));
       const user=String(d.user||"").trim().toLowerCase();
       const senha=String(d.password||"");
+      // 🚨 v177-FIX3 (auditoria 14/09/2026): a chave do rate-limit era só o
+      // IP, compartilhada entre os 2 ÚNICOS logins possíveis (andrio/diego)
+      // — se os 2 admins estiverem atrás do mesmo IP (mesmo escritório/
+      // Wi-Fi/VPN), uma sequência de erros de digitação de UM deles
+      // consumia o limite do OUTRO também. A chave agora inclui o username
+      // tentado — cada admin tem seu próprio contador, sem abrir mão do
+      // limite por IP+conta. (Lê o body ANTES do rate-limit — igual toda
+      // outra rota — pra nunca consumir a stream duas vezes.)
+      if(rateLimit("adminpanel_"+_ip+"_"+user,10,900_000))return json(res,429,{error:"Muitas tentativas. Aguarde 15 minutos."});
       const login=ADMIN_PANEL_LOGINS.find(l=>l.user===user);
       const ok=login&&senha&&(await _verifyPw(senha,login.salt,login.hash));
       if(!ok){await _atéTempoMinimo();return json(res,403,{error:"Usuário ou senha inválidos."});}
@@ -7919,7 +7927,11 @@ filtrar();
       // (admin rodar /api/admin/set-password) é invisível pro usuário. Avisa
       // direto pra chamar o suporte, sem abrir mão do delay anti-timing.
       const _legado=!!u&&!isAdminEmail(_ident)&&!u.passwordHash;
-      if(_legado){await _atéTempoMinimo();return json(res,403,{error:"Essa conta é de antes da senha (login era só pelo Google) e ainda não tem senha definida. Chame o suporte no WhatsApp +55 53 98145-3496 pra liberar o acesso — é rápido."});}
+      // 🚨 v177-FIX2 (auditoria 14/09/2026): /api/senha/enviar-codigo +
+      // redefinir JÁ destravam essa conta sozinha (não exigem senha antiga
+      // nenhuma) — a mensagem só mandava pro WhatsApp, sem citar o caminho
+      // mais rápido que o próprio site já oferece.
+      if(_legado){await _atéTempoMinimo();return json(res,403,{error:"Essa conta é de antes da senha (login era só pelo Google) e ainda não tem senha definida. Clique em \"Esqueci minha senha\" pra criar uma agora (mais rápido) ou chame o suporte no WhatsApp +55 53 98145-3496."});}
       const ok=!!u&&!isAdminEmail(_ident)&&(await _verifyPw(senha,u.passwordSalt,u.passwordHash));
       if(!ok){await _atéTempoMinimo();return json(res,403,{error:"Usuário ou senha inválidos."});}
       const sid="usr_"+crypto.randomBytes(16).toString("hex");
@@ -10495,6 +10507,7 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
       const _tGmailMs = Date.now() - _sendT0;
       const now=new Date();
       if(!isReply){
+       try{
         // Só registra no histórico candidaturas originais
         const lim=getManualLimit(p);const h=getHist(s.user_email);const sent=countManualToday(h);
         // ── v13: gerar appId estável e snapshot completo da vaga ─
@@ -10559,6 +10572,20 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
         const _tTotalMs = Date.now() - _sendT0;
         if (_tTotalMs > 5000) console.warn(`[send-timing] ⚠️ LENTO: ${s.user_email} → ${toEmail} | gmail=${_tGmailMs}ms | resto=${_tTotalMs-_tGmailMs}ms | total=${_tTotalMs}ms`);
         return json(res,200,{ok:true,messageId:r.id,appId,threadId:r.threadId||null,todaySent:newSent,dailyLimit:newLim,remaining:Math.max(0,newLim-newSent),countedAsManual:true,caseNum:d.caseNum||"",sheetSource:d.sheetSource||""});
+       }catch(eBook){
+        // 🚨 v177-FIX2 (auditoria 14/09/2026): o e-mail JÁ FOI ENVIADO pelo
+        // Gmail (r existe, veio de gmailSendWithThread lá em cima) ANTES
+        // deste try — uma exceção aqui dentro (indexApp/markSent/cálculo de
+        // limite) é só contabilidade LOCAL, nunca "falha no envio". Antes,
+        // qualquer erro aqui caía no catch de fora, que roda
+        // translateGmailErrorMsg e devolve 500 com cara de Gmail quebrado —
+        // o usuário via "falha" pra uma candidatura que já saiu de verdade
+        // e (se addHist já rodou) já está bloqueada contra reenvio.
+        console.error("[send] pós-envio falhou (candidatura JÁ SAIU pelo Gmail, mensagem só não terminou de indexar):", eBook.message);
+        _manualSendInFlight.delete(dedupKey);
+        if(_reservedManualSlot){_releaseManualSlot(s.user_email);_reservedManualSlot=false;}
+        return json(res,200,{ok:true,messageId:r.id,threadId:r.threadId||null,countedAsManual:true,warning:"Candidatura enviada, mas houve um problema ao atualizar o histórico — pode não aparecer na hora em Enviadas."});
+       }
       }else{
         // Resposta: não conta, só confirma sucesso
         console.log(`[reply] ✅ ${s.user_email} → ${toEmail} (thread: ${d.threadId||"?"})`);

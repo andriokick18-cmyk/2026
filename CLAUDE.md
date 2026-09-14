@@ -425,3 +425,34 @@ impacto — CSP `unsafe-inline`, rateMap em memória, timing do
 continua em `achados-media.txt`/`achados-baixa.txt` no scratchpad da
 sessão — a régua de decisão (maior impacto, menor risco) priorizou os
 8 acima nesta rodada.
+
+## v177-FIX3 (14/09/2026) — 3ª leva da auditoria de 135 agentes
+
+Mais 4 achados corrigidos e testados (sem mexer em nenhum arquivo
+servido ao cliente — sem bump de sw.js): (1) `/api/login`: mensagem de
+conta LEGADA (login era só Google, sem senha) agora cita "Esqueci minha
+senha" como caminho mais rápido — `/api/senha/enviar-codigo` já
+destrava essa conta sozinha, sem precisar do WhatsApp; a mensagem só
+mandava pro suporte. (2) Rate-limit do login do painel admin
+(`/api/admin-panel/login`) agora inclui o USERNAME tentado na chave —
+antes era só IP, compartilhado entre os 2 ÚNICOS logins possíveis
+(andrio/diego); se os 2 estiverem atrás do mesmo IP (mesmo escritório/
+Wi-Fi/VPN), uma sequência de erros de digitação de UM consumia o limite
+do OUTRO também. (3) `/api/send` (manual): erro nos passos PÓS-ENVIO
+(indexApp/markSent/cálculo de limite) tinha o MESMO catch do envio pelo
+Gmail — mas nesse ponto o e-mail JÁ FOI ENVIADO (o resultado do Gmail
+já existe), então uma falha de contabilidade local caía no catch que
+traduz erro de Gmail e devolvia "falha" pro usuário de uma candidatura
+que já saiu de verdade (e, se `addHist` já rodou, já está bloqueada
+contra reenvio). Agora tem o PRÓPRIO try/catch: erro aqui loga alto mas
+sempre devolve `ok:true` (com aviso de que o histórico pode demorar a
+aparecer) — nunca mais mistura "envio falhou" com "só a contabilidade
+falhou". (4) `mod-filtros.js facetas()`: a distribuição de `status`/
+`grupo` (💎 DoublePro, dado exclusivo) era SEMPRE calculada e devolvida
+no JSON de `/api/vagas/filtros`, mesmo pra usuário grátis — o gate
+`ctx.isDP` só impedia o FILTRO de restringir a lista, nunca a FACETA em
+si (o front escondia atrás do cadeado, mas o dado já tinha vazado na
+resposta). Agora os dois blocos só rodam com `ctx.isDP===true`. 4
+checks novos (1 comportamental + 3 estruturais), suíte 100% verde
+(413 checks). Backlog restante continua em
+`achados-media.txt`/`achados-baixa.txt`.

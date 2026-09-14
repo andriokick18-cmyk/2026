@@ -332,11 +332,15 @@ function createFiltros(deps) {
     { const m = semDim("inicio"); const cnt = new Array(13).fill(0); let sem = 0;
       for (let i = 0; i < n; i++) { if (!m[i]) continue; if (ix.m[i] > 0) cnt[ix.m[i]]++; else sem++; }
       fac.inicio = MESES.map(mm => ({ v: mm, n: cnt[mm] })); fac.inicioSemData = sem; }
-    // status DOL (💎) — só faz sentido com 2+ valores distintos
-    { const m = semDim("status"); const c = new Map(); for (let i = 0; i < n; i++) if (m[i] && ix.st[i]) c.set(ix.st[i], (c.get(ix.st[i]) || 0) + 1);
+    // status DOL (💎 DoublePro) — só faz sentido com 2+ valores distintos.
+    // 🚨 v177-FIX2 (auditoria 14/09/2026): _maskDim já impedia o FILTRO por
+    // status/grupo de restringir a lista pra quem não é DP, mas a FACETA
+    // (distribuição/contagem) era sempre calculada e devolvida no JSON,
+    // mesmo pra usuário grátis — mesmo gate que o filtro já usa.
+    if (ctx.isDP) { const m = semDim("status"); const c = new Map(); for (let i = 0; i < n; i++) if (m[i] && ix.st[i]) c.set(ix.st[i], (c.get(ix.st[i]) || 0) + 1);
       fac.status = _top(c, 12).map(([v, q]) => ({ v, n: q })); }
-    // grupo A–H (💎)
-    { const m = semDim("grupo"); const c = new Map(); for (let i = 0; i < n; i++) if (m[i] && ix.g[i]) c.set(ix.g[i], (c.get(ix.g[i]) || 0) + 1);
+    // grupo A–H (💎 DoublePro)
+    if (ctx.isDP) { const m = semDim("grupo"); const c = new Map(); for (let i = 0; i < n; i++) if (m[i] && ix.g[i]) c.set(ix.g[i], (c.get(ix.g[i]) || 0) + 1);
       fac.grupo = GRUPOS.filter(g => c.has(g)).map(g => ({ v: g, n: c.get(g) })); }
     // e-mail de contato
     { const m = semDim("email"); let com = 0, sem = 0; for (let i = 0; i < n; i++) { if (!m[i]) continue; if (ix.em[i]) com++; else sem++; }
