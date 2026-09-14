@@ -370,9 +370,22 @@ async function testAuthWatchdogPush() {
     const lerOutbox = () => { try { return JSON.parse(fs.readFileSync(OUTBOX, "utf8")); } catch { return []; } };
     const ultimoCodigo = (to, tipo) => { const m = lerOutbox().filter((x) => x.to === to && x.tipo === tipo).pop(); const c = m && String(m.text || "").match(/▶\s+(\d{6})\s+◀/); return c ? c[1] : null; };
     const verificar = async (email) => { const r = await req2("POST", "/api/email/enviar-codigo", { email }); if (r.status !== 200) throw new Error("enviar-codigo " + r.status + " " + r.body.slice(0, 80)); const c = ultimoCodigo(email.toLowerCase(), "codigo_cadastro"); const k = await req2("POST", "/api/email/confirmar", { email, codigo: c }); return k.json?.token; };
+    // 🔐 v176 (dono, 13/09/2026 — "quando o sistema identificar meu e-mail
+    // que é de adm ele não pede verificação"): e-mail de admin pula reto pro
+    // token, sem código nenhum — nem outbox, nem confirmar.
+    const verificarAdmin = async (email) => { const r = await req2("POST", "/api/email/enviar-codigo", { email }); if (r.status !== 200 || r.json?.autoVerificado !== true) throw new Error("bootstrap admin falhou " + r.status + " " + r.body.slice(0, 120)); return r.json.token; };
     const cadastroCompleto = (o) => req2("POST", "/api/cadastro", { password: "12345678", nome: "Fulano", sobrenome: "Silva", dataNascimento: "01/01/1995", cidade: "Recife", estado: "PE", pais: "Brasil", whatsapp: "5581999999999", ...o });
     const _semConta = await req2("POST", "/api/email/enviar-codigo", { email: "fulano.v175@gmail.com" });
     check("📧 v175: sem conta de notificações conectada, pedir código dá 503 HONESTO (nunca finge que enviou)", _semConta.status === 503, `status=${_semConta.status} ${_semConta.body.slice(0, 80)}`);
+    // 🔐 v176: o e-mail de ADMIN não pode ficar refém da conta de
+    // notificações — mesmo com ela AINDA desconectada (linha acima prova o
+    // 503 pra e-mail comum), o e-mail de admin já sai confirmado na hora.
+    // É exatamente o cenário real do dono: precisava criar a própria conta
+    // de usuário ANTES de conseguir conectar a conta de notificações.
+    const _bootAdmin1 = await req2("POST", "/api/email/enviar-codigo", { email: "andrio.usa2026@gmail.com" });
+    check("🔐 v176: e-mail de ADMIN confirma sem código mesmo com a conta de notificações desconectada (200 autoVerificado com token utilizável) — nunca trava o dono esperando conectar o Gmail de avisos",
+      _bootAdmin1.status === 200 && _bootAdmin1.json?.autoVerificado === true && typeof _bootAdmin1.json?.token === "string" && _bootAdmin1.json.token.includes("."),
+      JSON.stringify(_bootAdmin1.json));
     const _nc = await req2("POST", "/api/test/notif-conectar", { token: TEST_TOKEN, email: "suporteh2bapply@gmail.com" });
     check("📧 v175: (teste) conta de notificações conectada — suporteh2bapply@gmail.com (outbox no lugar do Google)", _nc.json?.ok === true && _nc.json?.status?.conectada === true && _nc.json?.status?.modoTeste === true, _nc.body.slice(0, 140));
     const _envNaoGmail = await req2("POST", "/api/email/enviar-codigo", { email: "fulano@hotmail.com" });
@@ -383,6 +396,7 @@ async function testAuthWatchdogPush() {
     check("📧 v175: Enviar verificação → e-mail com código de 6 dígitos sai pela conta de suporte (outbox), vale 5 min, reenvio em 60s, texto avisa que é o mesmo Gmail que vai enviar as candidaturas",
       _env1.status === 200 && _env1.json?.expiraEm === 300 && _env1.json?.reenvioEm === 60 && /^\d{6}$/.test(_cod1 || "") && _mail1?.from === "suporteh2bapply@gmail.com" && /5 minutos/.test(_mail1?.text || "") && /ENVIAR suas candidaturas/.test(_mail1?.text || "") && String(_mail1?.subject || "").includes(_cod1 || "x"),
       `status=${_env1.status} codigo=${_cod1} from=${_mail1?.from}`);
+    check("🔐 v176: e-mail COMUM (não-admin) nunca pula o código — o bootstrap é só pra e-mail de admin, todo o resto continua exigindo o código de 6 dígitos", !_env1.json?.autoVerificado, JSON.stringify(_env1.json));
     const _env2 = await req2("POST", "/api/email/enviar-codigo", { email: "fulano.v175@gmail.com" });
     check("📧 v175: pedir outro código antes de 60s → 429 com a espera em segundos (anti-abuso da conta de suporte)", _env2.status === 429 && _env2.json?.segundos > 0, `status=${_env2.status}`);
     const _confErr = await req2("POST", "/api/email/confirmar", { email: "fulano.v175@gmail.com", codigo: "000000" });
@@ -419,13 +433,18 @@ async function testAuthWatchdogPush() {
     // cadastrar primeiro leva o admin" apontada na auditoria de 13/09).
     const _cadReservadoSemAdm = await cadastroCompleto({ username: "andrio", email: "reservado.v175@gmail.com", emailToken: await verificar("reservado.v175@gmail.com") });
     check("🔑 v175: username reservado 'andrio' com e-mail que NÃO é de admin → 400 (nunca vira admin por chegar primeiro)", _cadReservadoSemAdm.status === 400 && /reservado/i.test(_cadReservadoSemAdm.json?.error || ""), _cadReservadoSemAdm.body.slice(0, 100));
-    const _cadAndrio = await cadastroCompleto({ username: "andrio", email: "andrio.usa2026@gmail.com", emailToken: await verificar("andrio.usa2026@gmail.com") });
+    // 🔐 v176: e-mail de admin nasce confirmado pelo bootstrap (verificarAdmin),
+    // sem passar pelo outbox — igual o dono faz de verdade na landing.
+    const _cadAndrio = await cadastroCompleto({ username: "andrio", email: "andrio.usa2026@gmail.com", emailToken: await verificarAdmin("andrio.usa2026@gmail.com") });
     check("🔑 v172f/v175: 'andrio' com o e-mail de admin confirmado nasce admin NA HORA (sem esperar boot/restart)",
       _cadAndrio.status === 200 && _cadAndrio.json?.ok === true && JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"))["andrio"]?.isAdmin === true, JSON.stringify(_cadAndrio.json));
-    const _cadDiego = await cadastroCompleto({ username: "diego", nome: "Diego", email: "jesuscristh22@gmail.com", emailToken: await verificar("jesuscristh22@gmail.com") });
+    const _bootAdminFechado = await req2("POST", "/api/email/enviar-codigo", { email: "andrio.usa2026@gmail.com" });
+    check("🔐 v176: depois que a conta desse e-mail de admin JÁ EXISTE, o bootstrap fecha PRA SEMPRE — enviar-codigo volta a dar 409 igual qualquer e-mail já cadastrado (nunca mais pula verificação pra ele)",
+      _bootAdminFechado.status === 409, `status=${_bootAdminFechado.status} ${_bootAdminFechado.body.slice(0, 100)}`);
+    const _cadDiego = await cadastroCompleto({ username: "diego", nome: "Diego", email: "jesuscristh22@gmail.com", emailToken: await verificarAdmin("jesuscristh22@gmail.com") });
     check("🔑 v172f/v175: 'diego' com o e-mail de admin confirmado nasce admin NA HORA",
       _cadDiego.status === 200 && JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"))["diego"]?.isAdmin === true, JSON.stringify(_cadDiego.json));
-    const _cadAndrew = await cadastroCompleto({ username: "andrew", nome: "Andrew", email: "ueudesmaresias@gmail.com", emailToken: await verificar("ueudesmaresias@gmail.com") });
+    const _cadAndrew = await cadastroCompleto({ username: "andrew", nome: "Andrew", email: "ueudesmaresias@gmail.com", emailToken: await verificarAdmin("ueudesmaresias@gmail.com") });
     check("🔑 v172f/v175: 'andrew' (3º username reservado, mesma fonte única ADMIN_RESERVED_USERNAMES) nasce admin com e-mail de admin",
       _cadAndrew.status === 200 && JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"))["andrew"]?.isAdmin === true, JSON.stringify(_cadAndrew.json));
     const _cadNormal = await cadastroCompleto({ username: "usuario_qualquer_v172f", email: "comum.v175@gmail.com", emailToken: await verificar("comum.v175@gmail.com") });
@@ -469,7 +488,10 @@ async function testAuthWatchdogPush() {
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
     const _ntSt = await get("/api/admin/notificacoes/status");
     check("📧 v175: admin vê o status da conta de notificações numa chamada (conectada, e-mail, enviados hoje, destinatários dos avisos = só os 2 sócios: dono + Diego)",
-      _ntSt.json?.ok === true && _ntSt.json.conectada === true && _ntSt.json.email === "suporteh2bapply@gmail.com" && _ntSt.json.sentToday >= 8 && Array.isArray(_ntSt.json.destinatarios) && _ntSt.json.destinatarios.length === 2 && _ntSt.json.destinatarios.includes("andrio.usa2026@gmail.com") && _ntSt.json.destinatarios.includes("jesuscristh22@gmail.com") && typeof _ntSt.json.oauthConfigurado === "boolean",
+      // v176: sentToday caiu (era >=8) porque 3 desses cadastros (andrio/
+      // diego/andrew) agora são bootstrap de admin — nunca passam pela
+      // conta de notificações, então nunca contam aqui (ver checks 🔐 v176).
+      _ntSt.json?.ok === true && _ntSt.json.conectada === true && _ntSt.json.email === "suporteh2bapply@gmail.com" && _ntSt.json.sentToday >= 5 && Array.isArray(_ntSt.json.destinatarios) && _ntSt.json.destinatarios.length === 2 && _ntSt.json.destinatarios.includes("andrio.usa2026@gmail.com") && _ntSt.json.destinatarios.includes("jesuscristh22@gmail.com") && typeof _ntSt.json.oauthConfigurado === "boolean",
       _ntSt.body.slice(0, 200));
     const _ntTeste = await req2("POST", "/api/admin/notificacoes/teste", { to: "smoke@test.com" });
     check("📧 v175: 'Enviar e-mail de teste pra mim' sai pela conta conectada (outbox tipo teste)", _ntTeste.json?.ok === true && lerOutbox().some((x) => x.tipo === "teste" && x.to === "smoke@test.com"), _ntTeste.body.slice(0, 100));
@@ -496,6 +518,15 @@ async function testAuthWatchdogPush() {
         _idx.includes('id="cv-prompt-overlay"') && !_idx.includes('id="onboarding-overlay"') && _idx.includes('id="gwm-email-block"') && _idx.includes("③ Título do e-mail (assunto)") && _idx.includes("NÃO é obrigatória") && !_idx.includes('id="pe-subjects-empty"') &&
         _app.includes("function _pePad(") && _adm.includes('data-view="notificacoes"') && _adm.includes("/oauth/notif-connect") && _srv.includes('sessions["__notif__"+_st]') && _srv.includes("login_hint") && _srv.includes("_hintCS=p.emailContato||resolveSendGmail(p)"),
         "estrutura do v175 incompleta");
+      // 🔐 v176: bootstrap de e-mail admin — presente no servidor (isAdminEmail
+      // ANTES do NOTIF.conectada(), token via NOTIF.tokenVerificado, log +
+      // auditoria em GLOBAL_EVENTS) e no front (agEnviarCodigo trata autoVerificado
+      // sem pedir código, com aviso visível — nunca esconder que foi automático).
+      const _srvIsAdminAntesDoNotif = _srv.indexOf("if(isAdminEmail(email)){") > 0 && _srv.indexOf("if(isAdminEmail(email)){") < _srv.indexOf('if(!NOTIF.conectada())return json(res,503,{error:"A verificação por e-mail');
+      check("🧱 v176: (estrutural) bootstrap do e-mail de admin — checagem vem ANTES do gate de conta de notificações desconectada, usa NOTIF.tokenVerificado (mesmo HMAC de sempre) e é auditado; o front mostra aviso explícito de confirmação automática",
+        _srvIsAdminAntesDoNotif && _srv.includes('NOTIF.tokenVerificado("cadastro",email)') && _srv.includes('pushGlobalEvent("admin_bootstrap_email"') &&
+        _app.includes("d.autoVerificado") && _app.includes('method:"admin_auto"') && _app.includes("E-mail de administrador reconhecido"),
+        "estrutura do v176 incompleta");
     }
     COOKIE = "";
 

@@ -155,6 +155,26 @@ se referindo a outro repositório/projeto.
   compra pela conta de notificações vão SÓ pros 2 (`_notifDestinatarios`);
   andrio.kick18@gmail.com e as outras contas auxiliares seguem admin pelo
   `ADMIN_EMAILS_EXTRA`, sem receber aviso. A env do Render manda, se existir.
+  **🔐 v176 (dono, 13/09/2026 — "quando o sistema identificar meu e-mail
+  que é de adm ele não pede verificação... desativa o código pra esse
+  cadastro do usuário andrio que é o adm")**: ÚNICA exceção sancionada ao
+  "PROIBIDO: cadastro sem e-mail confirmado" acima — em
+  `/api/email/enviar-codigo`, se o e-mail digitado é de admin
+  (`isAdminEmail`) e AINDA NÃO tem conta, o servidor devolve o token de
+  "e-mail verificado" NA HORA, sem código, mesmo com a conta de
+  notificações desconectada (resolve o ovo-e-galinha: o dono não
+  conseguia criar a PRÓPRIA conta de usuário sem antes conectar a conta
+  de notificações, e não tinha como conectá-la sem antes existir sua
+  conta). Risco aceito por escrito pelo dono após eu explicar (pergunta
+  feita, ele confirmou a mesma decisão): até esse e-mail completar o
+  cadastro pela 1ª vez, quem SOUBESSE o texto exato do e-mail de admin
+  (nunca aparece em tela nenhuma — conferido em index.html/app.js)
+  poderia criar conta com ele sem provar dono da caixa de entrada. A
+  janela fecha SOZINHA E PRA SEMPRE assim que a conta nasce (o mesmo
+  e-mail volta a bater no 409 de sempre). Toda ativação do bootstrap é
+  logada + `pushGlobalEvent("admin_bootstrap_email",...)`. PROIBIDO:
+  estender esse bypass pra qualquer e-mail que não seja `isAdminEmail`,
+  ou tirar o log/auditoria dele.
 - **📋 Alimentação automática das planilhas (v174, dono, 13/09/2026 — "as
   planilhas devem ser alimentadas, igual elas já são hoje, com todas as
   informações de cada vaga; esse sistema você pode trazer do h2bapply.com

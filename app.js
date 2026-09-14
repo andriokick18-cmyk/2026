@@ -390,7 +390,7 @@ function agRender(step,data){
             <button type="button" class="ag-link" id="ag-s-resend" onclick="agEnviarCodigo()" disabled>Reenviar código</button>
           </div>
         </div>
-        <div class="ag-ok" id="ag-s-email-ok" style="display:none;margin:10px 0 0"><span class="ag-ok-ico">✔</span><span>E-mail confirmado!<small id="ag-s-email-ok-mail"></small></span><button type="button" class="ag-link" style="margin-left:auto" onclick="agTrocarEmail()">Trocar</button></div>
+        <div class="ag-ok" id="ag-s-email-ok" style="display:none;margin:10px 0 0"><span class="ag-ok-ico">✔</span><span><span id="ag-s-email-ok-txt">E-mail confirmado!</span><small id="ag-s-email-ok-mail"></small></span><button type="button" class="ag-link" style="margin-left:auto" onclick="agTrocarEmail()">Trocar</button></div>
       </div>
       <div style="height:1px;background:rgba(255,255,255,.12);margin:4px 0 12px"></div>
       <label class="ag-lbl" for="ag-s-user">Nome de usuário <b>*</b></label>
@@ -430,6 +430,21 @@ async function agEnviarCodigo(){
     const d=await r.json().catch(()=>({}));
     if(!r.ok)throw new Error(d.error||"Não foi possível enviar o código agora.");
     _agEmailSentTo=email;
+    // 🔐 v176 (dono, 13/09/2026): e-mail de admin — o servidor já devolve o
+    // token confirmado, sem código nenhum pra digitar (ver server.js
+    // /api/email/enviar-codigo). Pula reto pro estado "e-mail confirmado",
+    // deixando claro que a confirmação foi automática (nunca esconder).
+    if(d.autoVerificado){
+      _agEmailToken=d.token||"";_agEmailOk=true;clearTimeout(_agResendTimer);
+      const box2=g("#ag-s-code-box");if(box2)box2.style.display="none";
+      const row2=g("#ag-s-email-row");if(row2)row2.style.display="none";
+      const ok2=g("#ag-s-email-ok");if(ok2)ok2.style.display="flex";
+      const okt2=g("#ag-s-email-ok-txt");if(okt2)okt2.textContent="🔐 E-mail de administrador reconhecido — confirmado automaticamente!";
+      const okm2=g("#ag-s-email-ok-mail");if(okm2)okm2.textContent=email;
+      gaEvent("email_verified",{method:"admin_auto"});
+      const uu=g("#ag-s-user");if(uu)uu.focus();
+      return;
+    }
     const box=g("#ag-s-code-box");if(box)box.style.display="block";
     const msg=g("#ag-s-code-msg");if(msg)msg.textContent="📩 E-mail enviado pra "+email+" — digite abaixo o código de 6 dígitos (olhe também a caixa de spam).";
     if(hint)hint.style.display="none";
@@ -470,6 +485,7 @@ async function agConfirmarCodigo(){
     const box=g("#ag-s-code-box");if(box)box.style.display="none";
     const row=g("#ag-s-email-row");if(row)row.style.display="none";
     const ok=g("#ag-s-email-ok");if(ok)ok.style.display="flex";
+    const okt=g("#ag-s-email-ok-txt");if(okt)okt.textContent="E-mail confirmado!";
     const okm=g("#ag-s-email-ok-mail");if(okm)okm.textContent=_agEmailSentTo;
     gaEvent("email_verified",{method:"code"});
     const u=g("#ag-s-user");if(u)u.focus();

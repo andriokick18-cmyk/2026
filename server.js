@@ -7652,6 +7652,29 @@ filtrar();
       const email=String(d.email||"").trim().toLowerCase();
       if(!_isGmail(email))return json(res,400,{error:"Use um Gmail válido (…@gmail.com) — é por ele que o site envia suas candidaturas."});
       if(_findUserByEmail(email))return json(res,409,{error:"Já existe uma conta com esse e-mail. Entre com seu usuário ou use \"Esqueci minha senha\"."});
+      // 🔐 v176 (dono, 13/09/2026 — "quando o sistema identificar meu e-mail
+      // que é de adm ele não pede verificação... desativa o código pra esse
+      // cadastro do usuário andrio que é o adm"): os e-mails de admin
+      // (ADMIN_EMAIL/ADMIN_EMAIL_2/ADMIN_EMAILS_EXTRA) são valor que só o
+      // DONO configura no servidor — nunca vêm de input de usuário nem
+      // aparecem em NENHUMA tela pro público (conferido: não existe no
+      // index.html/app.js). O dono ficava TRANCADO do próprio site esperando
+      // conectar a conta de notificações (Admin → Notificações) só pra poder
+      // mandar um código pra SI MESMO — ovo e galinha (o painel admin nem
+      // depende disso, mas criar a conta de USUÁRIO dependia). Bootstrap: se
+      // o e-mail é de admin e AINDA NÃO tem conta (checagem logo acima),
+      // devolve o token de "e-mail verificado" NA HORA, sem gastar nenhum
+      // código. A janela fecha SOZINHA E PRA SEMPRE assim que esse e-mail
+      // completar o /api/cadastro — getUser passa a existir e o 409 acima
+      // barra igual qualquer e-mail já cadastrado, voltando a exigir código
+      // normal pra sempre depois disso. Auditado em log + GLOBAL_EVENTS
+      // (nunca em silêncio).
+      if(isAdminEmail(email)){
+        const token=NOTIF.tokenVerificado("cadastro",email);
+        console.log(`[email] 🔐 bootstrap de admin: ${email} confirmado sem código (e-mail de admin, conta ainda não existe)`);
+        try{pushGlobalEvent("admin_bootstrap_email",email,`E-mail de admin (${email}) verificado sem código no cadastro — janela fecha assim que a conta nascer`,"warn");}catch(e){}
+        return json(res,200,{ok:true,email,autoVerificado:true,token});
+      }
       if(!NOTIF.conectada())return json(res,503,{error:"A verificação por e-mail está temporariamente indisponível (conta de envio não conectada). Tente de novo em alguns minutos ou chame o suporte."});
       const pode=NOTIF.podeEnviar("cadastro",email);
       if(!pode.ok)return json(res,429,{error:pode.motivo==="aguarde"?`Aguarde ${pode.segundos}s pra pedir outro código.`:`Limite de códigos atingido pra esse e-mail. Tente de novo em ${Math.ceil(pode.segundos/60)} min.`,segundos:pode.segundos});
