@@ -245,6 +245,26 @@ const req2 = (method, p, payload) => new Promise((resolve, reject) => {
   if (body) r.write(body);
   r.end();
 });
+// Variante de req2 que sobe o corpo DEVAGAR (2 pedaços com `gapMs` entre
+// eles) — o servidor começa a rodar o handler quando chegam os CABEÇALHOS,
+// então essa janela é a corrida real de uma rede lenta (4G): duas
+// requisições vivas dentro do mesmo handler, antes de qualquer `await`
+// resolver. Usada pra provar travas de concorrência de verdade.
+const reqSlow = (method, p, payload, gapMs) => new Promise((resolve, reject) => {
+  const body = Buffer.from(JSON.stringify(payload || {}));
+  const meio = Math.max(1, Math.floor(body.length / 2));
+  const r = http.request(BASE + p, {
+    method,
+    headers: { "Content-Type": "application/json", "Content-Length": body.length, ...(COOKIE ? { Cookie: COOKIE } : {}) },
+  }, (res) => {
+    let b = "";
+    res.on("data", (c) => (b += c));
+    res.on("end", () => { let json = null; try { json = JSON.parse(b); } catch {} resolve({ status: res.statusCode, body: b, json }); });
+  });
+  r.on("error", reject);
+  r.write(body.subarray(0, meio));
+  setTimeout(() => r.end(body.subarray(meio)), gapMs);
+});
 const get = (p) => req2("GET", p);
 // Variante binária de get() — pra respostas não-JSON (CSV/imagem) onde o
 // corpo precisa chegar como Buffer intacto, nunca decodificado/truncado.
@@ -3166,6 +3186,64 @@ async function testAuthWatchdogPush() {
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
     const stW = await get("/api/status");
     check("🌱 /api/status expõe primaryWarmup (fail-open: sem created_at no fixture → sem teto, nunca bloqueia à toa)", stW.json?.primaryWarmup && stW.json.primaryWarmup.cap === null, JSON.stringify(stW.json?.primaryWarmup));
+
+    // ═══ 🚨 v177-FIX5 (auditoria 14/09/2026 — 5ª leva): envio manual e
+    // automático. Corrida de 2 inícios do robô, PDF cru anexado sem
+    // validação, extras que sobrevivem ao downgrade de plano, refill que
+    // recarregava fila de quem perdeu o automático. ═══
+    {
+      // (1) CORRIDA REAL: 2 cliques/abas iniciando o robô ao mesmo tempo.
+      // A checagem de "job já ativo" é síncrona, mas o setAutoJob só acontece
+      // depois de vários awaits — as DUAS passavam e a 2ª sobrescrevia a fila
+      // da 1ª (e scheduleAuto era agendado 2×).
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "racestart@test.com", name: "Race Start", refreshToken: "rt-race-test", vip: { manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000, active: true, plan: "doublepro" }, plan: "doublepro" });
+      const _pdfRace = Buffer.from("%PDF-1.4 " + "race ".repeat(300)).toString("base64");
+      const _upRace = await req2("POST", "/api/cv/upload", { base64: _pdfRace, name: "CV_Race.pdf", cvType: "resume" });
+      const _mkQ = (tag) => [1, 2].map((i) => ({ to: `vaga${i}@${tag}-race.com`, title: "Cook", company: `Empresa ${tag}${i}` }));
+      // A 1ª requisição sobe o corpo DEVAGAR (2 pedaços com 400ms de intervalo
+      // — 4G real, e o que o handler enxerga é exatamente isso: ele começa a
+      // rodar quando chegam os CABEÇALHOS, muito antes do corpo terminar). É
+      // nessa janela que a 2ª chamada entrava e passava junto.
+      const _r1p = reqSlow("POST", "/api/auto/start", { queue: _mkQ("um"), resumeIdx: _upRace.json?.cv?.idx, subjects: ["a"], emailBodies: ["b"] }, 400);
+      await new Promise((r) => setTimeout(r, 150));
+      const _r2 = await req2("POST", "/api/auto/start", { queue: _mkQ("dois"), resumeIdx: _upRace.json?.cv?.idx, subjects: ["a"], emailBodies: ["b"] });
+      const _r1 = await _r1p;
+      const _oks = [_r1, _r2].filter((r) => r.json?.ok === true).length;
+      const _barrado = [_r1, _r2].find((r) => r.status === 409);
+      check("🚨 v177-FIX5: 2 inícios CONCORRENTES do robô (duplo clique / 2 abas) — só UM monta a fila, o outro leva 409; antes as duas passavam e a 2ª jogava fora a fila da 1ª (sem lock nenhum, ao contrário do envio manual)",
+        _oks === 1 && !!_barrado && (_barrado.json?.alreadyStarting === true || _barrado.json?.alreadyRunning === true),
+        JSON.stringify({ r1: _r1.status, r2: _r2.status, oks: _oks }).slice(0, 160));
+      await req2("POST", "/api/auto/stop", {});
+
+      // (2) Currículo mandado direto no corpo (pdfBase64) ia CRU pro anexo do
+      // e-mail, sem nenhuma das validações que /api/cv/upload aplica.
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "pdfcru@test.com", name: "PDF Cru", refreshToken: "rt-pdfcru-test", vip: { manualExpires: Date.now() + 30 * 86400_000, autoExpires: 0, active: true, plan: "vip" }, plan: "vip" });
+      const _envCru = await req2("POST", "/api/send", { to: "rh@empresa-pdfcru.com", subject: "Application", message: "Olá, gostaria de me candidatar.", pdfBase64: Buffer.from("isto nao e um pdf de verdade, e lixo").toString("base64"), pdfName: "falso.pdf" });
+      check("🚨 v177-FIX5: /api/send recusa (400) currículo mandado direto no corpo (pdfBase64) que NÃO é PDF de verdade — antes o base64 cru virava anexo no e-mail pro empregador sem nenhuma validação (magic bytes/tamanho só existiam no /api/cv/upload)",
+        _envCru.status === 400 && _envCru.json?.pdfInvalid === true,
+        JSON.stringify({ status: _envCru.status, err: (_envCru.json?.error || "").slice(0, 80) }));
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+
+      check("🚨 v177-FIX5 (estrutural): o PLANO manda em quantos Gmails enviam — o rodízio corta os extras excedentes por getMaxSenders e o envio manual por conta específica recusa extra sem plano que dê direito (downgrade DoublePro→VIP deixava os 2 e-mails ativos: mandar por 2 pagando por 1)",
+        _srvSrc.includes("const _maxSnd = getMaxSenders(p || {});") &&
+        _srvSrc.includes("extras.filter(s => !s.tokenExpired && !s.blocked).slice(0, Math.max(0, _maxSnd - 1))") &&
+        _srvSrc.includes("if (getMaxSenders(p || {}) <= 1) throw new Error(_msgLimiteSenders(getMaxSenders(p || {})));"),
+        "getSenderToken voltou a ignorar o teto de e-mails do plano");
+      check("🚨 v177-FIX5 (estrutural): o refill automático (que marca o job como active:true) só roda pra quem AINDA tem automático ativo — antes recarregava a fila ANTES da checagem de plano, reservando vagas pra quem acabou de perder o plano",
+        _srvSrc.includes("const _added=(isAdminVip(_pRefill)||isAutoVipActive(_pRefill))?tryAutoRefill(email,job):0;"),
+        "tryAutoRefill voltou a rodar antes da checagem de plano");
+      check("🚨 v177-FIX5 (estrutural): o selo de aquecimento (primaryWarmup.sentToday) conta o histórico pela chave RESOLVIDA do Gmail (resolveSendGmail) — pra conta v172c o filtro por username nunca casava e o selo mostrava sempre 0, escondendo o throttling real",
+        _srvSrc.includes("x.senderEmail===(gmailEmail||s.user_email)||x.senderEmail===s.user_email"),
+        "primaryWarmup voltou a contar só por s.user_email");
+      check("🚨 v177-FIX5 (estrutural): o freio de rajada do manual (20/60s) isenta admin, igual o cooldown de 1min já fazia (v120) — QA do admin não leva mais 429 dentro do próprio limite diário",
+        _srvSrc.includes('if(!isAdminVip(p)&&rateLimit(s.user_email+"_send_burst",20,60_000))'),
+        "burst do /api/send ainda não isenta admin");
+      check("🚨 v177-FIX5 (estrutural): /api/cv/upload confere o retorno do saveCv antes de responder ok — antes dizia 'salvo' mesmo com disco E fallback em memória falhando (o usuário só descobria na hora de se candidatar)",
+        (_srvSrc.match(/if\(!saveCv\(s\.user_email/g) || []).length === 2,
+        "uma das 2 gravações de currículo ainda responde ok:true sem olhar o retorno do saveCv");
+      // devolve a sessão pro usuário comum — o próximo check conta com isso
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
+    }
 
     // 🎯 usuário comum (não-admin) NUNCA acessa Respostas Certas — é dado
     // privado do admin (respostas de e-mail de outra pessoa).

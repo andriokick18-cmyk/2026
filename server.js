@@ -3876,7 +3876,14 @@ function scheduleAuto(email) {
   if(!job||!job.active){autoTimers.delete(email);return;}
   // Fila zerada: v23 — tenta refill automático antes de finalizar
   if(!job.queue?.length){
-    const _added=tryAutoRefill(email,job);
+    // 🚨 v177-FIX5 (auditoria 14/09/2026): o refill rodava ANTES da checagem
+    // de plano logo abaixo — e ele marca o job como active:true. Quem perdia
+    // o automático exatamente quando a fila zerava ganhava uma fila nova
+    // (vagas "reservadas" pra ele) e um job ligado por ~5s, só pro tick
+    // seguinte descobrir que não tem plano. Só recarrega quem ainda tem
+    // automático ativo de verdade; o resto cai no encerramento normal.
+    const _pRefill=getUser(email)||{};
+    const _added=(isAdminVip(_pRefill)||isAutoVipActive(_pRefill))?tryAutoRefill(email,job):0;
     if(_added>0){
       addLog(email,{status:"sistema",jobTitle:`🔄 Fila recarregada sozinha: +${_added} vaga(s) nova(s)`,company:"O robô continua trabalhando com os mesmos filtros — nada pra você fazer."});
       autoTimers.set(email,setTimeout(()=>scheduleAuto(email),5000));
@@ -4245,6 +4252,15 @@ function invalidateUserStatsCache(email) {
 // ── PERFORMANCE: deduplicação de envio manual por destinatário ──
 // Impede envio duplicado por duplo-clique / refresh
 const _manualSendInFlight = new Map(); // email+to → promessa em andamento
+
+// 🚨 v177-FIX5 (auditoria 14/09/2026): /api/auto/start não tinha NENHUM lock
+// equivalente ao _manualSendInFlight. A checagem de "job já ativo" é síncrona,
+// mas o `setAutoJob` final só acontece depois de vários awaits (readBody +
+// montagem da fila) — duas chamadas concorrentes (duplo clique, 2 abas, 4G
+// lento) passavam as DUAS pela checagem, a 2ª sobrescrevia a fila da 1ª e
+// scheduleAuto era agendado 2×. Mesma solução do manual: reserva por usuário,
+// liberada no finally (e por idade, caso alguma exceção escape do caminho).
+const _autoStartInFlight = new Map(); // email → ts da reserva
 
 // v18-FIX: reserva de vagas do limite diário MANUAL — corrige corrida TOCTOU.
 // Antes, o limite diário era checado lendo o histórico (countManualToday) ANTES
@@ -5411,6 +5427,10 @@ async function getSenderToken(ownerEmail, requestedSender, allowedSenders) {
   if (requestedSender && requestedSender !== ownerEmail) {
     const s = extras.find(x => x.email === requestedSender);
     if (!s) throw new Error("Email de envio não encontrado ou removido.");
+    // 🚨 v177-FIX5: mesma régua do rodízio — sem plano que dê direito a Gmail
+    // extra (downgrade ou plano vencido), o extra não envia. Nada é apagado:
+    // é só o teto do plano valendo também na hora do envio manual.
+    if (getMaxSenders(p || {}) <= 1) throw new Error(_msgLimiteSenders(getMaxSenders(p || {})));
     // 🛡️ v73: mesma proteção de aquecimento do round-robin, aplicada quando
     // o usuário escolhe ESTA conta específica na tela de envio manual.
     const _wCap = warmupCapForSender(s.addedAt);
@@ -5455,7 +5475,16 @@ async function getSenderToken(ownerEmail, requestedSender, allowedSenders) {
 
     // Monta pool completo: principal + extras ativos sem erro
     // Principal representado como objeto sintético para uniformidade
-    const extrasOk = extras.filter(s => !s.tokenExpired && !s.blocked);
+    // 🚨 v177-FIX5 (auditoria 14/09/2026): o PLANO manda em quantos e-mails
+    // podem enviar (getMaxSenders — grátis 0 · VIP/VIPro 1 · DoublePro 2),
+    // mas o rodízio nunca consultava esse teto: depois de um downgrade
+    // (DoublePro→VIP) ou do plano vencer, os extras continuavam 100% ativos
+    // e a pessoa seguia mandando por 2 Gmails pagando por 1 — a MESMA classe
+    // de vazamento de receita do v172i, só que em senders em vez de limites.
+    // Corta pelo excedente (ordem de cadastro), nunca apaga nem desativa
+    // nada: voltar pro DoublePro devolve o extra na hora, sem reconectar.
+    const _maxSnd = getMaxSenders(p || {});
+    const extrasOk = extras.filter(s => !s.tokenExpired && !s.blocked).slice(0, Math.max(0, _maxSnd - 1));
     // 🐛 v172e (auditoria, 12/09/2026): countBySender é indexado por
     // hist[].senderEmail, que pro envio do PRINCIPAL grava o Gmail REAL
     // (resolveSendGmail — ver _doAutoSendInner) — nunca a identidade de
@@ -10212,8 +10241,15 @@ filtrar();
     // checklist do automático) rotulava o username como se fosse o Gmail
     // principal. resolveSendGmail devolve o endereço certo (ou null se ainda
     // não conectou nenhum).
+    // 🚨 v177-FIX5 (auditoria 14/09/2026): o selo "🌱 Aquecendo X/Y hoje"
+    // (primaryWarmup.sentToday, abaixo) contava o histórico por s.user_email —
+    // que pra conta v172c é o USERNAME de login, nunca o Gmail real gravado em
+    // senderEmail. Pra essas contas o filtro jamais casava e o selo mostrava
+    // sempre 0, escondendo o throttling real do usuário (regra 13a: nunca
+    // esconder esse throttling). Agora conta pela chave resolvida, mantendo o
+    // username como fallback (conta legada, cujo histórico usa o próprio e-mail).
     const gmailEmail = resolveSendGmail(p);
-    return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,planRulesNotice:_prNotice,manualCdOff:p.manualCdOff===true,gmailConnected,gmailEmail,emailContato:p.emailContato||null,emailVerificado:!!p.emailVerificadoEm,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",language:p.language||"pt-BR",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||300),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
+    return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,planRulesNotice:_prNotice,manualCdOff:p.manualCdOff===true,gmailConnected,gmailEmail,emailContato:p.emailContato||null,emailVerificado:!!p.emailVerificadoEm,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",language:p.language||"pt-BR",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===(gmailEmail||s.user_email)||x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||300),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
   }
 
   if(pathname==="/api/onboard"&&req.method==="POST"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});setUser(s.user_email,{onboarded:true});return json(res,200,{ok:true});}
@@ -10293,8 +10329,14 @@ const safeName=String(d.name).replace(/[<>"'&\r\n\t]/g,"").slice(0,200);if(!safe
 // ficavam com o mesmo PDF 3x na lista. Substituir mantém o idx, então os
 // perfis que apontam pra ele continuam válidos.
 const _dup=cvs.find(c=>(c.cvType||"resume")===cvType&&String(c.name||"").trim().toLowerCase()===safeName.trim().toLowerCase());
-if(_dup){_dup.size=estimatedBytes;_dup.date=new Date().toISOString();delete _dup.b64;setUser(s.user_email,{cvs});saveCv(s.user_email,_dup.idx,d.base64);trackJourney(s.user_email,'pdf_upload',{detail:`PDF substituído: ${safeName} ~${Math.round(estimatedBytes/1024)}KB`,meta:{name:safeName,idx:_dup.idx,cvType,replaced:true}});return json(res,200,{ok:true,replaced:true,cv:{idx:_dup.idx,name:_dup.name,size:_dup.size,date:_dup.date,cvType}});}
-const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filter(c=>(c.cvType||"resume")===cvType);if(sameType.length>=typeLimit)return json(res,429,{error:`Limite de ${typeLimit} ${cvType==="cover"?"cover letters":"currículos"} atingido. Para liberar espaço: abra o editor de perfil → seção Currículo → clique no ícone 🗑️ ao lado de um PDF antigo.`,limitReached:true,cvType,limit:typeLimit});const idx=Date.now();const meta={idx,name:safeName,size:estimatedBytes,date:new Date().toISOString(),cvType};cvs.push(meta);setUser(s.user_email,{cvs});saveCv(s.user_email,idx,d.base64);trackJourney(s.user_email,'pdf_upload',{detail:`PDF: ${safeName} ~${Math.round(estimatedBytes/1024)}KB`,meta:{name:safeName,idx,cvType}});
+if(_dup){_dup.size=estimatedBytes;_dup.date=new Date().toISOString();delete _dup.b64;setUser(s.user_email,{cvs});
+// 🚨 v177-FIX5 (auditoria 14/09/2026): a rota respondia ok:true SEM olhar o
+// retorno de saveCv — se a gravação em disco E o fallback em memória
+// falhassem, o usuário via "currículo salvo" e o PDF não existia em lugar
+// nenhum (descobria só na hora de se candidatar).
+if(!saveCv(s.user_email,_dup.idx,d.base64))return json(res,500,{error:"Não conseguimos guardar seu currículo agora (falha ao gravar no servidor). Tente de novo em instantes — nada foi salvo pela metade."});trackJourney(s.user_email,'pdf_upload',{detail:`PDF substituído: ${safeName} ~${Math.round(estimatedBytes/1024)}KB`,meta:{name:safeName,idx:_dup.idx,cvType,replaced:true}});return json(res,200,{ok:true,replaced:true,cv:{idx:_dup.idx,name:_dup.name,size:_dup.size,date:_dup.date,cvType}});}
+const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filter(c=>(c.cvType||"resume")===cvType);if(sameType.length>=typeLimit)return json(res,429,{error:`Limite de ${typeLimit} ${cvType==="cover"?"cover letters":"currículos"} atingido. Para liberar espaço: abra o editor de perfil → seção Currículo → clique no ícone 🗑️ ao lado de um PDF antigo.`,limitReached:true,cvType,limit:typeLimit});const idx=Date.now();const meta={idx,name:safeName,size:estimatedBytes,date:new Date().toISOString(),cvType};cvs.push(meta);setUser(s.user_email,{cvs});
+if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c.idx!==idx)});return json(res,500,{error:"Não conseguimos guardar seu currículo agora (falha ao gravar no servidor). Tente de novo em instantes — nada foi salvo pela metade."});}trackJourney(s.user_email,'pdf_upload',{detail:`PDF: ${safeName} ~${Math.round(estimatedBytes/1024)}KB`,meta:{name:safeName,idx,cvType}});
       return json(res,200,{ok:true,cv:{idx:meta.idx,name:meta.name,size:meta.size,date:meta.date,cvType:meta.cvType}});}catch(e){return json(res,500,{error:e.message});}}
   if(/^\/api\/cv\/\d+$/.test(pathname)&&req.method==="GET"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});const idx=parseInt(pathname.split("/").pop(),10);const p=getUser(s.user_email);if(!p?.cvs?.find(c=>c.idx===idx))return json(res,403,{error:"CV não encontrado."});const b64=loadCv(s.user_email,idx);if(!b64)return json(res,404,{error:"Arquivo não encontrado."});return json(res,200,{base64:b64,idx});}
   if(/^\/api\/cv\/\d+$/.test(pathname)&&req.method==="DELETE"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});const idx=parseInt(pathname.split("/").pop(),10);const p=getUser(s.user_email);if(!p?.cvs?.find(c=>c.idx===idx))return json(res,403,{error:"CV não encontrado."});deleteCv(s.user_email,idx);const _cleanProfiles=(p.profiles||[]).map(pr=>{const np={...pr};if(np.resumeIdx===idx){delete np.resumeIdx;delete np.pdfName;np.pdfSize=0;}if(np.coverIdx===idx){delete np.coverIdx;delete np.coverName;np.coverSize=0;}return np;});setUser(s.user_email,{cvs:(p.cvs||[]).filter(c=>c.idx!==idx),profiles:_cleanProfiles});return json(res,200,{ok:true});}
@@ -10379,7 +10421,12 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
         // de candidatura nova não tinha NENHUM freio de curto prazo, só o limite
         // diário (que por sua vez tinha a corrida corrigida abaixo). Agora também
         // trava rajadas rápidas independente do limite diário total.
-        if(rateLimit(s.user_email+"_send_burst",20,60_000))return json(res,429,{error:"Muitos envios em pouco tempo. Aguarde um minuto."});
+        // 🚨 v177-FIX5 (auditoria 14/09/2026): este freio de rajada é anterior
+        // à isenção de admin do cooldown de 1min (v120) e nunca foi revisado —
+        // uma sessão de QA do admin mandando >20 candidaturas em 1 minuto
+        // (dentro do limite diário dele) levava 429, contrariando a intenção
+        // declarada de "admin isento pra testes". Mesma régua do cooldown.
+        if(!isAdminVip(p)&&rateLimit(s.user_email+"_send_burst",20,60_000))return json(res,429,{error:"Muitos envios em pouco tempo. Aguarde um minuto."});
         // Só verifica limite para candidaturas novas (não respostas)
         const lim=getManualLimit(p);const h=getHist(s.user_email);const sent=countManualToday(h);
         // v18-FIX (corrida TOCTOU / "180 envios em 3h"): soma as reservas de envios
@@ -10423,7 +10470,30 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
       const attachments=[];const getAtt=async idx=>{if(idx==null)return null;const m=p.cvs?.find(c=>c.idx===parseInt(idx,10));return m&&loadCv(s.user_email,m.idx)?{data:loadCv(s.user_email,m.idx),name:m.name}:null;};
       if(!isReply){// Anexos só em candidaturas originais
         let resumeAttached=false;
-        if(d.resumeIdx!=null){const a=await getAtt(d.resumeIdx);if(a){attachments.push(a);resumeAttached=true;}}else if(d.pdfBase64){attachments.push({data:d.pdfBase64,name:d.pdfName||"resume.pdf"});resumeAttached=true;}
+        // 🚨 v177-FIX5 (auditoria 14/09/2026): o caminho alternativo pdfBase64
+        // (currículo mandado direto no corpo, sem passar pelos Documentos)
+        // empurrava o base64 CRU pro anexo do e-mail sem NENHUMA das validações
+        // que /api/cv/upload aplica — dava pra mandar qualquer coisa (ou lixo
+        // corrompido) em nome do usuário pro empregador. Mesma régua do upload:
+        // tamanho e magic bytes %PDF.
+        if(d.resumeIdx!=null){const a=await getAtt(d.resumeIdx);if(a){attachments.push(a);resumeAttached=true;}}
+        else if(d.pdfBase64){
+          const _pb=String(d.pdfBase64);
+          const _pbuf=Buffer.from(_pb.slice(0,8),"base64");
+          const _pbRuim=_pb.length>7_000_000
+            ?"Currículo maior que 5MB — reduza o arquivo antes de enviar."
+            :(_pbuf.length<4||_pbuf[0]!==0x25||_pbuf[1]!==0x50||_pbuf[2]!==0x44||_pbuf[3]!==0x46)
+              ?"O currículo anexado não é um PDF válido. Envie um arquivo .pdf de verdade."
+              :null;
+          if(_pbRuim){
+            // Mesma disciplina do pdfMissing (v172e): este return é liso, não
+            // passa pelo catch — solta a reserva de slot e o lock do dedup.
+            if(_reservedManualSlot){_releaseManualSlot(s.user_email);_reservedManualSlot=false;}
+            _manualSendInFlight.delete(dedupKey);
+            return json(res,400,{error:_pbRuim,pdfInvalid:true});
+          }
+          attachments.push({data:_pb,name:d.pdfName||"resume.pdf"});resumeAttached=true;
+        }
         if(d.coverIdx!=null){const a=await getAtt(d.coverIdx);if(a)attachments.push(a);}
         // v21: MESMA regra do automático (v16-FIX) — candidatura sem currículo
         // anexado não pode chegar no empregador (queima o usuário e a
@@ -11122,6 +11192,12 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
     if(DATA_DIR==="/tmp"){
       return json(res,503,{error:"⚠️ Servidor sem volume persistente (/tmp). Configure DATA_DIR=/data com volume Docker/Railway antes de usar o automático.",diskVolatile:true});
     }
+    // 🚨 v177-FIX5: reserva contra 2 inícios concorrentes (ver _autoStartInFlight).
+    {
+      const _asTs=_autoStartInFlight.get(s.user_email);
+      if(_asTs&&Date.now()-_asTs<60_000)
+        return json(res,409,{error:"Já estamos montando sua fila — aguarde alguns segundos antes de clicar de novo.",alreadyStarting:true});
+    }
     const existingJob=getAutoJob(s.user_email);
     // v124 (BUG REAL, vídeo do dono 10/08: cliente PAGANTE montou a fila nova,
     // clicou iniciar e recebeu "robô estava travado — reiniciei. 0 vaga(s) na
@@ -11171,6 +11247,7 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
     if(todayAuto>=autoLimit)return json(res,429,{error:`Limite de ${autoLimit} automáticos/dia atingido.`,limitReached:true});
     // 🔒 v172: mesma régua do /api/send — admin pula PLANO, nunca Gmail conectado.
     if(!p.refresh_token)return json(res,403,{error:"Conecte seu Gmail antes de ligar o envio automático.",needsGmailConnect:true});
+    _autoStartInFlight.set(s.user_email,Date.now());
     try{
       const d=JSON.parse(await readBody(req));
       // ── Validação: perfil válido ──────────────────────────
@@ -11427,6 +11504,7 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
       setTimeout(()=>scheduleAuto(s.user_email),100);
       return json(res,200,{ok:true,queueSize:queue.length,skippedAlreadySent,visaWarning});
     }catch(e){return json(res,500,{error:e.message});}
+    finally{_autoStartInFlight.delete(s.user_email);}
   }
   if(pathname==="/api/auto/pause"&&req.method==="POST"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});const j=getAutoJob(s.user_email);if(!j)return json(res,404,{error:"Nenhum job."});if(autoTimers.has(s.user_email)){clearTimeout(autoTimers.get(s.user_email));autoTimers.delete(s.user_email);}setAutoJob(s.user_email,{...j,active:false,status:"paused"});addLog(s.user_email,{status:"pausado",jobTitle:"Envio pausado pelo usuário",company:""});return json(res,200,{ok:true});}
   if(pathname==="/api/auto/resume"&&req.method==="POST"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});const j=getAutoJob(s.user_email);if(!j)return json(res,404,{error:"Nenhum job."});setAutoJob(s.user_email,{...j,active:true,status:"resuming"});addLog(s.user_email,{status:"sistema",jobTitle:"Envio retomado",company:""});scheduleAuto(s.user_email);return json(res,200,{ok:true});}
@@ -13199,7 +13277,8 @@ setInterval(()=>{const n=Date.now();let c=0;Object.keys(sessions).forEach(k=>{co
 // acumulava uma entrada por usuário×ação pra sempre (vazamento lento de RAM).
 Object.keys(rateMap).forEach(k=>{if(rateMap[k].r<n)delete rateMap[k];});
 // Limpa locks de send órfãos (>30s)
-_manualSendInFlight.forEach((ts,k)=>{if(n-ts>30000)_manualSendInFlight.delete(k);});},300_000);
+_manualSendInFlight.forEach((ts,k)=>{if(n-ts>30000)_manualSendInFlight.delete(k);});
+_autoStartInFlight.forEach((ts,k)=>{if(n-ts>60000)_autoStartInFlight.delete(k);});},300_000);
 // BUG-001 CORRIGIDO: cron VIP agora suporta schema novo (manualExpires/autoExpires) E schema legado (expiresAt)
 setInterval(()=>{
   let n=0;
