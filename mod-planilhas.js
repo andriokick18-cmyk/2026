@@ -483,7 +483,12 @@ function createPlanilhas(deps) {
       enrich: { running: enrichBot.running, sheetKey: enrichBot.sheetKey, done: enrichBot.done, total: enrichBot.total, ok: enrichBot.ok, noEmail: enrichBot.noEmail, errors: enrichBot.errors, savedAt: enrichBot.savedAt, startedAt: enrichBot.startedAt },
       fresh: { ...freshBot },
       h2aNovas: { ...h2aNovasBot, totalPlanilha: (getSheetH2A() || []).length },
-      coleta: { running: dolColeta.running, key: dolColeta.key, count: dolColeta.count, error: dolColeta.error, progress: dolColeta.progress, startedAt: dolColeta.startedAt, finishedAt: dolColeta.finishedAt },
+      // 🚨 v177-FIX2 (auditoria 14/09/2026): faltava `published` — o admin.html
+      // sempre mostrava "em rascunho, publique abaixo" mesmo DEPOIS de clicar
+      // "Publicar pros usuários" com sucesso, porque esse campo nunca existia
+      // aqui (o publish só grava em getMeta()[key], objeto separado do
+      // dolColeta em memória). Mesma leitura já usada em coleta-publish (367).
+      coleta: { running: dolColeta.running, key: dolColeta.key, count: dolColeta.count, error: dolColeta.error, progress: dolColeta.progress, startedAt: dolColeta.startedAt, finishedAt: dolColeta.finishedAt, published: dolColeta.key ? (getMeta()[dolColeta.key]?.published === true) : false },
       mensalH2a: DB_H2A_BIM, mensalH2b: DB_H2B_MEN,
       agendado: !isTest,
     };

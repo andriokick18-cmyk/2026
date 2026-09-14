@@ -201,6 +201,12 @@ fs.writeFileSync(path.join(DATA, "history.json"), JSON.stringify({
 fs.mkdirSync(path.join(DATA, "cvs"), { recursive: true });
 fs.writeFileSync(path.join(DATA, "cvs", "fantasma@test.com_777.pdf"), "%PDF-1.4 orfao");
 
+// 🚨 v177-FIX2: e-mail com bounce JÁ conhecido — usado pra provar que o envio
+// MANUAL (não só o automático) recusa gastar limite mandando pra ele.
+fs.writeFileSync(path.join(DATA, "invalid_emails.json"), JSON.stringify({
+  "bounce177@empresa-invalida.com": { email: "bounce177@empresa-invalida.com", domain: "empresa-invalida.com", motivo: "smoke fixture", tipo: "bounce", first: Date.now(), last: Date.now(), count: 3, users: ["ninguem@test.com"], msg: "550 mailbox not found", status: "invalid" },
+}, null, 2));
+
 // v46: notícias com data futura/absurda (bug real, print do dono 23/07:
 // (aba Notícias/DOL removida nesta reconstrução — sem DB_NOTICIAS/vigia no
 // server.js; fixtures antigas de notícia inválida/baseline saíram.)
@@ -1534,6 +1540,16 @@ async function testAuthWatchdogPush() {
     check("💼 MC5-P6: cancelamento estorna por AJUSTE− (original preservado+anulado, par −147 pelo valor efetivo) — o caixa nunca apaga",
       canc.json?.ok === true && _cOrig && !!_cOrig.anuladoPor && _cAj && _cAj.valor === -147,
       JSON.stringify({ anulado: !!_cOrig?.anuladoPor, aj: _cAj?.valor }).slice(0, 120));
+    // 🚨 v177-FIX2 (auditoria 14/09/2026): o estorno de dias mexia direto em
+    // manualExpires/autoExpires sem deixar rastro no extrato vip.creditos —
+    // o crédito original de +30d (dado na ativação) ficava pra sempre como
+    // se os dias ainda estivessem concedidos. Ainda como admin (sessão não
+    // trocou) pra enxergar o campo `usuario` do detalhe do pedido.
+    const _pdDetalheCanc = await get("/api/pedido/" + pdId);
+    const _estornoEntry = (_pdDetalheCanc.json?.usuario?.creditos || []).find((c) => c.origem === "estorno");
+    check("🚨 v177-FIX2: cancelamento de pedido ativado registra o ESTORNO no extrato vip.creditos (dias negativos, ligado ao pedido) — antes o crédito de +30d original nunca era compensado no extrato",
+      !!_estornoEntry && _estornoEntry.dias === -30 && _estornoEntry.pedidoId === pdId && _estornoEntry.tipo === "pago",
+      JSON.stringify(_estornoEntry || _pdDetalheCanc.json?.usuario?.creditos).slice(0, 200));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "comprador@test.com" });
     const stCancelado = await get("/api/status");
     check("🧾 v170: cancelamento estorna os DIAS de VIP concedidos (30d voltam) — pd.diasTotal alimenta o estorno-de-dias corretamente",
@@ -1607,6 +1623,48 @@ async function testAuthWatchdogPush() {
         _srvSrc177.includes("isAdminVip(getUser(s.user_email)))?ADMIN_SESS_TTL:SESS_TTL"), "TTL de sessão de admin ainda depende só de isAdminEmail(s.user_email)");
       check("🚨 v177-FIX (estrutural): caminho legado do aviso de pedido usa _notifDestinatarios() (só os 2 sócios) pro destinatário — nunca mais [...ADMIN_EMAILS] (vazava pros 3 e-mails auxiliares)",
         !/for\(const toEmail of \[\.\.\.ADMIN_EMAILS\]\)/.test(_srvSrc177.replace(/\s/g, "")), "caminho legado ainda manda pra [...ADMIN_EMAILS] inteiro");
+    }
+
+    // ═══ 🚨 v177-FIX2 (auditoria 14/09/2026 — 2ª leva, achados médios/baixos
+    // dos 135 agentes): timing side-channel do login, sessão admin vencida
+    // aceita por até 5min, XSS num ícone de perfil não escapado, envio manual
+    // pra e-mail com bounce conhecido, e "Coleta do DOL" nunca mostrava
+    // publicado de verdade. ═══
+    {
+      const _srv2 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      const _app2 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      check("🚨 v177-FIX2 (estrutural, MÉDIA): getSess() confere o TTL na hora de CADA requisição (expiração preguiçosa) — antes uma sessão vencida (>24h admin/>7d usuário) continuava sendo aceita até 5min extras, até a próxima varredura periódica apagá-la",
+        /const getSess *=req=>\{[\s\S]{0,400}?age>ttl/.test(_srv2), "getSess() ainda não confere idade contra o TTL na hora da requisição");
+      check("🚨 v177-FIX2 (estrutural, MÉDIA): /api/login e /api/admin-panel/login nivelam o tempo de resposta (_atéTempoMinimo) pro MESMO total sempre — antes o delay de 300ms era SOMADO depois da checagem, e usuário/conta inexistente (sem scrypt) respondia mais rápido que senha errada numa conta que existe, vazando por timing se a conta existe",
+        (_srv2.match(/_atéTempoMinimo=async/g) || []).length === 2, "helper _atéTempoMinimo não apareceu nas 2 rotas esperadas");
+      check("🚨 v177-FIX2 (SEGURANÇA, MÉDIA): o ícone do perfil (${icon}, texto livre do usuário até 8 chars, sem allowlist) agora passa por esc() no painel de perfis automáticos — a guarda XSS trata a instrução .innerHTML= inteira como seguro só porque OUTRO ${} dela (names) já tinha esc(), mascarando esse",
+        /<span>\$\{esc\(icon\)\}<\/span>/.test(_app2), "app.js ainda tem ${icon} sem esc() dentro do innerHTML= do painel automático");
+      check("🚨 v177-FIX2 (estrutural): boot avisa alto no log se _notifDestinatarios() tiver menos de 2 e-mails (ADMIN_EMAIL/ADMIN_EMAIL_2 vazio/malformado no Render passava batido em silêncio, avisando só o Andrio de pedidos novos)",
+        _srv2.includes("_notifDestinatarios().length < 2"), "sanity check do boot não existe mais");
+    }
+    // Comprovante já usado (fingerprint) — mesma trilha do MC5-P1, sem
+    // duplicar setup: cria um 2º usuário VIP com Gmail conectado e tenta
+    // mandar candidatura pro e-mail que o fixture já marcou como bounce.
+    {
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "bounce177user@test.com", name: "Bounce177", refreshToken: "rt-bounce177-test", vip: { manualExpires: Date.now() + 30 * 86400_000, autoExpires: 0, plan: "vip", active: true }, plan: "vip" });
+      const _sendBounce = await req2("POST", "/api/send", { to: "bounce177@empresa-invalida.com", subject: "Application", message: "Olá, gostaria de me candidatar." });
+      check("🚨 v177-FIX2: /api/send RECUSA (400) mandar candidatura MANUAL pra e-mail com bounce já conhecido (DB_INVALID_EMAILS) — antes só o robô automático pulava esses, o manual gastava o limite diário à toa",
+        _sendBounce.status === 400 && !!_sendBounce.json?.error, JSON.stringify({ status: _sendBounce.status, error: _sendBounce.json?.error }));
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    }
+    // Coleta do DOL: statusPainel().coleta.published tem que refletir a
+    // publicação real (antes ficava sempre undefined, mesmo após publicar) —
+    // check estrutural (o fluxo completo de coleta real via feed falso já é
+    // provado à parte pelos robôs H-2A/mensal existentes; aqui só garante
+    // que o campo novo lê a MESMA fonte que coleta-publish grava).
+    {
+      const _planSrc2 = fs.readFileSync(path.join(__dirname, "mod-planilhas.js"), "utf8");
+      const _planStatus = await get("/api/admin/planilhas/status");
+      check("🚨 v177-FIX2: statusPainel().coleta já sai com o campo `published` presente mesmo sem coleta nenhuma rodada ainda (key=null → false, nunca undefined)",
+        _planStatus.json?.coleta?.published === false, JSON.stringify(_planStatus.json?.coleta));
+      check("🚨 v177-FIX2 (estrutural): coleta.published lê getMeta()[dolColeta.key] — a MESMA fonte que coleta-publish grava (antes o campo não existia, então o admin.html sempre mostrava 'em rascunho' mesmo depois de publicar com sucesso)",
+        _planSrc2.replace(/\s/g, "").includes("published:dolColeta.key?(getMeta()[dolColeta.key]?.published===true):false"),
+        "coleta.published não lê getMeta()[dolColeta.key]");
     }
 
     // ═══ 🤖 v177 (dono, 14/09/2026 — "implementar a leitura real por IA
@@ -1934,6 +1992,17 @@ async function testAuthWatchdogPush() {
       const enBad = await req2("POST", "/api/admin/enrich/start", { sheetKey: "nao-existe-2099" });
       check("📋 v174: enriquecimento — status parado (nunca gasta DOL sozinho no teste) e start numa planilha inexistente é 404",
         enSt.json?.ok === true && enSt.json.running === false && enBad.status === 404, `st=${enSt.body.slice(0, 80)} start=${enBad.status}`);
+      // 🚨 v177-FIX2 (estrutural — o loop de enriquecimento bate no HOSTNAME
+      // real do DOL, sem fake feed nenhum, então rodar o bot de ponta a ponta
+      // aqui travaria/estouraria o teste; a régua é textual, igual outras
+      // classes de bug assíncrono desta suíte):
+      const _srvSrc177b = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      check("🚨 v177-FIX2: DELETE /api/admin/sheet/:key para o bot de Enriquecimento se ele estiver rodando NESSA planilha (antes seguia gastando chamadas ao DOL à toa até o ciclo terminar sozinho, já que SHEET_EXTRAS[key] deixa de existir)",
+        _srvSrc177b.includes('if(_enrichBot.running&&_enrichBot.sheetKey===key){') && _srvSrc177b.includes("_enrichBot.running=false;"),
+        "DELETE não para mais o enrichBot em cima da planilha apagada");
+      check("🚨 v177-FIX2: _saveEnrichedSheet só carimba savedAt quando gravou de fato em algum dos 3 destinos (built-in jan/jul, H-2A, extra) — antes carimbava incondicional, então uma planilha extra apagada em cima do bot rodando aparecia como 'salva' sem gravar NADA",
+        _srvSrc177b.replace(/\s/g, "").includes("if(_gravou)_enrichBot.savedAt=Date.now();"),
+        "_saveEnrichedSheet ainda carimba savedAt incondicionalmente");
       // 📥 COLETA manual (rascunho → publicar)
       const cs = await req2("POST", "/api/admin/sheet/coleta-start", { visa: "H-2B", sheetKey: "teste2099", sheetName: "Teste 2099" });
       check("📥 v174: coleta-start aceita e dispara em background", cs.json?.ok === true && cs.json.key === "teste2099", cs.body.slice(0, 120));
@@ -1953,6 +2022,13 @@ async function testAuthWatchdogPush() {
       check("📢 v174: publicar libera a planilha pros usuários (lista + Manual abre as vagas)",
         pub.json?.ok === true && pub.json.count === 14 && (sl2.json?.sheets || []).some((x) => x.key === "teste2099" && x.count === 14) && Array.isArray(sm2.json?.jobs) && sm2.json.jobs.length > 0,
         `pub=${pub.body.slice(0, 80)} meta=${sm2.body.slice(0, 80)}`);
+      // 🚨 v177-FIX2 (auditoria 14/09/2026): a MESMA coleta ("teste2099", ainda
+      // a última rodada em dolColeta.key) tem que aparecer publicada no painel
+      // — antes co.published nunca existia no objeto, então o admin.html
+      // sempre mostrava "em rascunho, publique abaixo" mesmo depois disso.
+      const plStPub = await get("/api/admin/planilhas/status");
+      check("🚨 v177-FIX2: statusPainel().coleta.published reflete a publicação real feita agora mesmo (não fica preso em 'rascunho' depois de publicar)",
+        plStPub.json?.coleta?.key === "teste2099" && plStPub.json?.coleta?.published === true, JSON.stringify(plStPub.json?.coleta));
       const pub2 = await req2("POST", "/api/admin/sheet/coleta-publish", { key: "teste2099" });
       check("📢 v174: publicar de novo é idempotente (jaPublicada) — o radar nunca é avisado 2x", pub2.json?.ok === true && pub2.json.jaPublicada === true, pub2.body.slice(0, 100));
       // 🌾 VAGAS NOVAS H-2A — o total esperado sai do PRÓPRIO bundle com a

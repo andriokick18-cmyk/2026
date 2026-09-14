@@ -5193,7 +5193,20 @@ function _clientIp(req){
 const makeCookieStr=id=>{const b=`h2b_session=${id}; Path=/; HttpOnly; Max-Age=${30*86400}`;return IS_PROD?b+"; Secure; SameSite=Lax":b+"; SameSite=Lax";};
 const clearCookieStr=()=>{const b="h2b_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT";return IS_PROD?b+"; Secure; SameSite=Lax":b;};
 const getSessId=req=>{const m=(req.headers.cookie||"").match(/(?:^|;\s*)h2b_session=([^;]+)/);return m?m[1]:null;};
-const getSess  =req=>{const id=getSessId(req);return id?sessions[id]:null;};
+// 🚨 v177-FIX2 (auditoria 14/09/2026): antes, uma sessão vencida (>24h admin
+// / >7d usuário) continuava sendo ACEITA por toda requisição até a próxima
+// varredura periódica do setInterval (a cada 5min) apagá-la — janela real de
+// até 5min a mais de acesso com sessão expirada. getSess() agora confere o
+// TTL na hora, pra CADA requisição (expiração preguiçosa) — a varredura
+// periódica continua existindo só pra liberar memória de sessões inativas.
+const getSess  =req=>{
+  const id=getSessId(req);if(!id)return null;
+  const s=sessions[id];if(!s)return null;
+  const age=Date.now()-(s.ts||s.created_at||0);
+  const ttl=s.pending?600_000:(isAdminVip(getUser(s.user_email))?ADMIN_SESS_TTL:SESS_TTL);
+  if(age>ttl){delete sessions[id];return null;}
+  return s;
+};
 
 // ══════════════════════════════════════════════════════════
 //  HTTP UTILS
@@ -5891,12 +5904,14 @@ function _saveEnrichedSheet(sheetKey, sheet){
     // do próprio repositório e o robô H-2A gravaria vagas FALSAS de teste por
     // cima do arquivo bundled versionado no git.
     const _skipSrcWrite = !!process.env.TEST_LOGIN_TOKEN;
+    let _gravou=false;
     if(sheetKey==="jan2026"||sheetKey==="jul2025"){
       // Salva no disco persistente (/data/) — não é sobrescrito no deploy
       _writeFileAtomic(dataPath, payload);
       // Salva também na pasta do código (para leitura imediata neste boot)
       if(!_skipSrcWrite){try{_writeFileAtomic(srcPath, payload);}catch{}}
       _enrichLog(`💾 Salvo em /data/ e código: ${sheet.length} vagas`, "ok");
+      _gravou=true;
     } else if(sheetKey==="h2a-jun2026"||sheetKey==="h2a"){
       // v24-FIX: a H-2A é built-in como jan/jul mas este save NÃO tinha o ramo
       // dela — qualquer atualização (frescor/enriquecimento) era descartada em
@@ -5904,12 +5919,20 @@ function _saveEnrichedSheet(sheetKey, sheet){
       _writeFileAtomic(path.join(DATA_DIR,"h2a_jun2026_compact.json"), payload);
       if(!_skipSrcWrite){try{_writeFileAtomic(path.join(__dirname,"h2a_jun2026_compact.json"), payload);}catch{}}
       _enrichLog(`💾 H-2A salva em /data/ e código: ${sheet.length} vagas`, "ok");
+      _gravou=true;
     } else if(SHEET_EXTRAS[sheetKey]){
       const meta = DB_SHEETS_META[sheetKey];
       const fp = path.join(SHEETS_DIR, meta?.file||`${sheetKey}.json`);
       _writeFileAtomic(fp, payload); // extras já ficam em /data/sheets/
+      _gravou=true;
     }
-    _enrichBot.savedAt = Date.now();
+    // 🚨 v177-FIX2 (auditoria 14/09/2026): savedAt era carimbado incondicional,
+    // mesmo quando NENHUM dos 3 ramos batia (ex.: planilha extra apagada
+    // enquanto o bot de enriquecimento ainda rodava nela — SHEET_EXTRAS[key]
+    // já não existe mais) — o painel mostrava "salvo" pra um save que não
+    // gravou NADA em disco, e ninguém via log de erro nenhum.
+    if(_gravou)_enrichBot.savedAt = Date.now();
+    else _enrichLog(`⚠️ "${sheetKey}" não bate com nenhum destino de gravação conhecido (planilha apagada?) — nada foi salvo.`, "warn");
   }catch(e){ _enrichLog(`❌ Erro ao salvar: ${e.message}`,"error"); }
 }
 
@@ -5966,6 +5989,13 @@ function _parseNasc(v) {
 // (ADMIN_EMAIL = dono, ADMIN_EMAIL_2 = Diego) — ordem do dono, 13/09/2026
 // ("de compras para mim e pro Diego"). Contas admin auxiliares não recebem.
 const _notifDestinatarios = () => [...new Set([ADMIN_EMAIL, ADMIN_EMAIL_2].filter(e => e && e.includes("@")))];
+// 🚨 v177-FIX2 (auditoria 14/09/2026): ADMIN_EMAIL_2 vazio/malformado no
+// Render passava batido em silêncio — o aviso de compra ia só pro Andrio,
+// sem NENHUM alerta de que faltava configurar o e-mail do Diego. Checagem
+// de sanidade só no boot (não a cada pedido).
+if (_notifDestinatarios().length < 2) {
+  console.error(`[boot] ⚠️ ATENÇÃO: só ${_notifDestinatarios().length} destinatário(s) de aviso de compra configurado(s) (esperado: 2 sócios — Andrio + Diego). Confira ADMIN_EMAIL/ADMIN_EMAIL_2 no ambiente.`);
+}
 // Mensagem do aviso de pedido novo aos admins — fonte ÚNICA (conta de
 // notificações OU caminho legado pelo Gmail do admin).
 function _mensagemPedidoAdmin(pedido) {
@@ -7049,6 +7079,15 @@ ul li{margin-bottom:6px}
     const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
     const key=pathname.split("/").pop();
     if(!SHEET_EXTRAS[key])return json(res,404,{error:"Planilha não encontrada"});
+    // 🚨 v177-FIX2 (auditoria 14/09/2026): apagar uma planilha extra enquanto
+    // o bot de Enriquecimento ainda roda NELA deixava o loop seguir gastando
+    // chamadas ao DOL à toa (SHEET_EXTRAS[key] já não existe mais pra salvar
+    // nada) até o ciclo terminar sozinho — mesma trava cooperativa do botão
+    // "Parar" (enrich/stop), só que automática.
+    if(_enrichBot.running&&_enrichBot.sheetKey===key){
+      _enrichBot.running=false;
+      _enrichLog(`⏹️ Bot parado automaticamente — planilha "${key}" foi apagada.`,"warn");
+    }
     delete SHEET_EXTRAS[key];
     const meta=DB_SHEETS_META[key];
     if(meta?.file){try{fs.unlinkSync(path.join(SHEETS_DIR,meta.file));}catch{}}
@@ -7611,13 +7650,21 @@ filtrar();
   if(pathname==="/api/admin-panel/login"&&req.method==="POST"){
     const _ip=_clientIp(req);
     if(rateLimit("adminpanel_"+_ip,10,900_000))return json(res,429,{error:"Muitas tentativas. Aguarde 15 minutos."});
+    // 🚨 v177-FIX2 (auditoria 14/09/2026): o delay anti-timing de 300ms era
+    // SOMADO depois da checagem — usuário inexistente (short-circuit, sem
+    // scrypt) respondia em ~300ms puros, enquanto usuário válido com senha
+    // errada (roda _verifyPw/scrypt primeiro) respondia mais devagar. Dava
+    // pra descobrir se "andrio"/"diego" existe só medindo a latência.
+    // _atéTempoMinimo() nivela pro MESMO tempo total sempre.
+    const _t0=Date.now();
+    const _atéTempoMinimo=async(ms=300)=>{const falta=ms-(Date.now()-_t0);if(falta>0)await new Promise(r=>setTimeout(r,falta));};
     try{
       const d=JSON.parse(await readBody(req));
       const user=String(d.user||"").trim().toLowerCase();
       const senha=String(d.password||"");
       const login=ADMIN_PANEL_LOGINS.find(l=>l.user===user);
       const ok=login&&senha&&(await _verifyPw(senha,login.salt,login.hash));
-      if(!ok){await new Promise(r=>setTimeout(r,300));return json(res,403,{error:"Usuário ou senha inválidos."});}
+      if(!ok){await _atéTempoMinimo();return json(res,403,{error:"Usuário ou senha inválidos."});}
       if(!login.email)return json(res,500,{error:`Senha certa, mas ${login.nome} não tem e-mail configurado no ambiente (ADMIN_EMAIL${login.user==="diego"?"_2":""}). Configure e reinicie o servidor.`});
       // 🚨 v177-FIX (auditoria 14/09/2026, ALTA): antes SEMPRE criava/usava a
       // conta pela chave do E-MAIL (login.email) — se o mesmo admin já tinha
@@ -7850,6 +7897,13 @@ filtrar();
   if(pathname==="/api/login"&&req.method==="POST"){
     const _ip=_clientIp(req);
     if(rateLimit("login_"+_ip,20,900_000))return json(res,429,{error:"Muitas tentativas. Aguarde 15 minutos."});
+    // 🚨 v177-FIX2 (auditoria 14/09/2026): mesma correção do admin-panel —
+    // o delay anti-timing era somado DEPOIS da checagem (300ms fixos quando
+    // a conta não existe — short-circuit sem scrypt — vs 300ms+scrypt quando
+    // existe e a senha está errada), vazando por latência se um username
+    // tem conta. _atéTempoMinimo() nivela pro mesmo tempo total sempre.
+    const _t0=Date.now();
+    const _atéTempoMinimo=async(ms=300)=>{const falta=ms-(Date.now()-_t0);if(falta>0)await new Promise(r=>setTimeout(r,falta));};
     try{
       const d=JSON.parse(await readBody(req));
       const username=String(d.username||"").trim().toLowerCase();
@@ -7865,9 +7919,9 @@ filtrar();
       // (admin rodar /api/admin/set-password) é invisível pro usuário. Avisa
       // direto pra chamar o suporte, sem abrir mão do delay anti-timing.
       const _legado=!!u&&!isAdminEmail(_ident)&&!u.passwordHash;
-      if(_legado){await new Promise(r=>setTimeout(r,300));return json(res,403,{error:"Essa conta é de antes da senha (login era só pelo Google) e ainda não tem senha definida. Chame o suporte no WhatsApp +55 53 98145-3496 pra liberar o acesso — é rápido."});}
+      if(_legado){await _atéTempoMinimo();return json(res,403,{error:"Essa conta é de antes da senha (login era só pelo Google) e ainda não tem senha definida. Chame o suporte no WhatsApp +55 53 98145-3496 pra liberar o acesso — é rápido."});}
       const ok=!!u&&!isAdminEmail(_ident)&&(await _verifyPw(senha,u.passwordSalt,u.passwordHash));
-      if(!ok){await new Promise(r=>setTimeout(r,300));return json(res,403,{error:"Usuário ou senha inválidos."});}
+      if(!ok){await _atéTempoMinimo();return json(res,403,{error:"Usuário ou senha inválidos."});}
       const sid="usr_"+crypto.randomBytes(16).toString("hex");
       sessions[sid]={user_email:_ident,user_name:u.name||_ident,created_at:Date.now()};
       persistSessionsDebounced(500);
@@ -10269,6 +10323,12 @@ const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filte
       // querer pro próprio segundo Gmail, desperdiçando 1 vaga do limite diário.
       const _ownEmails=new Set([s.user_email.toLowerCase(), ...((p.senderEmails||[]).map(x=>String(x.email||"").toLowerCase()).filter(Boolean))]);
       if (_ownEmails.has(toEmail)) return json(res,400,{error:"Não é possível enviar candidatura para seu próprio e-mail (principal ou extra conectado)."});
+      // 🚨 v177-FIX2 (auditoria 14/09/2026): o robô automático já pula e-mail
+      // com bounce conhecido (comInvalidos:true no _excluirEnviadosFn), mas o
+      // envio MANUAL nunca consultava DB_INVALID_EMAILS — o usuário podia
+      // gastar 1 do limite diário mandando pra um e-mail que o próprio site
+      // já sabe que devolve erro. Bloqueio direto, sem gastar limite/cooldown.
+      if (isEmailInvalid(toEmail)) return json(res,400,{error:"Este e-mail já retornou erro de entrega em envios anteriores (bounce conhecido) — não vale a pena gastar seu envio nele. Escolha outra vaga."});
       // v15-SEC: assunto e corpo não podem ser vazios
       if (!String(d.subject).trim()) return json(res,400,{error:"O assunto do e-mail não pode estar em branco."});
       if (!String(d.message).trim()) return json(res,400,{error:"O corpo do e-mail não pode estar em branco."});
@@ -13047,6 +13107,15 @@ function _cancelarPedidoInterno(pd,opts){
       if(["vipro","doublepro"].includes(pd.plano)&&(v.autoExpires||0)>0)v.autoExpires=v.autoExpires-pd.diasTotal*DAYc;
       v.note=(String(v.note||"")+" · estorno "+pd.diasTotal+"d (pedido #"+pd.id.slice(-8).toUpperCase()+" cancelado)").slice(-220);
       setUser(pd.userEmail,{vip:v});
+      // 🚨 v177-FIX2 (auditoria 14/09/2026): o estorno mexia direto em
+      // manualExpires/autoExpires sem registrar no extrato vip.creditos —
+      // o crédito original (+N dias, gravado na ativação) ficava pra sempre
+      // no extrato como se os dias ainda estivessem concedidos. addCredito
+      // aceita dias negativo (única checagem é dias===0) — mesma política
+      // "nunca apaga, só soma" já usada no caixa (AJUSTE−) pro estorno.
+      addCredito(pd.userEmail,{dias:-pd.diasTotal,tipo:"pago",origem:"estorno",
+        motivo:`Estorno — pedido #${pd.id.slice(-8).toUpperCase()} cancelado`,
+        dadoPor:por||"sistema",pedidoId:pd.id});
       console.log(`[pedido] ${pd.id} cancelado — estornados ${pd.diasTotal}d de VIP de ${pd.userEmail}`);
     }
   }

@@ -3956,8 +3956,8 @@ async function _renderAutoProfilesPanel(){
           const icon=p.icon||"🎯";
           const cats=(p.categories||[]).slice(0,2).join(", ")||"Todas";
           return`<div style="display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px">
-            <span>${icon}</span>
-            <div style="flex:1;min-width:0"><div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}</div><div style="color:var(--t3)">${cats}</div></div>
+            <span>${esc(icon)}</span>
+            <div style="flex:1;min-width:0"><div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}</div><div style="color:var(--t3)">${esc(cats)}</div></div>
             <i class="ti ${ok?"ti-check":"ti-alert-triangle"}" style="color:${ok?"var(--green)":"var(--amber)"};font-size:13px"></i>
           </div>`;
         }).join("")}

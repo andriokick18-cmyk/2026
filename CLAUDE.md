@@ -377,3 +377,51 @@ Se encontrar outro arquivo `.md`/`.txt` na raiz descrevendo uma feature
 da lista "o que NÃO existe" acima, ou citando outro repositório como
 "fonte única"/"servidor 1/2/3", é lixo herdado de outro projeto — apague
 em vez de tentar reconciliar.
+
+## v177-FIX2 (14/09/2026) — 2ª leva da auditoria de 135 agentes
+
+Continuação do v177-FIX/v177/v178: mais 8 achados MÉDIOS/BAIXOS do
+backlog da auditoria (`achados-media.txt`/`achados-baixa.txt`),
+corrigidos e testados. (1) `getSess()` agora confere o TTL (24h admin /
+7d usuário) NA HORA de cada requisição — antes uma sessão vencida
+continuava sendo aceita por até 5min extras, até a varredura periódica
+apagá-la. (2) `/api/login` e `/api/admin-panel/login`: o delay
+anti-timing de 300ms era SOMADO depois da checagem — conta inexistente
+(sem scrypt) respondia mais rápido que senha errada numa conta que
+existe, vazando por latência se o username/e-mail tem cadastro.
+`_atéTempoMinimo()` nivela pro mesmo tempo total sempre. (3) XSS real:
+`${icon}` (campo livre do perfil, até 8 chars, sem allowlist) não
+passava por `esc()` no painel de perfis automáticos — a guarda
+check-xss-guard.js trata a instrução `.innerHTML=` INTEIRA como segura
+só porque outro `${}` dela (`names`) já tinha `esc()`, mascarando esse.
+Corrigido (`${esc(icon)}`, `${esc(cats)}`); a fraqueza estrutural da
+própria guarda (checa a instrução inteira, não cada `${}`) fica
+registrada aqui como risco conhecido, não corrigida agora (mudar a
+heurística da guarda é projeto à parte, risco de falso-positivo em
+massa). (4) Cancelamento de pedido ativado agora registra o ESTORNO no
+extrato `vip.creditos` (dias negativos, `origem:"estorno"`, ligado ao
+`pedidoId`) — antes mexia direto em `manualExpires`/`autoExpires` sem
+deixar rastro, e o crédito original de +N dias ficava pra sempre como
+se os dias ainda estivessem concedidos. (5) Boot avisa alto no log se
+`_notifDestinatarios()` tiver menos de 2 e-mails (`ADMIN_EMAIL`/
+`ADMIN_EMAIL_2` vazio ou malformado no Render passava batido em
+silêncio). (6) `/api/send` (envio MANUAL) agora recusa (400) mandar
+candidatura pra e-mail com bounce já conhecido (`DB_INVALID_EMAILS`) —
+antes só o robô automático pulava esses (`comInvalidos:true` no
+`_excluirEnviadosFn`), o manual gastava o limite diário à toa. (7)
+`statusPainel().coleta` ganhou o campo `published` (lido de
+`getMeta()[dolColeta.key]`) — antes o admin.html sempre mostrava "em
+rascunho, publique abaixo" mesmo depois de publicar com sucesso, porque
+esse campo nunca existia no objeto. (8) DELETE de planilha extra agora
+PARA o bot de Enriquecimento se ele estiver rodando nela (mesma trava
+cooperativa do botão "Parar") — antes seguia gastando chamadas ao DOL à
+toa até o ciclo terminar sozinho; e `_saveEnrichedSheet` só carimba
+`savedAt` quando gravou de fato em algum destino real — antes carimbava
+incondicional, então uma planilha apagada nessas condições aparecia
+como "salva" sem gravar NADA em disco. 17 checks novos (comportamentais
++ estruturais), sw v42. Backlog restante da auditoria (findings de menor
+impacto — CSP `unsafe-inline`, rateMap em memória, timing do
+`_clientIp`, duplicidade entre plano diferente do mesmo cliente, etc.)
+continua em `achados-media.txt`/`achados-baixa.txt` no scratchpad da
+sessão — a régua de decisão (maior impacto, menor risco) priorizou os
+8 acima nesta rodada.
