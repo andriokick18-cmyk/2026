@@ -1647,6 +1647,60 @@ async function testAuthWatchdogPush() {
         _srv2.includes('rateLimit("adminpanel_"+_ip+"_"+user,10,900_000)'), "chave do rate-limit do painel admin ainda não inclui o username");
       check("🚨 v177-FIX2 (estrutural): erro NOS PASSOS PÓS-ENVIO (indexApp/markSent/cálculo de limite) nunca mais cai no catch que traduz erro de Gmail — a candidatura JÁ FOI ENVIADA (r existe) antes desse ponto, então uma exceção aqui tem seu PRÓPRIO catch que devolve ok:true (com aviso), nunca 'falha' pra um envio que já aconteceu",
         _srv2.includes("candidatura JÁ SAIU pelo Gmail"), "bookkeeping pós-envio ainda cai no catch geral (mensagem de 'falha' num envio que já saiu)");
+
+      // ═══ 🚨 v177-FIX4 (4ª leva): o vínculo do provisório (vip.pedidoId é
+      // UM valor só) era sobrescrito pelo pedido seguinte, e aí cancelar o
+      // primeiro NÃO revogava nada — o admin via "cancelado com sucesso" e o
+      // cliente seguia com o plano ativo. ═══
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "provdup@test.com", name: "Prov Dup" });
+      const _pvA = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Prov Dup", userWhatsapp: "11 99999", userCity: "SP", nota: "TESTE_COMPROVANTE:100", comprovante: Buffer.from("prov-dup-a").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+      await new Promise((r) => setTimeout(r, 400));
+      const _pvStA = (await get("/api/status")).json;
+      // 2º pedido com comprovante que também CONFERE — antes do fix ele
+      // reativava o provisório por cima e roubava o vip.pedidoId do 1º
+      // (de quebra, renovando os 3 dias de graça indefinidamente).
+      const _pvB = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Prov Dup", userWhatsapp: "11 99999", userCity: "SP", nota: "TESTE_COMPROVANTE:100", comprovante: Buffer.from("prov-dup-b").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+      await new Promise((r) => setTimeout(r, 400));
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      const _pvBGet = (await get("/api/pedido/" + _pvB.json?.pedidoId)).json;
+      const _pvCanc = await req2("PATCH", "/api/pedido/" + _pvA.json?.pedidoId, { status: "cancelado", notaAdmin: "teste v177-FIX4 — provisório tem que ser revogado de verdade" });
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "provdup@test.com" });
+      const _pvStFim = (await get("/api/status")).json;
+      check("🚨 v177-FIX4: 2º pedido com comprovante que CONFERE não sobrescreve o provisório vivo do 1º (fica pendente pro admin) — e cancelar o 1º REVOGA o plano de verdade (antes o admin via 'cancelado' e o cliente continuava ativo)",
+        _pvStA?.plan === "vip" && _pvStA?.vip?.source === "auto-provisorio" &&
+        _pvBGet?.pedido?.autoAtivado !== true && _pvBGet?.pedido?.status === "pendente" &&
+        _pvCanc.json?.ok === true && _pvStFim?.plan === "free" && _pvStFim?.vip?.manualActive !== true,
+        JSON.stringify({ planoA: _pvStA?.plan, srcA: _pvStA?.vip?.source, bAuto: _pvBGet?.pedido?.autoAtivado, canc: _pvCanc.status, planoFim: _pvStFim?.plan }).slice(0, 200));
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+
+      // Cliente pagou 2× em poucos dias com planos DIFERENTES (erro comum:
+      // comprou VIP, quis o VIPro e pagou de novo). O guard de duplicado
+      // comparava `plano === plano` e deixava passar sem NENHUM aviso.
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "dup2plan@test.com", name: "Dup 2 Planos" });
+      const _d2a = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Dup 2 Planos", userWhatsapp: "11 99999", userCity: "SP", comprovante: Buffer.from("dup2-a").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+      const _d2b = await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, consentimento: true, userName: "Dup 2 Planos", userWhatsapp: "11 99999", userCity: "SP", comprovante: Buffer.from("dup2-b").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      await req2("PATCH", "/api/pedido/" + _d2a.json?.pedidoId, { status: "ativo", recebidoPor: "andrio" });
+      const _d2Aviso = await req2("PATCH", "/api/pedido/" + _d2b.json?.pedidoId, { status: "ativo", recebidoPor: "andrio" });
+      const _d2Conf = await req2("PATCH", "/api/pedido/" + _d2b.json?.pedidoId, { status: "ativo", recebidoPor: "andrio", confirmarDuplicado: true });
+      check("🚨 v177-FIX4: 2 pedidos do MESMO cliente pagos em ≤3 dias com planos DIFERENTES agora avisam o admin (409 duplicado) — antes só plano IGUAL era comparado e o pagamento repetido passava batido; upgrade legítimo segue aprovando com 1 clique de confirmação",
+        _d2Aviso.status === 409 && _d2Aviso.json?.duplicado === true && _d2Aviso.json?.pedidoDup === _d2a.json?.pedidoId &&
+        /vipro/.test(_d2Aviso.json?.error || "") && _d2Conf.json?.ok === true,
+        JSON.stringify({ aviso: _d2Aviso.status, dup: _d2Aviso.json?.pedidoDup === _d2a.json?.pedidoId, conf: _d2Conf.status }).slice(0, 180));
+
+      // Valor FORA da tabela oficial (só admin consegue) — único ponto do
+      // site onde um R$ entra sem passar pela tabela; agora deixa trilha.
+      const _forai = await req2("POST", "/api/pedido", { userEmail: "foratab@test.com", plano: "vip", dias: 77, valorTotal: 333.33, userName: "Fora Tabela", userWhatsapp: "11 99999", userCity: "SP" });
+      const _auditF = (await get("/api/admin/audit")).json;
+      const _entF = (_auditF?.audit || []).find((a) => a.action === "pedido_valor_fora_tabela" && a.after?.pedidoId === _forai.json?.pedidoId);
+      check("🚨 v177-FIX4: pedido criado pelo ADMIN com valor FORA da tabela oficial (Regularizar/retroativo) deixa trilha em DB_ADMIN_AUDIT — antes o único rastro era o criadoPor do próprio pedido, invisível pro dono",
+        _forai.json?.ok === true && !!_entF && _entF.targetEmail === "foratab@test.com" && _entF.after?.valorTotal === 333.33 &&
+        /fora da tabela/i.test(_entF.detail || ""),
+        JSON.stringify({ ok: _forai.json?.ok, ent: _entF && _entF.action, valor: _entF?.after?.valorTotal }).slice(0, 180));
+
+      check("🚨 v177-FIX4 (estrutural): a 2ª cópia (inalcançável) das validações de tamanho/base64 do comprovante saiu do objeto do pedido — a regra vive num lugar só, que responde 400 com o motivo em vez de descartar em silêncio",
+        !/Limitar tamanho: max 8MB em base64/.test(_srv2) && _srv2.includes('comprovante:(typeof d.comprovante==="string"&&d.comprovante)?d.comprovante:null'),
+        "validação de comprovante ainda está duplicada dentro do objeto do pedido");
     }
     // Comprovante já usado (fingerprint) — mesma trilha do MC5-P1, sem
     // duplicar setup: cria um 2º usuário VIP com Gmail conectado e tenta

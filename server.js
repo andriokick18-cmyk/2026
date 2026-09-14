@@ -9509,7 +9509,13 @@ filtrar();
       }
       // Admin (Regularizar/retroativo) pode registrar um valor histórico fora
       // da tabela atual — documentação contábil de compra antiga.
-      if(valorOficial==null)valorOficial=parseFloat(d.valorTotal)||0;
+      // 🚨 v177-FIX4 (auditoria): esse é o ÚNICO ponto do site onde um valor em
+      // R$ entra no caixa sem passar pela tabela oficial. Antes o único rastro
+      // era o `criadoPor` do próprio pedido — nada em DB_ADMIN_AUDIT, nada que
+      // o dono visse depois. Agora fica carimbado na trilha administrativa
+      // (quem, quando, pra quem, quanto e por que saiu da tabela).
+      let _valorForaTabela=false;
+      if(valorOficial==null){valorOficial=parseFloat(d.valorTotal)||0;_valorForaTabela=true;}
       // Consentimento informado é OBRIGATÓRIO pra pedido de usuário comum —
       // pense como advogado (dono, 09/09/2026): a pessoa precisa confirmar
       // que entende o que está comprando (serviço de envio, nunca garantia
@@ -9571,15 +9577,12 @@ filtrar();
         // Trilha de consentimento informado — carimba o que a pessoa
         // confirmou entender no momento da compra (auditável depois).
         consentimento:_isAdminCaller?null:{em:Date.now(),versaoTermos:"2026-09"},
-        comprovante:(()=>{
-          const c=d.comprovante;
-          if(!c) return null;
-          // Limitar tamanho: max 8MB em base64 (~6MB de arquivo real)
-          if(typeof c==='string' && c.length>10_700_000) return null;
-          // Validar que começa com base64 válido
-          if(typeof c==='string' && !/^[A-Za-z0-9+/]/.test(c.slice(0,10))) return null;
-          return c;
-        })(),
+        // 🚨 v177-FIX4 (auditoria): aqui vivia uma 2ª cópia das MESMAS duas
+        // validações do bloco acima (tamanho >10.7MB e prefixo base64) — mas
+        // o bloco acima já responde 400 e interrompe a requisição, então esses
+        // `if` eram inalcançáveis. Duplicação que só podia divergir com o
+        // tempo (um limite mudado num lugar só) e virar descarte silencioso.
+        comprovante:(typeof d.comprovante==="string"&&d.comprovante)?d.comprovante:null,
         comprovanteType:(()=>{
           const t=d.comprovanteType||'image/jpeg';
           const allowed=['image/jpeg','image/jpg','image/png','image/webp','application/pdf'];
@@ -9593,6 +9596,12 @@ filtrar();
       };
       DB_PEDIDOS.unshift(pedido);
       persistPedidos();
+      if(_valorForaTabela){
+        logAdminAction(s.user_email,"pedido_valor_fora_tabela",targetEmail,null,
+          {pedidoId:pedido.id,plano:pedido.plano,dias:pedido.dias,valorTotal:pedido.valorTotal},
+          `Pedido criado pelo admin com valor FORA da tabela oficial (plano "${pedido.plano}", ${pedido.dias}d): R$${Number(pedido.valorTotal||0).toFixed(2)}`);
+        console.log(`[pedido] ⚠️ valor fora da tabela registrado por ${s.user_email}: ${pedido.id} R$${pedido.valorTotal} (${pedido.plano} ${pedido.dias}d)`);
+      }
 
       // ── PRÉ-CHECK DO COMPROVANTE (Gemini Vision) — roda na CRIAÇÃO ────────
       // 🧠 Parte 4 (Cérebro): o corpo virou a função ÚNICA preCheckComprovante
@@ -9838,14 +9847,23 @@ filtrar();
         if(!d.confirmarDuplicado){
           const _3d=3*86400_000,_agr=Date.now();
           const _ts=x=>{if(!x)return 0;if(typeof x==="number")return x;const t=Date.parse(x);return isNaN(t)?0:t;};
+          // 🚨 v177-FIX4 (auditoria 14/09/2026): a comparação era `plano ===
+          // plano` (string exata) — o cliente que pagou 2× em poucos dias
+          // escolhendo planos DIFERENTES (erro comum: comprou VIP, quis o
+          // VIPro e pagou de novo) passava batido, sem NENHUM aviso ao admin,
+          // e ficava com os dois períodos empilhados. O guard continua sendo
+          // só um aviso confirmável (o robô avisa, o humano decide) — upgrade
+          // legítimo aprova igual, com 1 clique a mais e vendo os dois pedidos.
+          // O fallback de data também estava errado (`criadoEm` não existe no
+          // pedido — o campo é `createdAt`), então pedido marcado pago sem
+          // data de pagamento nunca entrava na janela de 3 dias.
           const _dup=DB_PEDIDOS.find(x=>x&&x.id!==pd.id&&x.userEmail===pd.userEmail
             &&["pago","ativo"].includes(String(x.status||"").toLowerCase())
-            &&String(x.plano||"")===String(pd.plano||"")
-            &&(_agr-(_ts(x.ativadoEm)||_ts(x.pagoEm)||_ts(x.criadoEm)))<=_3d);
+            &&(_agr-(_ts(x.ativadoEm)||_ts(x.pagoEm)||_ts(x.criadoEm)||_ts(x.createdAt)))<=_3d);
           if(_dup){
             console.log(`[pedido] ⚠️ possível duplicado: ${pd.id} × ${_dup.id} (${pd.userEmail})`);
             return json(res,409,{duplicado:true,pedidoDup:_dup.id,
-              error:`⚠️ POSSÍVEL DUPLICADO: este cliente já tem o pedido #${_dup.id.slice(-8).toUpperCase()} (${_dup.plano}) pago/ativo há menos de 3 dias. Se ele pagou DE NOVO de verdade, confirme; se é o mesmo pagamento, CANCELE este pedido.`});
+              error:`⚠️ POSSÍVEL DUPLICADO: este cliente já tem o pedido #${_dup.id.slice(-8).toUpperCase()} (${_dup.plano}) pago/ativo há menos de 3 dias — este aqui é ${pd.plano}. Se ele pagou DE NOVO de verdade, confirme; se é o mesmo pagamento, CANCELE este pedido.`});
           }
         }
         // 💼 MC5-P1 item 1 (auditoria 29/08): a aprovação agora ENXERGA o
@@ -13737,6 +13755,19 @@ function autoAtivarProvisorio(pedidoId){
     const autoAtivo=u.vip?.autoExpires&&u.vip.autoExpires>now;
     const ehGratis=["trial","auto-provisorio"].includes(String(u.vip?.source||""));
     if((manualAtivo||autoAtivo)&&!ehGratis) return false; // já tem VIP pago — admin decide
+    // 🚨 v177-FIX4 (auditoria 14/09/2026, reproduzido de verdade): vip.pedidoId
+    // é um valor ÚNICO. Com um provisório JÁ VIVO do pedido A, ativar o pedido
+    // B por cima SOBRESCREVIA esse campo — e a revogação do cancelamento
+    // (`tgtP.vip.pedidoId===pd.id` em _cancelarPedidoInterno) passava a falhar
+    // EM SILÊNCIO pro pedido A: o admin via "cancelado com sucesso" e o cliente
+    // continuava com o plano ativo. Pior: cada pedido novo com comprovante que
+    // CONFERE renovava a janela de 3 dias de graça, indefinidamente. Um
+    // provisório por vez — o 2º pedido espera a confirmação humana de sempre.
+    if((manualAtivo||autoAtivo)&&String(u.vip?.source||"")==="auto-provisorio"
+       &&u.vip?.pedidoId&&u.vip.pedidoId!==pd.id){
+      console.log(`[auto-ativa] ⏸️ ${pd.userEmail} já tem provisório vivo do pedido ${u.vip.pedidoId} — pedido ${pd.id} fica pendente pro admin (nunca sobrescreve o vínculo).`);
+      return false;
+    }
     const planoKey={vip:"vip",vipro:"vipro",doublepro:"doublepro"}[pd.plano]||"vipro";
     const isAuto=["vipro","doublepro"].includes(planoKey);
     const fim=now+AUTO_ATIVA_DIAS*DAY;
