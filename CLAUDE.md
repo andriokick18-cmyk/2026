@@ -456,3 +456,103 @@ resposta). Agora os dois blocos só rodam com `ctx.isDP===true`. 4
 checks novos (1 comportamental + 3 estruturais), suíte 100% verde
 (413 checks). Backlog restante continua em
 `achados-media.txt`/`achados-baixa.txt`.
+
+## v177-FIX4 … v177-FIX8 (14/09/2026) — 4ª a 8ª levas da auditoria de 135 agentes
+
+Continuação direta do v177-FIX/FIX2/FIX3: re-verifiquei cada achado restante
+de `achados-media.txt`/`achados-baixa.txt` contra o código ATUAL (muita coisa
+mudou desde a auditoria original) e corrigi os que ainda eram reais. 5 commits,
+26 checks novos, suíte 100% verde (439 checks). O que mudou, por leva:
+
+**v177-FIX4 — dinheiro/pedidos.** (1) `vip.pedidoId` é UM valor só: um 2º
+pedido com comprovante que CONFERE sobrescrevia o vínculo do provisório, e o
+cancelamento do 1º pulava a revogação EM SILÊNCIO (o admin via "cancelado com
+sucesso" e o cliente continuava com o plano — reproduzido de verdade pela
+auditoria); de quebra, cada pedido novo renovava a janela de 3 dias de graça,
+sem teto. Agora só existe UM provisório por vez — o 2º pedido espera a
+confirmação humana. (2) O guard de pedido duplicado comparava plano IGUAL
+(string exata): quem pagou 2× em poucos dias escolhendo planos DIFERENTES
+passava batido; continua sendo só aviso confirmável (upgrade legítimo aprova
+com 1 clique a mais). O fallback de data também estava errado (`criadoEm` não
+existe; o campo é `createdAt`). (3) Pedido criado pelo admin com valor FORA da
+tabela oficial agora carimba `pedido_valor_fora_tabela` em `DB_ADMIN_AUDIT` —
+era o único R$ que entrava sem tabela e sem trilha. (4) A 2ª cópia
+(inalcançável) das validações do comprovante saiu do objeto do pedido.
+
+**v177-FIX5 — envio manual e automático.** (1) `getSenderToken` NUNCA
+consultava `getMaxSenders`: depois de um downgrade DoublePro→VIP (ou do plano
+vencer) os extras seguiam no rodízio — mandar por 2 Gmails pagando por 1,
+mesma classe de vazamento do v172i. Corta pelo excedente (ordem de cadastro),
+sem apagar nem desativar nada. (2) `/api/auto/start` não tinha lock nenhum (o
+manual tem desde o v18): duplo clique/2 abas em rede lenta passavam os dois e a
+2ª fila jogava fora a 1ª. Reserva por usuário (`_autoStartInFlight`), liberada
+no `finally`. (3) `d.pdfBase64` ia CRU pro anexo do e-mail do empregador sem
+nenhuma das validações do upload — agora mesma régua (tamanho + magic bytes
+`%PDF`), soltando a reserva de slot antes do return (disciplina do v172e). (4)
+O refill da fila rodava ANTES da checagem de plano e já marcava `active:true`.
+(5) `/api/cv/upload` respondia "salvo" sem olhar o retorno do `saveCv`. (6) O
+selo 🌱 de aquecimento contava o histórico pelo username de login (conta v172c
+mostrava sempre 0 — a regra 13a manda mostrar). (7) O freio de rajada do manual
+(20/60s) não isentava admin, ao contrário do cooldown de 1min (v120).
+
+**v177-FIX6 — telas do usuário.** O convite "cadastre seu currículo" e o aviso
+obrigatório de WhatsApp exigiam `sessionStorage.h2b_terms_session`, gravado SÓ
+no fluxo de CADASTRO: em qualquer LOGIN os dois ficavam mudos, mesmo pra quem
+está com zero perfil (não consegue se candidatar a nada). O que aquele gate
+queria evitar já é garantido pela checagem do `terms-overlay`. Junto: o convite
+não nasce mais por cima do editor de perfil aberto; o aviso de WhatsApp é
+cobrado ao fechar o convite (antes rodava 1× aos 2,5s e desistia); `doLogout`
+limpa o sessionStorage (aparelho compartilhado: Conta B herdava o "já pulei" da
+Conta A); `/api/settings` passou a ter whitelist de idioma (pt/en/es,
+normalizado) — antes gravava QUALQUER string de 10 chars num campo que o front
+aplica direto; e 2 rótulos do painel pararam de prometer o que o sistema não
+faz (o aviso de compra dispara COM OU SEM comprovante; o motivo do cancelamento
+não é notificado — `pushToUser` é no-op nesta reconstrução, o cliente lê ao
+abrir o site).
+
+**v177-FIX7 — robôs de planilha e concorrência.** (1) O frescor só olhava a
+H-2B mais nova e a chave FIXA `h2a-jun2026`: a planilha H-2A DO MÊS
+(`h2a-AAAAMM`, que se publica sozinha acima de 200 vagas) envelhecia sem
+NENHUMA reconferência de status/data/salário — justo a mais nova do site. Entra
+a mais recente já publicada (`latestH2aMensalKey`). (2) Coleta manual cuja
+janela de datas do próprio admin cortou quase tudo culpava "resposta suspeita
+do DOL"; agora nomeia o filtro e mostra as datas. (3) DRILL REAL de dupla
+ativação do mesmo pedido (2 sócios clicando junto, corpo subindo devagar): a
+guarda `pd.ativadoEm` era correta mas só por leitura de código, sem teste com 2
+requisições vivas — é dinheiro (dias e caixa em dobro). (4) Os códigos de
+cadastro vivem só na memória e este repo faz deploy a cada commit: as mensagens
+agora NOMEIAM o reinício e avisam que o formulário continua preenchido. (5)
+Aviso de compra que sai pro Andrio mas falha pro Diego agora grava
+`avisoFalhas` no próprio pedido + erro alto no log (antes o `_okN>0` dava a
+rodada por boa e o sócio sem aviso não tinha como saber).
+
+**v177-FIX8 — rótulo honesto de plano e cobertura do legado.** (1) O badge do
+Perfil rotulava pelo NOME do plano com mapa próprio, e `getPlan()` devolve
+"vipro" também pra quem só tem o automático: a pessoa via "⭐🤖 VIPro" com 0
+manuais/dia. Passa a usar `planBadgeHTML()` (fonte única honesta: ⭐ VIP e/ou
+🤖 Pro pelo que está ativo de verdade). (2) Os ramos de COMPATIBILIDADE LEGADA
+de `isManualVipActive`/`isAutoVipActive` (conta com `vip.expiresAt` único) não
+tinham NENHUM teste — nenhuma fixture usava esse campo, justo onde a separação
+manual×automático do v172i pode vazar de novo. Cobertos os 3 casos. (3)
+Mismatch de conta Google no Conectar-Gmail gravava o evento no authTimeline do
+e-mail digitado POR ENGANO (que quase nunca existe em DB_USERS) — vai pro DONO;
+e revoke que falha (acesso órfão no Google) deixa rastro.
+
+**Achados re-verificados que NÃO eram mais reais** (não mexer de novo):
+`notifToggleAvisos` já recarrega o painel (corrigido no v177-FIX); a leitura do
+comprovante por IA e a ativação provisória deixaram de ser código morto no
+v177; o hash SHA-256 do comprovante não tem corrida (o bloco roda antes do 1º
+`await` de `preCheckComprovante`); os comentários "Gemini Vision" voltaram a
+ser verdade com o v177.
+
+**Deixados de propósito (decisão registrada, não esquecimento)**: CSP
+`unsafe-inline` (migração pra nonce/hash é projeto à parte); lockout de conta
+por brute-force (decisão de produto); remover as dezenas de rotas
+`/api/admin/*` sem chamador no front (deletar vs. construir UI é decisão
+humana); `rateMap` em memória e confiança no X-Forwarded-For (riscos conhecidos
+sem correção segura barata); `DATA_DIR==="/tmp"` por igualdade literal —
+alargar pra `startsWith("/tmp")` exigiria carve-out pro `npm test` (que roda
+num mkdtemp dentro de /tmp), o que enfraquece a própria guarda; ETag/versão em
+`/api/profiles/save` (last-write-wins entre 2 abas — feature, não bug);
+magic bytes do comprovante (a própria auditoria concluiu que não é vetor
+explorável, e recusar comprovante legítimo por engano é perder dinheiro real).
