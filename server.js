@@ -5214,7 +5214,7 @@ async function _doAutoSendInner(email) {
       queue.unshift(target); // devolve a vaga à fila — nada foi enviado
       setAutoJob(email, { ...job, queue, active:false, status:"paused_auth_error", finishedAt:Date.now() });
       autoTimers.delete(email);
-      addLog(email, { status:"pausado", jobTitle:"⛔ E-mails de envio indisponíveis", company:"Os e-mails que você selecionou estão com token expirado ou bloqueados. Reconecte-os em Configurações → E-mails de envio e retome.", error:e.message });
+      addLog(email, { status:"pausado", jobTitle:"⛔ E-mails de envio indisponíveis", company:"Os e-mails que você selecionou estão com token expirado ou bloqueados. Reconecte-os no Perfil → Gmail Extra e retome.", error:e.message });
       return;
     }
   }
@@ -5264,7 +5264,7 @@ async function _doAutoSendInner(email) {
           const _dqA=_diagQuedaAuth(email,msg);
           setAutoJob(email, { ...getAutoJob(email), active:false, status:"paused_token_revoked" });
           autoTimers.delete(email);
-          addLog(email, { status:"pausado", company:"Sistema", to:"", jobTitle: _dqA.fast?"🔐 O Google da sua conta derrubou o acesso — veja a Segurança da conta":"🔐 Acesso Google revogado — faça login novamente", error: _dqA.friendly });
+          addLog(email, { status:"pausado", company:"Sistema", to:"", jobTitle: _dqA.fast?"🔐 O Google da sua conta derrubou o acesso — veja a Segurança da conta":"🔐 Acesso ao Gmail revogado — reconecte em Envio Automático → Conectar meu Gmail", error: _dqA.friendly });
           console.warn(`[auto] ❌ Token revogado para ${email} — pausa definitiva`);
           // Notifica usuário por email APENAS se ativo nos últimos 10 dias
           { const _u = getUser(email);
@@ -5292,7 +5292,7 @@ async function _doAutoSendInner(email) {
       // Sem refresh_token nenhum — usuário nunca deu permissão offline ou dados foram perdidos
       setAutoJob(email, { ...getAutoJob(email), active:false, status:"paused_no_session" });
       autoTimers.delete(email);
-      addLog(email, { status:"pausado", company:"Sistema", to:"", jobTitle:"🔐 Sem token salvo — faça login novamente", error:"Nenhum refresh_token disponível" });
+      addLog(email, { status:"pausado", company:"Sistema", to:"", jobTitle:"🔐 Sem permissão de envio salva — reconecte em Envio Automático → Conectar meu Gmail", error:"Nenhum refresh_token disponível" });
       return;
     }
   }
@@ -5844,6 +5844,42 @@ function reactivateOneAutoJob(email, job, now){
   return true;
 }
 
+// ── 🔌 v195 LOTE 13: reconectar o Gmail RETOMA o robô sozinho ───────────────
+// Até aqui o callback do /oauth/connect-send só limpava `rtInvalid`: o job
+// continuava `paused_*` até a pessoa achar o botão genérico "Retomar" — e
+// TODAS as instruções de pausa por autenticação mandavam "fazer login com o
+// Google de novo", caminho que não existe desde o v172c (login é usuário+
+// senha; o Google só conecta o Gmail de ENVIO). Cliente pagante ficava com o
+// robô morto depois de fazer exatamente o que o site mandou.
+// Régua (a mesma do gate v172h, que continua intocado): só religa quem TEM
+// automático ativo (ou é admin) e tem refresh_token de verdade.
+// O ritmo é PRESERVADO: `nextSendAt` futuro vira timer pro tempo que faltava
+// — chamar scheduleAuto na hora dispararia o refill e furaria o intervalo
+// humanizado de ~7min contra o Gmail (mesma lição do v184 LOTE 2).
+const AUTH_PAUSED_STATUSES = new Set(["paused_auth_error","paused_token_revoked","paused_no_refresh_token","paused_oauth_expired","paused_no_session"]);
+function retomarAutoAposReconexao(email){
+  try{
+    const job = getAutoJob(email);
+    if(!job || job.active) return null;                       // nada parado esperando auth
+    if(!AUTH_PAUSED_STATUSES.has(job.status)) return null;     // parou por outro motivo (plano, fila corrompida...)
+    const u = getUser(email);
+    if(!u) return null;
+    if(!u.refresh_token) return "sem_token";
+    if(!(isAutoVipActive(u) || isAdminVip(u))) return "sem_plano";
+    const now = Date.now();
+    const next = (Number.isFinite(job.nextSendAt) && job.nextSendAt > now) ? job.nextSendAt : 0;
+    const novo = { ...job, active:true, status: next ? "waiting_interval" : "resuming" };
+    if(next) novo.nextSendAt = next; else delete novo.nextSendAt;
+    setAutoJob(email, novo);
+    if(autoTimers.has(email)){ clearTimeout(autoTimers.get(email)); autoTimers.delete(email); }
+    if(next) autoTimers.set(email, setTimeout(()=>scheduleAuto(email), Math.max(1000, next-now)));
+    else scheduleAuto(email);
+    addLog(email,{status:"sistema",jobTitle:"▶️ Envio automático retomado sozinho depois da reconexão do Gmail",company:"Conectar Gmail",to:""});
+    console.log(`[auto] ▶️ ${email}: robô retomado após reconexão do Gmail (status anterior: ${job.status})`);
+    return "retomado";
+  }catch(e){ console.warn("[auto] falha ao retomar após reconexão:", e.message); return null; }
+}
+
 async function reactivateAutoJobs(){
   let n=0;
   const now = Date.now();
@@ -6100,8 +6136,8 @@ function _diagQuedaAuth(email,rawMsg){
   const u=getUser(email)||{};
   const fast=!!(u.lastConsentAt&&(Date.now()-u.lastConsentAt)<30*60_000);
   const friendly=fast
-    ?"🔐 O Google da SUA conta está derrubando a autorização minutos depois do login — isso NÃO é o H2BApply desconectando: costuma acontecer quando você trocou a senha do Google há pouco, quando há um alerta de segurança pendente na conta, ou quando a conta tem proteção reforçada contra apps. Antes de fazer login de novo aqui: entre em myaccount.google.com → Segurança, resolva qualquer alerta amarelo/vermelho (confirme 'Foi você') e SÓ DEPOIS relogue no H2BApply."
-    :"🔐 A autorização do Google expirou ou foi revogada (troca de senha, acesso removido nas configurações do Google, ou muito tempo sem uso). Faça login de novo no H2BApply pra gerar uma chave nova.";
+    ?"🔐 O Google da SUA conta está derrubando a autorização minutos depois do login — isso NÃO é o H2BApply desconectando: costuma acontecer quando você trocou a senha do Google há pouco, quando há um alerta de segurança pendente na conta, ou quando a conta tem proteção reforçada contra apps. Antes de reconectar aqui: entre em myaccount.google.com → Segurança, resolva qualquer alerta amarelo/vermelho (confirme 'Foi você') e SÓ DEPOIS reconecte seu Gmail no H2BApply (Envio Automático → Conectar meu Gmail)."
+    :"🔐 A autorização do Google expirou ou foi revogada (troca de senha, acesso removido nas configurações do Google, ou muito tempo sem uso). Reconecte seu Gmail no H2BApply (Envio Automático → Conectar meu Gmail) pra gerar uma permissão nova.";
   _authEvent(email,fast?"queda_rapida":"queda_auth",String(rawMsg||"").slice(0,200)+(fast?" · caiu "+Math.round((Date.now()-u.lastConsentAt)/60000)+"min após o consent novo — provável causa: segurança da conta Google":""));
   if(fast&&(!u.authFastDropAvisoEm||Date.now()-u.authFastDropAvisoEm>6*3600_000)){
     setUser(email,{authFastDropAvisoEm:Date.now()});
@@ -6263,12 +6299,12 @@ async function getSenderToken(ownerEmail, requestedSender, allowedSenders) {
     // (mantém o filtro "allowed" e o contrato de retorno intactos).
     const _principalCountKey = resolveSendGmail(p) || ownerEmail;
     let pool = [
-      { email: ownerEmail, countKey: _principalCountKey, isPrincipal: true, addedAt: p?.created_at },  // email principal sempre no pool
+      { email: ownerEmail, countKey: _principalCountKey, isPrincipal: true, addedAt: p?.gmailConnectedAt || p?.created_at },  // email principal sempre no pool (🌱 v195 LOTE 13: relógio = conexão do Gmail, não o cadastro)
       ...extrasOk.map(s => ({ ...s, countKey: s.email, isPrincipal: false }))
     ];
     // Seleção do usuário: só os e-mails escolhidos participam do rodízio
     if (allowed) pool = pool.filter(c => allowed.includes(String(c.email).toLowerCase()));
-    if (!pool.length) throw new Error("Nenhum dos e-mails selecionados está disponível para envio. Reconecte-os em Configurações.");
+    if (!pool.length) throw new Error("Nenhum dos e-mails selecionados está disponível para envio. Reconecte-os no Perfil → Gmail Extra.");
 
     // ── 🛡️ v73/v76: AQUECIMENTO — conta Gmail recém-conectada manda pouco
     // nos primeiros dias (proteção real contra o Google marcar como bot; ver
@@ -8743,7 +8779,12 @@ filtrar();
       if(d.limparTimer&&autoTimers.has(em)){clearTimeout(autoTimers.get(em));autoTimers.delete(em);}
       let reativado=null;
       if(d.reativar)reativado=reactivateOneAutoJob(em,getAutoJob(em));
-      return json(res,200,{ok:true,reativado,temTimer:autoTimers.has(em),job:getAutoJob(em)});
+      // 🔌 v195 LOTE 13: mesma função que o callback do /oauth/connect-send
+      // chama depois de gravar o refresh_token novo — o callback em si exige
+      // a ida-e-volta real ao Google, que o smoke nunca faz.
+      let retomado=null;
+      if(d.reconectar)retomado=retomarAutoAposReconexao(em);
+      return json(res,200,{ok:true,reativado,retomado,temTimer:autoTimers.has(em),job:getAutoJob(em)});
     }catch(e){return json(res,400,{error:e.message});}
   }
   // 🧾 v192 LOTE 10 (só teste): re-roda a migração de comprovantes pra provar
@@ -9050,13 +9091,27 @@ filtrar();
           cached_token_expiry: Date.now()+(tkCS.expires_in||3600)*1000,
           rtInvalid:false, rtInvalidAt:null,
           lastConsentAt:Date.now(), scopeVersion:2,
+          // 🌱 v195 LOTE 13: o relógio do AQUECIMENTO do Gmail principal é o
+          // da CONEXÃO, não o do cadastro (created_at). Desde o v172c o Gmail
+          // só é conectado DEPOIS de pagar — uma conta cadastrada há meses
+          // conectava um Gmail novinho em folha e entrava sem teto nenhum
+          // (cap=null), justo o caso que o aquecimento existe pra proteger.
+          // Carimba só na 1ª conexão: o Gmail de envio é PERMANENTE (v172c),
+          // então recarimbar numa reconexão zeraria o aquecimento de uma
+          // conta já madura.
+          ...(ownerCS.gmailConnectedAt?{}:{gmailConnectedAt:Date.now()}),
         });
         // A sessão ATUAL (se existir) já sai pronta pra enviar sem precisar de outro round-trip.
         for(const sid2 of Object.keys(sessions)){const ss2=sessions[sid2];if(ss2.user_email===ownerEmailCS){ss2.access_token=tkCS.access_token;ss2.expires_at=Date.now()+(tkCS.expires_in||3600)*1000;ss2.refresh_token=tkCS.refresh_token||ownerCS.refresh_token;}}
         _authEvent(ownerEmailCS,"login_consent","Conectou Gmail pra enviar (plano pago ativo — v172)");
         console.log(`[oauth] ✅ ${ownerEmailCS} conectou o Gmail pra enviar (plano ${getPlan(ownerCS)})`);
         addLog(ownerEmailCS,{status:"sistema",jobTitle:"✅ Gmail conectado — já pode enviar candidaturas",company:"Conectar Gmail"});
-        res.writeHead(302,{Location:"/?gmailConnected=1&tab="+encodeURIComponent(pendingCS.fromTab||"plans")});return res.end();
+        // 🔌 v195 LOTE 13: robô parado por autenticação volta SOZINHO — a
+        // pessoa acabou de fazer exatamente o que o aviso mandou. O
+        // `retomarAutoAposReconexao` relê o usuário (o setUser acima já
+        // gravou o refresh_token novo) e só religa com automático ativo.
+        const _retomado = retomarAutoAposReconexao(ownerEmailCS)==="retomado";
+        res.writeHead(302,{Location:"/?gmailConnected=1"+(_retomado?"&autoRetomado=1":"")+"&tab="+encodeURIComponent(pendingCS.fromTab||"plans")});return res.end();
       }catch(eCS){return failCS("Erro ao conectar o Gmail: "+eCS.message);}
     }
     // ── 📧 v175: CONTA DE NOTIFICAÇÕES (admin) — callback ────────────────
@@ -11228,7 +11283,7 @@ filtrar();
     // planGateMsg). null quando não há provisório vencendo com pedido pendente.
     const _provPend = _provisorioPendente(p);
     return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,planRulesNotice:_prNotice,
-      provisorioPendente:_provPend?{pedidoId:_provPend.pedidoId,ref:_provPend.ref}:null,manualCdOff:p.manualCdOff===true,gmailConnected,gmailEmail,emailContato:p.emailContato||null,emailVerificado:!!p.emailVerificadoEm,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",estado:p.estado||p.state||"",language:p.language||"pt-BR",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===(gmailEmail||s.user_email)||x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||300),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
+      provisorioPendente:_provPend?{pedidoId:_provPend.pedidoId,ref:_provPend.ref}:null,manualCdOff:p.manualCdOff===true,gmailConnected,gmailEmail,emailContato:p.emailContato||null,emailVerificado:!!p.emailVerificadoEm,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",estado:p.estado||p.state||"",language:p.language||"pt-BR",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.gmailConnectedAt||p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===(gmailEmail||s.user_email)||x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||300),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
   }
 
   if(pathname==="/api/onboard"&&req.method==="POST"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});setUser(s.user_email,{onboarded:true});return json(res,200,{ok:true});}
@@ -12051,6 +12106,12 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
       // semeiam isso explicitamente aqui — nunca em produção (TEST_LOGIN_TOKEN
       // só existe no ambiente de teste, checado no topo desta rota).
       if(d.refreshToken)setUser(email,{refresh_token:String(d.refreshToken),cached_access_token:"test-token",cached_token_expiry:Date.now()+3600_000});
+      // 🌱 v195 LOTE 13 (só teste): o relógio do aquecimento do Gmail PRINCIPAL
+      // passou a ser a data da CONEXÃO (gmailConnectedAt), não a do cadastro —
+      // provar isso exige uma conta ANTIGA que conectou o Gmail hoje, estado
+      // que nenhuma rota normal monta.
+      if(d.createdAt)setUser(email,{created_at:String(d.createdAt)});
+      if(d.gmailConnectedAt)setUser(email,{gmailConnectedAt:Number(d.gmailConnectedAt)});
       if(d.vip)setUser(email,{vip:d.vip,plan:d.plan||getUser(email)?.plan});
       const sid="test_"+crypto.randomBytes(16).toString("hex");
       sessions[sid]={user_email:email,user_name:String(d.name||"Test"),created_at:Date.now(),access_token:"test-token",expires_at:Date.now()+3600_000};
@@ -14444,7 +14505,7 @@ async function diagnoseJob(email) {
     }
     // Usuário ativo: alerta real
     h.oauthOk = false;
-    addLog(email, { status:"pausado", jobTitle:"🔐 Autenticação expirada", company:"Watchdog: faça login novamente para retomar o envio automático", error:"Sem refresh_token" });
+    addLog(email, { status:"pausado", jobTitle:"🔐 Autenticação expirada", company:"Vigia: reconecte seu Gmail em Envio Automático → Conectar meu Gmail pra retomar o envio automático", error:"Sem refresh_token" });
     pushGlobalEvent("oauth_invalid", email, "Autenticação expirada — automático pausado", "error");
     setAutoJob(email, { ...job, active:false, status:"paused_oauth_expired" });
     autoTimers.delete(email);

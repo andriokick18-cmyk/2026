@@ -4361,7 +4361,7 @@ async function drillRestauracaoBackup() {
     // aquecimento (13a) e o teto de 450/dia por sender do admin.
     check("🐛 v172e-FIX: pool do round-robin conta o principal pela chave REAL do histórico (resolveSendGmail), não pelo username de login",
       _srvSrc.includes("const _principalCountKey = resolveSendGmail(p) || ownerEmail;") &&
-      _srvSrc.includes("{ email: ownerEmail, countKey: _principalCountKey, isPrincipal: true, addedAt: p?.created_at }") &&
+      _srvSrc.includes("{ email: ownerEmail, countKey: _principalCountKey, isPrincipal: true, addedAt: p?.gmailConnectedAt || p?.created_at }") &&
       _srvSrc.includes("...extrasOk.map(s => ({ ...s, countKey: s.email, isPrincipal: false }))"),
       "getSenderToken não monta mais o pool com countKey resolvido — contagem do principal v172c voltaria a ficar sempre 0");
     check("🐛 v172e-FIX: filtro de aquecimento, teto do admin e sort do rodízio leem countBySender pela chave resolvida (countKey), nunca mais por c.email cru",
@@ -4456,6 +4456,82 @@ async function drillRestauracaoBackup() {
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
     const stW = await get("/api/status");
     check("🌱 /api/status expõe primaryWarmup (fail-open: sem created_at no fixture → sem teto, nunca bloqueia à toa)", stW.json?.primaryWarmup && stW.json.primaryWarmup.cap === null, JSON.stringify(stW.json?.primaryWarmup));
+
+    // ═══ 🔌 v195 LOTE 13: Gmail de envio — reconectar volta a ligar o robô,
+    // e o aquecimento do PRINCIPAL passa a contar do dia da CONEXÃO ═══
+    {
+      // (1) O relógio do aquecimento do Gmail principal era o created_at do
+      // CADASTRO — mas desde o v172c o Gmail só é conectado DEPOIS de pagar:
+      // uma conta antiga conectava um Gmail novinho e entrava sem teto nenhum
+      // (cap=null), justo o caso que o aquecimento existe pra proteger.
+      await req2("POST", "/api/test/login", {
+        token: TEST_TOKEN, email: "gwarm@test.com", name: "Gmail Novo",
+        createdAt: new Date(Date.now() - 200 * 86400_000).toISOString(),
+        gmailConnectedAt: Date.now(),
+      });
+      const _stGW = await get("/api/status");
+      check("🌱 v195-L13: conta CADASTRADA há 200 dias que conectou o Gmail HOJE entra no aquecimento de dia 1 (teto 15/dia) — antes o relógio era o do cadastro e um Gmail novinho saía sem teto nenhum",
+        _stGW.json?.primaryWarmup?.cap === 15, JSON.stringify(_stGW.json?.primaryWarmup));
+
+      // (2) Robô parado por autenticação volta SOZINHO na reconexão do Gmail —
+      // e o ritmo de ~7min é preservado (nextSendAt intacto, sem envio na hora).
+      const _next13 = Date.now() + 6 * 60_000;
+      const _job13 = { active: false, status: "paused_token_revoked", queue: [{ to: "rh@vaga-l13.com", title: "Cook", company: "L13 LLC" }], nextSendAt: _next13, originalCount: 1, source: "jan2026" };
+      await req2("POST", "/api/test/login", {
+        token: TEST_TOKEN, email: "greconn@test.com", name: "Reconecta", refreshToken: "rt-reconn-l13",
+        vip: { manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000, active: true, plan: "vipro" }, plan: "vipro",
+      });
+      const _rc = await req2("POST", "/api/test/auto-job", { token: TEST_TOKEN, email: "greconn@test.com", job: _job13, limparTimer: true, reconectar: true });
+      check("🔌 v195-L13: robô em paused_token_revoked VOLTA sozinho quando o Gmail é reconectado (mesma função que o callback do /oauth/connect-send chama) — e o nextSendAt é PRESERVADO, nunca dispara um envio fora do intervalo de ~7min",
+        _rc.json?.retomado === "retomado" && _rc.json?.job?.active === true && _rc.json?.job?.nextSendAt === _next13 && _rc.json?.temTimer === true,
+        JSON.stringify({ retomado: _rc.json?.retomado, active: _rc.json?.job?.active, next: _rc.json?.job?.nextSendAt === _next13, timer: _rc.json?.temTimer }));
+      // limpa o timer pra não sobrar nada pendurado no resto da suíte
+      await req2("POST", "/api/test/auto-job", { token: TEST_TOKEN, email: "greconn@test.com", job: { active: false, status: "finished", queue: [] }, limparTimer: true });
+
+      // (3) O gate do v172h continua intocado: automático VENCIDO não volta
+      // por reconexão nenhuma (reconectar o Gmail não é pagar de novo).
+      await req2("POST", "/api/test/login", {
+        token: TEST_TOKEN, email: "greconnvenc@test.com", name: "Auto Vencido", refreshToken: "rt-reconn-venc",
+        vip: { manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() - 86400_000, active: true, plan: "vipro" }, plan: "vipro",
+      });
+      const _rcv = await req2("POST", "/api/test/auto-job", { token: TEST_TOKEN, email: "greconnvenc@test.com", job: { ..._job13 }, limparTimer: true, reconectar: true });
+      check("🔌 v195-L13: quem está com o AUTOMÁTICO vencido não tem o robô religado pela reconexão do Gmail (gate v172h intocado) — a resposta diz 'sem_plano' e o job continua parado",
+        _rcv.json?.retomado === "sem_plano" && _rcv.json?.job?.active === false && _rcv.json?.temTimer === false,
+        JSON.stringify({ retomado: _rcv.json?.retomado, active: _rcv.json?.job?.active, timer: _rcv.json?.temTimer }));
+
+      // (4) ESTRUTURAL: as instruções de pausa por autenticação apontam pro
+      // caminho que EXISTE (o cartão Conectar meu Gmail / /oauth/connect-send).
+      // O login do site é usuário+senha desde o v172c — "faça login com o
+      // Google de novo" mandava o cliente pagante pra lugar nenhum.
+      const _appL13 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _wdL13 = fs.readFileSync(path.join(__dirname, "mod-watchdogs.js"), "utf8");
+      const _frasesMortas = ["login com o Google", "log in with Google again", "Sign out and log in with Google", "Entra con Google de nuevo", "Cierra sesión y entra con Google",
+        "🔐 Acesso Google revogado — faça login novamente", "🔐 Sem token salvo — faça login novamente",
+        "Faça login novamente no H2BApply para reativar o envio automático.", "Faça login de novo no H2BApply para reativar o envio automático.",
+        "Watchdog: faça login novamente para retomar o envio automático"];
+      const _arqsL13 = { "app.js": _appL13, "index.html": fs.readFileSync(path.join(__dirname, "index.html"), "utf8"), "server.js": _srvSrc, "mod-watchdogs.js": _wdL13 };
+      const _achadosL13 = Object.entries(_arqsL13).flatMap(([f, src]) => _frasesMortas.filter((fr) => src.includes(fr)).map((fr) => `${f}: "${fr}"`));
+      check("🔌 v195-L13 (estrutural): nenhum arquivo servido ao cliente, nem o log do motor/vigias, manda 'fazer login com o Google de novo' — esse caminho não existe desde o v172c",
+        _achadosL13.length === 0, _achadosL13.join(" · "));
+      // e os 3 dicionários apontam pro MESMO cartão — 1 idioma consertado e 2
+      // mentindo é o mesmo bug com outra cara.
+      const _hintsOk = (_appL13.match(/"hint_auth_err":"Abra o Envio Automático e toque em “Conectar meu Gmail”/g) || []).length === 1 &&
+        (_appL13.match(/"hint_token_revoked":"Abra o Envio Automático e toque em “Conectar meu Gmail”/g) || []).length === 1 &&
+        (_appL13.match(/"hint_no_refresh":"Abra o Envio Automático e toque em “Conectar meu Gmail”/g) || []).length === 1 &&
+        (_appL13.match(/Open Auto Send and tap “Connect my Gmail”/g) || []).length === 3 &&
+        (_appL13.match(/Abre Envío Automático y toca “Conectar mi Gmail”/g) || []).length === 3;
+      check("🔌 v195-L13 (estrutural): as 3 dicas de pausa por autenticação (auth_err/token_revoked/no_refresh) mandam pro cartão Conectar meu Gmail nos 3 idiomas",
+        _hintsOk, "algum idioma ficou com a instrução antiga");
+      // e o selo 🌱 do principal (que o servidor calculava e ninguém lia) tem
+      // tela, reusando o MESMO HTML do badge dos extras.
+      check("🌱 v195-L13 (estrutural): o selo de aquecimento é um HTML só (_warmupBadgeHTML) e o Gmail PRINCIPAL finalmente o exibe (#profile-primary-gmail) — o tutorial já prometia 'o selo 🌱 no Perfil mostra o estágio'",
+        (_appL13.match(/function _warmupBadgeHTML\(/g) || []).length === 1 &&
+        (_appL13.match(/_warmupBadgeHTML\(/g) || []).length === 3 &&
+        _appL13.includes('document.getElementById("profile-primary-gmail")') &&
+        fs.readFileSync(path.join(__dirname, "index.html"), "utf8").includes('id="profile-primary-gmail"'),
+        "selo do principal ou o helper único não encontrado");
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
+    }
 
     // ═══ 🚨 v177-FIX5 (auditoria 14/09/2026 — 5ª leva): envio manual e
     // automático. Corrida de 2 inícios do robô, PDF cru anexado sem

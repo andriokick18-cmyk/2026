@@ -136,10 +136,15 @@ addEventListener("DOMContentLoaded",async()=>{
   // estava tentando enviar (Automático/Manual/Planos), nunca perdida na Home.
   const _csTab=ps.get("tab");
   const _gmailConnected=ps.get("gmailConnected")==="1";
+  // 🔌 v195 LOTE 13: o servidor marca quando o robô parado por autenticação
+  // voltou SOZINHO na reconexão — retomar em silêncio confunde tanto quanto
+  // parar em silêncio.
+  const _autoRetomado=ps.get("autoRetomado")==="1";
   if(_csTab||_gmailConnected){
     history.replaceState({},"","/");
     window._pendingTab=_csTab||null;
     window._pendingGmailConnected=_gmailConnected;
+    window._pendingAutoRetomado=_autoRetomado;
   }
   await checkStatus();
   setInterval(function(){fetch("/api/warmup",{credentials:"include"}).catch(function(){});},4*60*1000);
@@ -159,7 +164,7 @@ addEventListener("DOMContentLoaded",async()=>{
 function applyStatus(d){
   if(!d||!d.connected)return;
   const _antes=U&&U.connected?{needsPlan:!!U.needsPlan,plan:U.plan,gmail:!!U.gmailConnected}:null;
-  U={...U,connected:true,email:d.email,name:d.name||d.email,picture:d.picture||"",isAdmin:!!d.isAdmin,plan:d.plan||"free",vip:d.vip||null,todaySentManual:d.todaySentManual||0,manualLimit:d.manualLimit??0,manualRemaining:(d.manualRemaining??0),todaySentAuto:d.todaySentAuto||0,autoLimit:d.autoLimit??0,autoRemaining:(d.autoRemaining??0),autoEnabled:true,autoJob:d.autoJob||null,autoStats:d.autoStats||{sent:0,failed:0},onboarded:!!d.onboarded,profiles:d.profiles||[],senderEmails:d.senderEmails||[],senderMax:d.senderMax||1,adminSettings:d.adminSettings||null,totalSent:d.totalSent||0,totalManual:d.totalManual||0,totalAutoHist:d.totalAutoHist||0,totalReplies:d.totalReplies||0,
+  U={...U,connected:true,email:d.email,name:d.name||d.email,picture:d.picture||"",isAdmin:!!d.isAdmin,plan:d.plan||"free",vip:d.vip||null,todaySentManual:d.todaySentManual||0,manualLimit:d.manualLimit??0,manualRemaining:(d.manualRemaining??0),todaySentAuto:d.todaySentAuto||0,autoLimit:d.autoLimit??0,autoRemaining:(d.autoRemaining??0),autoEnabled:true,autoJob:d.autoJob||null,autoStats:d.autoStats||{sent:0,failed:0},onboarded:!!d.onboarded,profiles:d.profiles||[],senderEmails:d.senderEmails||[],senderMax:d.senderMax||1,primaryWarmup:d.primaryWarmup||null,adminSettings:d.adminSettings||null,totalSent:d.totalSent||0,totalManual:d.totalManual||0,totalAutoHist:d.totalAutoHist||0,totalReplies:d.totalReplies||0,
   // Novos campos
   emailContato:d.emailContato||"",whatsapp:d.whatsapp||"",rankName:d.rankName||"",appAvatarId:d.appAvatarId||"",h2bProfile:d.h2bProfile||{},phone:d.phone||"",serverId:d.serverId||1,publicProfile:d.publicProfile||{},
   // 🔒 v172 (ORDEM DO DONO, 11/09/2026): gate de envio — plano pago ativo E
@@ -241,9 +246,12 @@ async function checkStatus(){
       if(window._pendingGmailConnected){
         window._pendingGmailConnected=false;
         const _pt=window._pendingTab;window._pendingTab=null;
+        const _ar=window._pendingAutoRetomado===true;window._pendingAutoRetomado=false;
         setTimeout(()=>{
           if(_pt)sv(_pt);
-          toast("✅ Gmail conectado — já pode enviar candidaturas!","g",6000);
+          toast(_ar
+            ?"✅ Gmail conectado — seu envio automático voltou sozinho, de onde parou."
+            :"✅ Gmail conectado — já pode enviar candidaturas!","g",_ar?9000:6000);
         },600);
       }
       // Apply language AFTER showApp so all elements exist
@@ -2946,6 +2954,14 @@ function loadProfile(){
   const pav=g("#pav");if(pav){if(U.picture){pav.innerHTML=`<img alt="" referrerpolicy="no-referrer" src="${esc(U.picture)}" style="width:100%;height:100%;object-fit:cover">`;pav.style.cssText="width:60px;height:60px;border-radius:50%;overflow:hidden;border:3px solid rgba(255,255,255,.3);flex-shrink:0";}else{pav.textContent=(U.name||"?")[0].toUpperCase();}}
   const ppb=g("#p-plan-badge");if(ppb)ppb.innerHTML=planBadgeHTML();
 }
+// 🌱 v195 LOTE 13: selo de aquecimento — HTML ÚNICO, usado pelo Gmail
+// PRINCIPAL e pelos extras. A regra 13a manda MOSTRAR o throttling ("nunca
+// esconder do usuário"), e até aqui o `primaryWarmup` que o servidor calcula
+// não era lido por tela nenhuma — o tutorial prometia um selo que não existia.
+function _warmupBadgeHTML(sentToday,cap){
+  if(cap==null)return"";
+  return`<div style="font-size:9.5px;color:#d97706;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:6px;padding:2px 6px;margin-top:3px;display:inline-block">🌱 Aquecendo — ${sentToday||0}/${cap} hoje (proteção anti-bloqueio)</div>`;
+}
 function _renderProfileSenderSection(){
   const secVip=document.getElementById("profile-sender-section");
   const secFree=document.getElementById("profile-sender-free");
@@ -2961,6 +2977,27 @@ function _renderProfileSenderSection(){
   const canExtra=!!U.isAdmin||senderMax>=2;
   const senders=U.senderEmails||[];
   const totalSenders=1+senders.length; // 1 = email principal
+
+  // 🌱 v195 LOTE 13: o Gmail PRINCIPAL também aquece (o relógio agora é o da
+  // conexão, não o do cadastro). Fica FORA do card de Gmail Extra de
+  // propósito: aquele só aparece pra DoublePro, e o principal é de todo mundo
+  // que paga. Renderizado ANTES do return de canExtra abaixo.
+  const _pgEl=document.getElementById("profile-primary-gmail");
+  if(_pgEl){
+    if(U.gmailConnected&&(U.gmailEmail||U.email)){
+      const _pw=U.primaryWarmup||{};
+      _pgEl.innerHTML=`
+        <div style="display:flex;align-items:center;gap:8px">
+          <i class="ti ti-mail" style="color:var(--green);font-size:15px"></i>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;font-weight:700;color:var(--t1);word-break:break-all">${esc(U.gmailEmail||U.email)}</div>
+            <div style="font-size:10px;color:var(--green)">✅ Conectado — é por ele que suas candidaturas saem</div>
+            ${_warmupBadgeHTML(_pw.sentToday,_pw.cap)}
+          </div>
+        </div>`;
+      _pgEl.style.display="";
+    } else _pgEl.style.display="none";
+  }
 
   if(!canExtra){
     secVip.style.display="none";
@@ -2984,8 +3021,8 @@ function _renderProfileSenderSection(){
           :"✅ Conectado";
         const _statusColor=s.blocked?"var(--red)":(s.tokenExpired||s.active===false)?"var(--red)":"var(--green)";
         // Selo de aquecimento (proteção anti-bloqueio p/ conta recém-conectada)
-        const _warmupBadge=(!s.blocked&&!s.tokenExpired&&s.active!==false&&s.warmupCap!=null)
-          ?`<div style="font-size:9.5px;color:#d97706;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:6px;padding:2px 6px;margin-top:3px;display:inline-block">🌱 Aquecendo — ${s.sentToday||0}/${s.warmupCap} hoje (proteção anti-bloqueio)</div>`
+        const _warmupBadge=(!s.blocked&&!s.tokenExpired&&s.active!==false)
+          ?_warmupBadgeHTML(s.sentToday,s.warmupCap)
           :"";
         return`
         <div style="display:flex;align-items:center;gap:8px;background:var(--sf2);border:1px solid var(--border);border-radius:8px;padding:9px 12px">
@@ -5010,7 +5047,10 @@ async function pollAutoStatus(){
         const _sub=_planGateSubTxt("assine um plano em Planos pra continuar.");
         toast(_sub?`⛔ Automático pausado — ${_sub}`:"⛔ Automático pausado — você precisa de um plano ativo. Assine um plano em Planos.","r",8000);
       }
-      if(U.autoJob?.status==="paused_auth_error")toast("🔑 Automático pausado — erro de autenticação. Faça login novamente.","r");
+      // 🔌 v195 LOTE 13: o caminho que EXISTE é o cartão Conectar meu Gmail
+      // (o login do site é usuário+senha desde o v172c) — e reconectar já
+      // retoma o robô sozinho, de onde parou.
+      if(U.autoJob?.status==="paused_auth_error")toast("🔑 Automático pausado — abra o Envio Automático e toque em “Conectar meu Gmail”. O robô volta sozinho de onde parou.","r",9000);
       if(U.autoJob?.status==="finished"&&_prevStatus!=="finished"){const _frases=["🎉 "+t('fq1'),"🏆 "+t('fq2'),"✅ "+t('fq3')+" 🇺🇸","🚀 "+t('fq4')];toast(_frases[Math.floor(Math.random()*_frases.length)],"g");}
     }
     U.todaySentAuto=d.todayAuto||0;U.autoLimit=d.autoLimit??0;U.autoStats=d.stats||{sent:0,failed:0};
@@ -7472,15 +7512,15 @@ const LANG_DICT = {
     "upsell_cta":"Ver planos e assinar","upsell_later":"Continuar amanhã de graça",
     // 🌐 Etapa 5 do i18n — status dinâmicos do robô
     "st_starting":"🟡 Iniciando...","st_sending":"🟢 Enviando...","st_paused":"⏸ Pausado",
-    "st_no_session":"⚠️ Faça login novamente","st_finished":"✅ Concluído","st_resuming":"🟢 Retomando...",
+    "st_no_session":"⚠️ Entre de novo no H2BApply","st_finished":"✅ Concluído","st_resuming":"🟢 Retomando...",
     "st_refilled":"🔄 Fila recarregada — enviando...","st_wait_interval":"⏳ Aguardando intervalo...","st_wait_hour":"⏳ Aguardando horário...",
     "st_wait_limit":"📊 Limite diário atingido","st_wait_rate":"⏳ O Google pediu uma pausa — retomamos sozinhos",
-    "st_auth_err":"⛔ Pausado — reconecte seu Gmail","st_token_revoked":"🔐 Acesso Google revogado — faça login de novo",
-    "st_no_refresh":"🔐 Faça login de novo para reativar","st_corrupt":"❌ Fila com problema — reinicie o automático",
-    "hint_auth_err":"Abra Configurações e conecte sua conta Google de novo — sua fila continua salva.",
-    "hint_token_revoked":"Saia e faça login com o Google de novo — sua fila continua salva.",
-    "hint_no_refresh":"Faça login com o Google de novo — sua fila continua salva.",
-    "hint_no_session":"Entre de novo com o Google — sua fila continua salva.",
+    "st_auth_err":"⛔ Pausado — reconecte seu Gmail","st_token_revoked":"🔐 Acesso ao Gmail revogado — reconecte",
+    "st_no_refresh":"🔐 Reconecte seu Gmail para reativar","st_corrupt":"❌ Fila com problema — reinicie o automático",
+    "hint_auth_err":"Abra o Envio Automático e toque em “Conectar meu Gmail” — sua fila continua salva e o robô volta sozinho.",
+    "hint_token_revoked":"Abra o Envio Automático e toque em “Conectar meu Gmail” — sua fila continua salva e o robô volta sozinho.",
+    "hint_no_refresh":"Abra o Envio Automático e toque em “Conectar meu Gmail” — sua fila continua salva e o robô volta sozinho.",
+    "hint_no_session":"Entre de novo no H2BApply com seu usuário e senha — sua fila continua salva.",
     "hint_corrupt":"Toque em Parar e inicie o automático de novo.",
     "hint_rate":"Proteção normal do Gmail contra spam — nada a fazer, o robô retoma sozinho.",
     "cd_soon":"Enviando em instantes...","cd_next":"Próximo envio em","cd_starts":"Inicia em","cd_resumes":"Retoma em",
@@ -7646,12 +7686,12 @@ const LANG_DICT = {
     "st_no_session":"⚠️ Please log in again","st_finished":"✅ Done","st_resuming":"🟢 Resuming...",
     "st_refilled":"🔄 Queue refilled — sending...","st_wait_interval":"⏳ Waiting interval...","st_wait_hour":"⏳ Waiting scheduled time...",
     "st_wait_limit":"📊 Daily limit reached","st_wait_rate":"⏳ Google asked for a break — we resume on our own",
-    "st_auth_err":"⛔ Paused — reconnect your Gmail","st_token_revoked":"🔐 Google access revoked — log in again",
-    "st_no_refresh":"🔐 Log in again to reactivate","st_corrupt":"❌ Queue issue — restart auto send",
-    "hint_auth_err":"Open Settings and connect your Google account again — your queue is safe.",
-    "hint_token_revoked":"Sign out and log in with Google again — your queue is safe.",
-    "hint_no_refresh":"Log in with Google again — your queue is safe.",
-    "hint_no_session":"Log in with Google again — your queue is safe.",
+    "st_auth_err":"⛔ Paused — reconnect your Gmail","st_token_revoked":"🔐 Gmail access revoked — reconnect it",
+    "st_no_refresh":"🔐 Reconnect your Gmail to reactivate","st_corrupt":"❌ Queue issue — restart auto send",
+    "hint_auth_err":"Open Auto Send and tap “Connect my Gmail” — your queue is safe and the robot resumes on its own.",
+    "hint_token_revoked":"Open Auto Send and tap “Connect my Gmail” — your queue is safe and the robot resumes on its own.",
+    "hint_no_refresh":"Open Auto Send and tap “Connect my Gmail” — your queue is safe and the robot resumes on its own.",
+    "hint_no_session":"Log in to H2BApply again with your username and password — your queue is safe.",
     "hint_corrupt":"Tap Stop and start auto send again.",
     "hint_rate":"Normal Gmail anti-spam protection — nothing to do, the robot resumes on its own.",
     "cd_soon":"Sending any moment...","cd_next":"Next send in","cd_starts":"Starts in","cd_resumes":"Resumes in",
@@ -7796,12 +7836,12 @@ const LANG_DICT = {
     "st_no_session":"⚠️ Inicia sesión de nuevo","st_finished":"✅ Completado","st_resuming":"🟢 Reanudando...",
     "st_refilled":"🔄 Cola recargada — enviando...","st_wait_interval":"⏳ Esperando intervalo...","st_wait_hour":"⏳ Esperando horario...",
     "st_wait_limit":"📊 Límite diario alcanzado","st_wait_rate":"⏳ Google pidió una pausa — reanudamos solos",
-    "st_auth_err":"⛔ Pausado — reconecta tu Gmail","st_token_revoked":"🔐 Acceso Google revocado — inicia sesión de nuevo",
-    "st_no_refresh":"🔐 Inicia sesión de nuevo para reactivar","st_corrupt":"❌ Problema en la cola — reinicia el automático",
-    "hint_auth_err":"Abre Configuración y conecta tu cuenta Google de nuevo — tu cola sigue guardada.",
-    "hint_token_revoked":"Cierra sesión y entra con Google de nuevo — tu cola sigue guardada.",
-    "hint_no_refresh":"Entra con Google de nuevo — tu cola sigue guardada.",
-    "hint_no_session":"Entra con Google de nuevo — tu cola sigue guardada.",
+    "st_auth_err":"⛔ Pausado — reconecta tu Gmail","st_token_revoked":"🔐 Acceso al Gmail revocado — reconéctalo",
+    "st_no_refresh":"🔐 Reconecta tu Gmail para reactivar","st_corrupt":"❌ Problema en la cola — reinicia el automático",
+    "hint_auth_err":"Abre Envío Automático y toca “Conectar mi Gmail” — tu cola sigue guardada y el robot vuelve solo.",
+    "hint_token_revoked":"Abre Envío Automático y toca “Conectar mi Gmail” — tu cola sigue guardada y el robot vuelve solo.",
+    "hint_no_refresh":"Abre Envío Automático y toca “Conectar mi Gmail” — tu cola sigue guardada y el robot vuelve solo.",
+    "hint_no_session":"Entra de nuevo en H2BApply con tu usuario y contraseña — tu cola sigue guardada.",
     "hint_corrupt":"Toca Parar e inicia el automático de nuevo.",
     "hint_rate":"Protección anti-spam normal de Gmail — nada que hacer, el robot reanuda solo.",
     "cd_soon":"Enviando en instantes...","cd_next":"Próximo envío en","cd_starts":"Inicia en","cd_resumes":"Reanuda en",
