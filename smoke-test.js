@@ -2548,6 +2548,124 @@ async function testAuthWatchdogPush() {
         "catch vazio / spinner eterno de volta no painel");
     }
 
+    // ═══ 🧰 v181 — LOTE 6: FILTROS NOVOS QUE OS DADOS SUSTENTAM ═══
+    // exp (meses de experiência), temporada (derivada das datas), visto, e a
+    // regra geral "dimensão com 1 valor só não separa nada". Todos os números
+    // abaixo foram medidos nas planilhas empacotadas deste repositório.
+    {
+      const _t = async (qs) => (await get("/api/sheet-meta?" + qs + "&top=1")).json.total;
+      const vfJ = (await get("/api/vagas/filtros?sheet=jan2026")).json;
+      const vfJ25 = (await get("/api/vagas/filtros?sheet=jul2025")).json;
+      const vfH2a = (await get("/api/vagas/filtros?sheet=h2a-jun2026")).json;
+      const vfJ26 = (await get("/api/vagas/filtros?sheet=jul2026")).json;
+      // (1) EXPERIÊNCIA — caso 19: faceta = lista, teto acumulando
+      const exp0 = vfJ.facetas.exp.find((x) => x.v === 0), exp3 = vfJ.facetas.exp.find((x) => x.v === 3);
+      const l0 = await _t("sheet=jan2026&exp=0"), l3 = await _t("sheet=jan2026&exp=3"), l25 = await _t("sheet=jul2025&exp=0");
+      check("🧰 v181-L6 (caso 19): filtro novo de EXPERIÊNCIA — 5.923 vagas de jan2026 (64%) e 1.037 de jul2025 exigem ZERO mês, o dado estava lá desde sempre e não era filtro nenhum. Faceta por TETO = verdade da lista, e '≤3 meses' acumula os menores",
+        exp0.n === 5923 && l0 === 5923 && exp3.n === 8475 && l3 === 8475 && l25 === 1037 &&
+        vfJ25.facetas.exp.find((x) => x.v === 0).n === 1037,
+        JSON.stringify({ faceta0: exp0.n, lista0: l0, faceta3: exp3.n, lista3: l3, jul2025: l25 }));
+      check("🧰 v181-L6: a dimensão não é oferecida onde o dado não existe — H-2A tem 0 linha com experiência publicada e jul2026 tem os 2.625 zeros de fachada (1 valor distinto só, não separa nada)",
+        vfH2a.disponibilidade.exp === 0 && vfH2a.disponibilidade.expDistintos === 0 &&
+        vfJ26.disponibilidade.exp === 2625 && vfJ26.disponibilidade.expDistintos === 1 &&
+        vfJ.disponibilidade.expDistintos === 15,
+        JSON.stringify({ h2a: vfH2a.disponibilidade.exp, j26dist: vfJ26.disponibilidade.expDistintos, janDist: vfJ.disponibilidade.expDistintos }));
+      const vfExp0 = (await get("/api/vagas/filtros?sheet=jan2026&exp=0")).json;
+      const txExp = vfExp0.facetas.estado.find((x) => x.v === "TEXAS");
+      check("🧰 v181-L6: a experiência cruza com as outras dimensões pela régua de sempre (E entre dimensões) — a contagem que a faceta de estado anuncia DENTRO de exp=0 é a que a lista devolve",
+        txExp.n === (await _t("sheet=jan2026&exp=0&estado=TEXAS")), `faceta=${txExp.n}`);
+      // (2) TEMPORADA — caso 20 (os números dependem do DIA: calculados aqui
+      //     com a mesma régua, contra o arquivo empacotado)
+      const _bundle = JSON.parse(fs.readFileSync(path.join(__dirname, "h2a_jun2026_compact.json"), "utf8"));
+      const _hoje2 = new Date().toISOString().slice(0, 10);
+      const _isoOk = (v) => { const s = String(v || "").slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : ""; };
+      let espFut = 0, espAb = 0, espEnc = 0, espSem = 0;
+      for (const r of _bundle) { const d = _isoOk(r.d), de = _isoOk(r.de); if (!d && !de) espSem++; else if (de && de < _hoje2) espEnc++; else if (d && d > _hoje2) espFut++; else espAb++; }
+      const fT = Object.fromEntries((vfH2a.facetas.temporada || []).map((x) => [x.v, x.n]));
+      const lEnc = await _t("sheet=h2a-jun2026&temporada=encerrada");
+      const encJobs = (await get(`/api/sheet-meta?sheet=h2a-jun2026&temporada=encerrada&top=2000`)).json.jobs || [];
+      check("🗓️ v181-L6 (caso 20): filtro novo de TEMPORADA na H-2A — nenhum filtro usava a data de FIM e 219+ vagas JÁ TERMINADAS eram listadas como qualquer outra. Faceta = lista, as 3 faixas + sem data fecham o total da planilha, e toda vaga 'encerrada' tem fim no passado",
+        fT.encerrada === espEnc && fT.aberta === espAb && fT.futura === espFut && lEnc === espEnc &&
+        fT.futura + fT.aberta + fT.encerrada + vfH2a.facetas.temporadaSemData === 4964 &&
+        encJobs.length === espEnc && encJobs.every((j) => String(j.end || "").slice(0, 10) < _hoje2),
+        JSON.stringify({ faceta: fT, esperado: { espFut, espAb, espEnc }, lista: lEnc, semData: vfH2a.facetas.temporadaSemData }));
+      check("🗓️ v181-L6: planilha H-2B sem data nenhuma (jan2026/jul2025: 11.446 vagas) não oferece a dimensão — disponibilidade.temporada 0, régua da casa 'dimensão sem dado é honesta'",
+        vfJ.disponibilidade.temporada === 0 && vfJ25.disponibilidade.temporada === 0 &&
+        vfJ26.disponibilidade.temporadaDistintos === 1,
+        JSON.stringify({ jan: vfJ.disponibilidade.temporada, jul: vfJ25.disponibilidade.temporada, j26dist: vfJ26.disponibilidade.temporadaDistintos }));
+      // (3) esconder a temporada ENCERRADA por padrão (decisão do dono)
+      const padrao = await _t("sheet=h2a-jun2026&ocultarEncerradas=1");
+      const semPadrao = await _t("sheet=h2a-jun2026");
+      const padraoJan = await _t("sheet=jan2026&ocultarEncerradas=1");
+      const padraoJ26 = await _t("sheet=jul2026&ocultarEncerradas=1");
+      const vfPadrao = (await get("/api/vagas/filtros?sheet=h2a-jun2026&ocultarEncerradas=1")).json;
+      check("⏳ v181-L6 (decisão do dono): a lista esconde por PADRÃO a vaga cuja temporada já acabou (4.964 → 4.744 na H-2A: a pessoa gastava envio e limite diário com vaga que não existe mais) e mostra tudo em 1 clique — nunca esconde o que não dá pra afirmar (planilha sem data de fim fica intocada)",
+        padrao === 4964 - espEnc && semPadrao === 4964 && padraoJan === 9240 && padraoJ26 === 2625,
+        JSON.stringify({ padrao, semPadrao, jan: padraoJan, jul2026: padraoJ26 }));
+      check("⏳ v181-L6: transparência total — com o padrão ligado a FACETA continua anunciando as encerradas (é de lá que sai o número do chip 'escondendo N') e o badge de filtros continua ZERO (é padrão do app, não escolha do usuário)",
+        (vfPadrao.facetas.temporada.find((x) => x.v === "encerrada") || {}).n === espEnc && vfPadrao.ativos === 0 && vfPadrao.total === 4964 - espEnc,
+        JSON.stringify({ faceta: vfPadrao.facetas.temporada, ativos: vfPadrao.ativos }));
+      // o robô: vaga com fim no passado nunca entra na fila do refill
+      const _srvL6 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      check("⏳ v181-L6: o robô usa a MESMA régua no envio e no REFILL (função única _motivoVagaMorta) — antes o refill devolvia pra fila exatamente a vaga encerrada que o envio tinha acabado de pular",
+        /function _motivoVagaMorta\(/.test(_srvL6) && (_srvL6.match(/_motivoVagaMorta\(/g) || []).length >= 3 &&
+        !/if\(st\.includes\("WITHDRAWN"\)\|\|st\.includes\("DENIED"\)\|\|st\.includes\("EXPIRED"\)\|\|st\.includes\("INVALIDATED"\)\)continue;/.test(_srvL6),
+        "refill voltou a ter régua própria de vaga morta");
+      // (4) dimensão com menos de 2 valores distintos
+      check("🙈 v181-L6: TODA dimensão de opções declara <dim>Distintos (não só o status) — jan2026 statusDistintos 1, H-2A 0, jul2026 grupoDistintos 2, jan2026 grupoDistintos 0 e visaDistintos 1 nas 4 planilhas: nenhuma separa nada e a tela não oferece",
+        vfJ.disponibilidade.statusDistintos === 1 && vfH2a.disponibilidade.statusDistintos === 0 &&
+        vfJ26.disponibilidade.grupoDistintos === 2 && vfJ.disponibilidade.grupoDistintos === 0 &&
+        [vfJ, vfJ25, vfH2a, vfJ26].every((v) => v.disponibilidade.visaDistintos === 1) &&
+        ["estadoDistintos", "cidadeDistintos", "categoriaDistintos", "cargoDistintos", "inicioDistintos", "expDistintos", "temporadaDistintos", "visaDistintos", "statusDistintos", "grupoDistintos"].every((k) => typeof vfH2a.disponibilidade[k] === "number"),
+        JSON.stringify(vfJ26.disponibilidade));
+      // (5) visto: só aparece quando a planilha tem os 2 (planilha mista de teste)
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      await req2("POST", "/api/admin/sheet/upload", {
+        name: "Mista Visto", key: "mista-visa", data: [
+          { c: "H-400-VISA-0001", n: "B1 LLC", s: "TEXAS", e: "rh@b1visa.com", t: "Cook", visa: "H-2B" },
+          { c: "H-400-VISA-0002", n: "B2 LLC", s: "TEXAS", e: "rh@b2visa.com", t: "Cook" },
+          { c: "H-300-VISA-0003", n: "A1 LLC", s: "IOWA", e: "rh@a1visa.com", t: "Farm Worker", visa: "H-2A" },
+          { c: "H-300-VISA-0004", n: "A2 LLC", s: "IOWA", e: "rh@a2visa.com", t: "Farm Worker" },
+        ],
+      });
+      const vfMix = (await get("/api/vagas/filtros?sheet=mista-visa")).json;
+      const listaA = (await get("/api/sheet-meta?sheet=mista-visa&visa=H-2A&top=10")).json;
+      check("🛂 v181-L6: o tipo de visto virou dimensão do motor (com fallback pelo prefixo do case: H-300 → H-2A, H-400 → H-2B) e só é oferecida quando a planilha tem os DOIS — numa planilha mista a faceta soma o total e o filtro bate com ela",
+        vfMix.disponibilidade.visaDistintos === 2 && vfMix.facetas.visa.length === 2 &&
+        vfMix.facetas.visa.reduce((a, x) => a + x.n, 0) === 4 &&
+        (vfMix.facetas.visa.find((x) => x.v === "H-2A") || {}).n === 2 && listaA.total === 2 &&
+        (listaA.jobs || []).every((j) => j.visa === "H-2A"),
+        JSON.stringify({ dist: vfMix.disponibilidade.visaDistintos, fac: vfMix.facetas.visa, lista: listaA.total }));
+      // (6) mês de início COM ANO (compatível com o formato antigo)
+      const mar = (vfH2a.facetas.inicio || []).find((x) => x.v === "2026-03");
+      const somaMeses = (vfH2a.facetas.inicio || []).reduce((a, x) => a + x.n, 0) + vfH2a.facetas.inicioSemData;
+      const lMar = await _t("sheet=h2a-jun2026&inicio=2026-03"), lLegado = await _t("sheet=h2a-jun2026&inicio=3");
+      check("📅 v181-L6: '📅 Mês de início' ganhou ANO — a faceta devolve AAAA-MM com `passado`, a soma dos meses + sem data fecha a planilha, e marcar 2026-03 devolve exatamente os 1.121 que o chip anuncia",
+        mar && mar.n === 1121 && mar.passado === true && lMar === 1121 && somaMeses === 4964 &&
+        (vfH2a.facetas.inicio || []).every((x) => /^\d{4}-\d{2}$/.test(x.v)),
+        JSON.stringify({ mar, soma: somaMeses, lista: lMar }));
+      check("📅 v181-L6: o formato ANTIGO (mês 1–12, que vive em job.filters de robô rodando e no aparelho de quem salvou filtro) continua casando — mês 3 de qualquer ano devolve o mesmo conjunto",
+        lLegado === 1121 && (await _t("sheet=jul2026&inicio=10")) === 2625, `legado=${lLegado}`);
+      const igL6 = (await get("/api/vagas/filtros?sheet=h2a-jun2026&inicio=13&exp=abc&temporada=xxx&visa=H-9")).json;
+      check("📅 v181-L6: parâmetro inválido das dimensões novas continua DECLARADO (nunca some calado, senão um filtro corrompido vira 'a planilha inteira' pro robô)",
+        igL6.total === 4964 && igL6.ignorados.length === 4 &&
+        ["inicio", "exp", "temporada", "visa"].every((p) => igL6.ignorados.some((x) => x.param === p)),
+        JSON.stringify(igL6.ignorados));
+      // (7) front: estado padrão, envio dos parâmetros e chip permanente
+      const _appL6 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _i18nL6 = ["vf_sec_exp", "vf_sec_temporada", "vf_sec_visa", "vf_exp_0", "vf_exp_ate", "vf_temp_futura", "vf_temp_aberta", "vf_temp_encerrada", "vf_um_valor", "vf_meses_passados", "vf_chip_encerradas"];
+      const _dL6 = (lang) => { const i = _appL6.indexOf(`  ${lang}: {`); const e = _appL6.indexOf("\n  }", i); return _appL6.slice(i, e); };
+      const _ptL6 = _dL6("pt"), _enL6 = _dL6("en"), _esL6 = _dL6("es");
+      const _faltaL6 = _i18nL6.filter((k) => !(_ptL6.includes(`"${k}":`) && _enL6.includes(`"${k}":`) && _esL6.includes(`"${k}":`)));
+      check("🧰 v181-L6 (estrutural): a tela nasce com o padrão que esconde a temporada encerrada (manual E Passo 2 do robô), manda exp/temporada/visa/ocultarEncerradas na MESMA query da contagem, tem o chip permanente e a regra única de dimensão com 1 valor — com todas as strings novas nas 3 línguas",
+        /ocultarEncerradas:true/.test(_appL6) && /\(st\.exp\|\|\[\]\)\.forEach/.test(_appL6) &&
+        /"temporada","visa"/.test(_appL6) && /p\.set\("ocultarEncerradas","1"\)/.test(_appL6) &&
+        _appL6.includes("vf_chip_encerradas") && _appL6.includes("const _soUmValor=") &&
+        _appL6.includes("function _vfMesLabel(") && _faltaL6.length === 0,
+        `faltando: ${_faltaL6.join(",")}`);
+    }
+
+
 
     // ═══ 📧 ORDEM DO DONO (13/09/2026): e-mails de envio por plano — grátis 0
     // (nem vincula Gmail), VIP/VIPro 1 (só o principal), DoublePro 2, admin 6.

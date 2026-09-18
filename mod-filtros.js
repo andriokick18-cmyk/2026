@@ -44,7 +44,23 @@ const SALARIO_LIMIARES = [12, 14, 15, 16, 18, 20, 22, 25, 28, 30];
 const VAGAS_LIMIARES = [1, 2, 5, 10, 20, 50];
 const MESES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 const GRUPOS = ["A", "B", "C", "D", "E", "F", "G", "H"];
-const DIMENSOES = ["q", "estado", "cidade", "categoria", "cargo", "salarioMin", "vagasMin", "inicio", "status", "grupo", "email"];
+// 🧰 v181 LOTE 6 — EXPERIÊNCIA EXIGIDA (meses). É o maior filtro que os dados
+// já sustentavam e o site não tinha: 5.923 vagas de jan2026 (64%) e 1.037 de
+// jul2025 (47%) exigem ZERO mês — pra um brasileiro de primeira viagem é
+// provavelmente a primeira pergunta do site inteiro, e é uma vantagem que
+// Indeed/LinkedIn não conseguem oferecer (lá esse dado não é declaração
+// oficial). As opções são TETOS ("até N meses"), nunca valores exatos.
+const EXP_TETOS = [0, 3, 6, 12];
+// 🗓️ v181 LOTE 6 — TEMPORADA, derivada das datas que já existem na linha
+// (nenhum campo novo na planilha): futura (começa depois de hoje) · aberta
+// (já começou e ainda não terminou) · encerrada (data de FIM no passado) ·
+// semdata (o governo não publicou data nenhuma). Em trabalho sazonal QUANDO
+// começa manda mais que o cargo — é filtro de topo no próprio
+// seasonaljobs.dol.gov ("Begin on or after Date").
+const TEMPORADAS = ["futura", "aberta", "encerrada", "semdata"];
+const VISTOS = ["H-2A", "H-2B"];
+const DIMENSOES = ["q", "estado", "cidade", "categoria", "cargo", "salarioMin", "vagasMin", "inicio", "exp", "temporada", "visa", "status", "grupo", "email"];
+
 // 💎 Dimensões exclusivas do plano Double Pro (decisão de produto do dono,
 // mantida — o gate é do SERVIDOR: pra quem não é DP o parâmetro é ignorado).
 const DIMENSOES_DOUBLEPRO = new Set(["grupo", "status"]);
@@ -93,6 +109,41 @@ const _lista = (v, fn, csv) => {
   return [...new Set(bruto.map(x => String(x || "").trim()).filter(Boolean).map(fn || (x => x)))];
 };
 const _num = (v) => { const n = parseFloat(v); return Number.isFinite(n) && n > 0 ? n : 0; };
+// Visto normalizado: o campo `visa` está preenchido em 100% das 19.035 linhas
+// e bate com o prefixo do case number em 100% (H-300 → H-2A, H-400 → H-2B),
+// que é o fallback quando o campo falta.
+const _visaNorm = (v) => {
+  const s = String(v || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (s.includes("H2A") || s === "AGRICULTURAL") return "H-2A";
+  if (s.includes("H2B") || s === "NONAGRICULTURAL") return "H-2B";
+  return "";
+};
+const _visaDaLinha = (r) => {
+  const v = _visaNorm(r && r.visa);
+  if (v) return v;
+  const c = String((r && r.c) || "").toUpperCase();
+  if (c.startsWith("H-300")) return "H-2A";
+  if (c.startsWith("H-400")) return "H-2B";
+  return "";
+};
+// Meses de experiência EXIGIDA na linha (-1 = o governo não publicou).
+// ⚠️ regra da casa (v179): `exp` é EXPERIÊNCIA, nunca "vaga expirada".
+const _expDaLinha = (r) => {
+  if (!r) return -1;
+  const v = r.exp;
+  if (v === "" || v === null || v === undefined || v === true || v === false) return -1;
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n >= 0 && n <= 600 ? n : -1;
+};
+const _iso = (v) => { const s = String(v || "").slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : ""; };
+// Faixa da temporada: 0 futura · 1 aberta · 2 encerrada · 3 sem data.
+const _temporadaDe = (d, de, hoje) => {
+  if (!d && !de) return 3;
+  if (de && de < hoje) return 2;
+  if (d && d > hoje) return 0;
+  return 1;
+};
+
 
 function createFiltros(deps) {
   const {
@@ -150,8 +201,28 @@ function createFiltros(deps) {
     const _brutoEstado = _lista(first("estado", "state"), s => s);
     const _brutoInicio = _lista(first("inicio", "beginMonth", "beginMonths"), s => s);
     const _brutoGrupo = _lista(first("grupo", "grupos"), s => s.toUpperCase());
+    const _brutoExp = _lista(first("exp", "expMax"), s => s);
+    const _brutoTemp = _lista(first("temporada", "season"), s => s.toLowerCase());
+    const _brutoVisa = _lista(first("visa", "visto"), s => s);
+
     const _wBruto = String(first("salarioMin", "minWage") || "").trim();
     const _vBruto = String(first("vagasMin", "minWorkers") || "").trim();
+    // 📅 v181 LOTE 6 — o mês de início ganhou ANO. O índice guardava só o mês
+    // (1–12) e a tela imprimia "Mar 1.114" numa planilha em que 4.959 das
+    // 4.964 vagas JÁ começaram: quem marca "Mar" entende "vou começar em
+    // março" e está filtrando contratos que começaram em março. Agora o valor
+    // é AAAA-MM. O formato antigo (1–12, que vive em job.filters de robô já
+    // rodando e no aparelho de quem salvou filtro antes) continua valendo e
+    // casa com aquele mês de QUALQUER ano.
+    const _inicioAM = [], _inicioM = [];
+    for (const v of _brutoInicio) {
+      const s = String(v).trim();
+      const am = s.match(/^(\d{4})-(\d{1,2})$/);
+      if (am) { const mm = parseInt(am[2], 10); if (mm >= 1 && mm <= 12) { _inicioAM.push(parseInt(am[1], 10) * 100 + mm); continue; } }
+      const m = parseInt(s, 10);
+      if (m >= 1 && m <= 12 && /^\d{1,2}$/.test(s)) { _inicioM.push(m); continue; }
+      _marcar("inicio", v, "mês inválido (use AAAA-MM ou 1–12)");
+    }
     const f = {
       q: String(first("q", "keyword") || "").trim().slice(0, 120),
       estado: _brutoEstado.map(s => normalizeStateName(s)).filter(Boolean),
@@ -160,14 +231,27 @@ function createFiltros(deps) {
       cargo: _lista(first("cargo", "titles"), s => s.toLowerCase().replace(/\s+/g, " "), false).filter(c => c !== "__outros__"),
       salarioMin: _num(_wBruto),
       vagasMin: Math.floor(_num(_vBruto)),
-      inicio: _brutoInicio.map(s => parseInt(s, 10)).filter(m => m >= 1 && m <= 12),
+      inicio: [...new Set(_inicioM)],
+      inicioAM: [...new Set(_inicioAM)],
+      exp: _brutoExp.map(s => parseInt(s, 10)).filter(v => Number.isFinite(v) && v >= 0 && v <= 600),
+      temporada: _brutoTemp.filter(v => TEMPORADAS.includes(v)),
+      // Padrão do app (não é escolha de filtro do usuário — tem chip próprio
+      // e permanente na tela): esconder o que JÁ TERMINOU. Nunca esconde o
+      // que não dá pra afirmar (vaga sem data de fim continua na lista).
+      ocultarEncerradas: ["1", "true", "yes", "sim"].includes(String(first("ocultarEncerradas", "semEncerradas") || "").toLowerCase()),
+      visa: [...new Set(_brutoVisa.map(v => _visaNorm(v)).filter(Boolean))],
+
       status: _lista(first("status", "dolStatus"), s => s.slice(0, 60), false),
       grupo: _brutoGrupo.filter(g => GRUPOS.includes(g)),
       email: ["1", "true", "yes", "sim"].includes(String(first("email", "hasEmail") || "").toLowerCase()),
     };
     for (const v of _brutoEstado) if (!normalizeStateName(v)) _marcar("estado", v, "estado desconhecido");
-    for (const v of _brutoInicio) { const m = parseInt(v, 10); if (!(m >= 1 && m <= 12)) _marcar("inicio", v, "mês fora de 1–12"); }
     for (const v of _brutoGrupo) if (!GRUPOS.includes(v)) _marcar("grupo", v, "grupo fora de A–H");
+    for (const v of _brutoExp) { const n2 = parseInt(v, 10); if (!(Number.isFinite(n2) && n2 >= 0 && n2 <= 600)) _marcar("exp", v, "experiência não é um número de meses"); }
+    for (const v of _brutoTemp) if (!TEMPORADAS.includes(v)) _marcar("temporada", v, "temporada fora de futura/aberta/encerrada/semdata");
+    for (const v of _brutoVisa) if (!_visaNorm(v)) _marcar("visa", v, "visto fora de H-2A/H-2B");
+
+
     if (_wBruto && !(f.salarioMin > 0)) _marcar("salarioMin", _wBruto, "salário não é um número maior que zero");
     if (_vBruto && !(f.vagasMin > 0)) _marcar("vagasMin", _vBruto, "quantidade de vagas não é um número maior que zero");
     Object.defineProperty(f, "_ignorados", { value: ignorados, enumerable: false, writable: true, configurable: true });
@@ -178,12 +262,18 @@ function createFiltros(deps) {
   function ativos(f) {
     let n = 0;
     if (f.q) n++;
-    for (const k of ["estado", "cidade", "categoria", "cargo", "inicio", "status", "grupo"]) if (f[k] && f[k].length) n++;
+    for (const k of ["estado", "cidade", "categoria", "cargo", "status", "grupo", "exp", "temporada", "visa"]) if (f[k] && f[k].length) n++;
+    if ((f.inicio && f.inicio.length) || (f.inicioAM && f.inicioAM.length)) n++;
     if (f.salarioMin > 0) n++;
     if (f.vagasMin > 0) n++;
     if (f.email) n++;
+    // ⚠️ `ocultarEncerradas` de propósito NÃO conta: é o estado PADRÃO do app
+    // (esconder o que já terminou), declarado na tela por um chip próprio e
+    // permanente ("⏳ Escondendo N vagas com temporada encerrada — mostrar"),
+    // não uma escolha de filtro que o usuário fez.
     return n;
   }
+
 
   // ── Índice por planilha (cache por identidade do array — planilha trocada
   // no disco vira array novo e o índice é refeito sozinho).
@@ -195,13 +285,18 @@ function createFiltros(deps) {
   const _idx = new WeakMap();
   function indexar(rows) {
     const ver = sheetVersion ? (sheetVersion(rows) || 0) : 0;
+    // 🗓️ v181: a faixa de temporada depende de HOJE — o índice carrega a data
+    // com que foi construído e se refaz sozinho na virada do dia (senão uma
+    // vaga que terminou ontem continuaria "aberta" até o próximo deploy).
+    const hoje = new Date().toISOString().slice(0, 10);
     let ix = _idx.get(rows);
-    if (ix && ix.n === rows.length && ix.ver === ver) return ix;
+    if (ix && ix.n === rows.length && ix.ver === ver && ix.hoje === hoje) return ix;
     const n = rows.length;
     ix = {
-      n, ver,
+      n, ver, hoje,
       s: new Array(n), ci: new Array(n), ciN: new Array(n), ciKey: new Array(n), k: new Array(n), t: new Array(n), tl: new Array(n),
-      wh: new Float32Array(n), wk: new Int32Array(n), m: new Int8Array(n), st: new Array(n), g: new Array(n), em: new Uint8Array(n),
+      wh: new Float32Array(n), wk: new Int32Array(n), m: new Int8Array(n), am: new Int32Array(n), st: new Array(n), g: new Array(n), em: new Uint8Array(n),
+      exp: new Int16Array(n), tp: new Uint8Array(n), vi: new Array(n),
     };
     for (let i = 0; i < n; i++) {
       const r = rows[i] || {};
@@ -214,8 +309,12 @@ function createFiltros(deps) {
       ix.t[i] = t; ix.tl[i] = t.toLowerCase();
       ix.wh[i] = wageHora(r);
       ix.wk[i] = parseInt(r.wk, 10) > 0 ? parseInt(r.wk, 10) : 0;
-      const mm = String(r.d || "").match(/^\d{4}-(\d{2})/);
-      ix.m[i] = mm ? parseInt(mm[1], 10) : 0;
+      const dIso = _iso(r.d), deIso = _iso(r.de);
+      ix.m[i] = dIso ? parseInt(dIso.slice(5, 7), 10) : 0;
+      ix.am[i] = dIso ? parseInt(dIso.slice(0, 4), 10) * 100 + parseInt(dIso.slice(5, 7), 10) : 0;
+      ix.tp[i] = _temporadaDe(dIso, deIso, hoje);
+      ix.exp[i] = _expDaLinha(r);
+      ix.vi[i] = _visaDaLinha(r);
       ix.st[i] = String(r.st || "").trim();
       ix.g[i] = grupoDe ? (grupoDe(r) || "") : (r.g && /^[A-H]$/.test(r.g) ? r.g : "");
       ix.em[i] = (r.e && String(r.e).includes("@")) ? 1 : 0;
@@ -223,6 +322,7 @@ function createFiltros(deps) {
     _idx.set(rows, ix);
     return ix;
   }
+
 
   // Máscara de UMA dimensão (Uint8Array, 1 = a linha passa). Dimensão
   // inativa = todo mundo passa. qSet (linhas que casam com a busca textual)
@@ -279,10 +379,36 @@ function createFiltros(deps) {
         for (let i = 0; i < n; i++) out[i] = ix.wk[i] >= f.vagasMin ? 1 : 0; return out;
       }
       case "inicio": {
-        if (!f.inicio.length) return out;
-        const set = new Set(f.inicio);
-        for (let i = 0; i < n; i++) out[i] = set.has(ix.m[i]) ? 1 : 0; return out;
+        const amSel = f.inicioAM || [], mSel = f.inicio || [];
+        if (!amSel.length && !mSel.length) return out;
+        const setAM = new Set(amSel), setM = new Set(mSel);
+        for (let i = 0; i < n; i++) out[i] = (ix.am[i] && (setAM.has(ix.am[i]) || setM.has(ix.m[i]))) ? 1 : 0; return out;
       }
+      // 🧰 experiência: as opções são TETOS ("até N meses"), então OU dentro da
+      // dimensão é o menor teto que cabe. Linha sem o dado publicado nunca
+      // entra num filtro de experiência (não dá pra afirmar que exige 0).
+      case "exp": {
+        if (!f.exp.length) return out;
+        let teto = -1; for (const v of f.exp) if (v > teto) teto = v;
+        for (let i = 0; i < n; i++) out[i] = (ix.exp[i] >= 0 && ix.exp[i] <= teto) ? 1 : 0; return out;
+      }
+      // 🗓️ temporada: seleção explícita manda; sem seleção, o padrão do app
+      // (ocultarEncerradas) só tira o que JÁ TERMINOU — vaga sem data
+      // continua na lista, porque não dá pra afirmar que acabou.
+      case "temporada": {
+        if (f.temporada.length) {
+          const set = new Set(f.temporada.map(v => TEMPORADAS.indexOf(v)));
+          for (let i = 0; i < n; i++) out[i] = set.has(ix.tp[i]) ? 1 : 0; return out;
+        }
+        if (f.ocultarEncerradas) { for (let i = 0; i < n; i++) out[i] = ix.tp[i] === 2 ? 0 : 1; return out; }
+        return out;
+      }
+      case "visa": {
+        if (!f.visa.length) return out;
+        const set = new Set(f.visa);
+        for (let i = 0; i < n; i++) out[i] = set.has(ix.vi[i]) ? 1 : 0; return out;
+      }
+
       case "status": {
         if (!f.status.length || !ctx.isDP) return out;
         const set = new Set(f.status.map(s => s.toLowerCase()));
@@ -385,22 +511,47 @@ function createFiltros(deps) {
     let totalBase = 0; for (let i = 0; i < n; i++) totalBase += base[i];
 
     // disponibilidade (na base, antes dos filtros)
-    const disp = { estado: 0, cidade: 0, categoria: 0, cargo: 0, salario: 0, vagas: 0, inicio: 0, status: 0, grupo: 0, email: 0, statusDistintos: 0 };
-    const stDistinct = new Set();
+    // 🙈 v181 LOTE 6 — DIMENSÃO COM 1 VALOR SÓ NÃO SEPARA NADA. Medido: dentro
+    // de CADA planilha o status tem 1 valor distinto ou nenhum (jan2026 e
+    // jul2025 100% "Certified", jul2026 100% "Pending Processing", H-2A
+    // vazio), e o grupo A–H só existe em jul2026. Marcar a única opção não
+    // muda uma vaga. A regra deixou de ser um `if` do status e virou geral:
+    // TODA dimensão de opções declara `<dim>Distintos` e a tela não oferece
+    // as que têm menos de 2 — com uma linha honesta em vez de sumir calada.
+    const disp = { estado: 0, cidade: 0, categoria: 0, cargo: 0, salario: 0, vagas: 0, inicio: 0, status: 0, grupo: 0, email: 0, exp: 0, temporada: 0, visa: 0, statusDistintos: 0 };
+    const stDistinct = new Set(), esDistinct = new Set(), ciDistinct = new Set(), kDistinct = new Set(),
+      caDistinct = new Set(), inDistinct = new Set(), exDistinct = new Set(), tpDistinct = new Set(),
+      viDistinct = new Set(), gDistinct = new Set();
     for (let i = 0; i < n; i++) {
       if (!base[i]) continue;
-      if (ix.s[i]) disp.estado++;
-      if (ix.ci[i]) disp.cidade++;
+      if (ix.s[i]) { disp.estado++; esDistinct.add(ix.s[i]); }
+      if (ix.ci[i]) { disp.cidade++; ciDistinct.add(ix.ciKey[i]); }
       if (ix.k[i] && ix.k[i] !== "other") disp.categoria++;
-      if (ix.tl[i]) disp.cargo++;
+      if (ix.k[i]) kDistinct.add(ix.k[i]);
+      if (ix.tl[i]) { disp.cargo++; caDistinct.add(ix.tFam ? ix.tFam[i] : ix.tl[i]); }
       if (ix.wh[i] > 0) disp.salario++;
       if (ix.wk[i] > 0) disp.vagas++;
-      if (ix.m[i] > 0) disp.inicio++;
+      if (ix.am[i] > 0) { disp.inicio++; inDistinct.add(ix.am[i]); }
+      if (ix.exp[i] >= 0) { disp.exp++; exDistinct.add(ix.exp[i]); }
+      if (ix.tp[i] !== 3) { disp.temporada++; }
+      tpDistinct.add(ix.tp[i]);
+      if (ix.vi[i]) { disp.visa++; viDistinct.add(ix.vi[i]); }
       if (ix.st[i]) { disp.status++; stDistinct.add(ix.st[i]); }
-      if (ix.g[i]) disp.grupo++;
+      if (ix.g[i]) { disp.grupo++; gDistinct.add(ix.g[i]); }
       if (ix.em[i]) disp.email++;
     }
     disp.statusDistintos = stDistinct.size;
+    disp.estadoDistintos = esDistinct.size;
+    disp.cidadeDistintos = ciDistinct.size;
+    disp.categoriaDistintos = kDistinct.size;
+    disp.cargoDistintos = caDistinct.size;
+    disp.inicioDistintos = inDistinct.size;
+    disp.expDistintos = exDistinct.size;
+    // a faixa "sem data" não é opção de temporada — só as 3 reais separam algo
+    disp.temporadaDistintos = [...tpDistinct].filter(v => v !== 3).length;
+    disp.visaDistintos = viDistinct.size;
+    disp.grupoDistintos = gDistinct.size;
+
 
     const fac = {};
     // estado
@@ -463,10 +614,32 @@ function createFiltros(deps) {
     { const m = semDim("vagasMin"); const cnt = VAGAS_LIMIARES.map(() => 0); let sem = 0;
       for (let i = 0; i < n; i++) { if (!m[i]) continue; const w = ix.wk[i]; if (!(w > 0)) { sem++; continue; } for (let j = 0; j < VAGAS_LIMIARES.length; j++) if (w >= VAGAS_LIMIARES[j]) cnt[j]++; }
       fac.vagas = { limiares: VAGAS_LIMIARES.map((v, j) => ({ v, n: cnt[j] })), semDado: sem }; }
-    // mês de início
-    { const m = semDim("inicio"); const cnt = new Array(13).fill(0); let sem = 0;
-      for (let i = 0; i < n; i++) { if (!m[i]) continue; if (ix.m[i] > 0) cnt[ix.m[i]]++; else sem++; }
-      fac.inicio = MESES.map(mm => ({ v: mm, n: cnt[mm] })); fac.inicioSemData = sem; }
+    // 📅 mês de início — AGORA COM ANO (v181): v = "AAAA-MM" e `passado`
+    // diz se aquele mês inteiro já ficou pra trás (a tela agrupa esses no
+    // fim). O mês/ano vem do índice; o rótulo humano ("Mar/26") é montado na
+    // tela pelo dicionário, nunca aqui (regra 6f — idioma mora no LANG_DICT).
+    { const m = semDim("inicio"); const c = new Map(); let sem = 0;
+      const amHoje = parseInt(ix.hoje.slice(0, 4), 10) * 100 + parseInt(ix.hoje.slice(5, 7), 10);
+      for (let i = 0; i < n; i++) { if (!m[i]) continue; if (ix.am[i] > 0) c.set(ix.am[i], (c.get(ix.am[i]) || 0) + 1); else sem++; }
+      fac.inicio = [...c.entries()].sort((a, b) => a[0] - b[0])
+        .map(([am, q]) => ({ v: `${Math.floor(am / 100)}-${String(am % 100).padStart(2, "0")}`, ano: Math.floor(am / 100), mes: am % 100, n: q, passado: am < amHoje }));
+      fac.inicioSemData = sem; }
+    // 🧰 experiência exigida — contagem por TETO ("não exige" · até 3 · até 6
+    // · até 12 meses), cada uma acumulando as menores.
+    { const m = semDim("exp"); const cnt = EXP_TETOS.map(() => 0); let sem = 0;
+      for (let i = 0; i < n; i++) { if (!m[i]) continue; const e = ix.exp[i]; if (e < 0) { sem++; continue; } for (let j = 0; j < EXP_TETOS.length; j++) if (e <= EXP_TETOS[j]) cnt[j]++; }
+      fac.exp = EXP_TETOS.map((v, j) => ({ v, n: cnt[j] })); fac.expSemDado = sem; }
+    // 🗓️ temporada — as 3 faixas reais + quantas não têm data nenhuma
+    { const m = semDim("temporada"); const cnt = [0, 0, 0, 0];
+      for (let i = 0; i < n; i++) if (m[i]) cnt[ix.tp[i]]++;
+      fac.temporada = [0, 1, 2].map(j => ({ v: TEMPORADAS[j], n: cnt[j] })); fac.temporadaSemData = cnt[3]; }
+    // 🛂 tipo de visto — hoje cada planilha é de um visto só (a dimensão não é
+    // oferecida pela tela), mas o núcleo `runPlanilhaMensal` é o mesmo pros 2
+    // robôs e uma coleta pode trazer H-300 e H-400 juntos.
+    { const m = semDim("visa"); const c = new Map();
+      for (let i = 0; i < n; i++) if (m[i] && ix.vi[i]) c.set(ix.vi[i], (c.get(ix.vi[i]) || 0) + 1);
+      fac.visa = VISTOS.filter(v => c.has(v)).map(v => ({ v, n: c.get(v) })); }
+
     // status DOL (💎 DoublePro) — só faz sentido com 2+ valores distintos.
     // 🚨 v177-FIX2 (auditoria 14/09/2026): _maskDim já impedia o FILTRO por
     // status/grupo de restringir a lista pra quem não é DP, mas a FACETA
@@ -484,7 +657,9 @@ function createFiltros(deps) {
     return { total, totalBase, facetas: fac, disponibilidade: disp, ativos: ativos(f), isDP: ctx.isDP };
   }
 
-  return { parse, ativos, indexar, mascara, filtrar, facetas, wageHora, DIMENSOES, DIMENSOES_DOUBLEPRO, SALARIO_LIMIARES, VAGAS_LIMIARES };
+  return { parse, ativos, indexar, mascara, filtrar, facetas, wageHora, temporadaDe: _temporadaDe, visaDaLinha: _visaDaLinha, DIMENSOES,
+ DIMENSOES_DOUBLEPRO, SALARIO_LIMIARES, VAGAS_LIMIARES, EXP_TETOS, TEMPORADAS, VISTOS };
 }
 
-module.exports = { createFiltros, wageHora, SALARIO_LIMIARES, VAGAS_LIMIARES, DIMENSOES, DIMENSOES_DOUBLEPRO };
+module.exports = { createFiltros, wageHora, SALARIO_LIMIARES, VAGAS_LIMIARES, EXP_TETOS, TEMPORADAS, VISTOS, DIMENSOES, DIMENSOES_DOUBLEPRO };
+
