@@ -2830,7 +2830,7 @@ function loadSheets() {
       // 🔒 Garante 1 vaga = 1 ETA case number ANTES de publicar em memória.
       d = _selfHealSheetIntegrity(key, d, pData);
       if(key==="jan") SHEET_JAN=d; else if(key==="jul") SHEET_JUL=d; else SHEET_H2A=d;
-      (key==="jan"?SHEET_JAN:key==="jul"?SHEET_JUL:SHEET_H2A).forEach(r=>{if(!r.k)r.k=detectCategory(`${r.n||""} ${r.t||""}`);});
+      (key==="jan"?SHEET_JAN:key==="jul"?SHEET_JUL:SHEET_H2A).forEach(r=>{if(!r.k)r.k=detectCategory(r.t,r.n);});
       console.log(`[sheet] ✅ ${key}: ${d.length} vagas (ETA case numbers únicos)`);
       anyLoaded = true;
     } catch(e) {
@@ -2854,7 +2854,7 @@ function loadSheets() {
         if(!Array.isArray(d)||d.length===0){ console.warn(`[sheet] ⚠️ extra ${metaKey}: arquivo ${meta.file} vazio/inválido — planilha NÃO carregada (se for jul2026, o seed bundled recupera sozinho).`); continue; }
         // 🔒 Mesma garantia de integridade pras planilhas extras/históricas.
         d = _selfHealSheetIntegrity(`extra:${metaKey}`, d, fp);
-        d.forEach(r=>{if(!r.k)r.k=detectCategory(`${r.n||""} ${r.t||""}`);r._sheet=metaKey;});
+        d.forEach(r=>{if(!r.k)r.k=detectCategory(r.t,r.n);r._sheet=metaKey;});
         SHEET_EXTRAS[metaKey] = d;
         extrasLoaded++;
         console.log(`[sheet] ✅ extra ${metaKey}: ${d.length} vagas (ETA case numbers únicos)`);
@@ -2922,7 +2922,7 @@ function seedJul2026FromBundle(force){
     let seed = JSON.parse(fs.readFileSync(seedPath,"utf8"));
     if(!Array.isArray(seed) || !seed.length) return { ok:false, reason:'arquivo bundled vazio ou inválido' };
     seed = _selfHealSheetIntegrity("jul2026", seed, seedPath);
-    seed.forEach(r=>{ if(!r.k) r.k=detectCategory(`${r.n||""} ${r.t||""}`); r._sheet="jul2026"; });
+    seed.forEach(r=>{ if(!r.k) r.k=detectCategory(r.t,r.n); r._sheet="jul2026"; });
     SHEET_EXTRAS["jul2026"] = seed;
     DB_SHEETS_META["jul2026"] = {
       name: "Julho 2026 (H-2B)", key: "jul2026", emoji: "❄️",
@@ -2991,18 +2991,64 @@ const CATEGORY_KEYWORDS = {
   ski:          ['ski ','snowboard','winter resort','mountain resort'],
 };
 
-// Prioridade: cargo (r.t) sempre vale mais que nome da empresa (r.n). Um
-// título "Cook" deve ganhar de "resort" no nome da empresa. Construído a
-// partir de JOB_TITLE_TO_CAT (mais abaixo) na primeira chamada de detectCategory.
+// ═══ 🏷️ v179 LOTE 2 — A CATEGORIA SAI DO TÍTULO, NÃO DO NOME DA EMPRESA ═══
+// Até aqui `detectCategory` recebia "empresa + título" GRUDADOS e procurava as
+// chaves de JOB_TITLE_TO_CAT com `includes` solto no texto inteiro. Dois
+// estragos medidos nas planilhas empacotadas:
+//  • "Landscape Laborer" casava com a chave "laborer" (construção) porque
+//    "landscape" não existia na tabela — e `recategorizeAllSheets` refazia
+//    esse erro em TODO boot: jan2026 saía de landscape 3.930 / construction
+//    1.372 pra landscape 1.282 / construction 4.002. 2.558 dos 3.375 títulos
+//    com "landscap" acabavam dentro de 🏗️ Construção, a gaveta mais usada
+//    do site apontando pra vaga errada.
+//  • Como o NOME DA EMPRESA entrava no mesmo texto, uma chave mais longa
+//    vinda dela vencia o cargo real: "Landscape Laborer | Painted Woods Golf
+//    Course" → golf; "Forestry Worker | Cumberland Forestry Contractors" →
+//    construção (por "contractor").
+// Regra nova, em 3 passos, nesta ordem e sem exceção:
+//  (1) tabela de CARGOS só contra o TÍTULO, por PALAVRA/FRASE INTEIRA e do
+//      match mais específico pro mais curto; chave GENÉRICA (laborer, worker,
+//      kitchen, server, cleaner, restaurant, golf course) só decide quando
+//      nenhuma específica casou;
+//  (2) palavras-chave (CATEGORY_KEYWORDS) ainda sobre o TÍTULO;
+//  (3) só então o nome da EMPRESA, como desempate.
+// PROIBIDO voltar a decidir categoria por nome de empresa antes do título.
 let _jobTitlePriorityKeys = null;
-
-function detectCategory(name) {
-  const n = (name||"").toLowerCase();
-  // 1) Match por CARGO específico primeiro (mais confiável que nome de empresa)
-  if(!_jobTitlePriorityKeys) _jobTitlePriorityKeys = Object.entries(JOB_TITLE_TO_CAT).sort((a,b)=>b[0].length-a[0].length);
-  for(const[title,cat] of _jobTitlePriorityKeys){ if(n.includes(title)) return cat; }
-  // 2) Fallback: palavras-chave genéricas (nome de empresa, tipo de negócio etc.)
-  for(const[cat,kws]of Object.entries(CATEGORY_KEYWORDS)){if(kws.some(k=>n.includes(k)))return cat;}
+const _catRegexCache = new Map();
+// Chaves que, sozinhas, não dizem de que trabalho se trata — toda categoria
+// tem "laborer"/"worker" e um clube de golfe tem cozinha, quarto e jardim.
+const CAT_CHAVES_GENERICAS = new Set(["laborer", "worker", "general laborer", "kitchen", "kitchen staff", "server", "cleaner", "restaurant", "golf course"]);
+// Título normalizado pra casamento por palavra inteira: pontuação vira
+// espaço ("Cooks, Restaurant" → "cooks restaurant").
+const _normTitulo = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+// O "s?" no fim aceita o PLURAL do último termo — a fonte escreve tanto
+// "General Laborer" quanto "General Laborers"/"Janitors"/"Cooks", e exigir a
+// palavra exata jogava essas vagas em "other" (regressão pega medindo as
+// planilhas antes de commitar, não por leitura de código).
+function _chaveInteira(texto, chave) {
+  let re = _catRegexCache.get(chave);
+  if (!re) { re = new RegExp("(?:^| )" + chave.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, " ") + "s?(?: |$)"); _catRegexCache.set(chave, re); }
+  return re.test(texto);
+}
+function detectCategory(titulo, empresa) {
+  const t = _normTitulo(titulo);
+  // (1) tabela de cargos, SÓ no título, palavra inteira, mais específico 1º
+  if (t) {
+    if (!_jobTitlePriorityKeys) _jobTitlePriorityKeys = Object.entries(JOB_TITLE_TO_CAT).sort((a, b) => b[0].length - a[0].length);
+    let generica = "";
+    for (const [chave, cat] of _jobTitlePriorityKeys) {
+      if (!_chaveInteira(t, chave)) continue;
+      if (CAT_CHAVES_GENERICAS.has(chave)) { if (!generica) generica = cat; continue; }
+      return cat;
+    }
+    if (generica) return generica;
+  }
+  // (2) palavras-chave, ainda no TÍTULO
+  const tl = String(titulo || "").toLowerCase();
+  if (tl) for (const [cat, kws] of Object.entries(CATEGORY_KEYWORDS)) { if (kws.some(k => tl.includes(k))) return cat; }
+  // (3) só agora a EMPRESA desempata
+  const nl = String(empresa || "").toLowerCase();
+  if (nl) for (const [cat, kws] of Object.entries(CATEGORY_KEYWORDS)) { if (kws.some(k => nl.includes(k))) return cat; }
   return "other";
 }
 
@@ -3522,11 +3568,22 @@ const JOB_TITLE_TO_CAT = {
   banquet:"food",busser:"food","food prep":"food","cafeteria worker":"food",
   landscaper:"landscape","lawn care":"landscape",groundskeeper:"landscape",
   gardener:"landscape","landscape worker":"landscape",
+  // v179: sem estas chaves, "Landscape Laborer" (2.588 vagas em jan2026)
+  // casava com "laborer" e ia parar em 🏗️ Construção.
+  "landscape laborer":"landscape",landscape:"landscape",landscaping:"landscape",
+  lawn:"landscape",grounds:"landscape",groundsman:"landscape",
+  "nursery worker":"landscape","tree trimmer":"landscape",
+  "forestry worker":"forest",forestry:"forest",
   carpenter:"construction",electrician:"construction",plumber:"construction",
   welder:"construction",roofer:"construction",mason:"construction",laborer:"construction",
   painter:"construction","general laborer":"construction",
+  // v179: com o casamento por PALAVRA INTEIRA, "mason" não alcança mais os
+  // compostos que a fonte usa de verdade (medido nas planilhas).
+  brickmason:"construction",stonemason:"construction",blockmason:"construction",
+  "tile setter":"construction","marble setter":"construction",
   housekeeper:"housekeeper",maid:"housekeeper",cleaner:"housekeeper",
   janitor:"housekeeper","room attendant":"housekeeper",
+  "guestroom attendant":"housekeeper","front desk":"housekeeper",
   "seafood processor":"seafood","fish processor":"seafood","crab picker":"seafood",
   "farm worker":"farm",farmhand:"farm","field worker":"farm",harvester:"farm",
   greenskeeper:"golf",caddie:"golf","golf course":"golf",
@@ -3779,7 +3836,7 @@ function normJob(j,i) {
   const ur=(j.apply_url&&j.apply_url!=="N/A")?j.apply_url:(j.employer_website||"");
   const wg=j.basic_rate_from?`$${parseFloat(j.basic_rate_from).toFixed(2)}/${j.pay_range_desc==="Month"?"mês":"h"}`:"–";
   const title=j.job_title||"Position";
-  return{id:String(j.case_number||j.case_id||("j"+i)),caseNum:String(j.case_number||j.case_id||""),title,company:j.employer_business_name||j.employer_trade_name||"–",city:j.employer_city||j.worksite_city||"–",state:j.employer_state||j.worksite_state||"–",wage:wg,workers:parseInt(j.total_positions||1),start:(j.begin_date||"–").slice(0,10),end:(j.end_date||"–").slice(0,10),email:em,phone:ph,url:ur,active:j.active===true,visa:j.visa_class||"H-2B",jobType:j.visa_class==="H-2A"?"agricultural":"non-agricultural",soc:j.soc_title||"",desc:(j.job_duties||"").replace(/\*\*[^*]+\*\*\n?/g,"").trim(),hasEmail:!!em,category:detectCategory(`${j.employer_business_name||""} ${title} ${j.soc_title||""}`)};
+  return{id:String(j.case_number||j.case_id||("j"+i)),caseNum:String(j.case_number||j.case_id||""),title,company:j.employer_business_name||j.employer_trade_name||"–",city:j.employer_city||j.worksite_city||"–",state:j.employer_state||j.worksite_state||"–",wage:wg,workers:parseInt(j.total_positions||1),start:(j.begin_date||"–").slice(0,10),end:(j.end_date||"–").slice(0,10),email:em,phone:ph,url:ur,active:j.active===true,visa:j.visa_class||"H-2B",jobType:j.visa_class==="H-2A"?"agricultural":"non-agricultural",soc:j.soc_title||"",desc:(j.job_duties||"").replace(/\*\*[^*]+\*\*\n?/g,"").trim(),hasEmail:!!em,category:detectCategory(`${title} ${j.soc_title||""}`.trim(),j.employer_business_name||j.employer_trade_name||"")};
 }
 
 async function fetchDOL(skip,top,opts={}) {
@@ -7091,7 +7148,7 @@ ul li{margin-bottom:6px}
     // case number 2x, mescla em vez de publicar linha duplicada.
     const { rows: valid, duplicatesMerged } = _vagasDedupe(validRaw, {caseField:'c'});
     // Enriquecer categorias
-    valid.forEach(r=>{if(!r.k)r.k=detectCategory(`${r.n||""} ${r.t||""}`);r._sheet=safeKey;});
+    valid.forEach(r=>{if(!r.k)r.k=detectCategory(r.t,r.n);r._sheet=safeKey;});
     // Salvar arquivo
     const fname=`${safeKey}.json`;
     const fpath=path.join(SHEETS_DIR,fname);
@@ -14052,16 +14109,18 @@ try{
 // NOME DA EMPRESA (r.n), nunca com o CARGO (r.t). Uma empresa chamada
 // "Breezeway Family Resorts" contratando "Cook" caía em housekeeper só por
 // ter "resort" no nome. Os 5 pontos que faziam essa chamada errada já foram
-// corrigidos no código (agora usam empresa+cargo). Esta função roda 1x no
-// boot e força o recálculo de TODA vaga já classificada antes da correção
-// (ignora o cache de r.k existente), e persiste o resultado corrigido.
+// corrigidos no código (agora passam título e empresa SEPARADOS). Esta função
+// roda 1x no boot e força o recálculo de TODA vaga já classificada antes da
+// correção (ignora o cache de r.k existente), e persiste o resultado.
+// ⚠️ v179: é justamente por rodar em todo boot que ela reintroduzia o erro do
+// paisagismo em 2.588 vagas — a correção tinha que ser na FUNÇÃO, nunca aqui.
 function recategorizeAllSheets(){
   let totalFixed=0;
   function fixArray(arr,label){
     let fixed=0;
     for(const r of arr){
       if(String(r.visa||"").toUpperCase().includes("H-2A")) continue; // H-2A tem taxonomia própria — nunca tocar aqui
-      const novo=detectCategory(`${r.n||""} ${r.t||""}`);
+      const novo=detectCategory(r.t,r.n);
       if(r.k!==novo){ r.k=novo; fixed++; }
     }
     if(fixed>0) console.log(`[recat] 🔧 ${label}: ${fixed}/${arr.length} vagas recategorizadas (título passou a valer, não só empresa)`);

@@ -330,7 +330,7 @@ function createPlanilhas(deps) {
         if (visaStrict && String(c.visa || "").toUpperCase() !== visa) { outroVisto++; continue; }
         if (beginFrom && c.d && c.d < beginFrom) { foraJanela++; continue; }
         if (beginTo && c.d && c.d > beginTo) { foraJanela++; continue; }
-        if (!c.k) c.k = detectCategory(`${c.n || ""} ${c.t || ""}`);
+        if (!c.k) c.k = detectCategory(c.t, c.n);
         compact.push(c);
       }
       dcLog(`✅ ${compact.length} vagas válidas (${descartadas} sem e-mail/qualidade${foraJanela ? `, ${foraJanela} fora da janela de datas` : ""}${outroVisto ? `, ${outroVisto} de outro visto` : ""})`);
@@ -448,7 +448,7 @@ function createPlanilhas(deps) {
         const c = bs.toCompact(rec);
         if (String(c.visa || "").toUpperCase() !== "H-2A") { outroVisto++; continue; }
         if (have.has(String(c.c || "").trim().toUpperCase())) { jaTinha++; continue; }
-        if (!c.k) c.k = detectCategory(`${c.n || ""} ${c.t || ""}`);
+        if (!c.k) c.k = detectCategory(c.t, c.n);
         novas.push(c);
       }
       // sai inativa: (a) o feed traz o case com status morto → atualiza; (b) temporada acabou.

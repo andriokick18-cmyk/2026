@@ -2256,6 +2256,59 @@ async function testAuthWatchdogPush() {
         "regra do lote 1 desfeita no mod-filtros.js");
     }
 
+    // ═══ 🏷️ v179 — LOTE 2: A CATEGORIA SAI DO TÍTULO, NÃO DO NOME DA EMPRESA ═══
+    // 2.588 vagas de PAISAGISMO viviam dentro de 🏗️ Construção porque
+    // "Landscape Laborer" casava com a chave "laborer" — e recategorizeAllSheets
+    // refazia esse erro em TODO boot. Medido neste repo, jan2026 (9.240 linhas):
+    // ANTES landscape 1.279 / construction 4.005 · DEPOIS landscape 3.877 /
+    // construction 1.438. jul2025: construction 502 → 330, landscape 244 → 417.
+    {
+      const vfCat = (await get("/api/vagas/filtros?sheet=jan2026")).json;
+      const cLand = (vfCat.facetas.categoria || []).find((c) => c.v === "landscape");
+      const cConst = (vfCat.facetas.categoria || []).find((c) => c.v === "construction");
+      check("🏷️ v179-L2: jan2026 depois do recategorizeAllSheets do boot — paisagismo voltou pra 🌿 Paisagismo (1.279 → 3.877) e 🏗️ Construção parou de inchar (4.005 → 1.438)",
+        cLand && cConst && cLand.n >= 3500 && cConst.n <= 1600, `landscape=${cLand && cLand.n} construction=${cConst && cConst.n}`);
+      // a vaga que o chip promete é a vaga que a lista entrega (mesma régua do lote 1)
+      const smConst = (await get("/api/sheet-meta?sheet=jan2026&categoria=construction&top=2000")).json;
+      const smConst2 = (await get("/api/sheet-meta?sheet=jan2026&categoria=construction&top=2000&skip=2000")).json;
+      const titulosConst = [...smConst.jobs, ...smConst2.jobs].map((j) => j.title || "");
+      check("🏷️ v179-L2: nenhuma vaga com 'landscap' no título continua dentro de 🏗️ Construção (eram 2.558 de 3.375) — e a contagem do chip é a da lista",
+        smConst.total === cConst.n && titulosConst.filter((t) => /landscap/i.test(t)).length === 0,
+        `total=${smConst.total} chip=${cConst && cConst.n} com landscap=${titulosConst.filter((t) => /landscap/i.test(t)).length}`);
+      // fixtures determinísticas (título × empresa) pelo caminho REAL: o upload
+      // de planilha é quem chama detectCategory(r.t, r.n) quando a linha não
+      // traz categoria — a resposta da lista mostra o que a função decidiu.
+      const fixCat = [
+        ["Landscape Laborer", "312 Land Development, LLC", "landscape"],
+        ["Landscape Laborer", "Painted Woods Golf Course", "landscape"],   // empresa NUNCA decide sozinha
+        ["Golf Course Maintenance Laborer", "Escondido Club Inc", "golf"],
+        ["Cook", "Breezeway Family Resorts", "food"],                       // correção do v960 não pode regredir
+        ["Forestry Worker", "Cumberland Forestry Contractors, LLC", "forest"],
+        ["Housekeeper", "Sunrise Construction Co", "housekeeper"],
+        ["General Laborers", "J.J. Ferguson Prestress-Precast Co.", "construction"], // plural
+        ["Stonemasons", "Tasdemir Marble and Granite LLC", "construction"],
+      ];
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      await req2("POST", "/api/admin/sheet/upload", {
+        name: "Categoria Teste", key: "cat-teste",
+        data: fixCat.map(([t, n], i) => ({ c: `H-400-CAT-${String(i).padStart(4, "0")}`, e: `chefe${i}@catteste.com`, n, t })),
+      });
+      const smCat = (await get("/api/sheet-meta?sheet=cat-teste&top=50")).json;
+      const errosCat = [];
+      for (const [t, n, esperado] of fixCat) {
+        const j = (smCat.jobs || []).find((x) => x.title === t && x.company === n);
+        if (!j || j.category !== esperado) errosCat.push(`${t} | ${n} → ${j ? j.category : "?"} (esperado ${esperado})`);
+      }
+      check("🏷️ v179-L2: fixtures determinísticas título × empresa — o TÍTULO decide, a empresa só desempata; chave genérica (laborer/worker/golf course) só vale quando nenhuma específica casou; plural conta",
+        errosCat.length === 0 && (smCat.jobs || []).length === fixCat.length, errosCat.join(" | "));
+      const _srvL2 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      check("🏷️ v179-L2: (estrutural) detectCategory recebe TÍTULO e EMPRESA separados em TODOS os chamadores — nunca mais a string 'empresa + título' grudada, que deixava uma chave longa da empresa vencer o cargo real",
+        /function detectCategory\(titulo, empresa\)/.test(_srvL2) && !/detectCategory\(`\$\{r\.n/.test(_srvL2) && !/detectCategory\(`\$\{j\.employer/.test(_srvL2) &&
+        !/detectCategory\(`\$\{c\.n/.test(fs.readFileSync(path.join(__dirname, "mod-planilhas.js"), "utf8")) &&
+        /CAT_CHAVES_GENERICAS/.test(_srvL2) && /_chaveInteira/.test(_srvL2),
+        "algum chamador ainda concatena empresa+título, ou a regra de palavra inteira sumiu");
+    }
+
     // ═══ 📧 ORDEM DO DONO (13/09/2026): e-mails de envio por plano — grátis 0
     // (nem vincula Gmail), VIP/VIPro 1 (só o principal), DoublePro 2, admin 6.
     // Cortesia (code) e trial contam como sem plano pago. ═══
