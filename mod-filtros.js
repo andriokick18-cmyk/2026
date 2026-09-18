@@ -139,19 +139,38 @@ function createFiltros(deps) {
       return src[k];
     };
     const first = (...keys) => { for (const k of keys) { const v = get(k); if (v !== undefined && v !== null && v !== "" && !(Array.isArray(v) && !v.length)) return v; } return ""; };
+    // ⚠️ v179: o que o motor não entende NÃO some calado. `inicio=13`,
+    // `salarioMin=abc`, `grupo=Z` faziam o filtro evaporar e a resposta
+    // devolver a planilha INTEIRA com ativos=0 — na tela é confusão; no robô
+    // é sério, porque job.filters vem do cliente e é guardado como veio,
+    // então um filtro corrompido fazia o refill se realimentar com tudo em
+    // vez de parar. Agora cada descarte é declarado em `_ignorados`.
+    const ignorados = [];
+    const _marcar = (param, valor, motivo) => { if (ignorados.length < 20) ignorados.push({ param, valor: String(valor).slice(0, 40), motivo }); };
+    const _brutoEstado = _lista(first("estado", "state"), s => s);
+    const _brutoInicio = _lista(first("inicio", "beginMonth", "beginMonths"), s => s);
+    const _brutoGrupo = _lista(first("grupo", "grupos"), s => s.toUpperCase());
+    const _wBruto = String(first("salarioMin", "minWage") || "").trim();
+    const _vBruto = String(first("vagasMin", "minWorkers") || "").trim();
     const f = {
       q: String(first("q", "keyword") || "").trim().slice(0, 120),
-      estado: _lista(first("estado", "state"), s => normalizeStateName(s)).filter(Boolean),
+      estado: _brutoEstado.map(s => normalizeStateName(s)).filter(Boolean),
       cidade: _lista(first("cidade", "city"), s => s.slice(0, 80), false),
       categoria: _lista(first("categoria", "category"), s => s.toLowerCase()).filter(c => c !== "all"),
       cargo: _lista(first("cargo", "titles"), s => s.toLowerCase().replace(/\s+/g, " "), false).filter(c => c !== "__outros__"),
-      salarioMin: _num(first("salarioMin", "minWage")),
-      vagasMin: Math.floor(_num(first("vagasMin", "minWorkers"))),
-      inicio: _lista(first("inicio", "beginMonth", "beginMonths"), s => String(parseInt(s, 10))).map(Number).filter(m => m >= 1 && m <= 12),
+      salarioMin: _num(_wBruto),
+      vagasMin: Math.floor(_num(_vBruto)),
+      inicio: _brutoInicio.map(s => parseInt(s, 10)).filter(m => m >= 1 && m <= 12),
       status: _lista(first("status", "dolStatus"), s => s.slice(0, 60), false),
-      grupo: _lista(first("grupo", "grupos"), s => s.toUpperCase()).filter(g => GRUPOS.includes(g)),
+      grupo: _brutoGrupo.filter(g => GRUPOS.includes(g)),
       email: ["1", "true", "yes", "sim"].includes(String(first("email", "hasEmail") || "").toLowerCase()),
     };
+    for (const v of _brutoEstado) if (!normalizeStateName(v)) _marcar("estado", v, "estado desconhecido");
+    for (const v of _brutoInicio) { const m = parseInt(v, 10); if (!(m >= 1 && m <= 12)) _marcar("inicio", v, "mês fora de 1–12"); }
+    for (const v of _brutoGrupo) if (!GRUPOS.includes(v)) _marcar("grupo", v, "grupo fora de A–H");
+    if (_wBruto && !(f.salarioMin > 0)) _marcar("salarioMin", _wBruto, "salário não é um número maior que zero");
+    if (_vBruto && !(f.vagasMin > 0)) _marcar("vagasMin", _vBruto, "quantidade de vagas não é um número maior que zero");
+    Object.defineProperty(f, "_ignorados", { value: ignorados, enumerable: false, writable: true, configurable: true });
     return f;
   }
 

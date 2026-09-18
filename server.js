@@ -3756,6 +3756,10 @@ function _buscaIdentificador(list, qRaw) {
   if (/^\d{4,8}$/.test(up)) return list.filter(r => String(r.c || "").toUpperCase().endsWith("-" + up));
   return null;
 }
+// v179: só estas ordenações existem. Qualquer outra coisa vinda da URL cai
+// no padrão estável — ordenação aleatória por requisição quebra a paginação
+// (a mesma vaga aparece 2x e outra nunca aparece).
+const SORTS_VALIDOS = new Set(["random", "asc", "desc", "wage", "start", "match"]);
 function searchSheet(arr, q, state, category, skip, top, sort, matchCtx) {
   let list = arr;
   let sugestao = null;
@@ -3851,7 +3855,6 @@ function searchSheet(arr, q, state, category, skip, top, sort, matchCtx) {
   // Na busca paginada usamos ordem estável para garantir que skip/top
   // retornem registros corretos sem duplicatas ou lacunas entre páginas.
   if (sort==="desc") list=[...list].reverse();
-  else if (sort==="shuffle") { list=shuffleArray(list); } // shuffle explícito (uso não-paginado)
   // ── V953: ordenações determinísticas novas (estáveis p/ paginação) ──
   // wage  → maior salário primeiro, NORMALIZADO por unidade: dados reais têm
   //         'h' (16k), 'mo' (184) e vazio. Mensal ÷173h e semanal ÷40h viram
@@ -4316,7 +4319,16 @@ function isQueueJobDead(source,caseNum){
     const st=String(row.st||"").toUpperCase();
     if(st.includes("WITHDRAWN"))return "vaga RETIRADA pelo empregador";
     if(st.includes("DENIED"))return "vaga NEGADA pelo DOL";
-    if(st.includes("EXPIRED")||st.includes("INVALIDATED")||row.exp===1||row.exp===true)return "vaga EXPIRADA";
+    if(st.includes("EXPIRED")||st.includes("INVALIDATED"))return "vaga EXPIRADA";
+    // ⚠️ v179: `row.exp` é MESES DE EXPERIÊNCIA EXIGIDA (0,1,2,3,…,60), NUNCA
+    // "expirada" — mas a condição acima tinha `row.exp===1` e pulava o envio
+    // com a mensagem falsa "vaga EXPIRADA". São 447 vagas boas em jan2026 e
+    // 149 em jul2025 descartadas hoje, e o robô de enriquecimento grava
+    // exp=1 pra toda vaga que exige experiência: quanto mais ele roda, mais
+    // vaga boa era jogada fora. A temporada encerrada (data de FIM no
+    // passado) é o sinal honesto que faltava.
+    const de=String(row.de||"").slice(0,10);
+    if(/^\d{4}-\d{2}-\d{2}$/.test(de)&&de<new Date().toISOString().slice(0,10))return "temporada ENCERRADA (a vaga terminou em "+de.split("-").reverse().join("/")+")";
     return null;
   }catch{return null;}
 }
@@ -7677,8 +7689,18 @@ filtrar();
   // ── Sheet routes com categorias dinâmicas ─────────────
   if(pathname==="/api/sheet-meta"){
     const sheet=u.searchParams.get("sheet")||"";const arr=getSheet(sheet);
-    const skip=Math.max(0,parseInt(u.searchParams.get("skip")||"0",10));const top=Math.min(2000,Math.max(1,parseInt(u.searchParams.get("top")||"25",10)));
-    const sort=u.searchParams.get("sort")||"random";
+    // ⚠️ v179: parâmetro inválido não pode sumir calado. `top=abc` virava NaN
+    // → Math.max(1,NaN)=NaN → a lista voltava VAZIA ao lado de um contador de
+    // milhares ("Nenhuma vaga encontrada" com total 2.206). E `sort` vinha da
+    // URL sem lista branca: `sort=shuffle` reembaralhava a cada requisição,
+    // então a paginação por skip/top duplicava e PERDIA vaga (varredura real
+    // de jul2025: 1.465 únicas e 741 duplicadas de 2.206).
+    const _nTop=parseInt(u.searchParams.get("top")||"",10);
+    const _nSkip=parseInt(u.searchParams.get("skip")||"",10);
+    const top=Number.isFinite(_nTop)?Math.min(2000,Math.max(1,_nTop)):25;
+    const skip=Number.isFinite(_nSkip)?Math.max(0,_nSkip):0;
+    const _sortReq=(u.searchParams.get("sort")||"").trim();
+    const sort=SORTS_VALIDOS.has(_sortReq)?_sortReq:"random";
     // v173: TODOS os filtros (estado/cidade/categoria/cargo/salário/vagas/mês
     // de início/status/grupo/e-mail) passam pelo motor único FILTROS — a
     // MESMA régua da contagem ao vivo (/api/vagas/filtros) e do refill do
@@ -7697,7 +7719,9 @@ filtrar();
       food:"Food Service / Bartender",ski:"Ski Resort Worker",other:"Seasonal Worker"};
     const _sMeta=getSess(req);
     const _uMeta=_sMeta?.user_email?getUser(_sMeta.user_email):null;
-    const preFiltered=FILTROS.filtrar(baseArr,f,{except:["q"],excluir:hideSent?_excluirEnviadosFn(_sMeta?.user_email):null,isDP:_isDoublePro(_uMeta)});
+    const _dpMeta=_isDoublePro(_uMeta);
+    const _corteMeta=hideSent?_excluirEnviadosFn(_sMeta?.user_email):null;
+    const preFiltered=FILTROS.filtrar(baseArr,f,{except:["q"],excluir:_corteMeta,isDP:_dpMeta});
     // 🎯 v82: contexto de match (perfil H2B + perfil por visto) do usuário
     // logado — null pra visitante sem sessão/perfil, cai sempre no
     // comportamento de sempre (sem score, sort=match vira ordem estável).
@@ -7718,8 +7742,13 @@ filtrar();
         company:r.n||"–", state:r.s||"–", city:r.ci||"",
         zip:r.zip||"", addr:r.addr||"",
         start:r.d||"–", end:r.de||"–",
-        status:r.st||"–", category:cat, visa, active,
-        grupo:(r.g&&/^[A-H]$/.test(r.g))?r.g:null,
+        // 💎 v179: status no DOL e grupo da loteria são dado EXCLUSIVO do
+        // Double Pro — o v177-FIX3 fechou o vazamento na FACETA, mas aqui
+        // saíam em texto puro VAGA A VAGA pra qualquer um (inclusive sem
+        // cookie nenhum): o cadeado da tela era decorativo e quem é grátis
+        // recebia o dado bruto e filtrava no próprio navegador.
+        status:_dpMeta?(r.st||"–"):null, category:cat, visa, active,
+        grupo:(_dpMeta&&r.g&&/^[A-H]$/.test(r.g))?r.g:null,
         title:occupation, occupation,
         wage:r.w?`$${r.w}/${r.wunit||"h"}`:null,
         wageRaw:r.w||null, wageMax:r.wmax||null,
@@ -7737,7 +7766,13 @@ filtrar();
         fromSheet:true,
         matchScore:_m?_m.score:null, matchWhy:_m?_m.why:null
       };
-    }),total,remainingTotal:baseArr.length,skip,sheet,filtrosAtivos:FILTROS.ativos(f),sugestoes:sugestao?[sugestao]:[]});
+    // v179: "de N vagas" agora passa pelo MESMO corte da regra 8 (enviadas /
+    // na fila) que o `totalBase` de /api/vagas/filtros já usava — os dois
+    // alimentam o MESMO "de N" da mesma tela e divergiam pra quem tem
+    // histórico (com centenas de envios, dois denominadores pro mesmo
+    // conjunto). Mesma função de corte, nunca uma 2ª conta.
+    }),total,remainingTotal:_corteMeta?baseArr.reduce((n,r)=>n+(_corteMeta(r)?0:1),0):baseArr.length,
+      skip,sheet,filtrosAtivos:FILTROS.ativos(f),ignorados:f._ignorados||[],sugestoes:sugestao?[sugestao]:[]});
   }
 
   // Dicionário de rótulos de categoria (PT) — fonte única pros cards/chips
@@ -7776,7 +7811,7 @@ filtrar();
       cargoBusca:(u.searchParams.get("cargoBusca")||"").slice(0,60),
       cidadeBusca:(u.searchParams.get("cidadeBusca")||"").slice(0,60),
     });
-    const _body={ok:true,sheet,totalPlanilha:arr.length,...r,filtros:f};
+    const _body={ok:true,sheet,totalPlanilha:arr.length,...r,filtros:f,ignorados:f._ignorados||[]};
     if(_VF_CACHE.size>200)_VF_CACHE.clear();
     _VF_CACHE.set(_cKey,{t:Date.now(),body:_body});
     return json(res,200,_body);
@@ -8030,6 +8065,15 @@ filtrar();
       PLANILHAS.aplicarDolNaLinha(row,d.dol||{});
       _saveEnrichedSheet(String(d.sheet||""),arr);
       return json(res,200,{ok:true,row});}catch(e){return json(res,400,{error:e.message});}
+  }
+  // 🧪 v179: gancho de teste pra `isQueueJobDead` — a função que decide se o
+  // robô PULA uma vaga da fila. É chamada no meio do laço de envio automático
+  // (que exige plano, Gmail conectado e fila viva), então sem este atalho a
+  // regra "exp é experiência, não expiração" só daria pra conferir lendo o
+  // código. Mesma trava dos outros /api/test/*.
+  if(pathname==="/api/test/vaga-morta"&&process.env.TEST_LOGIN_TOKEN){
+    if(String(u.searchParams.get("token")||"")!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});
+    return json(res,200,{ok:true,motivo:isQueueJobDead(u.searchParams.get("sheet")||"",u.searchParams.get("case")||"")});
   }
   // 🤖 v177: gancho de teste pra exercitar a lógica PURA de montar a
   // pergunta pro Gemini e ler a resposta dele — sem nunca chamar a rede de
@@ -11267,6 +11311,10 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
       // 🔐 v165 (só teste): semeia e-mails extras pra provar a guarda do
       // revoke na remoção de sender (conta de login nunca sofre revoke).
       if(Array.isArray(d.senderEmails))setUser(email,{senderEmails:d.senderEmails});
+      // 🧪 v179 (só teste): semeia empregadores JÁ CONTATADOS (regra 8) —
+      // é o que o corte hideSent usa, e sem isso não dá pra provar que a
+      // lista e o painel descontam o MESMO tanto.
+      if(Array.isArray(d.sentTo))for(const _t of d.sentTo)markSent(email,String(_t||""));
       // 🔒 v172 (só teste): desde que login parou de conceder gmail.send
       // sozinho, testes que precisam simular "plano pago + Gmail conectado"
       // (pra chegar na parte que realmente querem testar, não no gate novo)

@@ -2379,6 +2379,74 @@ async function testAuthWatchdogPush() {
         "regra do lote 3 desfeita (categoria implícita de volta no resultado, palheiro por requisição, ou tela sem a sugestão)");
     }
 
+    // ═══ 🔒 v179 — LOTE 4: ROTA HONESTA E GATE FECHADO ═══
+    {
+      // (1) 💎 grupo/status são dado EXCLUSIVO do Double Pro — o v177-FIX3
+      // fechou a FACETA, mas a rota continuava mandando vaga a vaga, em texto
+      // puro, até pra quem não tem cookie nenhum.
+      const _cookieGuardado = COOKIE; COOKIE = "";
+      const semCookie = (await get("/api/sheet-meta?sheet=jul2026&top=3")).json;
+      COOKIE = _cookieGuardado;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "vazadp@test.com", name: "Sem DP" });
+      const gratis = (await get("/api/sheet-meta?sheet=jul2026&top=3")).json;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "temdp@test.com", name: "Com DP", plan: "doublepro", vip: { plan: "doublepro", active: true, manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000, source: "pix" } });
+      const dp = (await get("/api/sheet-meta?sheet=jul2026&top=3")).json;
+      check("🔒 v179-L4: 💎 grupo da loteria e status no DOL saíam vaga a vaga pra QUALQUER um (até sem cookie) — o cadeado da tela era decorativo, bastava ler a resposta; agora null pra quem não é Double Pro, igual a faceta já faz",
+        semCookie.jobs.every((j) => j.grupo === null && j.status === null) &&
+        gratis.jobs.every((j) => j.grupo === null && j.status === null) &&
+        dp.jobs.some((j) => j.grupo) && dp.jobs.every((j) => j.status),
+        `semCookie=${JSON.stringify(semCookie.jobs.map((j) => [j.grupo, j.status]))} dp=${JSON.stringify(dp.jobs.map((j) => [j.grupo, j.status]))}`);
+      // (2) `exp` é MESES DE EXPERIÊNCIA EXIGIDA, nunca "expirada"
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      await req2("POST", "/api/admin/sheet/upload", {
+        name: "Vaga Morta Teste", key: "morta-teste",
+        data: [
+          { c: "H-400-EXP-0001", e: "viva@mortateste.com", n: "Viva LLC", t: "Welder", st: "Certified", exp: 1, de: "2027-01-01" },
+          { c: "H-400-EXP-0002", e: "velha@mortateste.com", n: "Velha LLC", t: "Welder", st: "Certified", exp: 0, de: "2020-01-01" },
+          { c: "H-400-EXP-0003", e: "retirada@mortateste.com", n: "Retirada LLC", t: "Welder", st: "Withdrawn", exp: 0, de: "2027-01-01" },
+        ],
+      });
+      const mt = async (c) => (await get(`/api/test/vaga-morta?token=${TEST_TOKEN}&sheet=morta-teste&case=${c}`)).json;
+      const m1 = await mt("H-400-EXP-0001"), m2 = await mt("H-400-EXP-0002"), m3 = await mt("H-400-EXP-0003");
+      check("🔒 v179-L4: `exp` é MESES DE EXPERIÊNCIA EXIGIDA (0,1,2,…,60) e o robô tratava exp===1 como 'vaga EXPIRADA', pulando 447 vagas boas em jan2026 e 149 em jul2025 com motivo falso — e o enriquecimento grava exp=1 pra toda vaga que exige experiência (quanto mais rodava, pior)",
+        m1.motivo === null && /ENCERRADA/.test(m2.motivo || "") && /RETIRADA/.test(m3.motivo || ""),
+        `exp1=${JSON.stringify(m1.motivo)} temporadaVelha=${JSON.stringify(m2.motivo)} withdrawn=${JSON.stringify(m3.motivo)}`);
+      // (3) parâmetro inválido não some calado
+      const inv = (await get("/api/vagas/filtros?sheet=h2a-jun2026&inicio=13&salarioMin=abc&grupo=Z")).json;
+      check("🔒 v179-L4: parâmetro inválido sumia CALADO e a resposta devolvia a planilha inteira (inicio=13 → total 4.964 com ativos=0) — na tela é confusão, no robô o job.filters corrompido fazia o refill se realimentar com TUDO; agora cada descarte é declarado",
+        inv.total === 4964 && Array.isArray(inv.ignorados) && inv.ignorados.length === 3 &&
+        inv.ignorados.some((x) => x.param === "inicio") && inv.ignorados.some((x) => x.param === "salarioMin") && inv.ignorados.some((x) => x.param === "grupo"),
+        JSON.stringify(inv.ignorados));
+      const topAbc = (await get("/api/sheet-meta?sheet=jul2025&top=abc")).json;
+      const skipAbc = (await get("/api/sheet-meta?sheet=jul2025&skip=abc&top=5")).json;
+      check("🔒 v179-L4: top=abc virava NaN e a lista voltava VAZIA ao lado de um contador de milhares ('Nenhuma vaga encontrada' com total 2.206) — agora cai no padrão (25) e skip inválido vira 0",
+        topAbc.jobs.length === 25 && topAbc.total === 2206 && skipAbc.skip === 0 && skipAbc.jobs.length === 5,
+        `top=abc → ${topAbc.jobs.length} vagas / total ${topAbc.total}; skip=abc → skip ${skipAbc.skip}`);
+      const vistos = new Set(); let dup = 0;
+      for (let sk = 0; sk < 2206; sk += 500) {
+        const pg = (await get(`/api/sheet-meta?sheet=jul2025&sort=shuffle&top=500&skip=${sk}`)).json;
+        for (const j of pg.jobs) { if (vistos.has(j.caseNum)) dup++; else vistos.add(j.caseNum); }
+      }
+      check("🔒 v179-L4: `sort` vinha da URL sem lista branca — sort=shuffle reembaralhava a cada requisição e a paginação DUPLICAVA e PERDIA vaga (varredura real de jul2025: 1.465 únicas / 741 duplicadas); agora ordenação desconhecida cai no padrão estável",
+        vistos.size === 2206 && dup === 0, `${vistos.size} únicas / ${dup} duplicadas`);
+      // (4) o "de N vagas" das duas rotas tem que ser o MESMO número
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "denvagas@test.com", name: "Den Vagas" });
+      const semHist = (await get("/api/sheet-meta?sheet=morta-teste&hideSent=1&top=5")).json;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "denvagas@test.com", sentTo: ["viva@mortateste.com", "velha@mortateste.com"] });
+      const comHist = (await get("/api/sheet-meta?sheet=morta-teste&hideSent=1&top=5")).json;
+      const vfHist = (await get("/api/vagas/filtros?sheet=morta-teste&hideSent=1")).json;
+      check("🔒 v179-L4: o 'de N vagas' da lista usava a planilha BRUTA (remainingTotal) enquanto o painel já descontava enviadas/fila (totalBase) — os dois alimentam o MESMO 'de N' da MESMA tela e divergiam pra quem tem histórico; agora é o mesmo corte (regra 8), pela mesma função",
+        semHist.remainingTotal === 3 && comHist.remainingTotal === 1 && comHist.remainingTotal === vfHist.totalBase,
+        `sem histórico=${semHist.remainingTotal} · com 2 envios: lista=${comHist.remainingTotal} painel=${vfHist.totalBase}`);
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      const _srvL4 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      check("🔒 v179-L4: (estrutural) o gate 💎 é do SERVIDOR na resposta por vaga, `exp` não é mais sinal de expiração e só existem ordenações da lista branca",
+        /status:_dpMeta\?\(r\.st\|\|"–"\):null/.test(_srvL4) && /grupo:\(_dpMeta&&r\.g/.test(_srvL4) &&
+        !/row\.exp===1\|\|row\.exp===true/.test(_srvL4) && /const SORTS_VALIDOS = new Set/.test(_srvL4) &&
+        !/sort==="shuffle"/.test(_srvL4),
+        "gate por vaga, exp ou lista branca de sort desfeitos");
+    }
+
     // ═══ 📧 ORDEM DO DONO (13/09/2026): e-mails de envio por plano — grátis 0
     // (nem vincula Gmail), VIP/VIPro 1 (só o principal), DoublePro 2, admin 6.
     // Cortesia (code) e trial contam como sem plano pago. ═══
