@@ -883,3 +883,127 @@ Aprovado pelo dono. Provado com curl sem cookie: `/api/sheet-meta?sheet=jan2026
 - **`DOL_API_BASE`/`DOL_FEED_BASE` são só de teste**: o padrão é o host real do
   DOL. É o que torna o enriquecimento e o frescor exercitáveis no `npm test`
   com o feed falso; em produção nada muda (mesmo caminho, headers e ritmo).
+
+## v183–v186 — Varredura total, lotes 1-4
+
+Ordem do dono (18/09/2026): **"O que ainda pode melhorar? O que não faz
+sentido existir? Ou funciona errado? Pensa sobre tudo e resolva!"** +
+autorização total ("corrija tudo isso que você disse que tá errado"). Uma
+auditoria de leitura completa gerou 22 lotes; estes são os 4 primeiros —
+identidade do admin, motor de envio, jornada do pedido e páginas públicas.
+22 checks novos (553 → 575), suíte 100% verde. sw v54 → v55 (só o lote 3
+toca arquivo servido ao cliente).
+
+**v183 — Lote 1: quem aprovou e de quem é o dinheiro** (`server.js`,
+`mod-admin-health.js`, `mod-sentinel.js`). Desde o v177-FIX a sessão do
+painel admin pode ter como CHAVE INTERNA o USERNAME reservado
+("andrio"/"diego") em vez do e-mail — decisão deliberada pra nunca existirem
+2 contas pro mesmo admin. Só que a cadeia inteira de ATRIBUIÇÃO entende
+E-MAIL: `editorFromEmail("diego")` caía no default `"andrew"` (TODA aprovação
+do Diego era gravada como "Andrew"), `isAdminEmail("diego")` é false — então
+`_finDonoDe` devolvia "sem dono" e **cada entrada aprovada pelo painel ia pra
+fila de "entradas sem dono" do Acerto entre Sócios** — e as 26 guardas de
+"admin hardcoded" (banir/desbanir, deletar conta, sentinela, restart de robôs)
+davam 403 na cara do painel. Junto, o alarme falso: o sentinela media a saúde
+das notificações pelo Gmail pessoal do `ADMIN_EMAIL` — canal que deixou de ser
+o principal no v175 e cuja conta nem existe mais sob esse e-mail desde o v172c
+—, gritando 🚨 a cada 6h e pintando de vermelho a linha de "Últimas ações dos
+robôs", justo onde um alarme de verdade apareceria.
+
+**v184 — Lote 2: motor de envio** (`server.js`). (1) Job ativo com `queue:[]`
+é estado NORMAL (mandou a última vaga e espera o refill de ~7min), mas
+`reactivateOneAutoJob` exigia fila não-vazia — e o laço de órfãos do watchdog
+e o filtro do `diagnoseJob` tinham a MESMA condição: o robô de um cliente
+pagante nessa janela não voltava NUNCA depois de um restart, e nenhum dos 3
+vigias o pegava (este repo faz deploy a cada commit). (2) O motor dizia "salva
+ANTES de tentar envio (evita reprocessamento em crash)" e o que ia pro disco
+na hora era NADA — `setAutoJob` é debounced de propósito e `markSent` também
+era: um kill duro devolvia a vaga JÁ ENVIADA pra fila e o robô mandava a MESMA
+candidatura pro MESMO empregador. (3) Os 2 primeiros passos do plano já
+estavam feitos (v179 tirou `row.exp===1` de `_motivoVagaMorta`; o v182 mandou
+o Sim/Não pra `expReq`) — só ganharam guarda estrutural.
+
+**v185 — Lote 3: a jornada do pedido** (`app.js`, `index.html`, `server.js`,
+sw v55). A ativação provisória (intencional desde 21/07) estava ANULADA pelo
+front: só o `checkStatus()` do boot montava o `U` inteiro, então quem comprava
+clicava em "Ir para Envio Automático" e batia no cadeado "Plano necessário" —
+só um F5 resolvia. Pedido CANCELADO pelo robô (v178) sumia da Home sem uma
+palavra. "Próximo passo" e o card-herói mandavam quem é FREE "buscar vagas" e
+"ativar o automático" — free tem 0 envios desde o v172. E o passo 2 da compra
+pedia de novo nome/WhatsApp/cidade/estado que o cadastro v175 já obriga.
+
+**v186 — Lote 4: páginas públicas** (`guia.html`, `quanto-ganha-h2b.html`,
+`h2bapply-funciona.html`, `server.js`). 5 links de conversão de /guia
+(prioridade 0.9 no sitemap) e /quanto-ganha-h2b (0.8) apontavam pra
+`/oauth/google`, rota que não existe desde o v172c: **quem chegava do Google e
+clicava no botão principal caía em 404**. A guarda do v172j existia desde
+12/09 — mas a lista `_seoFiles` nunca incluiu esses 2 arquivos. A
+/h2bapply-funciona se contradizia dentro de si mesma e prometia resposta de
+empregador "traduzida no painel" (o app é só-envio e nunca lê inbox), carta
+"gerada" (nada é escrito pelo app) e um JSON-LD de FAQ divergente do texto
+visível. /excluir-conta mandava pra uma tela ("Configurações → Excluir minha
+conta") que NUNCA existiu.
+
+### Regras novas (não quebrar)
+
+- **A SESSÃO TEM UM E-MAIL SÓ, E ELE É O REAL**: `_sessAdminEmail(s)`
+  (`admin_email` da sessão, com fallback pro `user_email`) é a fonte ÚNICA de
+  "qual e-mail representa esta sessão", e `_sessAdminNome(s)` é a única régua
+  de "Andrio/Diego/e-mail" pra trilha. PROIBIDO voltar a passar `s.user_email`
+  cru pra `isAdminEmail`, `editorFromEmail` ou pra qualquer campo de
+  atribuição (`ativadoPorEmail`, `lancadoPorEmail`, `porEmail`, `dadoPor`) —
+  a chave interna da conta pode ser um username. Guarda estrutural no smoke.
+  Em guarda de rota, trocar `isAdminEmail` por `isAdminVip` **não** é
+  equivalente: `isAdminVip` aceita qualquer conta com a flag `isAdmin`.
+- **O VIGIA MEDE O CANAL QUE EXISTE**: a saúde do e-mail do sistema é
+  `NOTIF.conectada()` (mod-notif, v175) — é ela que deixa o botLog do
+  sentinela vermelho. O Gmail pessoal do admin continua medido, mas como
+  RESERVA (é o que o `pendingOrderAlert` usa) e em nível informativo. Alarme
+  que grita todo dia sem nada estar quebrado treina o dono a ignorar o log.
+- **FILA VAZIA NÃO É ROBÔ MORTO**: `active:true` + `queue:[]` + `nextSendAt`
+  futuro é o estado normal de quem espera o refill. Nem
+  `reactivateOneAutoJob`, nem o laço de órfãos, nem o `diagnoseJob` podem
+  exigir fila não-vazia. E o reagendamento respeita o `nextSendAt` original —
+  chamar `scheduleAuto` na hora dispararia o refill e furaria o intervalo
+  humanizado de ~7min contra o Gmail.
+- **"JÁ ENVIEI PRA ESSE EMPREGADOR" GRAVA SÍNCRONO**: `markSent` chama
+  `persistSent()` (SENT_FILE é só conjunto de e-mail, e os únicos chamadores
+  em produção são os 2 pontos de envio bem-sucedido — no máximo 1 gravação por
+  candidatura que saiu). `setAutoJob` **continua debounced** de propósito
+  (DB_AUTO carrega a fila inteira de todo mundo e é escrito várias vezes por
+  envio): a fila pode voltar atrasada num crash, mas `hasSent`/regra 8 corta a
+  vaga. PROIBIDO inverter os dois.
+- **O `/api/status` É A VERDADE DA TELA, E ELA SE REAPLICA**: `applyStatus(d)`
+  (app.js) é a fonte única do que o servidor diz sobre a conta, usada pelo
+  `checkStatus` do boot E pelo `syncData`. Ela nunca mexe em tela (nada de
+  `showApp`/`sv`) — senão chamá-la no meio do checkout jogaria a pessoa pra
+  Home. Depois de enviar um pedido, o front confere 3 vezes (5s/15s/40s) e
+  PARA: nada de `setInterval` permanente (Render Free). E o "⚡ liberado na
+  hora" só aparece **depois** que o servidor virou a chave — prometer o
+  provisório de antemão é mentira quando não há `GEMINI_API_KEY`.
+- **GATE DE ENVIO NA TELA = `U.needsPlan`**, o MESMO campo que o `/api/send` e
+  o `/api/auto/start` usam. PROIBIDO decidir por `U.plan==='free'`:
+  `getPlan()` devolve "vipro" pra quem só tem o automático (armadilha do
+  v177-FIX8).
+- **A HOME CONTA O QUE ACONTECEU COM O PEDIDO**: o card escolhe o pedido MAIS
+  RECENTE por `createdAt` entre pendente e cancelado (nunca um `.find()` que
+  depende da ordem da lista), mostra o `motivoCancelamento` por 7 dias, com ×
+  pra dispensar, e o cache envelhece em 5min (além de ser invalidado quando o
+  `/api/status` muda plano/gate). Aviso ao usuário é sempre tela — `pushToUser`
+  é no-op nesta reconstrução, então nenhum texto pode prometer notificação.
+- **O CHECKOUT NÃO PEDE O QUE O CADASTRO JÁ TEM**: com nome, WhatsApp, cidade
+  e estado na conta, o passo 2 é CONFIRMAÇÃO em leitura com link pra corrigir
+  no Perfil; faltando cidade ou estado, cai no formulário editável
+  pré-preenchido — conta legada nunca pode travar a compra.
+- **A LISTA `_seoFiles` DO SMOKE COBRE TODA PÁGINA PÚBLICA**: hoje
+  h2bapply-funciona, h2b-e-golpe, como-usar, tutorial-conteudo, guia,
+  quanto-ganha-h2b e os templates do server.js. Página pública nova entra
+  nessa lista NO MESMO COMMIT — foi a ausência dela que deixou 5 CTAs em 404
+  por meses.
+- **FAQ ESTRUTURADA = TEXTO VISÍVEL**: cada `acceptedAnswer` do JSON-LD tem
+  que aparecer IGUAL no HTML da mesma página (guarda que não envelhece a cada
+  reescrita de copy). O Google penaliza FAQPage que não bate com a página.
+- **NENHUMA PÁGINA PÚBLICA VENDE LOGIN PELO GOOGLE**: o cadastro é usuário e
+  senha desde o v172c; o Google só aparece DEPOIS do plano ativo, pra conectar
+  o Gmail de ENVIO (permissão só de enviar, endereço PERMANENTE). Guarda por
+  frase no smoke, cobrindo as 4 páginas + server.js.
