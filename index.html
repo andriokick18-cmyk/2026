@@ -1945,7 +1945,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
         <div class="ln-benefit-card ln-benefit-vip">
           <div class="ln-benefit-icon" style="background:rgba(251,191,36,.15);color:#fbbf24">👑</div>
           <div class="ln-benefit-title">Mais poder, assinando um plano</div>
-          <div class="ln-benefit-desc">Assinando um plano você aumenta seu limite diário e ganha prioridade máxima na fila. Nos planos com automático incluso, o robô roda 24h e chega a até 400 candidaturas/dia. Veja como funciona na aba 💎 Planos.</div>
+          <div class="ln-benefit-desc">Sem plano, a conta não envia candidatura nenhuma. Com um plano ativo você passa a enviar todo dia: 100 manuais no VIP, 100 manuais + 100 automáticas no VIPro e 200 + 200 no DoublePro. Nos planos com automático incluso o robô roda 24h, no seu ritmo. Veja os detalhes na aba 💎 Planos.</div>
         </div>
       </div>
     </div>
@@ -2230,7 +2230,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.994 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
         </a>
       </div>
-      <div class="ln-footer-copy">💙 Projeto mantido por doações da comunidade — nunca por venda.</div>
+      <div class="ln-footer-copy">💙 Feito por dois brasileiros, sem empresa por trás — são os planos de quem usa que mantêm o site no ar.</div>
       <div class="ln-footer-copy">© 2026 H2BApply · suporte@h2bapply.com</div>
     </div>
   </footer>
@@ -2314,7 +2314,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
         <div class="sbv-title">⭐ Assine e ganhe mais poder</div>
         <div class="sbv-item"><i class="ti ti-check"></i>Mais envios por dia</div>
         <div class="sbv-item"><i class="ti ti-check"></i>Automático 24h incluso</div>
-        <div class="sbv-item"><i class="ti ti-check"></i>Prioridade máxima na fila</div>
+        <div class="sbv-item"><i class="ti ti-check"></i>Ritmo humano que protege seu Gmail</div>
         <button onclick="sv('plans')">💎 Ver planos</button>
       </div>
 
@@ -2824,7 +2824,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
               <i class="ti ti-crown" style="font-size:22px;color:#f59e0b"></i>
               <div>
                 <div style="font-size:13px;font-weight:800;color:#f59e0b">VIP Infinito · DoublePro</div>
-                <div style="font-size:11px;color:var(--t2)" data-i18n="g_39">Sem expiração · 200 manual + 200 auto/dia · Prioridade máxima</div>
+                <div style="font-size:11px;color:var(--t2)" data-i18n="g_39">Sem expiração · 450 envios/dia por Gmail conectado · intervalo configurável</div>
               </div>
             </div>
 
@@ -2834,7 +2834,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
                 <i class="ti ti-clock" style="font-size:13px"></i> Intervalo entre envios automáticos
               </div>
               <div style="font-size:11px;color:var(--t2);margin-bottom:10px;line-height:1.5">
-                Usuários normais: 5–6 minutos fixo. Como admin, você pode definir de <strong>30 segundos</strong> a qualquer valor.
+                Usuários normais: ~7 minutos (6,5 a 7,5, com variação). Como admin, você pode definir de <strong>30 segundos</strong> a qualquer valor.
               </div>
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
                 <input class="input" id="adm-interval" type="number" inputmode="decimal" min="30" max="3600" placeholder="180" style="flex:1;max-width:110px" oninput="updateAdminIntervalLabel()">
@@ -2967,7 +2967,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
             <div style="display:flex;align-items:flex-start;gap:7px;padding-right:20px">
               <span style="flex-shrink:0;font-size:14px">⚠️</span>
               <div>
-                <strong data-i18n="g_44">Atenção:</strong> <span data-i18n="g_195">Enviar muitos emails com</span> <strong data-i18n="g_45">1 Gmail único</strong> <span data-i18n="g_196">pode gerar bloqueio temporário pelo Google. Recomendamos adicionar</span> <strong>2+ contas Gmail</strong> <span data-i18n="g_197">para distribuir os envios. O risco de bloqueio é de</span> <strong data-i18n="g_46">responsabilidade do usuário</strong>.
+                <strong data-i18n="g_44">Atenção:</strong> <span data-i18n="gmail_contas">Enviar muitas candidaturas por um Gmail só pode gerar bloqueio temporário pelo Google. VIP e VIPro enviam pelo seu Gmail cadastrado (1 conta); o DoublePro reveza entre 2 Gmails, o que reduz o volume por conta e o risco de bloqueio. O risco de bloqueio é de</span> <strong data-i18n="g_46">responsabilidade do usuário</strong>.
                 <a href="/terms#gmail-aviso" target="_blank" rel="noopener noreferrer" style="color:rgba(180,100,0,.9);font-weight:700;margin-left:4px">Ver termos →</a>
               </div>
             </div>
@@ -3147,7 +3147,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
                 <div style="font-size:10px;color:var(--t2);font-weight:600;margin-top:2px">tempo estimado</div>
               </div>
               <div style="background:var(--greenl);border:1.5px solid var(--greenb);border-radius:var(--r);padding:10px;text-align:center">
-                <div style="font-size:20px;font-weight:800;color:var(--green)" id="pf-interval">5–6 min</div>
+                <div style="font-size:20px;font-weight:800;color:var(--green)" id="pf-interval">~7 min</div>
                 <div style="font-size:10px;color:var(--t2);font-weight:600;margin-top:2px">entre e-mails</div>
               </div>
             </div>
@@ -3452,12 +3452,12 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <div style="font-size:14px;font-weight:800;color:#14532d;margin-bottom:10px;display:flex;align-items:center;gap:6px"><i class="ti ti-calculator" style="font-size:16px"></i> Se 1% responder positivamente:</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <div style="background:#fff;border-radius:10px;padding:10px;text-align:center">
-              <div style="font-size:9px;font-weight:700;color:#166534;text-transform:uppercase;margin-bottom:4px">VIPro (200/dia)</div>
+              <div style="font-size:9px;font-weight:700;color:#166534;text-transform:uppercase;margin-bottom:4px" data-i18n="roi_vipro">VIPro — 200/dia (manual + automático)</div>
               <div style="font-size:22px;font-weight:800;color:#15803d">60</div>
               <div style="font-size:11px;color:#4ade80">respostas em 30d</div>
             </div>
             <div style="background:#fff;border-radius:10px;padding:10px;text-align:center">
-              <div style="font-size:9px;font-weight:700;color:#166534;text-transform:uppercase;margin-bottom:4px">DoublePro (400/dia)</div>
+              <div style="font-size:9px;font-weight:700;color:#166534;text-transform:uppercase;margin-bottom:4px" data-i18n="roi_dp">DoublePro — 400/dia (manual + automático)</div>
               <div style="font-size:22px;font-weight:800;color:#15803d">120</div>
               <div style="font-size:11px;color:#4ade80">respostas em 30d</div>
             </div>
@@ -4226,16 +4226,10 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
   </div>
 </div>
 
-<div class="overlay gone" id="terms-m" onclick="if(event.target===this)this.classList.add('gone')">
-  <div class="modal" style="max-width:440px"><div class="mhandle"></div>
-    <div class="mhdr"><div class="mttl">Termos de Uso</div><button aria-label="Fechar" title="Fechar" class="mx" onclick="g('#terms-m').classList.add('gone')"><i class="ti ti-x"></i></button></div>
-    <div class="mbody" style="font-size:13px;color:var(--t2);line-height:1.7">
-      <p><strong>H2BApply</strong> facilita candidaturas H-2B/H-2A via Gmail.</p><br>
-      <p><strong>Planos:</strong> Free (20 manual + 10 auto/dia); VIP, VIPro e DoublePro são pagos diretamente via PIX — você escolhe o plano e o período, vê o preço final em reais, paga e envia o comprovante, que é conferido por um administrador.</p><br>
-      <p><strong>Não garantimos contratação.</strong> Facilitamos o envio.</p>
-    </div>
-  </div>
-</div>
+<!-- v197 LOTE 15: o modal #terms-m foi REMOVIDO — nenhum botão o abria
+     (zero openers em index.html/app.js) e ele anunciava "Free (20 manual +
+     10 auto/dia)" num produto onde a conta grátis envia ZERO desde o v172.
+     Os Termos de verdade vivem em /terms (server.js) e na aba do app. -->
 <div class="overlay gone" id="priv-m" onclick="if(event.target===this)this.classList.add('gone')">
   <div class="modal" style="max-width:440px"><div class="mhandle"></div>
     <div class="mhdr"><div class="mttl">Privacidade</div><button aria-label="Fechar" title="Fechar" class="mx" onclick="g('#priv-m').classList.add('gone')"><i class="ti ti-x"></i></button></div>
@@ -5168,12 +5162,12 @@ html, body, #app, .bottom-nav, .sidebar{
       <h3>3. Ausência de Garantias</h3>
       <p>A H2BApply <strong>NÃO garante</strong>: contratação, entrevista, aprovação de visto, autorização migratória, entrada nos EUA, sucesso financeiro ou resposta de empregadores. Toda decisão depende exclusivamente de empregadores, consulados e autoridades governamentais.</p>
       <h3>4. Automação e Uso do Gmail</h3>
-      <div class="terms-warning">⚠️ Usar apenas 1 Gmail para muitos envios pode gerar bloqueio temporário pelo Google. Adicione 2+ contas Gmail no app para reduzir o risco.</div>
+      <div class="terms-warning">⚠️ Usar um Gmail só para muitos envios pode gerar bloqueio temporário pelo Google. VIP e VIPro enviam pelo seu Gmail cadastrado (1 conta); o DoublePro reveza entre 2 Gmails, o que reduz o volume por conta e o risco de bloqueio.</div>
       <p>Ao ativar o envio automático, você autoriza o envio de e-mails em seu nome via Gmail. Você reconhece e aceita que:</p>
       <ul>
         <li>O Google pode <strong>bloquear temporariamente</strong> sua conta por alto volume de envios</li>
         <li>O risco de bloqueio do Gmail é de <strong>sua inteira responsabilidade</strong> — o H2BApply não se responsabiliza</li>
-        <li>Recomendamos fortemente adicionar 2 ou mais contas Gmail para distribuir os envios</li>
+        <li>VIP e VIPro enviam pelo seu Gmail cadastrado (1 conta); o DoublePro reveza entre 2 Gmails, o que reduz o volume por conta e o risco de bloqueio.</li>
         <li>Podem ocorrer falhas técnicas fora do controle da plataforma</li>
         <li>Você assume responsabilidade integral pelos dados transmitidos</li>
       </ul>
@@ -5268,7 +5262,7 @@ html, body, #app, .bottom-nav, .sidebar{
       <div class="tour-slide"><div class="tour-emoji">👤</div><div class="tour-title">Passo 1 — Crie seu perfil</div><div class="tour-text">Vá em <b>Perfil</b> (menu de baixo) e monte seu perfil de candidatura:<br><br>1️⃣ Anexe seu <b>currículo em PDF</b><br>2️⃣ Escreva <b>3 assuntos</b> de e-mail diferentes<br>3️⃣ Escreva <b>3 textos</b> de e-mail diferentes<br><br>⚠️ Os textos são <b>seus</b> — o sistema alterna entre eles a cada envio, então sua candidatura nunca sai igual à de outra pessoa (isso protege seu Gmail de virar spam).</div></div>
       <div class="tour-slide"><div class="tour-emoji">✉️</div><div class="tour-title">Passo 2 — Envio manual</div><div class="tour-text">Na aba <b>Vagas</b>:<br><br>1️⃣ Escolha uma planilha de vagas no topo<br>2️⃣ Toque numa vaga que gostou<br>3️⃣ Confira o e-mail já montado com seu perfil<br>4️⃣ Toque em <b>Enviar</b> — pronto, foi do seu Gmail!<br><br>💡 Vagas pra onde você já enviou <b>somem da lista sozinhas</b> — impossível enviar duas vezes.</div></div>
       <div class="tour-slide"><div class="tour-emoji">🔍</div><div class="tour-title">Filtre do seu jeito</div><div class="tour-text">Toque no botão <b>Filtros</b> pra achar exatamente o que quer:<br><br>🏷️ <b>Cargo</b> (Cook, Landscaper...)<br>📍 <b>Vários estados</b> ao mesmo tempo<br>💰 <b>Salário mínimo</b> por hora<br>📅 <b>Mês que a vaga começa</b><br>↕️ <b>Ordenar</b> por maior salário<br><br>Os filtros ativos viram <b>etiquetas</b> — toque no ✕ de qualquer uma pra remover.</div></div>
-      <div class="tour-slide"><div class="tour-emoji">🤖</div><div class="tour-title">Passo 3 — Envio automático</div><div class="tour-text">No card <b>Envio Automático</b> da tela Início (planos VIPro e DoublePro), o robô envia por você <b>24 horas por dia</b>:<br><br>1️⃣ Escolha a fonte de vagas<br>2️⃣ Ajuste os filtros (os mesmos do manual)<br>3️⃣ Escolha seu perfil<br>4️⃣ Toque em <b>Iniciar</b><br><br>🛡️ O robô envia em <b>ritmo humano</b> (um a cada 5-6 min) pra proteger seu Gmail, e você acompanha tudo em tempo real.</div></div>
+      <div class="tour-slide"><div class="tour-emoji">🤖</div><div class="tour-title">Passo 3 — Envio automático</div><div class="tour-text">No card <b>Envio Automático</b> da tela Início (planos VIPro e DoublePro), o robô envia por você <b>24 horas por dia</b>:<br><br>1️⃣ Escolha a fonte de vagas<br>2️⃣ Ajuste os filtros (os mesmos do manual)<br>3️⃣ Escolha seu perfil<br>4️⃣ Toque em <b>Iniciar</b><br><br>🛡️ O robô envia em <b>ritmo humano</b> (um a cada ~7 min) pra proteger seu Gmail, e você acompanha tudo em tempo real.</div></div>
       <div class="tour-slide"><div class="tour-emoji">💎</div><div class="tour-title">Planos, direto e simples</div><div class="tour-text">Na aba <b>Planos</b>: escolha o plano (VIP, VIPro ou DoublePro) e o período, veja o <b>preço final em reais</b> na hora e pague via <b>PIX</b>.<br><br>📸 Envie o comprovante e continue logado — assim que confere, seu plano já fica ativo.<br><br>Seu plano ativo fica sempre à vista na aba <b>Planos</b>.</div></div>
       <div class="tour-slide"><div class="tour-emoji">📬</div><div class="tour-title">Quando a empresa responder…</div><div class="tour-text">A resposta chega <b>direto na caixa de entrada do SEU Gmail</b> — a conversa é sua com a empresa, do seu próprio e-mail. O H2BApply nunca lê nem guarda sua caixa de entrada.<br><br>💡 Fique de olho no Gmail (e na pasta de spam, às vezes cai lá) — é lá que a conversa continua.</div></div>
       <div class="tour-slide"><div class="tour-emoji">🚀</div><div class="tour-title">Pronto pra começar!</div><div class="tour-text">Ordem que funciona:<br><br>1️⃣ <b>Criar perfil</b> (currículo + seus textos)<br>2️⃣ <b>Assinar um plano</b> (Planos → PIX → comprovante)<br>3️⃣ <b>Conectar seu Gmail</b> e começar a enviar<br><br>Este guia fica pra sempre em <b>Perfil → Central de Tutoriais</b> · <span style="color:var(--blue);cursor:pointer;font-weight:700" onclick="window.open('/como-usar','_blank')">ver o guia completo com fotos →</span></div>

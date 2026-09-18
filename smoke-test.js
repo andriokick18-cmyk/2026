@@ -3422,6 +3422,111 @@ async function drillRestauracaoBackup() {
       (_appL7.match(/"radar_novas":/g) || []).length === 3 && (_appL7.match(/"radar_novas_zero":/g) || []).length === 3 &&
       !/radar_sub":"[^"]*celular/.test(_appL7),
       "radar_novas/radar_novas_zero não estão nas 3 línguas ou o radar_sub ainda fala em celular");
+    // ══════════════════════════════════════════════════════════════════════
+    // 📣 v197 — LOTE 15: OS NÚMEROS E AS PROMESSAS BATEM COM O CÓDIGO
+    // Cinco textos vendiam um produto diferente do que o motor entrega. A
+    // regra v172j ("toda mudança em limite/preço/regra de plano espelhada no
+    // MESMO commit") vale pros textos também — por isso estas guardas são
+    // PERMANENTES e derivam de mod-config.js / do motor real.
+    // ══════════════════════════════════════════════════════════════════════
+    {
+      const _PL15 = require(path.join(__dirname, "mod-config.js")).PLAN_LIMITS_NEW;
+      const _idx15 = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+      const _app15 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _cu15 = fs.readFileSync(path.join(__dirname, "como-usar.html"), "utf8");
+      const _tut15 = fs.readFileSync(path.join(__dirname, "tutorial-conteudo.html"), "utf8");
+      const _srv15 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      const _semHtml15 = (t2) => t2.replace(/<!--[\s\S]*?-->/g, " ");
+      const _semJs15 = (t2) => t2.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ");
+
+      // (1) os números de envio/dia citados na landing e na calculadora saem
+      // de PLAN_LIMITS_NEW — a landing prometia "até 400 candidaturas/dia"
+      // pro ROBÔ (o automático máximo é 200) e "prioridade máxima na fila",
+      // que não existe em lugar nenhum do código.
+      const _totVipro = _PL15.vipro.manual + _PL15.vipro.auto;
+      const _totDp = _PL15.doublepro.manual + _PL15.doublepro.auto;
+      check("📣 v197-L15 (guarda permanente): os números de envio/dia da landing e da calculadora saem de PLAN_LIMITS_NEW — e as promessas que o código não cumpre ('prioridade máxima na fila', 'aumenta seu limite diário', robô de 400/dia) sumiram",
+        _idx15.includes(`${_PL15.vip.manual} manuais no VIP, ${_PL15.vipro.manual} manuais + ${_PL15.vipro.auto} automáticas no VIPro e ${_PL15.doublepro.manual} + ${_PL15.doublepro.auto} no DoublePro`) &&
+        _idx15.includes(`data-i18n="roi_vipro">VIPro — ${_totVipro}/dia (manual + automático)`) &&
+        _idx15.includes(`data-i18n="roi_dp">DoublePro — ${_totDp}/dia (manual + automático)`) &&
+        (_app15.match(/"roi_vipro":/g) || []).length === 3 &&
+        !/prioridade m[áa]xima na fila/i.test(_semHtml15(_idx15)) &&
+        !/aumenta seu limite di[áa]rio/i.test(_semHtml15(_idx15)) &&
+        !/at[ée] 400 candidaturas\/dia/i.test(_semHtml15(_idx15)),
+        "algum número da landing/calculadora divergiu de mod-config.js ou uma das promessas voltou");
+
+      // (2) o modal morto #terms-m (zero openers) anunciava "Free (20 manual
+      // + 10 auto/dia)" — a mentira mais grave da página, num produto onde a
+      // conta grátis envia ZERO desde o v172.
+      check("📣 v197-L15: o modal morto #terms-m (sem NENHUM botão que o abrisse) foi removido — ele anunciava 'Free (20 manual + 10 auto/dia)' e o free envia 0/0",
+        !/id="terms-m"/.test(_semHtml15(_idx15)) && !/Free \(20 manual/.test(_semHtml15(_idx15)) &&
+        _PL15.free.manual === 0 && _PL15.free.auto === 0,
+        "o modal morto continua no index.html");
+
+      // (3) o intervalo do robô é o do MOTOR (calcSmartInterval 6,5–7,5min):
+      // a tela dizia 5–6 min em 5 lugares e CALCULAVA a previsão de término
+      // com 5,5min por envio — ~27% otimista num número usado pra planejar.
+      const _eng15 = fs.readFileSync(path.join(__dirname, "mod-engine-core.js"), "utf8");
+      const _motorOk = _eng15.includes("const MIN_MS = 6.5 * 60 * 1000;") && _eng15.includes("const MAX_MS = 7.5 * 60 * 1000;");
+      const _servidos15 = { "index.html": _semHtml15(_idx15), "app.js": _semJs15(_app15), "como-usar.html": _semHtml15(_cu15), "tutorial-conteudo.html": _semHtml15(_tut15) };
+      const _mentemIntervalo = Object.entries(_servidos15).filter(([, t2]) => /5[–-]6 ?min|5 ?[–-] ?6 minutos|5\.5\/|=5\.5|\|\|330/.test(t2)).map(([f]) => f);
+      check("📣 v197-L15 (guarda permanente): nenhum arquivo servido diz '5–6 min' nem calcula a previsão com 5,5min — o motor manda a cada 6,5–7,5min (~7) desde o v118, e a tela agora tem UMA constante (AUTO_INT_MIN/MAX/AVG)",
+        _motorOk && _mentemIntervalo.length === 0 &&
+        /const AUTO_INT_MIN=6\.5, AUTO_INT_MAX=7\.5, AUTO_INT_AVG=7;/.test(_app15) &&
+        (_app15.match(/AUTO_INT_AVG/g) || []).length >= 4,
+        `motor=${_motorOk} ainda mentem=[${_mentemIntervalo.join(",")}]`);
+
+      // (4) VIP/VIPro só podem 1 Gmail e o DoublePro no máximo 2 (403 na cara
+      // de quem tentar o 3º) — 4 telas mandavam "adicionar 2 ou mais contas".
+      const _todos15 = { ..._servidos15, "server.js": _semJs15(_srv15) };
+      const _mandam2 = Object.entries(_todos15).filter(([, t2]) => /2 ou mais contas Gmail|2\+ contas Gmail/.test(t2)).map(([f]) => f);
+      check("📣 v197-L15 (guarda permanente): nenhum texto do site manda 'adicionar 2 ou mais / 2+ contas Gmail' — VIP e VIPro têm direito a 1 conta e o DoublePro a 2; o texto agora é o MESMO nos 8 pontos",
+        _mandam2.length === 0 &&
+        (_idx15.match(/o DoublePro reveza entre 2 Gmails/g) || []).length >= 3 &&
+        _cu15.includes("o DoublePro reveza entre 2 Gmails") && _tut15.includes("o DoublePro reveza entre 2 Gmails") &&
+        (_srv15.match(/o DoublePro reveza entre 2 Gmails/g) || []).length >= 2,
+        `ainda mandam 2+: [${_mandam2.join(",")}] `);
+      // texto NOVO passa pelo dicionário nas 3 línguas (regra 6f)
+      check("📣 v197-L15: o aviso de Gmail do Perfil virou UMA chave de dicionário nas 3 línguas (gmail_contas) — texto novo nunca entra fixo no markup",
+        (_app15.match(/"gmail_contas":/g) || []).length === 3 && _idx15.includes('data-i18n="gmail_contas"'),
+        "gmail_contas não está nas 3 línguas ou o markup não usa a chave");
+
+      // (5) o rodapé dizia "mantido por doações — nunca por venda" 200 linhas
+      // abaixo de "assina um plano via PIX"; os Termos falavam em
+      // "doação/compra" (resquício da era diamantes, removida no v170).
+      check("📣 v197-L15: o rodapé preserva a ideia do dono (dois brasileiros, sem empresa por trás) e parou de dizer 'nunca por venda' — e os Termos não falam mais em doação num site onde o plano é COMPRADO",
+        !/nunca por venda/i.test(_semHtml15(_idx15)) && _idx15.includes("sem empresa por trás") &&
+        !/doa[çc][ãa]o\/compra|comprar\/doar/i.test(_srv15) &&
+        !/doa[çc]/i.test(_semHtml15(_idx15).replace(/<script[\s\S]*?<\/script>/g, " ")),
+        "sobrou linguagem de doação em texto visível");
+      // e os consentimentos velhos e novos não podem apontar pra textos
+      // diferentes com a MESMA etiqueta de versão
+      check("📣 v197-L15: mexeu no texto dos Termos, subiu a versão do consentimento (2026-09 → 2026-09b) — senão quem aceitou antes e quem aceita depois ficam com a mesma etiqueta pra textos diferentes",
+        _srv15.includes('versaoTermos:"2026-09b"') && !_srv15.includes('versaoTermos:"2026-09"'),
+        "versaoTermos não subiu junto com o texto");
+
+      // (6) COMPORTAMENTAL: o VIPro com o MANUAL vencido e o automático ativo
+      // cai no limitReached no 1º clique — e nem o servidor nem o funil podem
+      // mandar "assine um plano"/"continue de graça" pra quem JÁ PAGA.
+      await req2("POST", "/api/test/login", {
+        token: TEST_TOKEN, email: "upsell15@test.com", name: "Upsell Quinze", refreshToken: "rt-upsell15",
+        plan: "vipro", vip: { manualExpires: Date.now() - 86400_000, autoExpires: Date.now() + 30 * 86400_000, active: true, plan: "vipro" },
+      });
+      const _snd15 = await req2("POST", "/api/send", { to: "rh@upsell15.com", subject: "Application", message: "Olá." });
+      const _err15 = String(_snd15.json?.error || "");
+      check("📣 v197-L15: pagante VIPro com o manual vencido (automático ativo) leva limitReached no 1º clique — e a resposta NÃO manda assinar nada nem fala em 'de graça'",
+        _snd15.status === 429 && _snd15.json?.limitReached === true && _snd15.json?.dailyLimit === 0 &&
+        !/assine um plano/i.test(_err15) && !/de gra[çc]a/i.test(_err15),
+        JSON.stringify({ status: _snd15.status, err: _err15.slice(0, 80), lim: _snd15.json?.dailyLimit }));
+      check("📣 v197-L15 (estrutural): o funil do limite ramifica pelo estado REAL das DUAS dimensões (manualLimit/autoLimit do /api/status), não por 'tem plano' — e quem já está no topo (DoublePro com os 2 lados ativos) não vê upsell nenhum",
+        /const _manualOn=\(U\.manualLimit\|\|0\)>0, _autoOn=\(U\.autoLimit\|\|0\)>0;/.test(_app15) &&
+        /_topo=String\(U\.plan\|\|""\)==="doublepro"&&_manualOn&&_autoOn/.test(_app15) &&
+        _app15.includes("if(_topo||U.isAdmin)return;") &&
+        !/upsell_later":"[^"]*(gra[çc]a|free|gratis)/i.test(_app15),
+        "limitUpsell voltou a decidir por 'tem plano' ou o upsell_later ainda promete 'de graça'");
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    }
+
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     check("📡⭐ v134: front tem o botão 📡 Radar e o funil do limite (limitUpsell 1x/dia)",
       frontAll.includes("function radarModal") && frontAll.includes("function limitUpsell") && home.body.includes('id="radar-btn"') && frontAll.includes("h2b_upsell"),

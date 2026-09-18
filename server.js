@@ -271,7 +271,7 @@ const CONFIGURADO_OAUTH = () => CONFIGURED; // v175: usado pela aba Notificaçõ
 // Horário padrão se usuário não configurar
 // Horário de envio REMOVIDO: automático roda 24/7 sem janela de horário
 
-// Intervalo de envio: padrão 5-6 min (comportamento humano, menos bloqueios).
+// Intervalo de envio: ~7 min (6,5 a 7,5 com jitter — calcSmartInterval).
 // Admins podem configurar intervalo menor.
 // adminIntervalSecs: número de segundos entre envios (mín 30s para admins)
 // calcSmartInterval: corpo em src/engine/core.js (Fase 1 · Módulo 6)
@@ -7405,8 +7405,8 @@ const server=http.createServer(async(req,res)=>{
     <p><strong>Faz:</strong> envia, pela sua própria conta Gmail, o e-mail de candidatura que você escreveu, para o empregador que você escolheu, dentro do limite diário do seu plano (manual e/ou automático).</p>
     <p><strong>Nunca faz:</strong> o H2BApply <strong>não escreve, não sugere e não preenche</strong> assunto, corpo de e-mail ou carta de apresentação por você — se você não escrever o texto, o envio é pulado com um aviso claro na tela. O H2BApply também <strong>nunca lê, abre, armazena ou monitora</strong> sua caixa de entrada (recebidos); a única permissão usada no Gmail é a de enviar. O H2BApply não é uma agência de emprego, não representa nenhum empregador e não tem qualquer vínculo com o governo dos Estados Unidos.</p>
 
-    <h2>5. Planos, preços e como funciona a doação/compra</h2>
-    <p>Os preços de cada plano e período são sempre os exibidos na tela antes do pagamento, calculados pelo próprio servidor — nunca um valor "combinado" ou digitado à mão. O fluxo de doação/compra funciona assim:</p>
+    <h2>5. Planos, preços e como funciona a compra</h2>
+    <p>Os preços de cada plano e período são sempre os exibidos na tela antes do pagamento, calculados pelo próprio servidor — nunca um valor "combinado" ou digitado à mão. A compra funciona assim:</p>
     <ul>
       <li>Você escolhe o plano e o período e vê o valor exato a pagar via PIX</li>
       <li>Você confirma que leu e entende este Termo (seção 12) antes de continuar</li>
@@ -7447,10 +7447,10 @@ const server=http.createServer(async(req,res)=>{
       <li>O volume de emails é muito alto em um único dia</li>
       <li>Os emails são enviados para muitos destinatários desconhecidos</li>
     </ul>
-    <p><strong>O que o H2BApply já faz para reduzir esse risco:</strong> aquecimento gradual de conta nova, intervalo humanizado entre envios automáticos e a opção de cadastrar 2 ou mais contas Gmail (aba Perfil → Gmail) para distribuir o volume.</p>
+    <p><strong>O que o H2BApply já faz para reduzir esse risco:</strong> aquecimento gradual de conta nova, intervalo humanizado entre envios automáticos e o rodízio entre Gmails: VIP e VIPro enviam pelo seu Gmail cadastrado (1 conta); o DoublePro reveza entre 2 Gmails, o que reduz o volume por conta e o risco de bloqueio.</p>
     <p><strong>Isenção específica:</strong> mesmo com essas proteções, a decisão de limitar, suspender ou bloquear uma conta Gmail é tomada exclusivamente pelo Google, segundo critérios e políticas próprias que o H2BApply não controla nem pode garantir. Por isso, o H2BApply não se responsabiliza por bloqueios, suspensões ou limitações impostas pelo Google à sua conta Gmail. Ao ativar o envio automático, você declara estar ciente deste risco específico — que decorre de ato de terceiro (o Google), e não de falha do H2BApply.</p>
 
-    <h2>12. Consentimento informado ao comprar/doar um plano</h2>
+    <h2>12. Consentimento informado ao comprar um plano</h2>
     <p>Antes de concluir o pagamento de qualquer plano, você confirma que leu e entende que:</p>
     <ul>
       <li>Está contratando um <strong>serviço digital pago</strong> de automação de envio de e-mails — não uma agência de emprego, consultoria de imigração ou qualquer garantia de resultado</li>
@@ -7651,7 +7651,7 @@ ul li{margin-bottom:6px}
   </div>
   <div class="card" style="background:#fefce8;border-color:#fde68a">
     <h2 style="font-size:16px;color:#92400e;margin-bottom:10px">⚠️ Aviso sobre Gmail</h2>
-    <p style="font-size:14px;color:#78350f">O uso intensivo de uma única conta Gmail pode gerar bloqueio pelo Google. Sempre adicione 2+ contas Gmail ao app para maior segurança. <a href="/terms#gmail-aviso" style="color:#92400e;font-weight:700">Ver termos de uso →</a></p>
+    <p style="font-size:14px;color:#78350f">O uso intensivo de uma única conta Gmail pode gerar bloqueio pelo Google. VIP e VIPro enviam pelo seu Gmail cadastrado (1 conta); o DoublePro reveza entre 2 Gmails, o que reduz o volume por conta e o risco de bloqueio. <a href="/terms#gmail-aviso" style="color:#92400e;font-weight:700">Ver termos de uso →</a></p>
   </div>
   <div class="footer">
     © 2026 H2BApply &nbsp;·&nbsp; <a href="/privacy" style="color:#94a3b8">Privacidade</a> &nbsp;·&nbsp; <a href="/terms" style="color:#94a3b8">Termos</a>
@@ -10683,7 +10683,7 @@ filtrar();
         desconto:0,
         // Trilha de consentimento informado — carimba o que a pessoa
         // confirmou entender no momento da compra (auditável depois).
-        consentimento:_isAdminCaller?null:{em:Date.now(),versaoTermos:"2026-09"},
+        consentimento:_isAdminCaller?null:{em:Date.now(),versaoTermos:"2026-09b"},
         // 🚨 v177-FIX4 (auditoria): aqui vivia uma 2ª cópia das MESMAS duas
         // validações do bloco acima (tamanho >10.7MB e prefixo base64) — mas
         // o bloco acima já responde 400 e interrompe a requisição, então esses
