@@ -556,3 +556,94 @@ num mkdtemp dentro de /tmp), o que enfraquece a própria guarda; ETag/versão em
 `/api/profiles/save` (last-write-wins entre 2 abas — feature, não bug);
 magic bytes do comprovante (a própria auditoria concluiu que não é vetor
 explorável, e recusar comprovante legítimo por engano é perder dinheiro real).
+
+## v179 — Filtros e busca de vagas (lotes 1-4)
+
+Ordem do dono (17/09/2026): **"os filtros não podem falhar, não podem ser mal
+feitos, precisam estar funcionando e ter um sentido — o usuário tem que
+desfrutar 100%"**. Auditoria completa do motor de filtros e da busca, medida
+contra as planilhas empacotadas (jan2026 9.240 · jul2025 2.206 · h2a-jun2026
+4.964 · jul2026 2.625), gerou 41 achados em 10 lotes. **Os lotes 1-4 estão
+implementados; os lotes 5-10 (tela, filtros novos, cargo por família,
+alimentação da planilha, acabamento/mobile e as decisões de produto) seguem
+pendentes, aguardando o dono.** 38 checks novos no smoke (439 → 477).
+
+**Lote 1 — a contagem voltou a ser a verdade da lista** (`mod-filtros.js`,
+`server.js`, `app.js`, sw v45). Sete defeitos no motor ÚNICO em que o número
+do chip não era o que a lista devolvia — e é o mesmo motor que monta a fila
+do robô, então cada divergência virava e-mail pro empregador errado em escala:
+(1) chip 217 × lista 108 porque `_csv` quebrava por vírgula QUALQUER valor,
+inclusive o que o próprio servidor emitiu (79 títulos / 804 linhas só na
+H-2A); (2) `parse(URL)` e `parse(objeto)` discordavam, então a fila INICIAL do
+robô e o REFILL filtravam conjuntos diferentes; (3) a mesma cidade em 3 chips
+(LaBelle 32 / Labelle 23 / LABELLE 11) e casamento por substring sem estado
+(cidade=Ames trazia 24, só 12 eram Ames/IOWA); (4) salário mensal mal rotulado
+na fonte virava $0,06/h (41 linhas sumiam de todo limiar e a tela imprimia "de
+$0.06 a $75/h"); (5) toda listagem com busca varria a planilha 2× (70,6ms vs
+1,4ms); (6) a contagem ao vivo renormalizava a cidade 114 mil vezes por
+requisição (107ms de CPU bloqueante numa rota chamada a cada tecla); (7) o
+índice não enxergava o enriquecimento até o servidor reiniciar. DEPOIS: faceta
+= lista em 100% das amostras, Ames 24 → 12, Vass 61 → 58, limiar $12 4.364 →
+4.395, contagem ao vivo 107ms → 39ms, busca na lista 71ms → 6ms.
+
+**Lote 2 — categoria pelo TÍTULO** (`server.js` `detectCategory`,
+`mod-planilhas.js`). 2.588 vagas de paisagismo viviam dentro de 🏗️ Construção
+porque "Landscape Laborer" casava com a chave `laborer` e `landscape` não
+existia na tabela — e `recategorizeAllSheets()` refazia o erro em TODO boot,
+persistindo em /data. Medido: jan2026 landscape 1.279 → 3.877, construction
+4.005 → 1.438, zero vaga com "landscap" no título dentro de Construção;
+jul2025 construction 502 → 330. NÃO implementado de propósito: classificar
+pelo código SOC — hoje SOC só existe na H-2A, que nunca passa por
+`recategorizeAllSheets` (taxonomia agrícola própria), então seria código sem
+efeito e sem teste.
+
+**Lote 3 — busca que acha o que existe** (`server.js` `searchSheet`, `app.js`,
+sw v46). q=welder devolvia 4.002 vagas com 13 contendo a palavra (carpenter
+4.002/106, bartender 1.210/41, cook 1.215/589) porque a "categoria implícita"
+era ANEXADA ao resultado — e esse conjunto virava `total`, faceta e fila do
+robô. ACHAR e SUGERIR viraram coisas separadas; a categoria parecida viaja em
+`sugestoes` e vira uma barra clicável na lista. Mais: atalho de identificador
+(nº do caso 6.387 → 1), token parcial obrigado a ter LETRA e a casar no
+COMEÇO de palavra ("cape cod" em jan2026 3.354 → 17, porque "cape" casava
+dentro de "landSCAPE"), palheiro com DESCRIÇÃO/SOC/requisitos pré-calculado
+por linha (forklift 1 → 416, housing 0 → 145, wheelbarrow 0 → 11) e mapa
+`BUSCA_PT_EN` (~60 termos) porque o público é 100% brasileiro e o acervo 100%
+em inglês.
+
+**Lote 4 — rota honesta e gate fechado** (`server.js`, sem tocar em arquivo
+servido ao cliente). (1) `grupo`/`status` 💎 saíam vaga a vaga pra qualquer um,
+até sem cookie — o v177-FIX3 só fechou a faceta; (2) `row.exp===1` era tratado
+como "vaga EXPIRADA" pelo robô, descartando 447 vagas em jan2026 e 149 em
+jul2025 com motivo falso; (3) parâmetro inválido sumia calado (`inicio=13`
+devolvia a planilha inteira; `top=abc` devolvia lista vazia com total 2.206;
+`sort=shuffle` fazia a paginação duplicar 741 vagas e perder 741);
+(4) `remainingTotal` não passava pelo corte da regra 8 que o `totalBase` da
+outra rota já usava — dois denominadores pro mesmo "de N" da mesma tela.
+
+### Regras que nasceram aqui (não podem ser quebradas)
+
+- **VALOR DE FACETA É OPACO**: o servidor nunca re-parseia (por vírgula ou o
+  que for) um valor que ele mesmo emitiu. Só estado/categoria/mês/grupo, cujos
+  valores jamais contêm vírgula, aceitam o CSV legado (`state=FL,TX`).
+- **CHAVE CANÔNICA DE CIDADE = `norm(cidade) + "|" + ESTADO`**. A faceta
+  agrupa por ela, o filtro casa por IGUALDADE dela. Cidade é lugar, não
+  pedaço de texto. Texto livre (digitado / região turística) continua no
+  casamento amplo — é o único lugar onde ele faz sentido.
+- **CONTAGEM POR OPÇÃO = VERDADE DA LISTA**: se um chip diz N, marcar esse
+  chip devolve exatamente N. Vale pra lista, pra contagem e pro refill do
+  robô, que usam o MESMO `FILTROS.filtrar`.
+- **`exp` É MESES DE EXPERIÊNCIA EXIGIDA, NUNCA SINAL DE VAGA MORTA.** Vaga
+  morta é status do DOL (WITHDRAWN/DENIED/EXPIRED/INVALIDATED) ou data de fim
+  no passado.
+- **CATEGORIA SAI DO TÍTULO**: tabela de cargos só contra o título, por
+  palavra/frase inteira, específico antes de genérico; palavras-chave ainda no
+  título; o nome da EMPRESA só desempata no fim. Proibido voltar a concatenar
+  "empresa + título".
+- **ACHAR ≠ SUGERIR**: o que não casa com a busca não entra em `total`, nem
+  na faceta, nem na fila do robô — vira sugestão que o usuário aceita ou não.
+- **Nada de trabalho pesado por linha dentro de laço quente** (lição do v162):
+  normalização de cidade e palheiro da busca são pré-calculados e invalidados
+  por versão da planilha; `_saveEnrichedSheet` é o funil único que avisa.
+- **Parâmetro que o motor não entende é DECLARADO** (`_ignorados`), nunca
+  descartado em silêncio — um filtro corrompido não pode virar "a planilha
+  inteira" pro robô.
