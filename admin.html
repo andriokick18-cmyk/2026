@@ -1499,6 +1499,26 @@ function _plRoboCard(o){
   return'<div class="pl-robo"><div class="pl-robo-t"><span>'+o.emoji+' '+esc(o.titulo)+'</span>'+o.badge+'</div><div class="pl-robo-s">'+esc(o.desc)+'</div><div class="pl-robo-r">'+o.res+'</div>'
     +(o.btn?'<button class="btn btn-sm" id="'+o.btn.id+'" onclick="'+o.btn.fn+'"'+(o.btn.off?" disabled":"")+'><i class="ti '+o.btn.ic+'"></i> '+esc(o.btn.lbl)+'</button>':'')+'</div>';
 }
+// 📋 v182 LOTE 8: PROGRESSO REAL da alimentação, na ordem em que o robô vai
+// atacar as planilhas. O painel dizia "100%" pra planilha que tem e-mail em
+// toda linha mas ZERO cidade e ZERO descrição (jan2026/jul2025 = 11.446 vagas)
+// — era a mesma conta errada que tirava as duas da fila do robô.
+function _plFilaHtml(fila){
+  if(!fila||!fila.length)return"";
+  var linhas=fila.slice(0,6).map(function(x){
+    var f=x.faltando||{},faltas=[];
+    if(f.e)faltas.push(_plNum(f.e)+" sem e-mail");
+    if(f.ci)faltas.push(_plNum(f.ci)+" sem cidade");
+    if(f.d)faltas.push(_plNum(f.d)+" sem data de início");
+    if(f.de)faltas.push(_plNum(f.de)+" sem data de fim");
+    if(f.desc)faltas.push(_plNum(f.desc)+" sem descrição");
+    return'<div><b>'+esc(x.k)+'</b>: '+_plNum(x.completas)+'/'+_plNum(x.total)+' completas'
+      +(x.pendentes?' · <b>'+_plNum(x.pendentes)+'</b> pendentes'+(faltas.length?' ('+esc(faltas.join(" · "))+')':''):' ✅')+'</div>';
+  }).join("");
+  return'<div class="pl-robo-s" style="margin-top:8px;line-height:1.7">'
+    +'<b>Progresso real</b> (completa = e-mail + cidade + datas + descrição; a fila ataca primeiro quem não tem e-mail):'
+    +linhas+'</div>';
+}
 function _plRenderRobos(d){
   var en=d.enrich||{},fr=d.fresh||{},hn=d.h2aNovas||{},ma=d.mensalH2a||{},mb=d.mensalH2b||{},co=d.coleta||{};
   var rodando=[en.running&&"enriquecimento",co.running&&"coleta",fr.running&&"frescor",hn.running&&"vagas novas H-2A"].filter(Boolean);
@@ -1507,9 +1527,10 @@ function _plRenderRobos(d){
   var cards=[
     {emoji:"🤖",titulo:"Enriquecimento DOL",badge:_plBadge(en.running?"⚡ Rodando":"⏹ Parado",en.running?"green":"gray"),
      desc:"Completa cada vaga pela API do DOL (e-mail, cidade, datas, nº de vagas, telefone, salário, funções, URL). 15s após o boot, a cada 12h e no upload de planilha; vigia a cada 30min.",
-     res:en.running?"Planilha <b>"+esc(en.sheetKey||"?")+"</b> — "+_plNum(en.done)+"/"+_plNum(en.total)+" (ok "+_plNum(en.ok)+" · sem e-mail "+_plNum(en.noEmail)+" · erros "+_plNum(en.errors)+")":"Último salvamento: "+esc(en.savedAt?fmtData(en.savedAt):"nunca")+". Use \"Enriquecer DOL\" de cada planilha pra forçar."},
+     res:(en.running?"Planilha <b>"+esc(en.sheetKey||"?")+"</b> — "+_plNum(en.done)+"/"+_plNum(en.total)+" (ok "+_plNum(en.ok)+" · sem e-mail "+_plNum(en.noEmail)+" · erros "+_plNum(en.errors)+")":"Último salvamento: "+esc(en.savedAt?fmtData(en.savedAt):"nunca")+". Use \"Enriquecer DOL\" de cada planilha pra forçar.")
+       +_plFilaHtml(d.enrichFila)},
     {emoji:"🔄",titulo:"Planilha sempre fresca",badge:_plBadge(fr.running?"⚡ Rodando":"⏹ Parado",fr.running?"green":"gray"),
-     desc:"Confere no DOL status, datas e salário das vagas já completas (H-2B mais nova + H-2A), 120 por ciclo. 5min após o boot e a cada 6h.",
+     desc:"Confere no DOL status, datas e salário das vagas já completas de TODAS as planilhas publicadas, 120 por ciclo, em rodízio pela reconferida há mais tempo. 5min após o boot e a cada 6h.",
      res:"Última rodada: "+esc(_plAgo(fr.lastRunAt))+(fr.sheetKey?" em <b>"+esc(fr.sheetKey)+"</b>":"")+" — "+_plNum(fr.checked)+" conferida(s), "+_plNum(fr.changed)+" atualizada(s).",
      btn:{id:"pl-btn-fresh",fn:"plFreshRun()",ic:"ti-refresh",lbl:"Conferir agora",off:!!(fr.running||en.running)}},
     {emoji:"🌾",titulo:"Vagas novas H-2A",badge:_plBadge(hn.running?"⚡ Rodando":hn.lastError?"⚠️ Erro":"⏹ Parado",hn.running?"green":hn.lastError?"amber":"gray"),

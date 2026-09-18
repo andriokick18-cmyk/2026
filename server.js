@@ -2723,7 +2723,7 @@ const CATEGORY_LABELS = {
 // de salários, páginas por estado) contavam "TX" e "TEXAS" como lugares
 // diferentes, subcontando quase todo estado. Esta função sempre devolve o
 // NOME POR EXTENSO em maiúsculas, e o slug (para URL) em minúsculas sem acento.
-const STATE_ABBR_TO_NAME = {AL:"ALABAMA",AK:"ALASKA",AZ:"ARIZONA",AR:"ARKANSAS",CA:"CALIFORNIA",CO:"COLORADO",CT:"CONNECTICUT",DE:"DELAWARE",FL:"FLORIDA",GA:"GEORGIA",HI:"HAWAII",ID:"IDAHO",IL:"ILLINOIS",IN:"INDIANA",IA:"IOWA",KS:"KANSAS",KY:"KENTUCKY",LA:"LOUISIANA",ME:"MAINE",MD:"MARYLAND",MA:"MASSACHUSETTS",MI:"MICHIGAN",MN:"MINNESOTA",MS:"MISSISSIPPI",MO:"MISSOURI",MT:"MONTANA",NE:"NEBRASKA",NV:"NEVADA",NH:"NEW HAMPSHIRE",NJ:"NEW JERSEY",NM:"NEW MEXICO",NY:"NEW YORK",NC:"NORTH CAROLINA",ND:"NORTH DAKOTA",OH:"OHIO",OK:"OKLAHOMA",OR:"OREGON",PA:"PENNSYLVANIA",RI:"RHODE ISLAND",SC:"SOUTH CAROLINA",SD:"SOUTH DAKOTA",TN:"TENNESSEE",TX:"TEXAS",UT:"UTAH",VT:"VERMONT",VA:"VIRGINIA",WA:"WASHINGTON",WV:"WEST VIRGINIA",WI:"WISCONSIN",WY:"WYOMING",DC:"DISTRICT OF COLUMBIA",PR:"PUERTO RICO"};
+const STATE_ABBR_TO_NAME = {AL:"ALABAMA",AK:"ALASKA",AZ:"ARIZONA",AR:"ARKANSAS",CA:"CALIFORNIA",CO:"COLORADO",CT:"CONNECTICUT",DE:"DELAWARE",FL:"FLORIDA",GA:"GEORGIA",HI:"HAWAII",ID:"IDAHO",IL:"ILLINOIS",IN:"INDIANA",IA:"IOWA",KS:"KANSAS",KY:"KENTUCKY",LA:"LOUISIANA",ME:"MAINE",MD:"MARYLAND",MA:"MASSACHUSETTS",MI:"MICHIGAN",MN:"MINNESOTA",MS:"MISSISSIPPI",MO:"MISSOURI",MT:"MONTANA",NE:"NEBRASKA",NV:"NEVADA",NH:"NEW HAMPSHIRE",NJ:"NEW JERSEY",NM:"NEW MEXICO",NY:"NEW YORK",NC:"NORTH CAROLINA",ND:"NORTH DAKOTA",OH:"OHIO",OK:"OKLAHOMA",OR:"OREGON",PA:"PENNSYLVANIA",RI:"RHODE ISLAND",SC:"SOUTH CAROLINA",SD:"SOUTH DAKOTA",TN:"TENNESSEE",TX:"TEXAS",UT:"UTAH",VT:"VERMONT",VA:"VIRGINIA",WA:"WASHINGTON",WV:"WEST VIRGINIA",WI:"WISCONSIN",WY:"WYOMING",DC:"DISTRICT OF COLUMBIA",PR:"PUERTO RICO",VI:"VIRGIN ISLANDS",GU:"GUAM",AS:"AMERICAN SAMOA",MP:"NORTHERN MARIANA ISLANDS"};
 function normalizeStateName(raw){
   const s=String(raw||"").trim().toUpperCase();
   if(!s)return"";
@@ -2732,6 +2732,55 @@ function normalizeStateName(raw){
 }
 function stateSlug(name){
   return String(name||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z]+/g,"-").replace(/^-+|-+$/g,"");
+}
+
+// 🧹 v182 LOTE 8 — LIMPEZA DA CIDADE: FUNÇÃO ÚNICA (robô de alimentação +
+// carregamento das planilhas). A cidade entrava CRUA da fonte e virava opção
+// de filtro do jeito que veio: na H-2A existem "Franklin Baldwin, LA 70514",
+// "McBee SC 29101", "Mailing: 611 Church St. Vidalia, G", "13033",
+// "N2575 County Rd. B", e 216 das 2.569 grafias estão em CAIXA ALTA. Cada uma
+// dessas é um chip clicável que não é lugar nenhum.
+// RÉGUA (conservadora de propósito — cidade ERRADA é pior que cidade suja):
+//   • tira "Mailing:"/"Mailing address:" do começo;
+//   • tira o CEP do fim (5 ou 5-4 dígitos);
+//   • tira a sigla de estado do fim SÓ quando ela existe no mapa único
+//     STATE_ABBR_TO_NAME (agora com VI/GU/AS/MP) — nunca corta 2 letras à toa;
+//   • descarta o que não tem NENHUMA letra ("13033") e o que começa com número
+//     de rua ("611 Church St. Vidalia", "N2575 County Rd. B");
+//   • Title Case SÓ quando o valor está todo em caixa alta — assim "LaBelle" e
+//     "McBee" continuam intactos.
+// IDEMPOTENTE: aplicar de novo devolve exatamente o mesmo texto (é o que
+// permite rodar a auto-cura em todo boot sem risco).
+// ⚠️ A CHAVE canônica de cidade do v179 (norm(cidade)+"|"+ESTADO) NÃO muda —
+// só o texto fica limpo; contagem e casamento seguem idênticos.
+function limparCidade(raw){
+  let s=String(raw==null?"":raw).replace(/\s+/g," ").trim();
+  if(!s)return"";
+  s=s.replace(/^mailing\s*(address)?\s*:?\s*/i,"").trim();
+  s=s.replace(/[,\s]+\d{5}(-\d{4})?$/,"").trim();
+  const sig=s.match(/^(.*?)[,\s]+([A-Za-z]{2})$/);
+  if(sig&&STATE_ABBR_TO_NAME[sig[2].toUpperCase()])s=sig[1].trim();
+  s=s.replace(/[,;.\s]+$/,"").trim();
+  if(!s)return"";
+  if(!/[a-zA-Z]/.test(s))return"";          // "13033" — número, não cidade
+  if(/^[a-zA-Z]?\d/.test(s))return"";       // endereço ("611 Church St.", "N2575 County Rd.")
+  if(!/[a-z]/.test(s))s=s.toLowerCase().replace(/\b\w/g,c=>c.toUpperCase());
+  return s;
+}
+// Auto-cura no boot: passa a régua acima em toda linha já carregada (a H-2A
+// tem 216 grafias sujas de nascença) e diz no log quantas mudaram. Só em
+// memória — a próxima gravação da planilha (enriquecimento/frescor) leva o
+// texto limpo pro disco; nunca reescreve arquivo no boot à toa.
+function _selfHealCidades(label, rows){
+  if(!Array.isArray(rows)||!rows.length)return 0;
+  let n=0;
+  for(const r of rows){
+    if(!r||r.ci===undefined||r.ci===null)continue;
+    const limpa=limparCidade(r.ci);
+    if(limpa!==r.ci){ r.ci=limpa; n++; }
+  }
+  if(n)console.log(`[sheet] 🧹 ${label}: ${n} cidade(s) limpa(s) (CEP/sigla de estado/endereço/CAIXA ALTA) — chave canônica intocada`);
+  return n;
 }
 
 // 🔒 Auto-cura de integridade (KB-076): toda vez que uma planilha é lida do
@@ -2831,6 +2880,7 @@ function loadSheets() {
       d = _selfHealSheetIntegrity(key, d, pData);
       if(key==="jan") SHEET_JAN=d; else if(key==="jul") SHEET_JUL=d; else SHEET_H2A=d;
       (key==="jan"?SHEET_JAN:key==="jul"?SHEET_JUL:SHEET_H2A).forEach(r=>{if(!r.k)r.k=detectCategory(r.t,r.n);});
+      _selfHealCidades(key, d); // v182: sujeira de cidade nunca vira opção de filtro
       console.log(`[sheet] ✅ ${key}: ${d.length} vagas (ETA case numbers únicos)`);
       anyLoaded = true;
     } catch(e) {
@@ -2855,6 +2905,7 @@ function loadSheets() {
         // 🔒 Mesma garantia de integridade pras planilhas extras/históricas.
         d = _selfHealSheetIntegrity(`extra:${metaKey}`, d, fp);
         d.forEach(r=>{if(!r.k)r.k=detectCategory(r.t,r.n);r._sheet=metaKey;});
+        _selfHealCidades(`extra:${metaKey}`, d); // v182: mesma régua única de limpeza
         SHEET_EXTRAS[metaKey] = d;
         extrasLoaded++;
         console.log(`[sheet] ✅ extra ${metaKey}: ${d.length} vagas (ETA case numbers únicos)`);
@@ -2998,8 +3049,38 @@ function _lerSeedBundled(arquivo){
     return (Array.isArray(d) && d.length) ? d : null;
   }catch(e){ console.warn(`[sheet] ⚠️ não consegui ler ${arquivo}: ${e.message}`); return null; }
 }
+// 🧩 v182 LOTE 8: grava a jul2026 mesclada (memória + /data + meta) — o MESMO
+// caminho pro seed automático (esqueleto em /data, v180) e pro "force" do
+// admin. Sem isso o force continuaria destrutivo, com a régua de fusão só num
+// dos dois lugares.
+function _aplicarSeedJul2026(m, origem){
+  SHEET_EXTRAS["jul2026"] = m.rows;
+  DB_SHEETS_META["jul2026"] = { ...(DB_SHEETS_META["jul2026"]||{}), count:m.rows.length, uniqueCaseCount:m.rows.length,
+    file: DB_SHEETS_META["jul2026"]?.file || "jul2026.json", published:true,
+    seedMergedAt: Date.now(), seedMergedRows: m.recebidas, source:origem };
+  try{
+    if(!fs.existsSync(SHEETS_DIR)) fs.mkdirSync(SHEETS_DIR,{recursive:true});
+    _writeFileAtomic(path.join(SHEETS_DIR, DB_SHEETS_META["jul2026"].file), JSON.stringify(m.rows));
+    _writeFileAtomic(SHEETS_META_FILE, JSON.stringify(DB_SHEETS_META,null,2));
+  }catch(e){ console.warn("[sheet] ⚠️ jul2026: mesclei o seed em memória mas falhei ao gravar em /data:", e.message); }
+  return { ok:true, skipped:false, migrado:true, count:m.rows.length, atualizadas:m.atualizadas, adicionadas:m.adicionadas, comEmail:m.emailDepois };
+}
 function seedJul2026FromBundle(force){
   const hasRealJul2026 = Array.isArray(SHEET_EXTRAS["jul2026"]) && SHEET_EXTRAS["jul2026"].length>0;
+  // 🧩 v182 LOTE 8: FORÇAR A SEMEADURA NÃO PODE SER DESTRUTIVO. O botão do
+  // painel trocava a planilha INTEIRA pelo arquivo bundled (hoje um esqueleto
+  // sem e-mail) — em produção, com /data já enriquecido pelo robô, um clique
+  // apagaria meses de e-mail, cidade e descrição. Agora força = MESCLA, pela
+  // MESMA `_mesclarPlanilha` do upload e do seed (ninguém some, a linha mais
+  // rica vence). Semear do zero segue existindo só quando não há NADA no ar.
+  if(hasRealJul2026 && force){
+    const bundled = _lerSeedBundled("jul2026_compact.json");
+    if(!bundled) return { ok:false, reason:'arquivo bundled não encontrado ou vazio no deploy' };
+    const m = _mesclarPlanilha(SHEET_EXTRAS["jul2026"], bundled, {sheetKey:"jul2026"});
+    const r = _aplicarSeedJul2026(m, "seed-bundled-forcado");
+    console.log(`[sheet] 🌱 jul2026: seed bundled MESCLADO por ordem do admin — ${m.atualizadas} atualizada(s), ${m.adicionadas} nova(s), ${m.rows.length} no total (${m.emailAntes} → ${m.emailDepois} com e-mail).`);
+    return { ...r, mesclado:true };
+  }
   if(hasRealJul2026 && !force){
     // 🌱 v180: /data pode estar com o ESQUELETO (0 e-mail) enquanto o arquivo
     // bundled deste deploy já é a planilha enriquecida — nesse caso o bundled
@@ -3010,17 +3091,9 @@ function seedJul2026FromBundle(force){
     if(semEmail){
       const m = _seedVenceEsqueleto("jul2026", atual, _lerSeedBundled("jul2026_compact.json"));
       if(m.aplicar){
-        SHEET_EXTRAS["jul2026"] = m.rows;
-        DB_SHEETS_META["jul2026"] = { ...(DB_SHEETS_META["jul2026"]||{}), count:m.rows.length, uniqueCaseCount:m.rows.length,
-          file: DB_SHEETS_META["jul2026"]?.file || "jul2026.json", published:true,
-          seedMergedAt: Date.now(), seedMergedRows: m.recebidas, source:"seed-bundled-enriquecido" };
-        try{
-          if(!fs.existsSync(SHEETS_DIR)) fs.mkdirSync(SHEETS_DIR,{recursive:true});
-          _writeFileAtomic(path.join(SHEETS_DIR, DB_SHEETS_META["jul2026"].file), JSON.stringify(m.rows));
-          _writeFileAtomic(SHEETS_META_FILE, JSON.stringify(DB_SHEETS_META,null,2));
-        }catch(e){ console.warn("[sheet] ⚠️ jul2026: mesclei o seed em memória mas falhei ao gravar em /data:", e.message); }
+        const r = _aplicarSeedJul2026(m, "seed-bundled-enriquecido");
         console.log(`[sheet] 🌱 jul2026: esqueleto em /data substituído pelo seed bundled enriquecido (${m.emailDepois} linhas com e-mail) — ${m.atualizadas} atualizada(s), ${m.adicionadas} nova(s), ${m.rows.length} no total.`);
-        return { ok:true, skipped:false, migrado:true, count:m.rows.length, atualizadas:m.atualizadas, adicionadas:m.adicionadas, comEmail:m.emailDepois };
+        return r;
       }
     }
     return { ok:true, skipped:true, reason:'já existe dado real', count:atual.length };
@@ -6300,9 +6373,9 @@ const PLANILHAS = _createPlanilhas({
   getSheet, getSheetH2A: () => SHEET_H2A, setSheetH2A: (arr) => { SHEET_H2A = arr; },
   getExtras: () => SHEET_EXTRAS, getMeta: () => DB_SHEETS_META,
   enrichBot: _enrichBot, enrichLog: _enrichLog, saveSheet: _saveEnrichedSheet,
-  httpsReq, botLog, pushToUser, ADMIN_EMAILS, detectCategory,
+  httpsReq, botLog, pushToUser, ADMIN_EMAILS, detectCategory, limparCidade,
   dedupe: _vagasDedupe, verify: _vagasVerify, manifest: _vagasManifest,
-  notificarRadares, latestH2bKey,
+  notificarRadares,
   isTest: !!process.env.TEST_LOGIN_TOKEN,
 });
 
@@ -7529,16 +7602,18 @@ ul li{margin-bottom:6px}
     }catch(e){ return json(res,500,{error:e.message}); }
   }
 
-  // POST /api/admin/sheet/seed-jul2026 — força a semeadura da planilha
-  // Julho 2026 a partir do jul2026_compact.json bundled, mesmo que já
-  // exista uma entrada (zoada ou não) no registro. Botão de segurança pra
-  // não depender só do boot funcionar direito (KB-086).
+  // POST /api/admin/sheet/seed-jul2026 — aplica o jul2026_compact.json bundled
+  // mesmo que já exista uma entrada (zoada ou não) no registro. Botão de
+  // segurança pra não depender só do boot funcionar direito (KB-086).
+  // 🧩 v182 LOTE 8: com planilha JÁ no ar, forçar MESCLA (nunca substitui) —
+  // ver seedJul2026FromBundle. A resposta diz o que a mesclagem fez.
   if(pathname==="/api/admin/sheet/seed-jul2026"&&req.method==="POST"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
     const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
     const r = seedJul2026FromBundle(true);
     if(!r.ok) return json(res,400,{error:r.reason||"Falha ao semear"});
-    return json(res,200,{ok:true, count:r.count, novosGrupos:r.novosGrupos, skipped:r.skipped});
+    return json(res,200,{ok:true, count:r.count, novosGrupos:r.novosGrupos, skipped:r.skipped,
+      mesclado:r.mesclado===true, atualizadas:r.atualizadas, adicionadas:r.adicionadas, comEmail:r.comEmail});
   }
 
     // GET /api/admin/sheet/download/:key — baixar planilha enriquecida como JSON

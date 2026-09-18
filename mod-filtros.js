@@ -70,6 +70,9 @@ const DIMENSOES_DOUBLEPRO = new Set(["grupo", "status"]);
 // Dado sujo da fonte, nas DUAS direções (v179 — as duas heurísticas moram
 // juntas de propósito, são a mesma ideia):
 //  • rotulado "hora" mas > 200 → é mensal sem unidade ($2.058/h não existe);
+//  • "pr" (por peça) NÃO é $/h: devolve 0 (salário desconhecido), nunca um
+//    número inventado — v182 LOTE 8, junto com o mapeamento real de
+//    pay_range_desc no robô de alimentação;
 //  • rotulado mês/semana/dia/ano mas baixo demais pra aquela unidade → é
 //    valor HORÁRIO mal rotulado na fonte. Caso real medido na H-2A: 41 linhas
 //    com wunit="mo" e valor < 400 ("Field Workers" w=9.59 mo), que dividido
@@ -86,6 +89,14 @@ function wageHora(r) {
   if (!(v > 0)) return 0;
   const un = String(r.wunit || "h").toLowerCase();
   if (un.startsWith("mo")) return v < 400 ? v : v / 173;
+  // 💵 v182 LOTE 8: por PEÇA (produção) não é salário por hora e não dá pra
+  // inventar um — vira "sem salário publicado" (fora dos limiares, contado em
+  // `semSalario`). Estimar $/h de pagamento por produção seria mentir pro
+  // candidato sobre quanto ele vai receber.
+  if (un.startsWith("pr")) return 0;
+  // Quinzenal (Bi-Weekly do DOL): 80 horas. Mesma proteção das outras — valor
+  // baixo demais pra quinzena é hora mal rotulada na fonte.
+  if (un.startsWith("bw")) return v < 200 ? v : v / 80;
   if (un.startsWith("w")) return v < 100 ? v : v / 40;
   if (un.startsWith("d")) return v < 30 ? v : v / 8;
   if (un.startsWith("y") || un.startsWith("a")) return v < 5000 ? v : v / 2080;

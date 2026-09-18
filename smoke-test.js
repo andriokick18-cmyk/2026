@@ -42,8 +42,60 @@ const _mkVagaH2A = (i) => ({
   job_title: "Farm Worker", employer_business_name: `Fazenda Teste ${i} LLC`,
   apply_email: `rh${i}@fazenda${i}.com`,
 });
+// 🧪 v182 LOTE 8 — API DO DOL FALSA (detalhe de UMA vaga por ETA case number).
+// O robô de enriquecimento e o de frescor perguntam
+// `?$filter=case_number eq 'X'&$top=1` ao hostname real do DOL, que o sandbox
+// não alcança — por isso os dois nunca eram exercitados de verdade. Com
+// DOL_API_BASE apontando pra cá, o ciclo inteiro roda no npm test.
+// Case number conhecido devolve o detalhe RICO (cidade suja, datas, descrição,
+// meses de experiência, unidade de salário); qualquer outro devolve lista
+// vazia — é o que deixa o frescor varrer jan2026 sem inventar dado nenhum.
+const DOL_HITS = [];
+const DOL_DETALHE = {
+  // exp já existe na linha (6 meses) e o DOL só diz Sim/Não → o número TEM que sobreviver
+  "H-400-L8-0001": {
+    case_number: "H-400-L8-0001", job_title: "Landscape Laborer", employer_business_name: "Oito Um LLC",
+    worksite_city: "Franklin Baldwin, LA 70514", worksite_state: "LA",
+    begin_date: "2027-03-01", end_date: "2027-11-30",
+    job_duties: "Plant, mow and maintain lawns, gardens and grounds.",
+    basic_rate_from: "800.00", pay_range_desc: "Week",
+    experience_required: "Yes", total_positions: 12, case_status: "Certified",
+    apply_email: "rh@oitoum.com",
+  },
+  // o DOL publica os MESES → grava 3 (antes o robô escrevia "1" em tudo)
+  "H-400-L8-0002": {
+    case_number: "H-400-L8-0002", job_title: "Housekeeper", employer_business_name: "Oito Dois LLC",
+    worksite_city: "BAR HARBOR", worksite_state: "ME",
+    begin_date: "2027-04-01", end_date: "2027-10-31",
+    job_duties: "Clean guest rooms and common areas.",
+    basic_rate_from: "1600.00", pay_range_desc: "Bi-Weekly",
+    experience_months: 3, experience_required: "Yes", total_positions: 4, case_status: "Certified",
+    apply_email: "rh@oitodois.com",
+  },
+  // pagamento por PEÇA + sem meses: expReq=sim e `exp` continua ausente
+  "H-400-L8-0003": {
+    case_number: "H-400-L8-0003", job_title: "Crop Harvester", employer_business_name: "Oito Tres LLC",
+    worksite_city: "13033", worksite_state: "NY",
+    begin_date: "2027-05-01", end_date: "2027-09-30",
+    job_duties: "Harvest apples by hand.",
+    basic_rate_from: "3.00", pay_range_desc: "Piece Rate",
+    experience_required: "Yes", total_positions: 30, case_status: "Certified",
+    apply_email: "rh@oitotres.com",
+  },
+};
 const feedSrv = http.createServer((rq, rs) => {
-  const h2a = (rq.url || "").includes("/h2a/");
+  const url = rq.url || "";
+  if (url.startsWith("/dol/")) {
+    // URLSearchParams decodifica "+" como espaço (decodeURIComponent não).
+    const filtro = new URLSearchParams(url.split("?")[1] || "").get("$filter") || "";
+    const m = filtro.match(/case_number eq '([^']+)'/);
+    const cn = m ? m[1].toUpperCase() : "";
+    DOL_HITS.push(cn);
+    const det = DOL_DETALHE[cn];
+    rs.writeHead(200, { "Content-Type": "application/json" });
+    return rs.end(JSON.stringify({ value: det ? [det] : [] }));
+  }
+  const h2a = url.includes("/h2a/");
   const vagas = [];
   for (let i = 1; i <= 14; i++) vagas.push(h2a ? _mkVagaH2A(i) : _mkVaga(i));
   vagas.push(h2a ? _mkVagaH2A(1) : _mkVaga(1)); // duplicada de propósito
@@ -325,7 +377,7 @@ async function testAuthWatchdogPush() {
     // antiga vazada, nem a nova) — o teste define a SUA PRÓPRIA senha via
     // env, exatamente como uma instalação real deveria fazer (a env sempre
     // vence o hash de fábrica embutido no código).
-    env: { ...process.env, PORT: String(PORT), DATA_DIR: DATA, STORAGE: "json", TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890", DOL_FEED_BASE: `http://127.0.0.1:${FEED_PORT}/feed`, H2A_BIM_MIN_PUBLICAR: "10", ADMIN_PANEL_PASS_ANDRIO: "teste-smoke-andrio-2026", ADMIN_PANEL_PASS_DIEGO: "teste-smoke-diego-2026" },
+    env: { ...process.env, PORT: String(PORT), DATA_DIR: DATA, STORAGE: "json", TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890", DOL_FEED_BASE: `http://127.0.0.1:${FEED_PORT}/feed`, DOL_API_BASE: `http://127.0.0.1:${FEED_PORT}/dol/`, H2A_BIM_MIN_PUBLICAR: "10", ADMIN_PANEL_PASS_ANDRIO: "teste-smoke-andrio-2026", ADMIN_PANEL_PASS_DIEGO: "teste-smoke-diego-2026" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let log = "";
@@ -2201,8 +2253,14 @@ async function testAuthWatchdogPush() {
       // MEDIDO: 65 na Flórida (+1 Labelle/GEORGIA). O relatório da auditoria
       // dizia "1 chip de 66" — os 66 incluíam a vaga da GEÓRGIA, que é outra
       // cidade; a verdade é 65 + 1, e é isso que a tela passa a mostrar.
+      // ⚠️ ATUALIZADO no v182 LOTE 8: o rótulo virou "Labelle". A limpeza na
+      // gravação (limparCidade) passa o CAIXA ALTA pra Title Case, então as 11
+      // linhas "LABELLE" viraram "Labelle" e essa grafia (23+11=34) passou a
+      // ser a MAIS FREQUENTE, na frente de "LaBelle" (32). O que este check
+      // guarda continua igual: UMA opção por cidade+estado, 65 na Flórida, a
+      // da Geórgia separada e faceta === lista.
       check("🎯 v179-L1: cidade é LUGAR, não texto — 'LaBelle'/'Labelle'/'LABELLE' viravam 3 chips (32/23/11) e clicar qualquer um trazia 66 (com 1 da GEÓRGIA junto); agora 1 opção por cidade+estado, com rótulo na grafia mais comum",
-        (vfLb.facetas.cidade || []).length === 2 && lbFl && lbFl.n === 65 && lbFl.label === "LaBelle" && lbFl.estado === "FLORIDA" &&
+        (vfLb.facetas.cidade || []).length === 2 && lbFl && lbFl.n === 65 && lbFl.label === "Labelle" && lbFl.estado === "FLORIDA" &&
         smLb.total === 65 && smLb.jobs.every((j) => j.state === "FLORIDA"),
         JSON.stringify(vfLb.facetas.cidade) + " lista=" + smLb.total);
       const vfAmes = (await get("/api/vagas/filtros?sheet=h2a-jun2026&cidadeBusca=ames")).json;
@@ -2906,10 +2964,16 @@ async function testAuthWatchdogPush() {
         !(_slJan.json?.sheets || []).some((x) => x.key === "teste-janela"),
         JSON.stringify({ erro: (_stJan?.error || "").slice(0, 140) }));
       const _modFresh = fs.readFileSync(path.join(__dirname, "mod-planilhas.js"), "utf8");
-      check("🚨 v177-FIX7 (estrutural): o robô de frescor passou a cobrir a planilha H-2A DO MÊS (h2a-AAAAMM, a que se publica sozinha) — antes só olhava a H-2B mais nova e a chave fixa h2a-jun2026, então a planilha mais nova do site envelhecia sem NENHUMA reconferência de status/data/salário",
-        _modFresh.includes("function latestH2aMensalKey()") &&
-        _modFresh.includes('[latestH2bKey(), "h2a-jun2026", latestH2aMensalKey()]'),
-        "runFreshCycle voltou a ignorar as planilhas H-2A mensais");
+      // ⚠️ ATUALIZADO no v182 LOTE 8: a lista fixa [H-2B mais nova, h2a-jun2026,
+      // H-2A do mês] do v177-FIX7 virou "TODA planilha publicada" — a H-2A do
+      // mês continua coberta (por construção agora, não por um padrão de chave
+      // a mais) e jan2026/jul2025, que nunca eram reconferidas, entraram junto.
+      check("🚨 v177-FIX7 + v182-L8 (estrutural): o frescor cobre TODA planilha publicada em rodízio (rascunho fica de fora) — a planilha H-2A do mês, a H-2B mais nova e as antigas jan2026/jul2025 param de envelhecer sem NENHUMA reconferência de status/data/salário",
+        _modFresh.includes("function planilhasParaFrescor()") &&
+        _modFresh.includes('meta[k]?.published !== false') &&
+        _modFresh.includes("const keys = planilhasParaFrescor();") &&
+        !_modFresh.includes("function latestH2aMensalKey()"),
+        "runFreshCycle voltou a olhar só um punhado de planilhas");
       // 🔒 admin-only + estrutural
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
       const pl403 = await Promise.all([req2("POST", "/api/admin/sheet/h2a-bimestral-run", {}), req2("POST", "/api/admin/sheet/coleta-start", { sheetKey: "x" }), get("/api/admin/planilhas/status"), req2("POST", "/api/admin/sheet/coleta-publish", { key: "teste2099" })]);
@@ -4083,6 +4147,127 @@ async function testAuthWatchdogPush() {
         "botão de importar planilha sumiu do admin.html");
       // limpeza: a planilha de teste não fica no ar pro resto da suíte
       await req2("DELETE", "/api/admin/sheet/merge-teste");
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // 🧩 v182 — LOTE 8: TERMINAR DE ALIMENTAR A PLANILHA
+    // O robô dava jan2026/jul2025 (11.446 vagas) por "100% completas" só porque
+    // toda linha tem E-MAIL — e era por isso que 0% delas tinha cidade, datas
+    // ou descrição. Aqui o critério vira "tem o que a TELA usa", o frescor
+    // passa a cobrir toda planilha publicada, a unidade do salário é lida de
+    // verdade, `exp` volta a ser MESES e a cidade é limpa na gravação.
+    // Com DOL_API_BASE apontando pro feed falso, o ciclo do robô roda DE
+    // VERDADE no npm test (antes o hostname do DOL o tornava inexercitável).
+    // ══════════════════════════════════════════════════════════════════════
+    {
+      const _rowsL8 = async (k) => (await get("/api/admin/sheet/download/" + k)).json || [];
+      const _rL8 = (arr, c) => arr.find((r) => r.c === c) || {};
+      // (30) o progresso REAL de cada planilha, pela MESMA função que a fila do robô usa
+      const stL8 = (await get("/api/admin/planilhas/status")).json;
+      const filaL8 = stL8.enrichFila || [];
+      const fJan = filaL8.find((x) => x.k === "jan2026");
+      check("🧩 v182-L8 (30): planilha com 100% de e-mail NÃO é mais 'completa' — jan2026 (9.240 vagas) aparece com as 9.240 pendentes por falta de cidade/datas/descrição; era esse `if` que tirava 11.446 vagas H-2B da fila do robô pra sempre",
+        !!fJan && fJan.total === 9240 && fJan.semEmail === 0 && fJan.completas === 0 && fJan.pendentes === 9240 &&
+        fJan.faltando.e === 0 && fJan.faltando.ci === 9240 && fJan.faltando.desc === 9240,
+        JSON.stringify(fJan));
+      check("🧩 v182-L8 (30/35): a fila ataca por IMPACTO — a jul2026 (2.625 linhas, ZERO e-mail) vem na frente de todas, porque vaga sem contato é candidatura impossível; depois vem quem tem mais linhas pendentes",
+        filaL8.length >= 4 && filaL8[0].k === "jul2026" && filaL8[0].semEmail === 2625 &&
+        filaL8.findIndex((x) => x.k === "jan2026") > filaL8.findIndex((x) => x.k === "jul2026"),
+        filaL8.map((x) => `${x.k}:semEmail=${x.semEmail}/pend=${x.pendentes}`).join(" · "));
+      // (30/33/34) um ciclo REAL do robô sobre o feed falso
+      const _hits0 = DOL_HITS.length;
+      await req2("POST", "/api/admin/sheet/upload", {
+        name: "Alimentar Oito", key: "enrich-l8", data: [
+          { c: "H-400-L8-0000", n: "Completa LLC", s: "TEXAS", e: "rh@completa-l8.com", t: "Cook", ci: "Austin", d: "2027-01-01", de: "2027-06-30", desc: "Cozinhar." },
+          { c: "H-400-L8-0001", n: "Oito Um LLC", s: "LOUISIANA", e: "rh@oitoum.com", t: "Landscape Laborer", exp: 6, w: "800.00", wunit: "h" },
+          { c: "H-400-L8-0002", n: "Oito Dois LLC", s: "MAINE", e: "rh@oitodois.com", t: "Housekeeper" },
+          { c: "H-400-L8-0003", n: "Oito Tres LLC", s: "NEW YORK", e: "rh@oitotres.com", t: "Crop Harvester" },
+        ],
+      });
+      await req2("POST", "/api/admin/enrich/start", { sheetKey: "enrich-l8", resume: true });
+      let enL8 = null;
+      for (let i = 0; i < 80; i++) { await new Promise((r) => setTimeout(r, 200)); enL8 = (await get("/api/admin/enrich/status")).json; if (enL8 && enL8.running === false && enL8.done >= 4) break; }
+      const arrL8 = await _rowsL8("enrich-l8");
+      const r1 = _rL8(arrL8, "H-400-L8-0001"), r2 = _rL8(arrL8, "H-400-L8-0002"), r3 = _rL8(arrL8, "H-400-L8-0003");
+      const hitsL8 = DOL_HITS.slice(_hits0);
+      check("🧩 v182-L8 (30): um ciclo do robô preenche cidade, datas E descrição de linhas que JÁ TINHAM e-mail — exatamente o caso de jan2026/jul2025, que o ciclo antigo declarava '100% completo' e pulava",
+        !!r1.ci && !!r1.d && !!r1.de && !!r1.desc && !!r2.ci && !!r2.d && !!r2.desc && !!r3.d && !!r3.desc,
+        JSON.stringify({ r1: { ci: r1.ci, d: r1.d, de: r1.de, desc: !!r1.desc }, r2: { ci: r2.ci, d: r2.d }, r3: { d: r3.d } }));
+      check("🧩 v182-L8 (30): linha JÁ completa não gasta chamada ao DOL, e a retomada começa na primeira linha PENDENTE (não mais na primeira sem e-mail) — as 3 pendentes foram consultadas, a completa nunca",
+        hitsL8.includes("H-400-L8-0001") && hitsL8.includes("H-400-L8-0002") && hitsL8.includes("H-400-L8-0003") &&
+        !hitsL8.includes("H-400-L8-0000"),
+        hitsL8.join(","));
+      check("🧩 v182-L8 (34): sujeira da fonte não vira mais opção de filtro — 'Franklin Baldwin, LA 70514' grava 'Franklin Baldwin', 'BAR HARBOR' vira 'Bar Harbor' e '13033' (que não é cidade nenhuma) não grava nada",
+        r1.ci === "Franklin Baldwin" && r2.ci === "Bar Harbor" && (r3.ci || "") === "",
+        JSON.stringify([r1.ci, r2.ci, r3.ci]));
+      check("🧩 v182-L8 (32): a unidade do salário é a que o DOL publicou — Week→w, Bi-Weekly→bw, Piece Rate→pr (antes TUDO que não fosse 'Month' era gravado como HORA e $800/semana virava $4,62/h na régua do filtro)",
+        r1.wunit === "w" && r2.wunit === "bw" && r3.wunit === "pr",
+        JSON.stringify([r1.wunit, r2.wunit, r3.wunit]));
+      check("🧩 v182-L8 (33): `exp` volta a ser MESES — o número que já existia (6) sobrevive ao robô, os meses publicados pelo DOL são gravados (3) e o Sim/Não vai pra `expReq` sem nunca inventar um `exp`",
+        r1.exp === 6 && r1.expReq === "sim" && r2.exp === 3 && r2.expReq === "sim" && r3.exp === undefined && r3.expReq === "sim",
+        JSON.stringify([r1.exp, r1.expReq, r2.exp, r2.expReq, r3.exp, r3.expReq]));
+      const vfL8 = (await get("/api/vagas/filtros?sheet=enrich-l8")).json;
+      const ciL8 = (vfL8.facetas.cidade || []).map((c) => c.label).sort();
+      const smL8 = (await get(`/api/sheet-meta?sheet=enrich-l8&cidade=${encodeURIComponent("franklin baldwin|LOUISIANA")}&top=10`)).json;
+      check("🧩 v182-L8 (34): o que o robô acabou de gravar já vale nos filtros e a faceta de cidade só tem LUGAR (nenhum CEP, nenhum número de rua) — e o chip continua entregando exatamente o que promete",
+        ciL8.length === 3 && ciL8.join("|") === "Austin|Bar Harbor|Franklin Baldwin" && smL8.total === 1,
+        JSON.stringify(ciL8) + " lista=" + smL8.total);
+      // (32) a régua única de $/hora entende as unidades novas
+      const { wageHora: _wh8 } = require(path.join(__dirname, "mod-filtros.js"));
+      check("🧩 v182-L8 (32): wageHora fecha a conta das unidades novas — $800/semana e $1.600/quinzena e $41.600/ano são todos $20/h, e pagamento por PEÇA é salário DESCONHECIDO (0), nunca um $/h inventado",
+        _wh8({ w: "800", wunit: "w" }) === 20 && _wh8({ w: "1600", wunit: "bw" }) === 20 && _wh8({ w: "41600", wunit: "y" }) === 20 &&
+        _wh8({ w: "3", wunit: "pr" }) === 0 && _wh8({ w: "50", wunit: "bw" }) === 50,
+        JSON.stringify([_wh8({ w: "800", wunit: "w" }), _wh8({ w: "1600", wunit: "bw" }), _wh8({ w: "3", wunit: "pr" })]));
+      check("🧩 v182-L8 (32): a vaga paga por peça sai do filtro de salário em vez de entrar com valor falso",
+        vfL8.facetas.salario.semSalario >= 1 && (vfL8.facetas.salario.limiares.find((l) => l.v === 12) || {}).n === 2,
+        JSON.stringify(vfL8.facetas.salario).slice(0, 160));
+      // (31) frescor em TODAS as planilhas publicadas, em rodízio
+      const _hits1 = DOL_HITS.length;
+      await req2("POST", "/api/admin/sheet/fresh-run", {});
+      let fr1 = null;
+      for (let i = 0; i < 120; i++) { await new Promise((r) => setTimeout(r, 200)); fr1 = (await get("/api/admin/planilhas/status")).json; if (fr1 && fr1.fresh.running === false && fr1.fresh.lastRunAt) break; }
+      const pick1 = fr1 && fr1.fresh.sheetKey;
+      const checados1 = DOL_HITS.length - _hits1;
+      await req2("POST", "/api/admin/sheet/fresh-run", {});
+      let fr2 = null;
+      for (let i = 0; i < 120; i++) { await new Promise((r) => setTimeout(r, 200)); fr2 = (await get("/api/admin/planilhas/status")).json; if (fr2 && fr2.fresh.running === false && fr2.fresh.sheetKey !== pick1) break; }
+      check("🧩 v182-L8 (31): o frescor deixou de olhar só a mais nova — jan2026 (9.240 vagas 'Certified' que nunca eram reconferidas, de onde sai a maior parte dos envios) entra na rotação, com o MESMO teto de 120 linhas por ciclo",
+        pick1 === "jan2026" && checados1 === 120 && fr1.fresh.checked === 120,
+        `pick=${pick1} chamadas=${checados1} checked=${fr1 && fr1.fresh.checked}`);
+      check("🧩 v182-L8 (31): o rodízio é pela planilha reconferida há mais tempo — o ciclo seguinte vai pra OUTRA planilha (carimbo por planilha no meta), nunca fica batendo na mesma",
+        fr2 && fr2.fresh.sheetKey && fr2.fresh.sheetKey !== pick1,
+        `1º=${pick1} 2º=${fr2 && fr2.fresh.sheetKey}`);
+      // (35) forçar o seed da jul2026 MESCLA — nunca troca a planilha inteira
+      const j26antes = await _rowsL8("jul2026");
+      const _casoJ26 = j26antes[0] && j26antes[0].c;
+      await req2("POST", "/api/test/enriquecer-linha", {
+        token: TEST_TOKEN, sheet: "jul2026", case: _casoJ26,
+        dol: { worksite_city: "Naples", worksite_state: "FL", apply_email: "rh@j26-enriquecida.com", begin_date: "2026-10-01", end_date: "2027-04-30", job_duties: "Trabalho de temporada.", case_status: "Certified" },
+      });
+      const seedForce = await req2("POST", "/api/admin/sheet/seed-jul2026", { force: true });
+      const j26depois = await _rowsL8("jul2026");
+      const _linhaJ26 = _rL8(j26depois, _casoJ26);
+      check("🧩 v182-L8 (35): forçar o seed da jul2026 MESCLA (mesma `_mesclarPlanilha` do upload) — antes trocava a planilha inteira pelo arquivo bundled, e um clique apagaria meses de e-mail/cidade/descrição que o robô já tinha conquistado em /data",
+        seedForce.json?.ok === true && seedForce.json.mesclado === true && j26depois.length === j26antes.length &&
+        _linhaJ26.e === "rh@j26-enriquecida.com" && _linhaJ26.ci === "Naples" && !!_linhaJ26.desc,
+        JSON.stringify({ resp: seedForce.json, linha: { e: _linhaJ26.e, ci: _linhaJ26.ci } }).slice(0, 220));
+      // estrutural: produção intocada (mesma URL do DOL, mesmo ritmo) e critério numa lista só
+      const _modL8 = fs.readFileSync(path.join(__dirname, "mod-planilhas.js"), "utf8");
+      check("🧩 v182-L8 (estrutural): em produção NADA mudou no trato com o DOL — a base padrão continua sendo api.seasonaljobs.dol.gov/datahub/ e o ritmo educado (800ms no enriquecimento, 1,5s no frescor) só encolhe com base local de teste",
+        _modL8.includes('process.env.DOL_API_BASE || "https://api.seasonaljobs.dol.gov/datahub/"') &&
+        _modL8.includes("_dolLocal ? 20 : 800") && _modL8.includes("_dolLocal ? 5 : 1500") &&
+        !/httpsReq\(\{ hostname: "api\.seasonaljobs/.test(_modL8),
+        "o ritmo/hostname de produção foi alterado");
+      check("🧩 v182-L8 (estrutural): o critério de 'completa' é UMA lista só (CAMPOS_ESSENCIAIS) — fila, ponto de retomada, laço do robô e painel leem dela, nunca cada um do seu jeito",
+        _modL8.includes("const CAMPOS_ESSENCIAIS = [") && _modL8.includes("sheet.filter(linhaCompleta)") &&
+        _modL8.includes("!linhaCompleta(r)") && _modL8.includes("if (linhaCompleta(row))") && _modL8.includes("progressoPlanilha(getSheet(k)") &&
+        !_modL8.includes("if (temEmail(row) && row.ci)") && !_modL8.includes("if (withoutEmail === 0)"),
+        "o critério de conclusão voltou a ser 'tem e-mail'");
+      const _admL8 = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
+      check("🧩 v182-L8: o painel Planilhas & Robôs mostra o progresso REAL (N/N completas · N pendentes: N sem cidade, N sem descrição…) em vez de '100%'",
+        _admL8.includes("function _plFilaHtml(") && _admL8.includes("sem descrição") && _admL8.includes("_plFilaHtml(d.enrichFila)"),
+        "o painel voltou a esconder o que falta em cada planilha");
+      await req2("DELETE", "/api/admin/sheet/enrich-l8");
     }
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
 

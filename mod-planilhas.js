@@ -30,6 +30,78 @@
    ═══════════════════════════════════════════════════════════════════════ */
 "use strict";
 
+// 🧩 v182 LOTE 8 — O CRITÉRIO DE CONCLUSÃO É "TEM O QUE A TELA USA".
+// Até aqui o robô dava uma planilha por "100% completa" só porque toda linha
+// tinha E-MAIL — e era exatamente por isso que jan2026 e jul2025 (11.446 vagas,
+// a maior parte do acervo) nunca ganhariam cidade, datas nem descrição: saíam
+// da fila no primeiro `if`, e o ponto de retomada do próprio bot também era "a
+// primeira linha SEM e-mail". Agora o critério é a lista abaixo — os campos que
+// a TELA e os FILTROS usam de verdade. Uma lista SÓ, nunca espalhada pelo
+// arquivo: quem quiser exigir mais um campo mexe aqui e o robô inteiro (fila,
+// retomada, laço e painel) passa a cobrá-lo junto.
+const CAMPOS_ESSENCIAIS = [
+  { campo: "e",    rotulo: "sem e-mail",         ok: (r) => !!(r.e && String(r.e).includes("@")) },
+  { campo: "ci",   rotulo: "sem cidade",         ok: (r) => !!String(r.ci || "").trim() },
+  { campo: "d",    rotulo: "sem data de início", ok: (r) => /^\d{4}-\d{2}-\d{2}$/.test(String(r.d || "")) },
+  { campo: "de",   rotulo: "sem data de fim",    ok: (r) => /^\d{4}-\d{2}-\d{2}$/.test(String(r.de || "")) },
+  { campo: "desc", rotulo: "sem descrição",      ok: (r) => String(r.desc || "").trim().length > 0 },
+];
+const linhaCompleta = (r) => { const x = r || {}; for (const c of CAMPOS_ESSENCIAIS) if (!c.ok(x)) return false; return true; };
+const temEmailLinha = (r) => !!(r && r.e && String(r.e).includes("@"));
+// Progresso REAL de uma planilha (o painel mostra isto, não "100%").
+function progressoPlanilha(rows) {
+  const arr = Array.isArray(rows) ? rows : [];
+  const faltando = {}; for (const c of CAMPOS_ESSENCIAIS) faltando[c.campo] = 0;
+  let completas = 0, semEmail = 0;
+  for (const r of arr) {
+    let ok = true;
+    for (const c of CAMPOS_ESSENCIAIS) if (!c.ok(r || {})) { faltando[c.campo]++; ok = false; }
+    if (ok) completas++;
+    if (!temEmailLinha(r)) semEmail++;
+  }
+  return { total: arr.length, completas, pendentes: arr.length - completas, semEmail, faltando };
+}
+// "6.930 sem cidade · 6.930 sem descrição" — frase humana do que falta.
+const faltasTexto = (prog) => CAMPOS_ESSENCIAIS
+  .filter((c) => (prog.faltando[c.campo] || 0) > 0)
+  .map((c) => `${prog.faltando[c.campo].toLocaleString("pt-BR")} ${c.rotulo}`).join(" · ");
+
+// 💵 v182 LOTE 8 — UNIDADE DO SALÁRIO DE VERDADE. `pay_range_desc` do DOL vinha
+// mapeado só pra "Month"; TUDO o mais era gravado como HORA, então um salário
+// semanal de $800 virava $4,62/h na régua única do filtro (wageHora) e no
+// sort=wage. Os ramos de semana/dia/ano de mod-filtros.js eram código morto
+// para o dado que este repo produz (100% "h" nas 3 planilhas H-2B).
+const PAY_UNIT = {
+  hour: "h", hourly: "h", hr: "h",
+  week: "w", weekly: "w",
+  "bi-weekly": "bw", biweekly: "bw", "bi weekly": "bw", fortnightly: "bw",
+  month: "mo", monthly: "mo",
+  year: "y", yearly: "y", annual: "y", annually: "y",
+  "piece rate": "pr", piece: "pr", "piece-rate": "pr",
+  day: "d", daily: "d",
+};
+const unidadeSalario = (desc) => PAY_UNIT[String(desc || "").trim().toLowerCase()] || "";
+
+// 🧰 v182 LOTE 8 — `exp` É MESES DE EXPERIÊNCIA (regra da casa desde o v179),
+// e o robô gravava `experience_required === "Yes" ? 1 : 0`: toda vaga que ele
+// tocasse perdia o número de meses e virava "1", destruindo linha a linha o
+// dado que sustenta o filtro "não exige experiência" — o de maior valor do
+// site. Daqui não dá pra confirmar o nome exato do campo numérico na resposta
+// real do DOL (o sandbox não alcança a API), então a leitura é DEFENSIVA:
+// aceita os nomes plausíveis publicados pelo datahub e, se nenhum vier, o
+// Sim/Não vai pra `expReq` e o `exp` numérico existente NUNCA é sobrescrito
+// (o filtro fica com 2 degraus honestos em vez de 4 — nunca com dado falso).
+const CAMPOS_EXP_MESES = ["experience_months", "experience_required_months", "months_experience", "experience_req_months", "exp_months"];
+function mesesExperiencia(dol) {
+  for (const campo of CAMPOS_EXP_MESES) {
+    const v = dol ? dol[campo] : undefined;
+    if (v === undefined || v === null || v === "") continue;
+    const n = parseInt(v, 10);
+    if (Number.isFinite(n) && n >= 0 && n <= 600) return n;
+  }
+  return null;
+}
+
 function createPlanilhas(deps) {
   const {
     fs, path, DATA_DIR, SHEETS_DIR, SHEETS_META_FILE,
@@ -43,7 +115,8 @@ function createPlanilhas(deps) {
     httpsReq,            // ({hostname,path,method,headers}) → {status,body}
     botLog, pushToUser, ADMIN_EMAILS,
     detectCategory, dedupe, verify, manifest,
-    notificarRadares, latestH2bKey,
+    limparCidade,        // v182: régua ÚNICA de limpeza de cidade (server.js, ao lado do mapa de estados)
+    notificarRadares,
     isTest,              // true no npm test (TEST_LOGIN_TOKEN) — agendadores desligados
   } = deps;
 
@@ -51,6 +124,43 @@ function createPlanilhas(deps) {
   const hoje = () => new Date().toISOString().slice(0, 10);
   const DEAD_ST = /denied|withdrawn|invalidat|expired|cancel/i;
   const DOL_HDR = () => ({ "Accept": "application/json", "Accept-Encoding": "gzip", "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36", "Cache-Control": "no-cache", "Referer": "https://seasonaljobs.dol.gov/" });
+
+  // 🌐 v182 LOTE 8 — A BASE DA API DO DOL NUMA CONSTANTE SÓ. O enriquecimento e
+  // o frescor batiam no hostname fixo `api.seasonaljobs.dol.gov`, o que deixava
+  // os 2 robôs INEXERCITÁVEIS no npm test (o sandbox não alcança o DOL — a
+  // única "prova" era ler o código). `DOL_API_BASE` aponta pro feed falso no
+  // teste; em produção o padrão é EXATAMENTE a URL de sempre (mesmo caminho,
+  // mesmos headers, mesmo ritmo). Base http:// (só local/teste) usa o módulo
+  // http nativo, porque o httpsReq injetado é https puro.
+  const DOL_API_BASE = String(process.env.DOL_API_BASE || "https://api.seasonaljobs.dol.gov/datahub/");
+  const _dolLocal = /^http:\/\/(127\.0\.0\.1|localhost)[:/]/i.test(DOL_API_BASE);
+  // Ritmo com o DOL: INTOCADO em produção (o dono autorizou o robô levar
+  // semanas). Só encolhe quando a base é local — não há governo do outro lado.
+  const RITMO = { enrich: _dolLocal ? 20 : 800, fresh: _dolLocal ? 5 : 1500 };
+  function _dolReqOpts(caseNumber) {
+    const params = new URLSearchParams({ "api-version": "2020-06-30" });
+    params.append("$filter", `case_number eq '${caseNumber}'`); params.append("$top", "1");
+    let u; try { u = new URL(DOL_API_BASE); } catch { u = new URL("https://api.seasonaljobs.dol.gov/datahub/"); }
+    return { u, caminho: (u.pathname || "/") + "?" + params.toString() };
+  }
+  function _httpJson(u, caminho, headers) {
+    return new Promise((resolve, reject) => {
+      const http = require("http");
+      const r = http.request({ hostname: u.hostname, port: u.port || 80, path: caminho, method: "GET", headers }, (resp) => {
+        let b = ""; resp.on("data", (c) => (b += c));
+        resp.on("end", () => { let body = b; try { body = JSON.parse(b); } catch { } resolve({ status: resp.statusCode, body }); });
+      });
+      r.on("error", reject);
+      r.setTimeout(15000, () => { r.destroy(); reject(new Error("Timeout")); });
+      r.end();
+    });
+  }
+  // UMA vaga do DOL pelo ETA case number — a mesma pergunta dos 2 robôs.
+  async function dolApiCase(caseNumber, headers) {
+    const { u, caminho } = _dolReqOpts(caseNumber);
+    if (u.protocol === "http:") return _httpJson(u, caminho, headers);
+    return httpsReq({ hostname: u.hostname, path: caminho, method: "GET", headers });
+  }
 
   // ══════════════════════════════════════════════════════════════════════
   //  🤖 BOT DE ENRIQUECIMENTO — 1 vaga por vez na API do DOL
@@ -64,7 +174,10 @@ function createPlanilhas(deps) {
   ];
   // Aplica na linha da planilha TUDO que a página do seasonaljobs mostra.
   function aplicarDolNaLinha(row, dol) {
-    row.ci = (dol.worksite_city || dol.employer_city || row.ci || "").trim();
+    // 🧹 v182: cidade passa pela régua ÚNICA de limpeza (CEP, sigla de estado,
+    // "Mailing:", número de rua, CAIXA ALTA) — a sujeira da fonte virava chip
+    // clicável que não é lugar nenhum. Vale também pro que já estava na linha.
+    row.ci = limparCidade(dol.worksite_city || dol.employer_city || row.ci || "");
     row.st_ab = (dol.worksite_state || dol.employer_state || row.st_ab || "").trim();
     row.addr = (dol.worksite_address || dol.employer_address || row.addr || "").trim();
     row.zip = (dol.worksite_postal_code || dol.employer_postal_code || row.zip || "").trim();
@@ -73,7 +186,12 @@ function createPlanilhas(deps) {
     row.wk = parseInt(dol.total_positions || dol.nbr_workers_requested || 0) || row.wk || 0;
     row.w = row.w || (dol.basic_rate_from ? String(parseFloat(dol.basic_rate_from).toFixed(2)) : "");
     row.wmax = dol.basic_rate_to ? String(parseFloat(dol.basic_rate_to).toFixed(2)) : (row.wmax || "");
-    row.wunit = row.wunit || (dol.pay_range_desc === "Month" ? "mo" : "h");
+    // 💵 v182: a unidade publicada pelo DOL MANDA (Hour/Week/Bi-Weekly/Month/
+    // Year/Piece Rate). Antes tudo que não fosse "Month" era gravado como HORA
+    // — inclusive o "h" errado herdado da planilha compacta, que ficava pra
+    // sempre porque o código só preenchia quando o campo estava vazio.
+    const _un = unidadeSalario(dol.pay_range_desc);
+    row.wunit = _un || row.wunit || "h";
     row.winfo = (dol.wage_offer_description || dol.additional_wage_information || row.winfo || "").slice(0, 300);
     row.ph = String(dol.apply_phone || dol.employer_phone || row.ph || "").replace(/[^0-9+()\- ]/g, "").trim();
     row.ph2 = String(dol.employer_phone || row.ph2 || "").replace(/[^0-9+()\- ]/g, "").trim();
@@ -85,7 +203,13 @@ function createPlanilhas(deps) {
     row.soc = (dol.soc_code || dol.onet_code || row.soc || "").trim();
     row.socT = (dol.soc_title || row.socT || "").trim();
     if (dol.job_duties) row.desc = String(dol.job_duties).replace(/\*\*[^*]+\*\*/g, "").trim().slice(0, 1500);
-    row.exp = dol.experience_required === "Yes" ? 1 : 0;
+    // 🧰 v182: MESES quando o DOL publica o número; senão só o Sim/Não em
+    // `expReq` — um `exp` numérico já conhecido NUNCA é sobrescrito.
+    const _meses = mesesExperiencia(dol);
+    if (_meses !== null) row.exp = _meses;
+    if (dol.experience_required !== undefined && dol.experience_required !== null && String(dol.experience_required) !== "") {
+      row.expReq = /^(y|s|1|true)/i.test(String(dol.experience_required).trim()) ? "sim" : "nao";
+    }
     row.req = (dol.special_requirements || row.req || "").slice(0, 400);
     row.hrs = dol.nbr_hours_per_week ? String(dol.nbr_hours_per_week) : (row.hrs || "");
     row.sched = (dol.work_schedule || row.sched || "").trim();
@@ -102,30 +226,32 @@ function createPlanilhas(deps) {
     if (enrichBot.running && !resume) { enrichLog("Bot já está rodando", "warn"); return; }
     const sheet = getSheet(sheetKey);
     if (!sheet || !sheet.length) { enrichLog(`Planilha não encontrada: ${sheetKey}`, "error"); return; }
-    // Ponto de retomada REAL pelo disco: começa na PRIMEIRA linha ainda sem
-    // e-mail (v174c — o "contagem − 5" do site antigo só funcionava quando os
-    // buracos estavam no fim; na H-2A as 133 vagas sem e-mail estão espalhadas
-    // e o bot pulava quase todas). Linha já completa (e-mail + cidade) é
-    // pulada no loop de qualquer jeito — nunca gasta DOL à toa.
-    const temEmail = (r) => !!(r.e && String(r.e).includes("@"));
-    const alreadyDone = sheet.filter(temEmail).length;
-    const primeiraSemEmail = sheet.findIndex(r => !temEmail(r));
-    const startIdx = resume && primeiraSemEmail > 0 ? primeiraSemEmail : 0;
+    // Ponto de retomada REAL pelo disco: começa na PRIMEIRA linha PENDENTE
+    // (v174c — o "contagem − 5" do site antigo só funcionava quando os buracos
+    // estavam no fim; na H-2A as vagas incompletas estão espalhadas e o bot
+    // pulava quase todas). v182 LOTE 8: "pendente" deixou de ser "sem e-mail" e
+    // passou a ser "falta algum CAMPO ESSENCIAL" — senão jan2026/jul2025 (100%
+    // de e-mail, 0% de cidade/descrição) começavam no fim da planilha e o bot
+    // não tinha o que fazer. Linha completa é pulada no laço de qualquer jeito
+    // — nunca gasta chamada ao DOL à toa.
+    const alreadyDone = sheet.filter(linhaCompleta).length;
+    const primeiraPendente = sheet.findIndex(r => !linhaCompleta(r));
+    const startIdx = resume && primeiraPendente > 0 ? primeiraPendente : 0;
     enrichBot.running = true; enrichBot.sheetKey = sheetKey; enrichBot.total = sheet.length; enrichBot.done = startIdx;
     enrichBot.ok = resume ? alreadyDone : 0; enrichBot.noEmail = resume ? (enrichBot.noEmail || 0) : 0; enrichBot.errors = resume ? (enrichBot.errors || 0) : 0;
     enrichBot.startedAt = (resume && enrichBot.startedAt) ? enrichBot.startedAt : Date.now();
     enrichBot.log = resume ? enrichBot.log : []; enrichBot.savedAt = null;
-    enrichLog(`📌 Ponto de retomada: ${startIdx}/${sheet.length} (${alreadyDone} vagas já têm email no disco)`, "info");
+    enrichLog(`📌 Ponto de retomada: ${startIdx}/${sheet.length} (${alreadyDone} vagas já completas no disco — e-mail, cidade, datas e descrição)`, "info");
     enrichLog(`🚀 Bot iniciado: ${sheet.length} vagas — planilha "${sheetKey}"${resume ? ` (retomando de ${startIdx})` : ""}`, "ok");
     enrichLog("🔍 Buscando: email, cidade, datas, workers, telefone, funções, URL", "info");
     let uaIdx = Math.floor(Math.random() * USER_AGENTS.length);
     const getHDR = () => { uaIdx = (uaIdx + 1) % USER_AGENTS.length; return { ...DOL_HDR(), "User-Agent": USER_AGENTS[uaIdx], "Accept": "application/json, text/plain, */*", "Accept-Language": "en-US,en;q=0.9", "Pragma": "no-cache", "Origin": "https://seasonaljobs.dol.gov", "sec-fetch-dest": "empty", "sec-fetch-mode": "cors", "sec-fetch-site": "same-site" }; };
-    let interDelay = 800, consecutive403 = 0;
+    let interDelay = RITMO.enrich, consecutive403 = 0;
     for (let i = startIdx; i < sheet.length; i++) {
       if (!enrichBot.running) break;
       const row = sheet[i]; const cn = String(row.c || "").toUpperCase(); enrichBot.done = i + 1;
-      // pula quem JÁ está completo (e-mail + cidade) — nunca gasta DOL à toa
-      if (temEmail(row) && row.ci) { enrichBot.ok++; continue; }
+      // pula quem JÁ está completo (todos os CAMPOS_ESSENCIAIS) — nunca gasta DOL à toa
+      if (linhaCompleta(row)) { enrichBot.ok++; continue; }
       let attempt = 0, processed = false;
       while (attempt < 6 && !processed && enrichBot.running) {
         if (attempt > 0) {
@@ -136,11 +262,9 @@ function createPlanilhas(deps) {
         }
         attempt++;
         try {
-          const params = new URLSearchParams({ "api-version": "2020-06-30" });
-          params.append("$filter", `case_number eq '${row.c}'`); params.append("$top", "1");
-          const { status, body } = await httpsReq({ hostname: "api.seasonaljobs.dol.gov", path: "/datahub/?" + params, method: "GET", headers: getHDR() });
+          const { status, body } = await dolApiCase(row.c, getHDR());
           if (status === 200) {
-            consecutive403 = 0; if (interDelay > 800) interDelay = Math.max(800, interDelay - 300);
+            consecutive403 = 0; if (interDelay > RITMO.enrich) interDelay = Math.max(RITMO.enrich, interDelay - 300);
             const raw = body?.value || body?.results || body?.data || (Array.isArray(body) ? body : []);
             const dol = raw[0] || null; processed = true;
             if (dol) {
@@ -169,40 +293,51 @@ function createPlanilhas(deps) {
     saveSheet(sheetKey, sheet); enrichBot.savedAt = Date.now();
     const meta = getMeta();
     if (!meta[sheetKey]) meta[sheetKey] = { name: sheetKey };
+    const prog = progressoPlanilha(sheet);
     meta[sheetKey].enriched = enrichBot.ok; meta[sheetKey].enrichedAt = Date.now(); meta[sheetKey].enrichedTotal = enrichBot.total;
+    meta[sheetKey].completas = prog.completas; meta[sheetKey].pendentes = prog.pendentes;
     saveMeta();
-    const semEmail = sheet.filter(r => !r.e || !String(r.e).includes("@")).length;
-    enrichLog(`🏁 CONCLUÍDO! ok:${enrichBot.ok} | semEmail:${semEmail} | erros:${enrichBot.errors}`, "ok");
+    enrichLog(`🏁 CONCLUÍDO! ${prog.completas}/${prog.total} completas | ${prog.pendentes} pendente(s)${prog.pendentes ? ` (${faltasTexto(prog)})` : ""} | erros:${enrichBot.errors}`, "ok");
   }
 
-  // Ciclo autônomo: toda planilha com vaga SEM e-mail entra na fila do bot
-  // (progresso REAL pelo disco, nunca por carimbo — deploy no meio não mente).
+  // 📋 v182 LOTE 8 — FILA DO ENRIQUECIMENTO POR IMPACTO, com o progresso REAL
+  // de cada planilha (nunca por carimbo — deploy no meio não mente). Ordem:
+  // (1) vaga SEM E-MAIL primeiro, porque sem contato não existe candidatura —
+  //     é a prioridade nº1 da casa e já era a régua do v174c; é isso que põe a
+  //     jul2026 (2.625 linhas, ZERO e-mail) na frente de todas;
+  // (2) desempate por quantas linhas estão PENDENTES (faltando qualquer campo
+  //     essencial) — jan2026 (9.240) antes de jul2025 (2.206).
+  // Mesma função que o painel usa pra mostrar o progresso: uma verdade só.
+  function filaEnriquecimento() {
+    return ["jan2026", "jul2025", "h2a-jun2026", ...Object.keys(getExtras() || {})]
+      .filter((k, i, a) => a.indexOf(k) === i)
+      .map(k => ({ k, ...progressoPlanilha(getSheet(k) || []) }))
+      .filter(x => x.total > 0)
+      .sort((a, b) => (b.semEmail - a.semEmail) || (b.pendentes - a.pendentes));
+  }
+
+  // Ciclo autônomo: toda planilha com linha PENDENTE entra na fila do bot.
   async function autoEnrichCycle() {
     if (enrichBot.running) return;
     if (isTest) { console.log("[auto-enrich] 🧪 modo teste — o DOL não é alcançável no sandbox; enriquecimento só em produção"); return; }
-    // v174c: a H-2A built-in entra na fila e a ORDEM é por impacto — a planilha
-    // com MAIS vagas sem e-mail vai primeiro (vaga sem e-mail = candidatura
-    // impossível; prioridade nº1 da casa), não pela ordem de cadastro.
-    const keys = ["jan2026", "jul2025", "h2a-jun2026", ...Object.keys(getExtras())]
-      .map(k => { const sheet = getSheet(k) || []; return { k, withoutEmail: sheet.filter(r => !(r.e && String(r.e).includes("@"))).length }; })
-      .sort((a, b) => b.withoutEmail - a.withoutEmail).map(x => x.k);
-    for (const sheetKey of keys) {
+    const fila = filaEnriquecimento();
+    for (const item of fila) {
       if (enrichBot.running) break;
+      const sheetKey = item.k;
       const sheet = getSheet(sheetKey); if (!sheet || !sheet.length) continue;
-      const withEmail = sheet.filter(r => r.e && String(r.e).includes("@")).length;
-      const withoutEmail = sheet.length - withEmail;
       const meta = getMeta();
-      if (withoutEmail === 0) {
-        if (!meta[sheetKey]) meta[sheetKey] = { name: sheetKey };
-        meta[sheetKey].enrichedAt = Date.now(); meta[sheetKey].enriched = withEmail; meta[sheetKey].enrichedTotal = sheet.length;
+      if (!meta[sheetKey]) meta[sheetKey] = { name: sheetKey };
+      meta[sheetKey].completas = item.completas; meta[sheetKey].pendentes = item.pendentes;
+      if (item.pendentes === 0) {
+        meta[sheetKey].enrichedAt = Date.now(); meta[sheetKey].enriched = item.completas; meta[sheetKey].enrichedTotal = item.total;
         saveMeta();
-        console.log(`[auto-enrich] ${sheetKey}: ✅ 100% completo (${withEmail}/${sheet.length}) — nada a fazer`);
+        console.log(`[auto-enrich] ${sheetKey}: ✅ ${item.completas}/${item.total} completas (e-mail, cidade, datas e descrição) — nada a fazer`);
         continue;
       }
-      const resume = withEmail > 0;
-      console.log(`[auto-enrich] 🚀 ${sheetKey}: ${withoutEmail} pendentes (${Math.round((withEmail / sheet.length) * 100)}% completo)`);
-      await runEnrichBot(sheetKey, resume).catch(e => console.error(`[auto-enrich] ${sheetKey}:`, e.message));
-      if (keys.indexOf(sheetKey) < keys.length - 1) await new Promise(r => setTimeout(r, 60000)); // pausa entre planilhas
+      saveMeta();
+      console.log(`[auto-enrich] 🚀 ${sheetKey}: ${item.pendentes} pendente(s) de ${item.total} — ${faltasTexto(item)}`);
+      await runEnrichBot(sheetKey, item.completas > 0).catch(e => console.error(`[auto-enrich] ${sheetKey}:`, e.message));
+      if (fila.indexOf(item) < fila.length - 1) await new Promise(r => setTimeout(r, 60000)); // pausa entre planilhas
     }
   }
 
@@ -224,29 +359,27 @@ function createPlanilhas(deps) {
     }
     return JSON.stringify([row.st, row.d, row.de, row.w, row.wk, row.e]) !== before;
   }
-  // 🚨 v177-FIX7 (auditoria 14/09/2026): o frescor só olhava a H-2B mais nova
-  // (latestH2bKey) e a chave FIXA "h2a-jun2026". A planilha H-2A do MÊS
-  // (h2a-AAAAMM), que o robô mensal publica SOZINHA acima de 200 vagas, não
-  // batia com nenhum dos dois padrões: nascia e envelhecia sem NENHUMA
-  // reconferência de status/data/salário — justo a planilha mais nova, a que
-  // os usuários mais usam. Entra a mais recente já publicada (rascunho não).
-  function latestH2aMensalKey() {
-    let best = null, bestScore = -1;
-    for (const k of Object.keys(getExtras() || {})) {
-      const m = String(k).toLowerCase().match(/^h2a-(\d{4})(\d{2})$/);
-      if (!m) continue;
-      const meta = getMeta()[k];
-      if (meta && meta.published === false) continue;
-      const rows = getSheet(k);
-      if (!Array.isArray(rows) || !rows.length) continue;
-      const score = parseInt(m[1], 10) * 100 + parseInt(m[2], 10);
-      if (score > bestScore) { bestScore = score; best = k; }
-    }
-    return best;
+  // 🔄 v182 LOTE 8 — O FRESCOR COBRE TODA PLANILHA PUBLICADA. Até aqui olhava
+  // só a H-2B mais nova, a H-2A fixa e a H-2A do mês: jan2026 e jul2025 (11.446
+  // vagas "Certified", de onde sai a maior parte dos envios) nunca eram
+  // reconferidas, então uma vaga retirada/negada lá continuaria viva pra sempre
+  // e o robô mandaria candidatura pra ela. O ritmo com o DOL NÃO muda (mesmo
+  // teto de 120 linhas por ciclo, uma planilha por ciclo) — só a cobertura, com
+  // rodízio pela planilha reconferida há MAIS tempo (carimbo `freshAt` por
+  // planilha no meta, que já existia; nunca um 2º nome pro mesmo carimbo).
+  // Rascunho (published===false) fica de fora: ninguém se candidata a ele.
+  // (Substitui a lista fixa [H-2B mais nova, "h2a-jun2026", H-2A do mês] do
+  // v177-FIX7 — a planilha H-2A do MÊS, que se publica sozinha, continua
+  // coberta, agora por construção e não por um padrão de chave a mais.)
+  function planilhasParaFrescor() {
+    const meta = getMeta();
+    const extras = Object.keys(getExtras() || {}).filter(k => meta[k]?.published !== false);
+    return [...new Set(["jan2026", "jul2025", "h2a-jun2026", ...extras])]
+      .filter(k => { const a = getSheet(k); return Array.isArray(a) && a.length; });
   }
   async function runFreshCycle() {
     if (enrichBot.running || freshBot.running) return; // enriquecimento tem prioridade
-    const keys = [...new Set([latestH2bKey(), "h2a-jun2026", latestH2aMensalKey()].filter(Boolean))];
+    const keys = planilhasParaFrescor();
     const meta = getMeta();
     let pick = null, oldest = Infinity;
     for (const k of keys) { const arr = getSheet(k); if (!arr || !arr.length) continue; const at = meta[k]?.freshAt || 0; if (at < oldest) { oldest = at; pick = k; } }
@@ -258,18 +391,16 @@ function createPlanilhas(deps) {
     if (!batch.length) { if (!meta[pick]) meta[pick] = { name: pick }; meta[pick].freshAt = Date.now(); saveMeta(); return; }
     freshBot.running = true; freshBot.sheetKey = pick; freshBot.checked = 0; freshBot.changed = 0;
     botLog("planilha-fresca", "Planilha Sempre Fresca", `🚀 ${pick}: conferindo ${batch.length} vaga(s) no DOL (status/datas/salário)`, "info");
-    let delay = 1500, errs = 0;
+    let delay = RITMO.fresh, errs = 0;
     try {
       for (const row of batch) {
         if (!freshBot.running || enrichBot.running) break;
         try {
-          const params = new URLSearchParams({ "api-version": "2020-06-30" });
-          params.append("$filter", `case_number eq '${row.c}'`); params.append("$top", "1");
-          const { status, body } = await httpsReq({ hostname: "api.seasonaljobs.dol.gov", path: "/datahub/?" + params, method: "GET", headers: DOL_HDR() });
+          const { status, body } = await dolApiCase(row.c, DOL_HDR());
           if (status === 200) {
             const dol = (body?.value || body?.results || body?.data || [])[0] || null;
             if (dol && aplicarFrescor(row, dol)) freshBot.changed++;
-            row.fq = Date.now(); freshBot.checked++; errs = 0; delay = Math.max(1500, delay - 200);
+            row.fq = Date.now(); freshBot.checked++; errs = 0; delay = Math.max(RITMO.fresh, delay - 200);
           } else if (status === 403 || status === 429) {
             errs++; delay = Math.min(60_000, delay * 2);
             botLog("planilha-fresca", "Planilha Sempre Fresca", `🚫 DOL bloqueou (HTTP ${status}) — desacelerando pra ${Math.round(delay / 1000)}s`, "warn");
@@ -511,6 +642,10 @@ function createPlanilhas(deps) {
   function statusPainel() {
     return {
       enrich: { running: enrichBot.running, sheetKey: enrichBot.sheetKey, done: enrichBot.done, total: enrichBot.total, ok: enrichBot.ok, noEmail: enrichBot.noEmail, errors: enrichBot.errors, savedAt: enrichBot.savedAt, startedAt: enrichBot.startedAt },
+      // 📋 v182 LOTE 8: o progresso REAL de cada planilha, na MESMA ordem em que
+      // o robô vai atacá-las (e pela MESMA função que ele usa) — o painel
+      // mostrava "100%" pra planilha que não tem cidade nem descrição nenhuma.
+      enrichFila: filaEnriquecimento().slice(0, 8),
       fresh: { ...freshBot },
       h2aNovas: { ...h2aNovasBot, totalPlanilha: (getSheetH2A() || []).length },
       // 🚨 v177-FIX2 (auditoria 14/09/2026): faltava `published` — o admin.html
@@ -524,8 +659,8 @@ function createPlanilhas(deps) {
     };
   }
 
-  return { runEnrichBot, autoEnrichCycle, runFreshCycle, freshBot, dolColeta, runDolColeta, runPlanilhaMensal, runH2aMensal, runH2bMensal,
+  return { runEnrichBot, autoEnrichCycle, filaEnriquecimento, runFreshCycle, planilhasParaFrescor, freshBot, dolColeta, runDolColeta, runPlanilhaMensal, runH2aMensal, runH2bMensal,
     getEstadoH2a: () => DB_H2A_BIM, getEstadoH2b: () => DB_H2B_MEN, runH2aNovasCycle, h2aNovasBot, iniciarAgendadores, statusPainel, aplicarDolNaLinha, aplicarFrescor };
 }
 
-module.exports = { createPlanilhas };
+module.exports = { createPlanilhas, CAMPOS_ESSENCIAIS, linhaCompleta, progressoPlanilha, unidadeSalario, mesesExperiencia };
