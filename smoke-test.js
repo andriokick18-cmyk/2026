@@ -456,12 +456,26 @@ async function drillRestauracaoBackup() {
     }));
     fs.writeFileSync(path.join(DATA_B, "auto_jobs.json"), JSON.stringify({ "drill@test.com": { active: false, status: "ORIGINAL", queue: [] } }));
     fs.writeFileSync(path.join(DATA_B, "history.json"), JSON.stringify({ "drill@test.com": [{ id: "h1", ts: Date.now(), to: "original@empresa.com", company: "ORIGINAL LTDA", status: "enviado" }] }));
+    // 🧾 v192 LOTE 10: pedido LEGADO com o comprovante inline — o boot migra
+    // pro disco, e o backup/restore tem que cobrir a pasta nova (mesma lição
+    // do v27-FIX com a cvs/: backup sem ela devolvia conta sem currículo).
+    const BYTES_COMP = Buffer.from("comprovante-do-drill-192").toString("base64");
+    fs.writeFileSync(path.join(DATA_B, "pedidos.json"), JSON.stringify([
+      { id: "peddrill1", userEmail: "drill@test.com", userName: "Drill ORIGINAL", tipo: "plano", plano: "vipro",
+        dias: 30, valorTotal: 150, status: "ativo", createdAt: Date.now() - 86400_000, ativadoEm: Date.now() - 86400_000,
+        comprovante: BYTES_COMP, comprovanteType: "image/jpeg" }]));
 
     check("🛟 v191-L9 (drill): servidor de restauração subiu com o estado ORIGINAL", await subir());
 
     await reqB("POST", "/api/test/login", { token: TEST_TOKEN, email: "admdrill@test.com", name: "Admin Drill", isAdmin: true });
+    const _compDrill = path.join(DATA_B, "comprovantes", "peddrill1.b64");
+    const _migrouNoBoot = fs.existsSync(_compDrill) &&
+      !(JSON.parse(fs.readFileSync(path.join(DATA_B, "pedidos.json"), "utf8"))[0] || {}).comprovante;
     const bk = await reqB("POST", "/api/admin/v2/backup/create", { adminName: "Drill" });
     const nomeBk = bk.json?.name;
+    // Perde o comprovante do disco DEPOIS do backup — é o cenário real
+    // (arquivo corrompido/apagado) que o backup existe pra resolver.
+    try { fs.unlinkSync(_compDrill); } catch {}
     check("🛟 v191-L9 (drill): backup completo criado pela rota do painel (todos os .json + cvs/)",
       bk.json?.ok === true && !!nomeBk && bk.json.files > 0, JSON.stringify({ status: bk.status, name: nomeBk, files: bk.json?.files }));
 
@@ -506,6 +520,13 @@ async function drillRestauracaoBackup() {
       JSON.stringify(histDrill.json || {}).includes("ORIGINAL LTDA"),
       JSON.stringify({ plano: stDrill.json?.plan, job: jobDrill.json?.job?.status }));
 
+    await reqB("POST", "/api/test/login", { token: TEST_TOKEN, email: "admdrill@test.com", isAdmin: true });
+    const _pedRestaurado = await reqB("GET", "/api/pedido/peddrill1");
+    check("🧾 v192-L10 (drill): o comprovante em disco entra no backup e VOLTA na restauração — apagado depois do backup, ele reaparece com os bytes idênticos e o pedido abre normalmente (o boot também provou a migração do inline pro disco)",
+      _migrouNoBoot && fs.existsSync(_compDrill) && fs.readFileSync(_compDrill, "utf8") === BYTES_COMP &&
+      _pedRestaurado.json?.pedido?.comprovante === BYTES_COMP,
+      JSON.stringify({ migrouNoBoot: _migrouNoBoot, voltou: fs.existsSync(_compDrill) }));
+
     await sleep(1800); // passa do BACKUP_BOOT_MS (1,2s) deste boot
     check("💾 v191-L9: boot com backup recente (<12h) NÃO cria outra pasta de backup — com deploy a cada commit e retenção de 3, três commits numa tarde apagavam os backups de ontem",
       pastasBackup().length === backupsAntesBoot && /já existe backup de/.test(logB),
@@ -513,6 +534,7 @@ async function drillRestauracaoBackup() {
 
     // journey.json só existe via persistDebounced e NUNCA esteve na lista fixa
     // do flushAll — antes deste lote ele se perdia em todo deploy.
+    await reqB("POST", "/api/test/login", { token: TEST_TOKEN, email: "drill@test.com" }); // volta pra conta do usuário
     const pdf = Buffer.from("%PDF-1.4 drill " + "conteudo de teste ".repeat(300)).toString("base64");
     const upl = await reqB("POST", "/api/cv/upload", { base64: pdf, name: "Drill.pdf", cvType: "resume" });
     await derrubar("SIGTERM");
@@ -2069,9 +2091,19 @@ async function drillRestauracaoBackup() {
         /fora da tabela/i.test(_entF.detail || ""),
         JSON.stringify({ ok: _forai.json?.ok, ent: _entF && _entF.action, valor: _entF?.after?.valorTotal }).slice(0, 180));
 
-      check("🚨 v177-FIX4 (estrutural): a 2ª cópia (inalcançável) das validações de tamanho/base64 do comprovante saiu do objeto do pedido — a regra vive num lugar só, que responde 400 com o motivo em vez de descartar em silêncio",
-        !/Limitar tamanho: max 8MB em base64/.test(_srv2) && _srv2.includes('comprovante:(typeof d.comprovante==="string"&&d.comprovante)?d.comprovante:null'),
-        "validação de comprovante ainda está duplicada dentro do objeto do pedido");
+      // ⚠️ CHECK REESCRITO no v192 LOTE 10: ele assertava a STRING LITERAL que
+      // punha o base64 dentro do objeto do pedido — linha que deixou de
+      // existir (o comprovante vai pro disco). O que o v177-FIX4 queria
+      // proteger continua valendo e é o que se afere agora: as validações de
+      // tamanho/base64 vivem num lugar SÓ, que responde 400 com o motivo, e o
+      // objeto do pedido nunca mais carrega o arquivo.
+      check("🚨 v177-FIX4 + v192-L10 (estrutural): a validação do comprovante vive num lugar só (400 com motivo, nunca descarte em silêncio) e o objeto do pedido guarda o NOME DO ARQUIVO, nunca o base64",
+        !/Limitar tamanho: max 8MB em base64/.test(_srv2) &&
+        !_srv2.includes('comprovante:(typeof d.comprovante==="string"&&d.comprovante)?d.comprovante:null') &&
+        _srv2.includes("comprovante:null,\n        comprovanteArquivo:null,") &&
+        _srv2.includes("const _arqC=saveComprovante(pedido.id,d.comprovante);") &&
+        /if\(d\.comprovante&&typeof d\.comprovante==="string"\)\{\s*\n\s*if\(d\.comprovante\.length>10_700_000\)/.test(_srv2),
+        "validação de comprovante duplicada ou base64 de volta dentro do objeto do pedido");
 
       // ═══ 🚨 v177-FIX6 (6ª leva): telas do usuário e rótulos do admin ═══
       // O convite pra cadastrar currículo e o aviso obrigatório de WhatsApp
@@ -3646,9 +3678,14 @@ async function drillRestauracaoBackup() {
 
     // ═══ 🩻 v163: RAIO-X DE MEMÓRIA (OOM 2GB no Render — medir antes de operar)
     const memX = (await get("/api/admin/memoria")).json;
-    check("🩻 v163: /api/admin/memoria mede o processo (rss/heap > 0), conta os comprovantes base64 RESIDENTES na RAM (fixtures: pedidos ≥2 com foto, gastos ≥1) e lista os arquivos do DATA com tamanho",
+    // ⚠️ ASSERÇÃO ATUALIZADA no v192 LOTE 10: ela exigia `pedidos.n >= 2`, ou
+    // seja, codificava como CERTO justamente o problema que o próprio raio-X
+    // denunciava ("candidato nº1 a migrar pra disco"). Com os comprovantes de
+    // pedido em disco, o número honesto é ZERO — e ele continua contando os do
+    // FINANCEIRO (gastos/pagamentos), que seguem inline nesta versão.
+    check("🩻 v163 + v192-L10: /api/admin/memoria mede o processo (rss/heap > 0) e os comprovantes base64 RESIDENTES na RAM — os de PEDIDO agora são ZERO (foram pro disco) e os de gasto (ainda inline) continuam sendo contados",
       memX?.ok === true && memX.processo?.rssMB > 0 && memX.processo?.heapUsadoMB > 0 &&
-      memX.comprovantes?.pedidos?.n >= 2 && memX.comprovantes?.pedidos?.mb >= 0 &&
+      memX.comprovantes?.pedidos?.n === 0 && memX.comprovantes?.pedidos?.mb === 0 &&
       memX.comprovantes?.gastos?.n >= 1 &&
       Array.isArray(memX.arquivos) && memX.arquivos.some((a) => a.nome === "users.json") &&
       Array.isArray(memX.dicas) && memX.dicas.length >= 1 && typeof memX.bancos?.usuarios === "number",
@@ -3690,6 +3727,34 @@ async function drillRestauracaoBackup() {
     check("🎯 v178: (estrutural) só DIVERGENCIA cancela sozinho — ILEGIVEL/ERRO continuam pendentes pra revisão humana (a IA não tem certeza do que leu; cancelar aí puniria um comprovante legítimo com foto ruim)",
       _srvSrc.includes('function _autoCancelarSeDivergente(pedido,pc){\n  if(pc.veredito!=="DIVERGENCIA")return;'),
       "guarda de escopo do auto-cancelamento mudou");
+
+    // ═══ 🧾 v192 LOTE 10: COMPROVANTE DE PEDIDO MORA NO DISCO ═══════════════
+    // Antes cada pedido segurava o base64 inteiro (até ~8MB) na RAM pra
+    // sempre — inclusive de pedido aprovado/cancelado meses atrás — e QUALQUER
+    // mudança de status reserializava TODOS eles em persistPedidos(). O
+    // pedido acima acabou de nascer, ser lido pela IA (fingerprint + veredito)
+    // e ser cancelado: tudo isso já rodou lendo do disco.
+    const _compDir = path.join(DATA, "comprovantes");
+    const _lsComp = (() => { try { return fs.readdirSync(_compDir); } catch { return []; } })();
+    const _pedNoDisco = (() => { try { return JSON.parse(fs.readFileSync(path.join(DATA, "pedidos.json"), "utf8")); } catch { return []; } })();
+    const _pdMc5 = _pedNoDisco.find((x) => x.id === mc5p1.json?.pedidoId) || {};
+    check("🧾 v192-L10: o comprovante do pedido novo vai pro DISCO na hora — o base64 some do objeto em memória E do pedidos.json (reserializado a cada clique do admin), mas o painel continua abrindo os bytes por GET /api/pedido/:id",
+      _lsComp.some((f) => f.startsWith(String(mc5p1.json?.pedidoId))) &&
+      _pdMc5.comprovante === null && !!_pdMc5.comprovanteArquivo &&
+      mc5p1Get.json?.pedido?.comprovante === Buffer.from("comp-mc5-a").toString("base64"),
+      JSON.stringify({ arquivo: _pdMc5.comprovanteArquivo, inline: _pdMc5.comprovante, abriu: (mc5p1Get.json?.pedido?.comprovante || "").slice(0, 12) }));
+    check("🧾 v192-L10: a leitura da IA e a impressão digital (SHA-256) do comprovante passaram a vir do DISCO — o pedido foi lido e auto-cancelado por divergência normalmente, com hash gravado",
+      typeof mc5p1Get.json?.pedido?.comprovanteHash === "string" && mc5p1Get.json.pedido.comprovanteHash.length === 64 &&
+      mc5p1Get.json?.pedido?.preCheck?.veredito === "DIVERGENCIA",
+      JSON.stringify({ hash: (mc5p1Get.json?.pedido?.comprovanteHash || "").slice(0, 12), veredito: mc5p1Get.json?.pedido?.preCheck?.veredito }));
+    const _bytesLegado = Buffer.from("comprovante-mem-1").toString("base64");
+    const _legado1 = await get("/api/pedido/pedmem1");
+    const _mig2x = await req2("POST", "/api/test/migrar-comprovantes", { token: TEST_TOKEN });
+    const _legado2 = await get("/api/pedido/pedmem1");
+    check("🧾 v192-L10: pedido ANTIGO (status 'ativo', comprovante inline no arquivo) é migrado no boot — de QUALQUER status, não só pendente — e continua abrindo; rodar a migração de novo é no-op (idempotente, não duplica nem perde)",
+      _legado1.json?.pedido?.comprovante === _bytesLegado && _legado2.json?.pedido?.comprovante === _bytesLegado &&
+      _mig2x.json?.inlineNaRam === 0 && _mig2x.json?.comArquivo >= 3 && _mig2x.json?.arquivos === _mig2x.json?.comArquivo,
+      JSON.stringify(_mig2x.json));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5b@test.com", name: "MC5 B" });
     const mc5p2 = await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, consentimento: true, userName: "MC5 B", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:150:E2EMC5AAA1:Pagador MC5", comprovante: Buffer.from("comp-mc5-b-refoto").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     await new Promise((r) => setTimeout(r, 400));

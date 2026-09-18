@@ -407,6 +407,14 @@ function _decUsersFromDisk(db){
 }
 const HIST_FILE   = path.join(DATA_DIR, "history.json");
 const CVS_DIR     = path.join(DATA_DIR, "cvs");
+// 🧾 v192 LOTE 10: comprovantes de pedido saem da RAM e vão pro disco (mesmo
+// movimento que o v21 fez com os PDFs de currículo). Antes cada pedido
+// carregava o base64 inteiro (até ~8MB) pra sempre dentro de DB_PEDIDOS —
+// inclusive de pedido aprovado/cancelado meses atrás — e QUALQUER mudança de
+// status reserializava TODOS eles em persistPedidos(), travando o servidor a
+// cada clique do admin. O próprio raio-X de memória já apontava isto como
+// "candidato nº1 a migrar pra disco com leitura sob demanda".
+const COMPROVANTES_DIR = path.join(DATA_DIR, "comprovantes");
 const AUTO_FILE   = path.join(DATA_DIR, "auto_jobs.json");
 const SENT_FILE   = path.join(DATA_DIR, "sent_emails.json");
 const LOGS_FILE   = path.join(DATA_DIR, "auto_logs.json");   // NEW: logs detalhados
@@ -441,6 +449,7 @@ const NOTIF_COOLDOWN_FILE = path.join(DATA_DIR, "notif_cooldowns.json");
 const DIVERGENCIAS_OK_FILE = path.join(DATA_DIR, "divergencias_ok.json");
 let DB_DIVERGENCIAS_OK = {}; // { assinatura → {email,motivo,confirmadoEm,confirmadoPor} }
 try { fs.mkdirSync(CVS_DIR, { recursive: true }); } catch {}
+try { fs.mkdirSync(COMPROVANTES_DIR, { recursive: true }); } catch {}
 
 console.log(`[boot] H2BApply v13.0 | ${APP_URL} | ${DATA_DIR}`);
 const _diskOk = DATA_DIR !== "/tmp";
@@ -1317,6 +1326,7 @@ function boot() {
   if(!Array.isArray(DB_REVIEWS)) DB_REVIEWS = [];
   DB_PEDIDOS = load(PEDIDOS_FILE, []);
   if(!Array.isArray(DB_PEDIDOS)) DB_PEDIDOS = [];
+  _migrarComprovantesParaDisco(); // 🧾 v192 LOTE 10 (idempotente, qualquer status)
   DB_ADMIN_AUDIT = load(ADMIN_AUDIT_FILE, []);
   if(!Array.isArray(DB_ADMIN_AUDIT)) DB_ADMIN_AUDIT = [];
   DB_FINANCEIRO = load(FINANCEIRO_FILE, {pagamentos:[],gastos:[],repasses:[]});
@@ -2284,6 +2294,15 @@ async function criarBackupCompleto(){
         n+=fs.readdirSync(CVS_DIR).length;
       }
     }catch(e){ console.warn("[backup] falhou copiar pasta cvs/:",e.message); }
+    // 🧾 v192 LOTE 10: os comprovantes de pedido também vivem em disco agora —
+    // backup que ignorasse esta pasta devolveria pedidos SEM prova de pagamento
+    // (mesma lição do v27-FIX com a pasta cvs/).
+    try{
+      if(fs.existsSync(COMPROVANTES_DIR)){
+        await fsp.cp(COMPROVANTES_DIR, path.join(dir,"comprovantes"), {recursive:true});
+        n+=fs.readdirSync(COMPROVANTES_DIR).length;
+      }
+    }catch(e){ console.warn("[backup] falhou copiar pasta comprovantes/:",e.message); }
     // Poda: mantém só os BACKUP_RETENCAO mais recentes, apaga o resto
     try{
       const todos=fs.readdirSync(BACKUP_DIR).filter(d=>/^\d{4}-/.test(d)).sort();
@@ -2781,6 +2800,70 @@ const saveCv = (e,i,b64) => {
     return false;
   }
 };
+
+// ── 🧾 v192 LOTE 10 — COMPROVANTES DE PEDIDO EM DISCO ─────────────────────
+// O arquivo guarda EXATAMENTE a string que antes vivia na memória (base64 puro
+// ou data URL): assim todo leitor — anexo do e-mail, Gemini, painel — continua
+// recebendo o mesmo conteúdo de sempre, sem nenhuma régua nova de formato.
+function comprovantePath(pedidoId){
+  return path.join(COMPROVANTES_DIR, String(pedidoId||"").replace(/[^a-zA-Z0-9@._-]/g,"_")+".b64");
+}
+// Escrita atômica (tmp+rename), igual ao saveCv: nunca deixa comprovante pela
+// metade se o processo cair no meio. Devolve o nome do arquivo ou null.
+function saveComprovante(pedidoId, conteudo){
+  try{
+    if(!pedidoId||typeof conteudo!=="string"||!conteudo) return null;
+    fs.mkdirSync(COMPROVANTES_DIR,{recursive:true});
+    const fp=comprovantePath(pedidoId);
+    fs.writeFileSync(fp+".tmp", conteudo, "utf8");
+    fs.renameSync(fp+".tmp", fp);
+    return path.basename(fp);
+  }catch(err){
+    console.error(`[comprovante] ❌ falha ao gravar o comprovante do pedido ${pedidoId}: ${err.message}`);
+    return null;
+  }
+}
+// Leitura sob demanda. Aceita o pedido inteiro pra continuar servindo o
+// comprovante de pedido LEGADO que ainda esteja inline na memória (o boot
+// migra, mas nunca dependemos da migração pra responder).
+function loadComprovante(pedido){
+  if(!pedido) return null;
+  if(typeof pedido.comprovante==="string"&&pedido.comprovante) return pedido.comprovante;
+  if(!pedido.comprovanteArquivo) return null;
+  try{
+    const txt=fs.readFileSync(path.join(COMPROVANTES_DIR, path.basename(String(pedido.comprovanteArquivo))),"utf8");
+    return txt||null; // sem piso de tamanho: quem valida o conteúdo é a rota de entrada (400 com motivo)
+  }catch(e){
+    console.warn(`[comprovante] não consegui ler o arquivo do pedido ${pedido.id}: ${e.message}`);
+    return null;
+  }
+}
+// "Tem comprovante?" é UMA pergunta só (arquivo em disco OU legado na memória)
+// — toda tela/rota que antes fazia `!!pd.comprovante` passa por aqui.
+function temComprovante(pedido){
+  return !!(pedido&&(pedido.comprovanteArquivo||(typeof pedido.comprovante==="string"&&pedido.comprovante)));
+}
+// Migração de boot, IDEMPOTENTE e de QUALQUER status (pedido aprovado ou
+// cancelado meses atrás é justamente o peso morto que sobrava na RAM).
+// Nada é apagado da memória antes do arquivo existir em disco.
+function _migrarComprovantesParaDisco(){
+  try{
+    let movidos=0,falhas=0,mb=0;
+    for(const pd of DB_PEDIDOS){
+      if(!pd||typeof pd.comprovante!=="string"||!pd.comprovante) continue;
+      const bytes=pd.comprovante.length;
+      const arq=saveComprovante(pd.id,pd.comprovante);
+      if(!arq){falhas++;continue;} // fica na RAM e tenta de novo no próximo boot
+      pd.comprovanteArquivo=arq;
+      pd.comprovante=null;
+      movidos++;mb+=bytes;
+    }
+    if(movidos||falhas){
+      persistPedidos();
+      console.log(`[migração] 🧾 ${movidos} comprovante(s) movidos pra ${COMPROVANTES_DIR} (${(mb/1048576).toFixed(1)}MB fora da RAM)${falhas?` — ${falhas} falha(s), seguem na memória`:""}.`);
+    }
+  }catch(e){ console.warn("[migração] comprovantes:",e.message); }
+}
 
 const loadCv = (e,i) => {
   // 1. Tenta ler do disco primeiro (mais rápido)
@@ -6717,6 +6800,9 @@ if (_notifDestinatarios().length < 2) {
 function _mensagemPedidoAdmin(pedido) {
   const _pagoEmStr = pedido.pagoEm ? new Date(pedido.pagoEm).toLocaleDateString("pt-BR") : "Não informada";
   const _realGmailForMail = resolveSendGmail(getUser(pedido.userEmail));
+  // v192 LOTE 10: os bytes do comprovante vêm do disco (leitura sob demanda),
+  // não da memória — o anexo do aviso aos sócios continua idêntico.
+  const _compB64 = loadComprovante(pedido);
   const subject = `💳 Novo pedido de plano — ${pedido.userName || pedido.userEmail} quer ${pedido.plano} por ${pedido.dias}d`;
   const text = `💳 NOVO PEDIDO DE PLANO RECEBIDO!
 
@@ -6731,7 +6817,7 @@ function _mensagemPedidoAdmin(pedido) {
 📝 Nota: ${pedido.nota || "Sem observação"}
 🆔 Pedido: #${pedido.id.slice(-8).toUpperCase()}
 ⏰ Recebido no sistema: ${new Date().toLocaleString("pt-BR")}
-${pedido.comprovante ? "📸 Comprovante: ANEXADO a este email" : "⚠️ Comprovante: NÃO enviado ainda"}
+${_compB64 ? "📸 Comprovante: ANEXADO a este email" : "⚠️ Comprovante: NÃO enviado ainda"}
 
 ✅ Para ativar: ${APP_URL}/admin → Pedidos Pendentes → Aprovar
 ${pedido.criadoPor && pedido.criadoPor !== pedido.userEmail ? `\n🛠️ Registrado retroativamente por admin: ${pedido.criadoPor}` : ""}
@@ -6739,11 +6825,11 @@ ${pedido.criadoPor && pedido.criadoPor !== pedido.userEmail ? `\n🛠️ Registr
 — Sistema H2BApply`;
   // Anexo do comprovante (aceita base64 PURO — formato real salvo — ou data URL)
   let attachments = [];
-  if (pedido.comprovante && typeof pedido.comprovante === "string") {
+  if (_compB64) {
     try {
       let mimeType, base64Data;
-      const m = pedido.comprovante.match(/^data:([^;]+);base64,(.+)$/);
-      if (m) { mimeType = m[1]; base64Data = m[2]; } else { mimeType = pedido.comprovanteType || "image/jpeg"; base64Data = pedido.comprovante; }
+      const m = _compB64.match(/^data:([^;]+);base64,(.+)$/);
+      if (m) { mimeType = m[1]; base64Data = m[2]; } else { mimeType = pedido.comprovanteType || "image/jpeg"; base64Data = _compB64; }
       const ext = mimeType.includes("pdf") ? "pdf" : mimeType.includes("png") ? "png" : mimeType.includes("webp") ? "webp" : "jpg";
       if (base64Data && base64Data.length > 40) attachments = [{ name: `comprovante_${pedido.id.slice(-8).toUpperCase()}.${ext}`, data: base64Data, mime: mimeType }];
     } catch (e) { console.warn("[pedido] erro processando comprovante:", e.message); }
@@ -8694,6 +8780,19 @@ filtrar();
       return json(res,200,{ok:true,reativado,temTimer:autoTimers.has(em),job:getAutoJob(em)});
     }catch(e){return json(res,400,{error:e.message});}
   }
+  // 🧾 v192 LOTE 10 (só teste): re-roda a migração de comprovantes pra provar
+  // que ela é IDEMPOTENTE — mesma filosofia do /api/test/seed-merge.
+  if(pathname==="/api/test/migrar-comprovantes"&&req.method==="POST"&&process.env.TEST_LOGIN_TOKEN){
+    try{
+      const d=JSON.parse((await readBody(req))||"{}");
+      if(d.token!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});
+      _migrarComprovantesParaDisco();
+      let arquivos=0;try{arquivos=fs.readdirSync(COMPROVANTES_DIR).length;}catch{}
+      return json(res,200,{ok:true,arquivos,
+        inlineNaRam:DB_PEDIDOS.filter(x=>typeof x.comprovante==="string"&&x.comprovante).length,
+        comArquivo:DB_PEDIDOS.filter(x=>!!x.comprovanteArquivo).length});
+    }catch(e){return json(res,400,{error:e.message});}
+  }
   // 🌱 v180: gancho de teste pra exercitar a DECISÃO do seed ("esqueleto em
   // /data × bundled enriquecido") e a mesclagem, sem depender do arquivo
   // bundled versionado no repo (que hoje é justamente um esqueleto) e sem
@@ -10469,7 +10568,11 @@ filtrar();
         // o bloco acima já responde 400 e interrompe a requisição, então esses
         // `if` eram inalcançáveis. Duplicação que só podia divergir com o
         // tempo (um limite mudado num lugar só) e virar descarte silencioso.
-        comprovante:(typeof d.comprovante==="string"&&d.comprovante)?d.comprovante:null,
+        // 🧾 v192 LOTE 10: o base64 NUNCA mais entra no objeto que vive na RAM
+        // e é reserializado a cada persistPedidos() — vai pro disco na hora e
+        // o pedido guarda só o nome do arquivo (bytes lidos sob demanda).
+        comprovante:null,
+        comprovanteArquivo:null,
         comprovanteType:(()=>{
           const t=d.comprovanteType||'image/jpeg';
           const allowed=['image/jpeg','image/jpg','image/png','image/webp','application/pdf'];
@@ -10481,6 +10584,11 @@ filtrar();
         ativadoEm:null,
         pagoEm:d.pagoEm||null,
       };
+      if(typeof d.comprovante==="string"&&d.comprovante){
+        const _arqC=saveComprovante(pedido.id,d.comprovante);
+        if(!_arqC)return json(res,500,{error:"Não conseguimos guardar seu comprovante agora (falha ao gravar no servidor). Tente de novo em instantes — nada foi salvo pela metade."});
+        pedido.comprovanteArquivo=_arqC;
+      }
       DB_PEDIDOS.unshift(pedido);
       persistPedidos();
       if(_valorForaTabela){
@@ -10610,15 +10718,15 @@ filtrar();
     // userName é fallback de pedido antigo).
     const slim=isAdm
       ?list.map(pd=>{const _cu=getUser(pd.userEmail)||{};
-        return {...pd,comprovante:pd.comprovante?true:false,ehAdmin:isAdminEmail(pd.userEmail||""),
+        return {...pd,comprovante:temComprovante(pd),ehAdmin:isAdminEmail(pd.userEmail||""),
           contaNome:_cu.name||"",contaWhatsapp:_cu.whatsapp||_cu.phone||""};})
       :list.map(pd=>{
         const v=String((pd.preCheck||{}).veredito||"").toUpperCase();
-        const comprovanteStatus=!pd.comprovante?"sem":(v==="CONFERE"?"ok":(v==="ILEGIVEL"||v==="ERRO")?"ilegivel":v?"analise":"aguardando");
+        const comprovanteStatus=!temComprovante(pd)?"sem":(v==="CONFERE"?"ok":(v==="ILEGIVEL"||v==="ERRO")?"ilegivel":v?"analise":"aguardando");
         return {id:pd.id,createdAt:pd.createdAt,status:pd.status,tipo:pd.tipo,plano:pd.plano,dias:pd.dias,
           valorTotal:pd.valorTotal,
           autoAtivado:!!pd.autoAtivado,ativadoEm:pd.ativadoEm||null,pagoEm:pd.pagoEm||null,canceladoEm:pd.canceladoEm||null,
-          userEmail:pd.userEmail,comprovante:pd.comprovante?true:false,comprovanteStatus,
+          userEmail:pd.userEmail,comprovante:temComprovante(pd),comprovanteStatus,
           motivoCancelamento:(pd.status==="cancelado"&&pd.notaAdmin)?String(pd.notaAdmin).slice(0,200):null};
       });
     return json(res,200,{ok:true,pedidos:slim,total:list.length});
@@ -10641,7 +10749,10 @@ filtrar();
       if(!/^[A-Za-z0-9+/]/.test(c.slice(0,10)))return json(res,400,{error:"O arquivo veio corrompido — tente de novo."});
       const _allowRe=['image/jpeg','image/jpg','image/png','image/webp','application/pdf'];
       pd.comprovanteAnteriorHash=pd.comprovanteHash||null; // trilha (nunca o base64 antigo — RAM)
-      pd.comprovante=c;
+      const _arqRe=saveComprovante(pd.id,c); // v192 LOTE 10: disco, nunca RAM
+      if(!_arqRe)return json(res,500,{error:"Não conseguimos guardar o comprovante novo agora. Tente de novo em instantes — o anterior continua valendo."});
+      pd.comprovanteArquivo=_arqRe;
+      pd.comprovante=null;
       pd.comprovanteType=_allowRe.includes(d.comprovanteType)?d.comprovanteType:'image/jpeg';
       pd.comprovanteHash=null;delete pd.preCheck;delete pd._avisoLeituraEm;
       pd.comprovanteReenviadoEm=Date.now();
@@ -10678,7 +10789,10 @@ filtrar();
         totalGratis:(tu.vip?.creditos||[]).filter(c=>c.tipo==="gratis").reduce((a,c)=>a+(c.dias||0),0),
       };
     }
-    return json(res,200,{ok:true,pedido:pd,usuario});
+    // 🧾 v192 LOTE 10: o contrato da resposta não mudou (o painel abre o
+    // comprovante a partir daqui) — só a ORIGEM dos bytes: disco, sob demanda,
+    // numa CÓPIA (o objeto em memória continua sem o base64).
+    return json(res,200,{ok:true,pedido:{...pd,comprovante:loadComprovante(pd)},usuario});
   }
   // PATCH /api/pedido/:id — admin atualiza status (v2: senha + bônus + Gemini)
   if(pathname.startsWith("/api/pedido/")&&req.method==="PATCH"){
@@ -10935,7 +11049,7 @@ filtrar();
       rows.push({tipo:"pedido",id:pd.id,em:pd.createdAt||0,
         email:pd.userEmail,nome:pd.userName||pd.userEmail,
         plano:pd.plano,dias:pd.dias,valor:pd.valorTotal||0,status:pd.status,
-        temComprovante:!!pd.comprovante,comprovanteType:pd.comprovanteType||null,
+        temComprovante:temComprovante(pd),comprovanteType:pd.comprovanteType||null,
         autoAtivado:!!pd.autoAtivado,ativadoEm:pd.ativadoEm||null,
         ativadoPor:pd._ativadoEditor||pd.ativadoPor||null,pagoEm:pd.pagoEm||null,
         preCheck:pd.preCheck?{veredito:pd.preCheck.veredito,resumo:pd.preCheck.resumo||""}:null,
@@ -11912,7 +12026,7 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
       const meusPedidos=(DB_PEDIDOS||[]).filter(pd=>pd&&pd.userEmail===email).map(pd=>({
         id:pd.id,criadoEm:pd.createdAt,status:pd.status,plano:pd.plano,dias:pd.dias,
         valorTotal:pd.valorTotal,ativadoEm:pd.ativadoEm||null,pagoEm:pd.pagoEm||null,
-        canceladoEm:pd.canceladoEm||null,temComprovante:!!pd.comprovante}));
+        canceladoEm:pd.canceladoEm||null,temComprovante:temComprovante(pd)}));
       const exportado={
         geradoEm:new Date().toISOString(),
         aviso:"Seus dados pessoais no H2BApply, conforme a LGPD (Lei 13.709/2018, art. 18). Nunca inclui a senha em texto puro (só o hash, e nem esse é exportado) nem token de acesso.",
@@ -13189,7 +13303,7 @@ if(pathname.startsWith("/api/admin/financeiro-usuario/")&&req.method==="GET"){tr
   const pedidos=DB_PEDIDOS.filter(pd=>String(pd.userEmail||"").toLowerCase()===email)
     .map(pd=>({id:pd.id,plano:pd.plano,dias:pd.dias,diasBase:pd.diasBase,diasBonus:pd.diasBonus,
       valorTotal:pd.valorTotal,valorOriginal:pd.valorOriginal,status:pd.status,tipo:pd.tipo||"plano",
-      temComprovante:!!pd.comprovante,comprovanteHash:pd.comprovanteHash||null,
+      temComprovante:temComprovante(pd),comprovanteHash:pd.comprovanteHash||null,
       createdAt:pd.createdAt,pagoEm:pd.pagoEm,ativadoEm:pd.ativadoEm,
       ativadoPor:pd._ativadoEditor||pd.ativadoPor||null,notaAdmin:pd.notaAdmin||null,
       valorCorrigidoPor:pd.valorCorrigidoPor||null,valorCorrigidoEm:pd.valorCorrigidoEm||null}))
@@ -14643,8 +14757,8 @@ const GEMINI_COMPROVANTE_SCHEMA = {
 };
 // Monta o corpo da chamada — função PURA (sem I/O), testável isolada do
 // httpsReq real (o smoke test não tem como chamar o Gemini de verdade).
-function _geminiComprovanteRequestBody(pedido){
-  const raw=String(pedido.comprovante||"");
+function _geminiComprovanteRequestBody(pedido,b64){
+  const raw=String(b64||pedido.comprovante||"");
   const m=raw.match(/^data:([^;]+);base64,(.+)$/);
   const mimeType=m?m[1]:(pedido.comprovanteType||"image/jpeg");
   const base64Data=m?m[2]:raw;
@@ -14704,9 +14818,12 @@ async function preCheckComprovante(pedido, opts){
   // nascia dentro do caminho da IA, então comprovante importado dos
   // servidores 2/3 (nunca pré-checado lá) ficava sem fingerprint e o reuso
   // do MESMO arquivo entre usuários era invisível pra RULE_RECEIPT_REUSED.
+  // v192 LOTE 10: os bytes vêm do disco (leitura sob demanda) — o fingerprint,
+  // a leitura da IA e o anexo do e-mail usam a MESMA fonte.
+  const _compB64=loadComprovante(pedido);
   try{
-    if(pedido.comprovante&&!pedido.comprovanteHash){
-      const _hb64=String(pedido.comprovante).replace(/^data:[^;]+;base64,/,"");
+    if(_compB64&&!pedido.comprovanteHash){
+      const _hb64=String(_compB64).replace(/^data:[^;]+;base64,/,"");
       const _h=crypto.createHash("sha256").update(_hb64).digest("hex");
       const _i=DB_PEDIDOS.findIndex(p=>p.id===pedido.id);
       if(_i>=0){DB_PEDIDOS[_i].comprovanteHash=_h;pedido.comprovanteHash=_h;persistPedidos();}
@@ -14739,9 +14856,9 @@ async function preCheckComprovante(pedido, opts){
     console.warn("[precheck] sem GEMINI_API_KEY configurada — comprovante fica pendente de conferência manual.");
     return null;
   }
-  if(!pedido.comprovante) return null;
+  if(!_compB64) return null;
   try{
-    const body=_geminiComprovanteRequestBody(pedido);
+    const body=_geminiComprovanteRequestBody(pedido,_compB64);
     const model=process.env.GEMINI_MODEL||"gemini-2.0-flash";
     const r=await httpsReq({hostname:"generativelanguage.googleapis.com",path:`/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`,method:"POST",headers:{"Content-Type":"application/json"}},body);
     if(r.status!==200){

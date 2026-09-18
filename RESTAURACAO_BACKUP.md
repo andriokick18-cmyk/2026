@@ -14,7 +14,9 @@
 
 - **Diário automático** (3h da manhã + no boot, **só se o backup mais recente
   já tiver ≥12h**): todos os `.json` de `/data` **+ a pasta `cvs/`** (PDFs dos
-  usuários) → `/data/backups/`, guardando os **3 mais recentes** (poda
+  usuários) **+ a pasta `comprovantes/`** (comprovantes de pagamento dos
+  pedidos, que desde a v192 moram em disco e não mais dentro do
+  `pedidos.json`) → `/data/backups/`, guardando os **3 mais recentes** (poda
   automática). O limite de 12h existe porque este repo faz deploy a cada
   commit: sem ele, 3 commits numa tarde criavam 3 backups do MESMO dia e
   empurravam pra fora os backups de ontem — justo o que se procura quando
@@ -52,6 +54,7 @@ até o reinício (resposta com `congelado:true`).
 
 1. No shell do Render (ou disco novo montado em `/data`):
    `cp -r /data/backups/<DATA-ESCOLHIDA>/* /data/`
+   (isso já traz as pastas `cvs/` e `comprovantes/` junto)
 2. **APAGUE o SQLite** (passo que salva a restauração):
    `rm -f /data/h2bapply.db /data/h2bapply.db-wal /data/h2bapply.db-shm`
 3. Reinicie o servidor
@@ -67,10 +70,11 @@ até o reinício (resposta com `congelado:true`).
    atraso — um backup disparado no MESMO segundo de uma ação pode não
    conter ela. O diário roda de madrugada (zero risco); no manual, espere
    ~10s depois de qualquer mexida importante antes de criar o backup.
-3. **PDFs moram em `cvs/`** (desde a v21 não estão mais dentro do
-   users.json). Backup/restore que ignora essa pasta devolve contas SEM
-   currículo. Os dois fluxos já cobrem — mas se um dia copiarem na mão,
-   lembrem da pasta.
+3. **PDFs moram em `cvs/` e comprovantes em `comprovantes/`** (os PDFs desde
+   a v21, os comprovantes desde a v192 — nenhum dos dois vive mais dentro de
+   um .json). Backup/restore que ignora essas pastas devolve conta SEM
+   currículo e pedido SEM prova de pagamento. Os dois fluxos já cobrem — mas
+   se um dia copiarem na mão, lembrem das duas pastas.
 4. **O servidor vivo desfazia o restore (corrigido na v191).** Restaurar
    copiava os arquivos de volta, mas o processo seguia com TUDO em memória no
    estado de antes: em segundos um salvamento atrasado regravava `users.json`,

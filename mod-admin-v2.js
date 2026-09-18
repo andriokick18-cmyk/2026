@@ -110,10 +110,14 @@ function createAdminV2Router(ctx){
         // v27-FIX (ensaio de restauração): os PDFs dos usuários vivem em cvs/
         // (desde a v21 não estão mais dentro do users.json) — backup sem eles
         // restaurava contas SEM currículo. Agora a pasta vai junto.
-        try{
-          const cvsDir=path.join(DATA_DIR,"cvs");
-          if(fs.existsSync(cvsDir)){fs.cpSync(cvsDir,path.join(dir,"cvs"),{recursive:true});n+=fs.readdirSync(cvsDir).length;}
-        }catch{}
+        // v192 LOTE 10: comprovantes de pedido também moram em disco — backup
+        // sem eles devolveria pedido sem prova de pagamento.
+        for(const sub of ["cvs","comprovantes"]){
+          try{
+            const srcDir=path.join(DATA_DIR,sub);
+            if(fs.existsSync(srcDir)){fs.cpSync(srcDir,path.join(dir,sub),{recursive:true});n+=fs.readdirSync(srcDir).length;}
+          }catch{}
+        }
         audit(req,{admin:adminName,sessionEmail:s.user_email,action:"backup_create",target:"sistema",field:"backup",newValue:stamp,note:`${n} arquivos`});
         json(res,200,{ok:true,name:stamp,files:n});
       }catch(e){json(res,500,{error:e.message});}
@@ -142,7 +146,7 @@ function createAdminV2Router(ctx){
         for(const f of fs.readdirSync(dir)){
           const src=path.join(dir,f);
           try{
-            if(f==="cvs"&&fs.statSync(src).isDirectory()){fs.cpSync(src,path.join(DATA_DIR,"cvs"),{recursive:true});n++;continue;}
+            if((f==="cvs"||f==="comprovantes")&&fs.statSync(src).isDirectory()){fs.cpSync(src,path.join(DATA_DIR,f),{recursive:true});n++;continue;}
             fs.copyFileSync(src,path.join(DATA_DIR,f));n++;
           }catch{}
         }
