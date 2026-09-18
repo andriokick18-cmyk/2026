@@ -797,3 +797,89 @@ título vem cru do DOL e a mesma ocupação se partia em vários chips
 - **UMA RÉGUA DE VISTO**: `FILTROS.visaDaLinha` (campo `visa` → prefixo do
   case). A rota `/api/sheet-meta` tinha a sua própria e marcava H-2B a linha
   sem o campo.
+
+## v182 — Alimentação da planilha, acabamento e e-mail protegido (lotes 8-10)
+
+Fecha a auditoria de 41 achados do v179 (lotes 1-4) / v181 (lotes 5-7). Ordem
+do dono: **"os filtros não podem falhar… o usuário tem que desfrutar 100%"**,
+**"cada vaga tem que ter a descrição e praticamente toda informação"** e a
+autorização total ("corrija tudo isso que você disse que tá errado, deixe como
+explicado"). 33 checks novos no smoke (520 → 553) + revisão real no Chromium
+(1280px e 390×844, zero erro de console). sw v51 → v54.
+
+**Lote 8 — terminar de alimentar a planilha** (`mod-planilhas.js`, `server.js`,
+`mod-filtros.js`, `admin.html`, sw v52). O robô dava jan2026 e jul2025 (11.446
+vagas, a maior parte do acervo) por "100% completas" só porque toda linha tem
+E-MAIL — e era por isso que 0% delas tinha cidade, datas ou descrição: saíam da
+fila no primeiro `if` e o ponto de retomada do bot também era "a primeira linha
+sem e-mail". Além disso: o frescor nunca reconferia essas duas; a unidade do
+salário só sabia "Month" (tudo o mais virava HORA, e $800/semana lia $4,62/h);
+`exp` era sobrescrito com 0/1, destruindo o filtro de experiência linha a
+linha; e a sujeira de cidade da fonte virava chip clicável. Medido depois:
+jan2026 0/9.240 completas com as 9.240 pendentes declaradas no painel; 354
+cidades limpas na H-2A (39 chaves-lixo fora da faceta); jul2026 na frente da
+fila. **O ritmo com o DOL não mudou** (1 vaga por vez, mesmos backoffs) — pode
+levar semanas em produção, e o dono autorizou.
+
+**Lote 9 — deleite, mobile e acessibilidade** (`app.js`, `index.html`,
+`server.js`, sw v53). Seis dimensões sumiam CALADAS quando a planilha não tem o
+dado (cidade, mês de início, cargo, vagas, experiência, temporada) — agora
+explicam em âmbar, como salário e e-mail já faziam. A busca ganhou × pra
+limpar; o botão 🔍 Filtros tinha `min-height:36px` INLINE (vencia a regra
+mobile de 44px e era o MENOR alvo da fileira); opções 40 → 44; o × do chip 24
+→ 44. Painel com aria-modal, foco que entra e volta, Escape e aria-pressed.
+Ponte "usar os mesmos filtros da minha busca" no Passo 2 do robô. O 📡 Radar
+salvava 4 das 11 dimensões e tinha régua própria de texto — agora guarda o
+snapshot inteiro e é avaliado pelo MESMO `FILTROS.filtrar`.
+
+**Lote 10 — e-mail do empregador protegido** (`server.js`, `app.js`, sw v54).
+Aprovado pelo dono. Provado com curl sem cookie: `/api/sheet-meta?sheet=jan2026
+&top=2000` devolvia 2.000 e-mails em texto puro.
+
+### Regras novas (não quebrar)
+
+- **"COMPLETA" É UMA LISTA SÓ**: `CAMPOS_ESSENCIAIS` (e-mail, cidade, data de
+  início, data de fim, descrição) em mod-planilhas.js. Fila, ponto de retomada,
+  laço do robô e painel leem dela. Exigir mais um campo é mexer NA LISTA, nunca
+  num `if` espalhado. Fila por impacto: sem e-mail primeiro (candidatura
+  impossível), depois mais pendentes.
+- **O FRESCOR COBRE TODA PLANILHA PUBLICADA**, em rodízio pela reconferida há
+  mais tempo (carimbo `freshAt` por planilha — nome único, já existia), com o
+  MESMO teto de 120 linhas por ciclo. Rascunho fica de fora.
+- **A UNIDADE DO SALÁRIO É A QUE O DOL PUBLICOU** (Hour/Week/Bi-Weekly/Month/
+  Year/Piece Rate). Pagamento por PEÇA é salário DESCONHECIDO em `wageHora`
+  (0, contado em `semSalario`) — inventar $/h de produção é mentir pro
+  candidato.
+- **`exp` É MESES E NUNCA É SOBRESCRITO PELO SIM/NÃO**: o número publicado
+  manda; o Sim/Não vai pra `expReq`. Sem o número, o filtro tem 2 degraus
+  honestos em vez de 4 — nunca um dado falso. Os nomes de campo de meses são
+  lidos de forma defensiva (o sandbox não alcança a API do DOL pra confirmar
+  qual deles o datahub usa).
+- **CIDADE TEM UMA RÉGUA SÓ DE LIMPEZA**: `limparCidade` (server.js, ao lado do
+  mapa único de estados, agora com VI/GU/AS/MP) serve o robô E a carga das
+  planilhas, é idempotente e roda como auto-cura no boot. Title Case só em
+  valor todo em CAIXA ALTA (nunca destrói "LaBelle"/"McBee"). A chave canônica
+  do v179 (`norm(cidade)+"|"+ESTADO`) não muda.
+- **SEMEAR A jul2026 À FORÇA É MESCLAR, NUNCA SUBSTITUIR** (mesma
+  `_mesclarPlanilha` do upload): com /data enriquecido, trocar pelo bundled
+  apagaria meses de e-mail/cidade/descrição.
+- **DIMENSÃO SEM DADO AVISA, NÃO SOME**: toda dimensão de filtro sem dado
+  publicado mostra o aviso âmbar. `_soUmValor` cuida só de "1 valor distinto";
+  ZERO valor distinto é falta de dado e tem aviso próprio.
+- **ALVO DE TOQUE ≥44px NO QUE DESFAZ FILTRO**: botão de filtros, opções do
+  painel, × do chip e × da busca. Painel com aria-modal, foco de entrada e
+  saída, Escape e aria-pressed em cada opção.
+- **O RADAR USA O MOTOR ÚNICO**: guarda o snapshot COMPLETO dos filtros
+  (`radar.filtros`, mesma função de snapshot do robô, sem forçar e-mail) e é
+  avaliado por `FILTROS.filtrar` — proibida uma 3ª régua de texto. Corpo legado
+  ({estados,cidade,q,categoria}) continua aceito.
+- **O E-MAIL DO EMPREGADOR SÓ VIAJA INTEIRO PRA PLANO ATIVO OU ADMIN**
+  (`mascararEmail` + `podeVerEmailVaga`, função única, em TODA rota que devolve
+  vaga). Sem plano vai mascarado com **`hasEmail` preservado** — contagem,
+  facetas, "só com e-mail" e o corte da regra 8 não podem depender do texto do
+  endereço. A máscara é feita numa CÓPIA (o cache de vagas é compartilhado).
+  A fila do robô é montada com a LINHA REAL do servidor (o `caseMeta` da tela é
+  só fallback) e endereço com "•" nunca entra nela nem no /api/send.
+- **`DOL_API_BASE`/`DOL_FEED_BASE` são só de teste**: o padrão é o host real do
+  DOL. É o que torna o enriquecimento e o frescor exercitáveis no `npm test`
+  com o feed falso; em produção nada muda (mesmo caminho, headers e ritmo).
