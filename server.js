@@ -3695,26 +3695,92 @@ function _excluirEnviadosFn(email, { comProprios = false, comInvalidos = false }
 }
 function _isDoublePro(u) { return !!(u && (u.isAdmin || getPlan(u) === "doublepro")); }
 
+// ═══ 🔎 v179 LOTE 3 — BUSCA QUE ACHA O QUE EXISTE ═══
+// Normalização ÚNICA da busca (acento, apóstrofo, pontuação) e PALHEIRO
+// pré-calculado por LINHA. Antes a string de busca de cada vaga era montada
+// DENTRO do filtro, a cada requisição (lição do v162: nada de texto dentro de
+// laço quente). O palheiro passou a incluir DESCRIÇÃO, SOC e requisitos — a
+// informação mais rica da linha estava invisível pra quem digitava
+// ("forklift" está na descrição de 416 vagas da H-2A e a busca achava 1).
+const _normSearch = (s) => String(s || "").toLowerCase()
+  .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  .replace(/["'‘’`´]/g, "")
+  .replace(/[^a-z0-9@.\s]+/g, " ").replace(/\s+/g, " ").trim();
+const _hayCache = new WeakMap();
+let _hayEpoca = 0; // sobe quando um robô mexe nas linhas (_saveEnrichedSheet)
+function _hayDe(r) {
+  let c = _hayCache.get(r);
+  if (!c || c.v !== _hayEpoca) {
+    c = { v: _hayEpoca,
+      h: _normSearch([r.t, r.n, r.c, r.e, r.s, r.ci, r.desc, r.soc, r.socT, r.req].filter(Boolean).join(" ")),
+      tn: _normSearch([r.t, r.n].filter(Boolean).join(" ")) };
+    _hayCache.set(r, c);
+  }
+  return c;
+}
+// 🇧🇷 O público é 100% brasileiro e o acervo é 100% em inglês. Quem digita
+// "jardinagem", "camareira" ou "colheita" recebia ZERO e concluía que não há
+// vaga. Aqui a consulta INTEIRA (normalizada) vira um OU de termos em inglês
+// — nunca a categoria inteira (esse é justamente o erro que este lote corrige).
+const BUSCA_PT_EN = {
+  jardinagem: ["landscape", "grounds"], paisagismo: ["landscape", "grounds"],
+  jardineiro: ["landscaper", "gardener"], jardim: ["garden"], grama: ["lawn"],
+  camareira: ["housekeeper", "room attendant"], arrumadeira: ["housekeeper"],
+  faxina: ["cleaner", "janitor"], faxineira: ["cleaner", "janitor"], limpeza: ["cleaning", "janitor"],
+  zelador: ["janitor"], recepcao: ["front desk"], hotel: ["hotel"], pousada: ["inn", "lodge"],
+  cozinheiro: ["cook"], cozinha: ["kitchen"], "auxiliar de cozinha": ["prep cook", "kitchen"],
+  garcom: ["waiter", "server"], garconete: ["waitress", "server"],
+  "lavador de pratos": ["dishwasher"], padeiro: ["baker"], confeiteiro: ["pastry", "baker"],
+  barman: ["bartender"], sorveteria: ["ice cream"],
+  construcao: ["construction"], pedreiro: ["mason", "bricklayer"], carpinteiro: ["carpenter"],
+  soldador: ["welder"], eletricista: ["electrician"], encanador: ["plumber"], pintor: ["painter"],
+  telhadista: ["roofer"], servente: ["laborer"], obra: ["construction"],
+  colheita: ["harvest"], fazenda: ["farm"], agricultura: ["agricultur", "farm"],
+  lavoura: ["crop", "field"], ordenha: ["dairy", "milker"], gado: ["livestock", "cattle"],
+  tratorista: ["tractor"], pomar: ["orchard"], estufa: ["greenhouse"],
+  pescado: ["seafood"], peixe: ["fish"], camarao: ["shrimp"], caranguejo: ["crab"], ostra: ["oyster"],
+  motorista: ["driver"], caminhoneiro: ["truck driver"],
+  "salva vidas": ["lifeguard"], piscina: ["pool"],
+  floresta: ["forest"], madeira: ["timber", "logging"], reflorestamento: ["reforestation"],
+  esqui: ["ski"], neve: ["snow"], golfe: ["golf"], "parque de diversoes": ["amusement"],
+  armazem: ["warehouse"], empacotador: ["packer"], "operador de maquina": ["machine operator", "equipment operator"],
+};
+// Atalho de IDENTIFICADOR: o campo de busca promete "nº do caso" ao usuário e
+// devolvia 6.387 vagas — o hífen virava espaço e "26001" (prefixo do lote do
+// DOL) casava com milhares. Nº completo → igualdade; lote → prefixo; 6 dígitos
+// puros → o serial final do caso, que é único.
+function _buscaIdentificador(list, qRaw) {
+  const up = qRaw.toUpperCase().replace(/\s+/g, "");
+  if (/^H-\d{3}-\d{5}-\d{6}$/.test(up)) return list.filter(r => String(r.c || "").toUpperCase() === up);
+  if (/^H-\d{3}(-\d{1,5})?$/.test(up)) return list.filter(r => String(r.c || "").toUpperCase().startsWith(up));
+  if (/^\d{4,8}$/.test(up)) return list.filter(r => String(r.c || "").toUpperCase().endsWith("-" + up));
+  return null;
+}
 function searchSheet(arr, q, state, category, skip, top, sort, matchCtx) {
   let list = arr;
+  let sugestao = null;
   if (q && q.trim()) {
     // ── v62 (bug real, print do dono 26/07: "Marthas vineyard" não achava nada
-    // e a tela enchia de vaga sem relação) — 3 raízes corrigidas de uma vez:
-    // (1) a busca NÃO olhava a CIDADE (r.ci) nem o TÍTULO (r.t) da vaga —
-    //     lugar turístico ("Vineyard Haven", "Edgartown") era inencontrável;
-    // (2) sem normalização, "Marthas" nunca casava com "Martha's" (apóstrofo)
-    //     nem "São" com "Sao" (acento);
-    // (3) sem match direto, o modo categoria-implícita despejava a categoria
-    //     inteira na tela (fazendas aleatórias) — agora categoria só COMPLEMENTA
-    //     depois dos matches diretos, nunca substitui.
-    const _norm=s=>String(s||"").toLowerCase()
-      .normalize("NFD").replace(/[\u0300-\u036f]/g,"")  // acentos fora
-      .replace(/["'‘’`´]/g,"")             // Martha's → marthas
-      .replace(/[^a-z0-9@.\s]+/g," ").replace(/\s+/g," ").trim();
-    const ql=_norm(q);
+    // e a tela enchia de vaga sem relação): a busca olha CIDADE e TÍTULO e
+    // normaliza acento/apóstrofo ("Marthas" == "Martha's"). Mantido.
+    // ── v179 (auditoria 17/09/2026): ACHAR e SUGERIR viraram coisas
+    // separadas. A "categoria implícita" era ANEXADA ao resultado: q=welder
+    // devolvia 4.002 vagas das quais 13 tinham a palavra (carpenter 4.002/106,
+    // bartender 1.210/41, cook 1.215/589) — e esse conjunto é o que vira
+    // `total`, faceta e FILA DO ROBÔ (quem filtrou "welder" tinha o automático
+    // se realimentando com 4.000 empregadores de construção civil). Agora a
+    // categoria só viaja como SUGESTÃO ("também há N vagas em 🏗️ Construção").
+    const qRaw = String(q).trim();
+    const _ident = _buscaIdentificador(list, qRaw);
+    if (_ident) { list = _ident; }
+    else {
+    const ql=_normSearch(qRaw);
     const toks=ql.split(" ").filter(Boolean);
-    const _hay=r=>_norm([r.t,r.n,r.c,r.e,r.s,r.ci].filter(Boolean).join(" "));
-    // Detect implied category from job title keyword (comportamento antigo mantido)
+    // 🇧🇷 consulta em português vira OU de termos em inglês (a original continua valendo)
+    const alvos=[];
+    for(const e of (BUSCA_PT_EN[ql]||[])){const tk=_normSearch(e).split(" ").filter(Boolean);if(tk.length)alvos.push(tk);}
+    if(toks.length)alvos.push(toks);
+    // Detect implied category from job title keyword (vira SUGESTÃO, não resultado)
     let impliedCat = null;
     if (ql.length >= 3) {
       for(const[title,cat] of Object.entries(JOB_TITLE_TO_CAT)){
@@ -3726,43 +3792,51 @@ function searchSheet(arr, q, state, category, skip, top, sort, matchCtx) {
         }
       }
     }
-    // v111b: a busca é uma REGIÃO conhecida? ("marthas vineyard", "cape cod",
-    // "keys"…) — então vaga em qualquer cidade-membro conta como match DIRETO.
+    // v111b: a busca é uma REGIÃO conhecida? ("marthas vineyard", "cape cod"…)
+    // → vaga em qualquer cidade-membro conta como match direto.
+    // ⚠️ v179: a expansão de região casa SÓ contra a CIDADE. Casar contra o
+    // texto inteiro fazia "dennis"/"orleans"/"sandwich" (nomes comuns de
+    // empresa) puxarem 3.354 vagas numa planilha que não tem cidade nenhuma.
     let _regCities=null;
     for(const[reg,cities] of Object.entries(REGIOES_EUA)){
       if(ql===reg||ql.includes(reg)||(ql.length>=4&&reg.startsWith(ql))){_regCities=cities;break;}
     }
-    // (1) Match direto: TODAS as palavras, em qualquer campo (cidade incluída)
-    //     OU cidade dentro da região pesquisada (v111b)
-    let direct=toks.length?list.filter(r=>{const h=_hay(r);return toks.every(t=>h.includes(t))||(_regCities&&_regCities.some(c=>h.includes(c)));}):[];
-    // Relevância: título que contém a busca inteira vem primeiro (espírito do
+    // (1) Match direto: TODAS as palavras de algum alvo, em qualquer campo
+    //     (título, empresa, cidade, DESCRIÇÃO, SOC, requisitos)
+    let direct=alvos.length?list.filter(r=>{const h=_hayDe(r).h;return alvos.some(tk=>tk.every(t=>h.includes(t)));}):[];
+    if(_regCities){
+      const _vis=new Set(direct.map(r=>r.c));
+      for(const r of list){ if(_vis.has(r.c))continue; const c=_normSearch(r.ci||""); if(c&&_regCities.some(x=>c.includes(x)))direct.push(r); }
+    }
+    // Relevância: título/empresa que contém a busca vem primeiro (espírito do
     // antigo tier1), o resto mantém a ordem estável (paginação correta).
     if(direct.length>1){
-      const tHit=r=>_norm(r.t||r.n||"").includes(ql);
+      const tHit=r=>{const tn=_hayDe(r).tn;return alvos.some(tk=>tk.every(t=>tn.includes(t)));};
       direct=[...direct.filter(tHit),...direct.filter(r=>!tHit(r))];
     }
-    // (2) Match parcial multi-palavra COMPLEMENTA depois: qualquer palavra ≥4
-    //     letras ("marthas vineyard" lista também as vagas de "Vineyard Haven"/
-    //     "Edgartown" logo após as exatas — busca de lugar funciona de verdade).
+    // (2) Match parcial multi-palavra COMPLEMENTA depois: palavra ≥4 letras
+    //     ("marthas vineyard" lista também "Vineyard Haven"/"Edgartown").
+    //     ⚠️ v179: o token precisa ter LETRA (nunca pedaço de nº de caso), só
+    //     casa em TÍTULO ou EMPRESA (era por aí que "26001" virava 6.387) e
+    //     casa no COMEÇO de uma palavra — "cape" (de "cape cod") casava dentro
+    //     de "landSCAPE" e devolvia 3.354 vagas de paisagismo numa planilha
+    //     que não tem cidade nenhuma.
     let partial=[];
     if(toks.length>1){
-      const big=toks.filter(t=>t.length>=4);
+      const big=toks.filter(t=>t.length>=4&&/[a-z]/.test(t))
+        .map(t=>new RegExp("(?:^| )"+t.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")));
       if(big.length){
         const seenD=new Set(direct.map(r=>r.c));
-        partial=list.filter(r=>{if(seenD.has(r.c))return false;const h=_hay(r);return big.some(t=>h.includes(t));});
+        partial=list.filter(r=>{if(seenD.has(r.c))return false;const tn=_hayDe(r).tn;return big.some(re=>re.test(tn));});
       }
     }
-    const combined=[...direct,...partial];
-    // (3) Categoria implícita COMPLEMENTA por último (dedupe por case number) —
-    //     ex.: buscar "bartender" lista os matches diretos e na sequência o
-    //     resto da categoria food. NUNCA substitui os matches de texto (antes,
-    //     sem match direto, a categoria inteira tomava a tela sozinha).
+    list=[...direct,...partial];
+    // (3) Categoria implícita vira SUGESTÃO — quem decide incluir é o usuário
     if(impliedCat && (!category||category==="all")){
-      const seen=new Set(combined.map(r=>r.c));
-      const extra=list.filter(r=>(r.k||"other")===impliedCat&&!seen.has(r.c));
-      list=[...combined,...extra];
-    } else {
-      list=combined;
+      const seen=new Set(list.map(r=>r.c));
+      let n=0; for(const r of arr) if((r.k||"other")===impliedCat && !seen.has(r.c)) n++;
+      if(n>0) sugestao={categoria:impliedCat,label:(CATEGORY_LABELS[impliedCat]?.label||impliedCat),n};
+    }
     }
   }
   if (state)    list=list.filter(r=>(r.s||"").toUpperCase()===state.toUpperCase());
@@ -3813,7 +3887,7 @@ function searchSheet(arr, q, state, category, skip, top, sort, matchCtx) {
       .sort((a,b)=>b.sc-a.sc).map(x=>x.r);
   }
   // sort="asc", "random", "" → ordem estável para paginação correta
-  return { total:list.length, items:list.slice(skip,skip+top) };
+  return { total:list.length, items:list.slice(skip,skip+top), sugestao };
 }
 
 // ══════════════════════════════════════════════════════════
@@ -5983,9 +6057,10 @@ function getAllAdminEmails(){
 
 
 function _saveEnrichedSheet(sheetKey, sheet){
-  // v179: as linhas em memória JÁ mudaram — o índice dos filtros precisa
-  // saber disso mesmo que a gravação em disco falhe depois.
+  // v179: as linhas em memória JÁ mudaram — o índice dos filtros e o palheiro
+  // da busca precisam saber disso mesmo que a gravação em disco falhe depois.
   _bumpSheetVersion(sheet);
+  _hayEpoca++;
   try{
     // 🔒 Checagem leve de integridade (não bloqueia salvamento — o bot de
     // enriquecimento só EDITA campos das linhas já existentes, não deveria
@@ -7627,7 +7702,7 @@ filtrar();
     // logado — null pra visitante sem sessão/perfil, cai sempre no
     // comportamento de sempre (sem score, sort=match vira ordem estável).
     const matchCtx=_uMeta?buildMatchCtx(_uMeta):null;
-    const{total,items}=searchSheet(preFiltered,f.q,"","",skip,top,sort,matchCtx);
+    const{total,items,sugestao}=searchSheet(preFiltered,f.q,"","",skip,top,sort,matchCtx);
     let filtered=items; // já paginado corretamente
     // total já é o total filtrado (pré-filtro + searchSheet)
     return json(res,200,{jobs:filtered.map(r=>{
@@ -7662,7 +7737,7 @@ filtrar();
         fromSheet:true,
         matchScore:_m?_m.score:null, matchWhy:_m?_m.why:null
       };
-    }),total,remainingTotal:baseArr.length,skip,sheet,filtrosAtivos:FILTROS.ativos(f)});
+    }),total,remainingTotal:baseArr.length,skip,sheet,filtrosAtivos:FILTROS.ativos(f),sugestoes:sugestao?[sugestao]:[]});
   }
 
   // Dicionário de rótulos de categoria (PT) — fonte única pros cards/chips

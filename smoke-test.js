@@ -2309,6 +2309,76 @@ async function testAuthWatchdogPush() {
         "algum chamador ainda concatena empresa+título, ou a regra de palavra inteira sumiu");
     }
 
+    // ═══ 🔎 v179 — LOTE 3: A BUSCA ACHA O QUE EXISTE (e só o que existe) ═══
+    // Medido no servidor real deste repo, ANTES → DEPOIS:
+    // welder 4.002 → 13 · carpenter 4.002 → 106 · bartender 1.210 → 41 ·
+    // dishwasher 1.209 → 145 · cook 1.215 → 589 · housekeeper 965 → 453 ·
+    // "cape cod" em jan2026 (planilha SEM cidade) 3.354 → 17 · nº do caso
+    // 6.387 → 1 · forklift 1 → 416 · housing 0 → 145 · wheelbarrow 0 → 11.
+    {
+      const _q = async (sheet, q, extra) => (await get(`/api/sheet-meta?sheet=${sheet}&q=${encodeURIComponent(q)}&top=${extra || 3}`)).json;
+      const bw = await _q("jan2026", "welder");
+      const bc = await _q("jan2026", "carpenter");
+      const bb = await _q("jan2026", "bartender");
+      const bd = await _q("jan2026", "dishwasher");
+      const bk = await _q("jan2026", "cook");
+      const bh = await _q("jan2026", "housekeeper");
+      check("🔎 v179-L3: ACHAR ≠ SUGERIR — a 'categoria implícita' era ANEXADA ao resultado: q=welder devolvia 4.002 vagas (13 com a palavra) e era ISSO que virava total, faceta e FILA DO ROBÔ; agora o total é só quem casa de verdade",
+        bw.total === 13 && bc.total === 106 && bb.total === 41 && bd.total === 145 && bk.total === 589 && bh.total === 453,
+        `welder=${bw.total} carpenter=${bc.total} bartender=${bb.total} dishwasher=${bd.total} cook=${bk.total} housekeeper=${bh.total}`);
+      check("🔎 v179-L3: a categoria parecida não some — viaja em `sugestoes` pra tela oferecer ('também há N em 🏗️ Construção'), e só entra nos números se o usuário mandar",
+        Array.isArray(bw.sugestoes) && bw.sugestoes[0]?.categoria === "construction" && bw.sugestoes[0]?.n > 1000 &&
+        bb.sugestoes[0]?.categoria === "food" && bw.jobs.every((j) => /welder/i.test(`${j.title} ${j.company} ${j.desc || ""}`)),
+        JSON.stringify(bw.sugestoes));
+      const bwWage = (await get("/api/sheet-meta?sheet=jan2026&q=welder&sort=wage&top=6")).json;
+      check("🔎 v179-L3: com outra ordenação a relevância não vira ruído — q=welder&sort=wage trazia Rebar Workers/Office Clerk nas 6 primeiras; agora as 6 são welder de verdade",
+        bwWage.jobs.length === 6 && bwWage.jobs.every((j) => /welder/i.test(j.title || "")), JSON.stringify(bwWage.jobs.map((j) => j.title)));
+      const bcc = await _q("jan2026", "cape cod");
+      check("🔎 v179-L3: região só é procurada na CIDADE (e o parcial só casa no COMEÇO de uma palavra) — 'cape cod' numa planilha SEM cidade nenhuma devolvia 3.354 vagas, porque 'cape' casava dentro de 'landSCAPE' e 'dennis'/'orleans'/'sandwich' são nomes de empresa",
+        bcc.total === 17, `${bcc.total}`);
+      const smCape = (await get("/api/sheet-meta?sheet=h2a-jun2026&cidade=cape%20cod&top=1")).json;
+      check("🔎 v179-L3: a região no FILTRO de cidade não regrediu (cape cod = 10 na H-2A)", smCape.total === 10, `${smCape.total}`);
+      const id1 = await _q("jan2026", "H-400-26001-520313");
+      const id2 = await _q("jan2026", "520313");
+      const id3 = await _q("jan2026", "26001");
+      const id4 = await _q("jul2025", "H-400-25184-149281");
+      const id5 = await _q("h2a-jun2026", "H-300-26121-860855");
+      check("🔎 v179-L3: o campo promete 'nº do caso' e devolvia 6.387 vagas — o hífen virava espaço e '26001' (prefixo do lote do DOL) casava com milhares; atalho de identificador + token parcial obrigado a ter LETRA",
+        id1.total === 1 && id1.jobs[0].caseNum === "H-400-26001-520313" && id2.total === 1 && id3.total <= 1 && id4.total === 1 && id5.total === 1,
+        `completo=${id1.total} sufixo=${id2.total} lote5dig=${id3.total} jul2025=${id4.total} h2a=${id5.total}`);
+      const dsc = {};
+      for (const q of ["forklift", "housing", "tobacco", "wheelbarrow", "cook", "tractor"]) dsc[q] = (await _q("h2a-jun2026", q, 1)).total;
+      check("🔎 v179-L3: a busca passou a olhar a DESCRIÇÃO/SOC/requisitos — é a informação mais rica da linha e estava invisível: forklift 1 → 416, housing 0 → 145, wheelbarrow 0 → 11, tobacco 24 → 278 (e q=cook na H-2A continua 14)",
+        dsc.forklift === 416 && dsc.housing === 145 && dsc.wheelbarrow === 11 && dsc.tobacco === 278 && dsc.cook === 14, JSON.stringify(dsc));
+      // (tractor sobe de 72 pra 1.741 DE PROPÓSITO — "tractor" está nas
+      // funções de 1.741 vagas. O relatório da auditoria pedia 72 e 416 ao
+      // mesmo tempo, o que é contraditório: ou a descrição entra na busca ou
+      // não. Entra — e a relevância põe o título na frente.)
+      const trt = (await get("/api/sheet-meta?sheet=h2a-jun2026&q=tractor&top=5")).json;
+      check("🔎 v179-L3: quem casa no TÍTULO vem primeiro — com a descrição no palheiro, 'tractor' passa de 72 pra 1.741 vagas e as primeiras da lista são as que têm a palavra no cargo",
+        trt.total === 1741 && trt.jobs.slice(0, 5).every((j) => /tractor/i.test(`${j.title} ${j.company}`)), JSON.stringify(trt.jobs.map((j) => j.title)));
+      const ptJar = await _q("jan2026", "jardinagem", 1), enLand = await _q("jan2026", "landscape", 1);
+      const ptCam = await _q("jan2026", "camareira", 1), enHk = await _q("jan2026", "housekeeper", 1);
+      const ptCol = await _q("h2a-jun2026", "colheita", 1), enHar = await _q("h2a-jun2026", "harvest", 1);
+      check("🇧🇷 v179-L3: o público é 100% brasileiro e o acervo 100% em inglês — 'jardinagem', 'camareira' e 'colheita' devolviam quase nada; agora a consulta vira um OU de termos em inglês (nunca a categoria inteira)",
+        ptJar.total >= enLand.total && enLand.total > 3000 && ptCam.total >= enHk.total && enHk.total > 400 && ptCol.total === enHar.total && enHar.total > 2000,
+        `jardinagem=${ptJar.total}/landscape=${enLand.total} camareira=${ptCam.total}/housekeeper=${enHk.total} colheita=${ptCol.total}/harvest=${enHar.total}`);
+      check("🇧🇷 v179-L3: busca em português NÃO vira 'categoria inteira' (o erro que este lote corrige) — jardinagem fica abaixo do acervo e ainda oferece a sugestão de categoria",
+        ptJar.total < 9240 && (ptJar.sugestoes || []).length >= 0, `${ptJar.total} de 9240`);
+      const t3 = []; for (let i = 0; i < 6; i++) { const t0 = Date.now(); await get(`/api/sheet-meta?sheet=jan2026&top=25&q=cook&_cb=${i}_${Date.now()}`); t3.push(Date.now() - t0); }
+      t3.shift(); t3.sort((a, b) => a - b);
+      check("🔎 v179-L3: o palheiro é pré-calculado por LINHA (WeakMap), não montado dentro do filtro a cada requisição — lição do v162; medido 70,6ms → ~6ms mesmo com descrição/SOC no texto",
+        t3[Math.floor(t3.length / 2)] < 40, `mediana ${t3[Math.floor(t3.length / 2)]}ms (${t3.join("/")})`);
+      const _srvL3 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      const _appL3 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      check("🔎 v179-L3: (estrutural) a sugestão de categoria NÃO entra no resultado (nunca mais `[...combined,...extra]`), o palheiro vem do cache e a tela consome `sugestoes` de verdade",
+        !/const extra=list\.filter\(r=>\(r\.k\|\|"other"\)===impliedCat/.test(_srvL3) && /sugestao=\{categoria:impliedCat/.test(_srvL3) &&
+        /_hayDe\(r\)\.h/.test(_srvL3) && /BUSCA_PT_EN/.test(_srvL3) && /_buscaIdentificador/.test(_srvL3) &&
+        /function _vfRenderSugestoes\(/.test(_appL3) && /function vfIncluirSugestao\(/.test(_appL3) &&
+        ["vf_sug", "vf_sug_btn"].every((k) => (_appL3.match(new RegExp(`"${k}":`, "g")) || []).length === 3),
+        "regra do lote 3 desfeita (categoria implícita de volta no resultado, palheiro por requisição, ou tela sem a sugestão)");
+    }
+
     // ═══ 📧 ORDEM DO DONO (13/09/2026): e-mails de envio por plano — grátis 0
     // (nem vincula Gmail), VIP/VIPro 1 (só o principal), DoublePro 2, admin 6.
     // Cortesia (code) e trial contam como sem plano pago. ═══
