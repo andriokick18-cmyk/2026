@@ -1240,3 +1240,154 @@ empregador JÁ contatado, com `countedAsManual:false`.
   Na seleção de remetente, escolher explicitamente o e-mail PRINCIPAL é um
   caso legítimo com ramo próprio (`if(requestedSender && requestedSender!==
   s.user_email){…} else if(!requestedSender){round-robin} else {principal}`).
+
+## v195–v198 — Varredura total, lotes 13-16
+
+Continuação direta do v183–v186, v187–v190 e v191–v194 (mesma ordem do dono,
+18/09/2026: **"O que ainda pode melhorar? O que não faz sentido existir? Ou
+funciona errado? Pensa sobre tudo e resolva!"** + autorização total). Estes 4
+lotes são o Gmail de envio · o trato com o DOL · os números e promessas do
+site · a faxina do front. 34 checks novos (619 → 653), 2 asserções antigas
+atualizadas porque codificavam o comportamento errado. sw v58 → v62.
+
+**v195 — Lote 13: reconectar o Gmail volta a ligar o robô** (`server.js`,
+`app.js`, `mod-watchdogs.js`, `index.html`, sw v59). Cliente PAGANTE com o
+automático parado por autenticação era mandado pra um botão que não existe:
+TODAS as instruções de pausa (os status/dicas do front nos 3 idiomas, o toast,
+o `addLog` do motor, o diagnóstico de queda rápida, o watchdog e o Token
+Guardian) diziam "saia e faça login com o Google de novo" — mas o login do
+site é usuário+senha desde o v172c e `/oauth/start` é dead-end. E quando ele
+acertava mesmo assim, o callback do `/oauth/connect-send` só limpava
+`rtInvalid`: o job continuava `paused_*` até a pessoa achar o botão genérico
+"Retomar". Junto ia o aquecimento: o relógio do Gmail PRINCIPAL era o
+`created_at` do CADASTRO, mas desde o v172c o Gmail só é conectado DEPOIS de
+pagar — conta antiga conectava um Gmail novinho em folha e entrava sem teto
+nenhum (`cap=null`), justo o caso que o aquecimento existe pra proteger; e o
+`primaryWarmup` que o servidor calculava não era lido por tela nenhuma,
+enquanto o tutorial prometia "o selo 🌱 no Perfil mostra o estágio".
+
+**v196 — Lote 14: educado com o DOL** (`server.js`, `mod-planilhas.js`,
+`sw.js`, sw v60). O IP deste servidor no DOL é recurso COMPARTILHADO: se ele
+levar 403/429, os 5 robôs de planilha e as "Vagas ao Vivo" morrem pra TODO
+MUNDO ao mesmo tempo. Três portas escancaradas: `/proxy` repassava QUALQUER
+método/corpo pra seasonaljobs.dol.gov com o nosso IP, sem sessão, sem
+rate-limit e com CORS `*` — e nenhuma tela do site chamava; `/api/jobs`,
+`/api/sheet-detail` e `/api/sheet-batch` batiam no DOL a CADA chamada anônima
+(o batch podia virar 11 requisições) com `case`/`state` interpolados crus no
+`$filter`; e o enriquecimento reperguntava ao governo, a cada 30min e PRA
+SEMPRE, as linhas que o DOL já tinha respondido sem ter o que dar — a jul2026
+inteira (2.625 linhas, zero e-mail) nesse laço, com uma linha de log por vaga
+engolindo o ring de 1500 do `botLog`.
+
+**v197 — Lote 15: os números e as promessas batem com o código**
+(`index.html`, `app.js`, `server.js`, `como-usar.html`,
+`tutorial-conteudo.html`, sw v61). Cinco textos vendiam um produto diferente
+do que o motor entrega, todos cobertos pela regra v172j: a landing prometia
+"prioridade máxima na fila" (não existe: a única ordenação é DENTRO da fila do
+próprio usuário), "aumenta seu limite diário" (grátis é 0 — não aumenta,
+LIBERA) e robô "até 400 candidaturas/dia" (o automático máximo é 200); um
+modal morto ainda anunciava "Free (20 manual + 10 auto/dia)"; cinco lugares
+diziam "5–6 min" entre envios enquanto o motor manda a cada ~7 — e a PREVISÃO
+de quando a fila termina usava 5,5 min, ~27% otimista; Termos, /terms,
+como-usar e tutorial mandavam "adicionar 2 ou mais contas Gmail" num produto
+onde VIP/VIPro podem 1 e DoublePro no máximo 2; o rodapé afirmava "mantido por
+doações — nunca por venda" 200 linhas abaixo de "assina um plano via PIX"; e
+quem JÁ PAGA e batia o limite do dia lia "Assine um plano" e "Continuar amanhã
+de graça".
+
+**v198 — Lote 16: faxina no front** (`app.js`, `index.html`,
+`h2b-extras-user.js`, `check-duplicates.js`, `check-xss-guard.js`,
+`server.js`, sw v62). O front carregava ~470 linhas que ninguém chamava: o
+subsistema de "Modelos de e-mail" inteiro (morto desde o v22 — `BUILTIN_
+TEMPLATES=[]`, 20 funções órfãs, um overlay inalcançável e 3 rotas), que ainda
+custava 1 fetch a CADA abertura do Perfil; 31 funções sem nenhum chamador; um
+chip de limite que pintava um `#hdr-lim` inexistente, chamado 10x por sessão;
+e o `check-duplicates.js` — a guarda que nasceu porque "a segunda declaração
+sobrescreve a primeira em silêncio" no front — não varria justamente o
+`app.js`. O rótulo de plano estava escrito em 8 grafias divergentes e o header
+ainda rotulava pelo NOME do plano: quem tinha só o automático ativo via
+"🤖 VIPro" com 0 manuais/dia, o mesmo bug que o v177-FIX8 corrigiu só no
+Perfil. E sobravam 4 ocorrências do `${p.icon}` cru que o v177-FIX2 corrigiu
+num 5º lugar.
+
+### Regras novas (não quebrar)
+
+- **RECONECTAR O GMAIL RETOMA O ROBÔ, E O RITMO É PRESERVADO**:
+  `retomarAutoAposReconexao(email)` (server.js) é chamada pelo callback do
+  `/oauth/connect-send` e religa o job parado por autenticação
+  (`AUTH_PAUSED_STATUSES`) **só** com automático ativo (ou admin) e
+  `refresh_token` de verdade — o gate v172h não muda. `nextSendAt` futuro vira
+  timer pro tempo que FALTAVA; nunca um `scheduleAuto` na hora (dispararia o
+  refill e furaria os ~7min do v184). Retomar em silêncio confunde tanto
+  quanto parar em silêncio: fica `addLog` no histórico e o retorno leva
+  `&autoRetomado=1`, que a tela transforma em aviso.
+- **TODA INSTRUÇÃO DE PAUSA APONTA PRO CAMINHO QUE EXISTE**: o cartão
+  "Conectar meu Gmail" (`/oauth/connect-send`). PROIBIDO em qualquer arquivo
+  servido ao cliente, log do motor ou vigia mandar "fazer login com o Google
+  de novo" — o login do site é usuário+senha desde o v172c. Texto de pausa
+  novo entra nos **3 dicionários no mesmo commit**: 1 idioma consertado e 2
+  mentindo é o mesmo bug com outra cara. Guarda por frase no smoke.
+- **O RELÓGIO DO AQUECIMENTO DO GMAIL PRINCIPAL É A CONEXÃO**:
+  `gmailConnectedAt || created_at`, carimbado **só na 1ª conexão** (o Gmail de
+  envio é PERMANENTE — recarimbar numa reconexão zeraria o aquecimento de uma
+  conta madura). O fail-open do `warmupCapForSender` continua: sem data
+  conhecida, NUNCA bloqueia. O selo 🌱 é HTML ÚNICO (`_warmupBadgeHTML`, usado
+  pelo principal e pelos extras) e é PROIBIDO esconder o throttling do
+  usuário.
+- **O IP DO SERVIDOR NO DOL É DE TODO MUNDO**: não existe proxy aberto pro
+  DOL (o `/proxy` foi removido e não volta). As 3 rotas públicas que falam com
+  o DOL continuam **públicas** (a busca de SEO e o carregamento em background
+  do app dependem disso), mas: (a) `/api/jobs` responde de um CACHE por
+  combinação de filtros — é ele que corta a amplificação, mais que o 429 —
+  guardando a resposta CRUA (a máscara de e-mail do v182 LOTE 10 é por
+  requisição, sempre); (b) rate-limit GENEROSO por IP, preferindo o e-mail da
+  sessão (CGNAT: um 429 num fluxo humano é pior que o problema); (c)
+  sanitização que PRESERVA — aspa do estado ESCAPADA no padrão OData (nunca um
+  `/^[A-Z]{2}$/` cego, que quebraria o nome por extenso) e case number só
+  passa se FOR um case number (`/^[A-Z0-9-]{5,24}$/`). `DOL_API_BASE` vale
+  também no server.js (mesma régua do v182): em produção o padrão é o host
+  real.
+- **O QUE O DOL JÁ DISSE QUE NÃO TEM NÃO SE REPERGUNTA NA HORA**: o carimbo
+  `row.eq` sai da fila do robô por 60h (janela 48-72h de propósito: e-mail que
+  aparece no DOL é vaga candidatável). O PAINEL continua contando a linha como
+  pendente — ela é — e ganha `aguardandoDol`; quem enxerga "pendente agora"
+  (`pendentesAgora`/`semEmailAgora`) é o robô. Log de vaga sem e-mail é RESUMO
+  por ciclo, nunca 1 linha por vaga (o ring de 1500 do botLog é compartilhado
+  com frescor, mensal e sentinela).
+- **TEXTO DE PRODUTO ESPELHA O CÓDIGO, NUNCA O CONTRÁRIO**: os números de
+  envio/dia da landing e da calculadora derivam de `PLAN_LIMITS_NEW`
+  (guarda permanente no smoke, no molde da que já existia pra
+  /h2bapply-funciona); o intervalo do robô tem UMA constante no front
+  (`AUTO_INT_MIN/MAX/AVG`, espelhando `calcSmartInterval`) e é PROIBIDO um
+  arquivo servido dizer "5–6 min" ou calcular previsão com 5,5; o texto de
+  Gmail por plano é o MESMO nos 8 pontos (VIP/VIPro 1 conta, DoublePro 2) —
+  PROIBIDO mandar "adicionar 2 ou mais contas"; e mexer no texto dos TERMOS
+  obriga a subir `versaoTermos` no mesmo commit, senão consentimentos velhos e
+  novos apontam pra textos diferentes com a mesma etiqueta.
+- **O FUNIL DO LIMITE LÊ AS DUAS DIMENSÕES**: `limitUpsell` ramifica por
+  `U.manualLimit`/`U.autoLimit` (que são 0 quando aquele lado não está ativo —
+  v172i), nunca por "tem plano"; DoublePro com os 2 lados ativos e admin não
+  veem upsell nenhum. Nenhum texto de limite promete "de graça" — a conta
+  grátis envia ZERO desde o v172.
+- **RÓTULO DE PLANO: DUAS FUNÇÕES, ZERO MAPAS SOLTOS**. `planLabelAtivo()` diz
+  o que a conta pode fazer HOJE, derivado de `vip.manualExpires`/`autoExpires`
+  (⭐ VIP · 🤖 Pro · ⭐🤖 VIPro · 💎 DoublePro · Grátis) e serve o header;
+  `planBadgeHTML()` é o badge com dias. `PLAN_NAMES`/`planNomePedido()` só
+  valem onde o rótulo se refere a um PEDIDO/plano COMPRADO. PROIBIDO um mapa
+  novo por nome de plano pra dizer o que a conta pode fazer — é a armadilha do
+  v177-FIX8 (`getPlan()` devolve "vipro" pra quem só tem o automático).
+- **FUNÇÃO DUPLICADA É VIGIADA NO FRONT INTEIRO**: `check-duplicates.js` varre
+  server.js, **app.js**, os `mod-*.js`, os `<script>` inline de index/admin e
+  o h2b-extras-user.js. O maior arquivo servido ao cliente estava de fora da
+  guarda que existe justamente por causa dele.
+- **ÍCONE DE PERFIL É CAMPO LIVRE**: `p.icon`/`selP.icon` passam por `esc()`
+  em TODO ponto (mesma classe do `${icon}` do v177-FIX2). E a mensagem de erro
+  do `check-xss-guard.js` ensina a ASSINATURA — a ALLOWLIST é indexada por
+  assinatura, e uma entrada "arquivo:linha" nasce morta e envelhece a cada
+  edição.
+- **UMA VERDADE POR PREFERÊNCIA NO APARELHO**: o tema é `h2b_theme` (fora do
+  helper do módulo de extras, que prefixa `hx_`) e é aplicado uma vez só, pelo
+  `<head>` do index, antes do primeiro paint. Rascunho de texto em
+  localStorage tem que ter ESCOPO (o `draft_<id>` global entregava o texto da
+  Conta A pra Conta B no mesmo aparelho — mesma classe que o v177-FIX6
+  fechou). `setInterval` perpétuo pra "melhoria" com zero casos não existe.
