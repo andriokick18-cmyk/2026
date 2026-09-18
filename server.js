@@ -1414,9 +1414,6 @@ function persist(file, data) {
 function persistSent() {
   const out={};for(const[k,v]of Object.entries(DB_SENT))out[k]=[...v];persist(SENT_FILE,out);
 }
-function persistSentDebounced() {
-  const out={};for(const[k,v]of Object.entries(DB_SENT))out[k]=[...v];persistDebounced(SENT_FILE,out,2000);
-}
 function persistLogs() { persistDebounced(LOGS_FILE, DB_LOGS, 3000); }
 function persistLogsImmediate() { persist(LOGS_FILE, DB_LOGS); }
 
@@ -1780,12 +1777,27 @@ const hasSent = (u, d) => {
   return hist.some(h => _normEmail(h.to) === nd);
 };
 
+// 🛡️ v183 LOTE 2 — "vaga enviada NUNCA reaparece" é a única coisa que o
+// produto promete que não pode falhar, e ela dependia de um debounce de 2s.
+// O comentário do motor dizia "salva ANTES de tentar envio (evita
+// reprocessamento em crash)", mas o que era salvo em disco na hora era NADA:
+// setAutoJob é debounced de propósito (DB_AUTO carrega a fila inteira de
+// todo mundo) e markSent também era. Um kill duro (deploy sem SIGTERM, OOM do
+// Render) na janela do debounce devolvia a vaga JÁ ENVIADA pra fila e o robô
+// mandava a MESMA candidatura pro MESMO empregador.
+// Aqui a gravação passa a ser SÍNCRONA — e só aqui: SENT_FILE é só conjuntos
+// de e-mail (barato), e os ÚNICOS chamadores em produção são os dois pontos
+// de envio bem-sucedido (automático e manual), ou seja, no máximo 1 gravação
+// por candidatura que realmente saiu. setAutoJob continua debounced (o
+// arquivo é ordens de grandeza maior e é escrito várias vezes por envio) —
+// a fila pode voltar atrasada num crash, mas hasSent() corta a vaga como já
+// enviada e o empregador nunca recebe duas vezes.
 const markSent = (u, d) => {
   const nd = _normEmail(d);
   if(!nd) return;
   if(!DB_SENT[u]) DB_SENT[u] = new Set();
   DB_SENT[u].add(nd);
-  persistSentDebounced();
+  persistSent();
 };
 
 // Set completo do que o usuário JÁ enviou (DB_SENT + fallback do histórico),
@@ -4894,7 +4906,12 @@ async function _doAutoSendInner(email) {
     return;
   }
 
-  // Remove target da fila e salva ANTES de tentar envio (evita reprocessamento em crash)
+  // Tira o target da fila ANTES de tentar o envio. ⚠️ v183 LOTE 2: isto NÃO
+  // é proteção contra crash — setAutoJob é debounced de propósito (DB_AUTO
+  // carrega a fila inteira de todo mundo), então num kill duro a fila volta
+  // do disco ANTIGA, com esta vaga dentro. Quem garante que o empregador não
+  // recebe duas vezes é o markSent do sucesso, que grava SÍNCRONO, e o
+  // hasSent/regra 8 que corta a vaga no refill e no próximo ciclo.
   queue.shift();
   setAutoJob(email, { ...job, queue, lastSentAt:Date.now(), status:"sending", currentJob:target });
 
@@ -5517,7 +5534,16 @@ const fillTpl=(tpl,v)=>(tpl||"")
 // o bloqueio em vez de esperar ele passar. Retorna true se agendou algo.
 function reactivateOneAutoJob(email, job, now){
   now = now || Date.now();
-  if(!job?.active||!job.queue?.length) return false;
+  // 🛡️ v183 LOTE 2: exigir fila NÃO-VAZIA aqui matava em silêncio o job que
+  // acabou de mandar a ÚLTIMA vaga da fila e está no intervalo humanizado de
+  // ~7min esperando o refill (queue:[] + active:true + nextSendAt futuro é
+  // estado NORMAL do motor). Este repo faz deploy a cada commit: o robô de um
+  // cliente pagante simplesmente não voltava, e nenhum vigia o pegava (o laço
+  // de órfãos do watchdog tinha a MESMA condição). Fila vazia passa; o ramo
+  // waitStatuses+hasNextSend abaixo re-agenda pro tempo que FALTAVA — nunca
+  // chamar scheduleAuto na hora aqui, senão o refill dispara e sai um envio
+  // fora do intervalo de 7min.
+  if(!job?.active) return false;
   // FIX-BUG13: valida estrutura da fila
   if(!Array.isArray(job.queue)){
     console.error(`[auto] ${email}: queue corrompida — resetando`);
@@ -8463,6 +8489,25 @@ filtrar();
   if(pathname==="/api/test/vaga-morta"&&process.env.TEST_LOGIN_TOKEN){
     if(String(u.searchParams.get("token")||"")!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});
     return json(res,200,{ok:true,motivo:isQueueJobDead(u.searchParams.get("sheet")||"",u.searchParams.get("case")||"")});
+  }
+  // 🧪 v183 LOTE 2: gancho de teste pro RESSUSCITAR do robô depois de um
+  // restart. reactivateOneAutoJob() só roda no boot (e no self-heal do
+  // /api/auto/start), e o estado que interessa — job ativo com a fila VAZIA
+  // esperando o refill de ~7min — não dá pra montar por rota normal. Aqui o
+  // teste semeia o job exatamente nesse estado e chama a MESMA função do
+  // boot, sem reiniciar o processo. Mesma trava dos outros /api/test/*.
+  if(pathname==="/api/test/auto-job"&&req.method==="POST"&&process.env.TEST_LOGIN_TOKEN){
+    try{
+      const d=JSON.parse((await readBody(req))||"{}");
+      if(d.token!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});
+      const em=String(d.email||"").toLowerCase().trim();
+      if(!em)return json(res,400,{error:"email"});
+      if(d.job)setAutoJob(em,d.job);
+      if(d.limparTimer&&autoTimers.has(em)){clearTimeout(autoTimers.get(em));autoTimers.delete(em);}
+      let reativado=null;
+      if(d.reativar)reativado=reactivateOneAutoJob(em,getAutoJob(em));
+      return json(res,200,{ok:true,reativado,temTimer:autoTimers.has(em),job:getAutoJob(em)});
+    }catch(e){return json(res,400,{error:e.message});}
   }
   // 🌱 v180: gancho de teste pra exercitar a DECISÃO do seed ("esqueleto em
   // /data × bundled enriquecido") e a mesclagem, sem depender do arquivo
@@ -14150,14 +14195,17 @@ async function diagnoseJob(email) {
 
 // Watchdog global: roda a cada 2min
 setInterval(async () => {
-  const activeJobs = Object.entries(DB_AUTO).filter(([,j]) => j.active && j.queue?.length > 0);
+  const activeJobs = Object.entries(DB_AUTO).filter(([,j]) => j.active); // v183 LOTE 2: fila vazia aguardando refill também precisa de diagnóstico
   for (const [email] of activeJobs) {
     try { await diagnoseJob(email); } catch(e) { console.error(`[watchdog] erro em ${email}:`, e.message); }
   }
   // Detecta jobs marcados active=true mas sem timer E sem nextSendAt — orphans pós-crash
   const now = Date.now();
   for (const [email, job] of Object.entries(DB_AUTO)) {
-    if (!job.active || !job.queue?.length) continue;
+    // v183 LOTE 2: job ativo com fila VAZIA (esperando o refill de ~7min) é
+    // estado normal — e era justamente quem ficava órfão pra sempre depois de
+    // um restart. Quem decide é o nextOk abaixo, como já era pro resto.
+    if (!job.active) continue;
     if (!autoTimers.has(email)) {
       const nextOk = job.nextSendAt && job.nextSendAt > now && (job.nextSendAt - now) < 6*3600_000;
       if (!nextOk) {

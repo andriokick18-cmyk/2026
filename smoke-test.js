@@ -4430,6 +4430,47 @@ async function testAuthWatchdogPush() {
         _appL10.includes("email_locked") && _appL10.includes("j.hasEmail&&j.emailBloqueado"),
         "a fila do robô voltou a confiar no e-mail vindo da tela");
     }
+    // ═══ 🤖 v183 LOTE 2: MOTOR DE ENVIO — robô zumbi e duplicata em crash ══
+    {
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "zumbil2@test.com", name: "Zumbi Lote2" });
+      // Estado NORMAL do motor: mandou a ÚLTIMA vaga da fila e está no
+      // intervalo humanizado de ~7min esperando o refill. Antes do v183 esse
+      // job morria em silêncio a cada deploy (e este repo faz deploy a cada
+      // commit) — reactivateOneAutoJob devolvia false e o laço de órfãos do
+      // watchdog tinha a MESMA condição de fila não-vazia.
+      const _nextL2 = Date.now() + 5 * 60_000;
+      const _semFila = { active: true, queue: [], status: "waiting_interval", nextSendAt: _nextL2, source: "jan2026", originalCount: 3, lastSentAt: Date.now() - 2 * 60_000 };
+      const _rL2 = await req2("POST", "/api/test/auto-job", { token: TEST_TOKEN, email: "zumbil2@test.com", job: _semFila, limparTimer: true, reativar: true });
+      check("🤖 v183-L2: job ativo com a fila VAZIA (mandou a última vaga e espera o refill de ~7min) volta a ser agendado depois de um restart — antes reactivateOneAutoJob devolvia false e o robô do cliente pagante simplesmente não voltava",
+        _rL2.json?.reativado === true && _rL2.json?.temTimer === true,
+        JSON.stringify({ reativado: _rL2.json?.reativado, temTimer: _rL2.json?.temTimer }));
+      check("🤖 v183-L2: e o nextSendAt ORIGINAL é respeitado (o robô espera o tempo que FALTAVA) — reagendar disparando na hora furaria o intervalo humanizado de 7min contra o Gmail",
+        _rL2.json?.job?.nextSendAt === _nextL2 && _rL2.json?.job?.status === "waiting_interval",
+        JSON.stringify({ nextSendAt: _rL2.json?.job?.nextSendAt, esperado: _nextL2, status: _rL2.json?.job?.status }));
+      // não deixa timer vivo mandando e-mail no meio da suíte
+      await req2("POST", "/api/test/auto-job", { token: TEST_TOKEN, email: "zumbil2@test.com", job: { ..._semFila, active: false, status: "inativo" }, limparTimer: true });
+      // "vaga enviada nunca reaparece" grava no disco NA HORA (era debounce de 2s)
+      const _sentPath = path.join(DATA, "sent_emails.json");
+      const _lerSent = () => { try { return fs.readFileSync(_sentPath, "utf8"); } catch { return ""; } };
+      const _antesSent = _lerSent();
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "persistel2@test.com", sentTo: ["empregador-persiste-l2@teste-h2b.com"] });
+      const _depoisSent = _lerSent();
+      check("🤖 v183-L2: marcar empregador como JÁ CONTATADO grava em disco NA HORA (antes era debounce de 2s — um kill duro na janela devolvia a vaga enviada pra fila e o robô mandava a MESMA candidatura pro MESMO empregador)",
+        !_antesSent.includes("empregador-persiste-l2@teste-h2b.com") && _depoisSent.includes("empregador-persiste-l2@teste-h2b.com"),
+        "sent_emails.json não tinha o empregador logo após o markSent — voltou a ser debounced");
+      const _srvL2 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      const _deadFn = (_srvL2.match(/function _motivoVagaMorta\(row\)\{[\s\S]*?\n\}/) || [""])[0]
+        .split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+      check("🤖 v183-L2 (estrutural): a régua de vaga morta não pode voltar a olhar `row.exp` (meses de EXPERIÊNCIA, nunca vencimento) — só status do DOL e data de fim no passado decidem",
+        !!_deadFn && !/row\.exp/.test(_deadFn) && /WITHDRAWN/.test(_deadFn) && /_dataISO\(row\.de\)/.test(_deadFn),
+        "o corpo de _motivoVagaMorta voltou a referenciar row.exp");
+      check("🤖 v183-L2 (estrutural): markSent grava síncrono (SENT_FILE é só conjunto de e-mail) e setAutoJob CONTINUA debounced — o arquivo do robô carrega a fila inteira de todo mundo e é escrito várias vezes por envio",
+        /DB_SENT\[u\]\.add\(nd\);\s*\n\s*persistSent\(\);/.test(_srvL2) && !_srvL2.includes("persistSentDebounced") &&
+        _srvL2.includes("const setAutoJob = (e,d) => { DB_AUTO[e]={...(DB_AUTO[e]||{}),...d}; persistDebounced(AUTO_FILE,DB_AUTO,5000); };"),
+        "markSent voltou a ser debounced (ou setAutoJob virou síncrono)");
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    }
+
     // ═══ 🔐 v183 LOTE 1: QUEM APROVOU E DE QUEM É O DINHEIRO ═══════════════
     // Desde o v177-FIX a sessão do painel pode ter como CHAVE INTERNA o
     // USERNAME reservado ("diego"), e toda a atribuição financeira só
