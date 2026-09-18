@@ -441,6 +441,17 @@ async function testAuthWatchdogPush() {
       hl.status === 200 && hlJson && hlJson.ok === true, hl.body.slice(0, 120));
     const ps = await get("/api/public-stats");
     check("GET /api/public-stats responde 200 (landing pública)", ps.status === 200, `status=${ps.status}`);
+    // ⚡ v190 LOTE 8: esta rota varre TODOS os usuários e TODO o histórico de
+    // todos, é pública (sem cookie nem rate-limit) e a landing chama a cada
+    // 30s em CADA aba aberta — era a varredura completa do banco dezenas de
+    // vezes por minuto, travando o event loop pra todo mundo. O contador
+    // `_calculos` (só existe no npm test) prova que a 2ª chamada NÃO
+    // recalculou nada e devolveu exatamente o mesmo objeto.
+    const ps2 = await get("/api/public-stats");
+    check("⚡ v190-L8: /api/public-stats tem cache de 60s no servidor — a 2ª chamada devolve o MESMO objeto sem varrer o histórico de novo (os números continuam reais, só podem estar até 60s velhos)",
+      ps2.status === 200 && ps2.json?._calculos === ps.json?._calculos && typeof ps.json?._calculos === "number" &&
+      ps2.json?.totalUsers === ps.json?.totalUsers && ps2.json?.totalSent === ps.json?.totalSent,
+      JSON.stringify({ calc1: ps.json?._calculos, calc2: ps2.json?._calculos }));
     // (aba Notícias DOL removida nesta reconstrução — sem /api/noticias)
     // (/api/auth/where removida no v172c junto com o login por e-mail/Google
     // — cadastro/login viraram usuário+senha, ver bloco 🔐 v172c abaixo.)
@@ -1427,6 +1438,55 @@ async function testAuthWatchdogPush() {
       as1.json?.ok === true && !_gravouAutoNaHora,
       _gravouAutoNaHora ? "BUG: gravou auto_jobs.json INTEIRO em disco de forma síncrona dentro do próprio request" : "ok, debounced");
     await req2("POST", "/api/auto/stop", {});
+
+    // ⚡ v190 LOTE 8 — LOG DE ENVIO: mesma guarda determinística das duas
+    // acima, mas com as DUAS metades do throttle. addLog gravava o
+    // auto_logs.json INTEIRO (de TODOS os usuários) de forma SÍNCRONA a cada
+    // candidatura com status enviado/falhou/pausado/cancelado — o próprio
+    // comentário do código registra 19MB e 1,2s por gravação antes do corte
+    // pra 500 entradas. (a) não pode mais gravar na hora; (b) mas TAMBÉM não
+    // pode virar debounce puro: com chamadas contínuas o clearTimeout adiaria
+    // o disco pra sempre e um kill perderia todo o log desde o boot — por
+    // isso o teto (1,5s no teste, 30s em produção) tem que forçar UMA
+    // gravação real no meio de um fluxo que nunca para. O laço abaixo chama a
+    // cada 250ms de propósito: um debounce de 3s NUNCA conseguiria gravar
+    // nessas condições, então uma gravação aqui só pode ter vindo do teto.
+    const _logsPath = path.join(DATA, "auto_logs.json");
+    const _readLogs = () => { try { return fs.readFileSync(_logsPath, "utf8"); } catch { return ""; } };
+    const _logsAntes = _readLogs();
+    await req2("POST", "/api/auto/stop", {});
+    const _logsNaHora = _readLogs();
+    check("⚡ v190-L8 (a): log de envio NÃO grava mais o auto_logs.json inteiro de forma síncrona dentro do request (era 1 gravação do arquivo de TODOS os usuários por candidatura enviada)",
+      _logsNaHora === _logsAntes,
+      _logsNaHora !== _logsAntes ? "BUG: gravou auto_logs.json INTEIRO em disco de forma síncrona dentro do próprio request" : "ok, agrupado");
+    let _logsDepois = _logsNaHora, _voltas = 0;
+    for (let i = 0; i < 14; i++) {
+      await new Promise((r) => setTimeout(r, 250));
+      await req2("POST", "/api/auto/stop", {});
+      _voltas++;
+      _logsDepois = _readLogs();
+      if (_logsDepois !== _logsAntes) break;
+    }
+    check("⚡ v190-L8 (b): é THROTTLE, não debounce puro — com log novo a cada 250ms sem parar, o teto força uma gravação REAL no disco (debounce puro adiaria pra sempre e um kill perderia tudo desde o boot)",
+      _logsDepois !== _logsAntes,
+      `o arquivo não mudou depois de ${_voltas} logs em ~${_voltas * 250}ms de fluxo contínuo`);
+
+    // ⚡ v190 LOTE 8 (estrutural, guarda permanente): nem addLog pode voltar a
+    // gravar síncrono, nem o storage pode voltar a serializar o banco DUAS
+    // vezes por gravação (payload compacto pro SQLite + um JSON.stringify
+    // indentado pro espelho — medido ~2,2x mais lento e +37% de bytes, num
+    // servidor que já deu ENOSPC de verdade).
+    const _srvL8 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+    const _stoL8 = fs.readFileSync(path.join(__dirname, "storage.js"), "utf8");
+    // sem comentários: a guarda mede o que EXECUTA, nunca o texto que explica
+    // por que a 2ª serialização saiu (mesma lição da guarda do lote 7).
+    const _semComL8 = (txt) => txt.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ");
+    const _bodyPersist = _semComL8(_stoL8.slice(_stoL8.indexOf("function storagePersist("), _stoL8.indexOf("function storageInfo(")));
+    check("⚡ v190-L8 (estrutural): addLog usa o caminho agrupado (persistLogsThrottled) e dentro de storagePersist não existe mais uma 2ª serialização do banco inteiro",
+      /if \(critical\) persistLogsThrottled\(\);/.test(_srvL8) && !/if \(critical\) persistLogsImmediate\(\)/.test(_srvL8) &&
+      _srvL8.includes("function persistThrottled(") && !/JSON\.stringify\(data,\s*null,\s*2\)/.test(_bodyPersist) &&
+      _bodyPersist.includes("fs.writeFileSync(t, payload,"),
+      "addLog voltou a gravar síncrono ou storagePersist voltou a serializar 2x");
 
     // v47: GUARDA ESTRUTURAL das vias quentes de persistência — indexApp e os
     // callbacks de header do Gmail rodam a CADA e-mail enviado (manual e

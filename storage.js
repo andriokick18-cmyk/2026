@@ -108,12 +108,23 @@ function storagePersist(file, data){
     return ok;
   };
   if (!_db || MIRROR || !sqliteOk) {
-    // Escrita JSON idêntica à original (3 tentativas, tmp+rename)
+    // ⚡ v190 LOTE 8: escrita JSON REUSANDO o `payload` já calculado acima, em
+    // vez de rodar JSON.stringify(data,null,2) mais uma (ou duas) vezes. Cada
+    // gravação serializava o banco INTEIRO duas vezes — a 2ª ainda com
+    // indentação, que medimos ~2,2x mais lenta e +37% de bytes. Era
+    // desperdício puro nas 3 vias mais quentes (users, auto_jobs, auto_logs)
+    // e ~30% a mais de disco no Render, que já deu ENOSPC de verdade em
+    // produção. O conteúdo continua sendo JSON válido e idêntico em dado —
+    // só perde a indentação, que ninguém lê a olho nu num arquivo de MBs
+    // (e `npm run reset`/os loads fazem JSON.parse do mesmo jeito).
+    // ⚠️ O payload TEM que continuar sendo calculado onde está (linha do topo):
+    // pro USERS_FILE o persist() do server.js já substituiu `data` pela cópia
+    // CIFRADA antes de chamar esta função — reusar o payload preserva a cifra.
     for (let attempt=0; attempt<3; attempt++){
-      try { const t=file+".tmp"; fs.writeFileSync(t, JSON.stringify(data,null,2), "utf8"); fs.renameSync(t,file); return _finish(true); }
+      try { const t=file+".tmp"; fs.writeFileSync(t, payload, "utf8"); fs.renameSync(t,file); return _finish(true); }
       catch(e){
         if (attempt===2){
-          try { fs.writeFileSync(file, JSON.stringify(data,null,2)); return _finish(true); }
+          try { fs.writeFileSync(file, payload); return _finish(true); }
           catch(e2){ if(!sqliteOk){ console.error("[storage] FALHA total persist:", e2.message); return _finish(false); } }
         }
       }

@@ -1416,6 +1416,17 @@ function persistSent() {
 }
 function persistLogs() { persistDebounced(LOGS_FILE, DB_LOGS, 3000); }
 function persistLogsImmediate() { persist(LOGS_FILE, DB_LOGS); }
+// ⚡ v190 LOTE 8: caminho do LOG DE ENVIO (status enviado/falhou/pausado/…).
+// Era `persistLogsImmediate()` — o auto_logs.json INTEIRO, de TODOS os
+// usuários, serializado e gravado de forma síncrona a cada candidatura que
+// sai, bloqueando o event loop pra todo mundo (o próprio comentário do
+// código registra 19MB e 1,2s por persist antes do corte pra 500 entradas).
+// Throttle: agrupa as gravações, mas o teto garante que o log nunca fica
+// mais que `_LOGS_MAX_WAIT` sem ir pro disco, mesmo com tráfego contínuo.
+// No npm test o teto é curto pra suíte provar as DUAS metades (não grava na
+// hora × grava mesmo com chamadas contínuas) sem esperar meio minuto.
+const _LOGS_MAX_WAIT = process.env.TEST_LOGIN_TOKEN ? 1500 : 30000;
+function persistLogsThrottled() { persistThrottled(LOGS_FILE, DB_LOGS, 3000, _LOGS_MAX_WAIT); }
 
 // CRUD
 const getUser    = e => DB_USERS[e]||null;
@@ -2106,7 +2117,7 @@ function addLog(userEmail, entry) {
   DB_LOGS[userEmail].unshift(record);
   if (DB_LOGS[userEmail].length > 500) DB_LOGS[userEmail] = DB_LOGS[userEmail].slice(0, 500); // 11/07: era 2000 — auto_logs.json chegou a 19MB e cada persist bloqueava 1,2s
   const critical = ["enviado","falhou","pausado","cancelado","erro_anexo"].includes(record.status);
-  if (critical) persistLogsImmediate();
+  if (critical) persistLogsThrottled();
   else if (DB_LOGS[userEmail].length % 20 === 0) persistLogs();
 }
 
@@ -4820,6 +4831,10 @@ const _manualSendReserved = new Map(); // email → nº de envios reservados (em
 function _reserveManualSlot(email){ _manualSendReserved.set(email,(_manualSendReserved.get(email)||0)+1); }
 function _releaseManualSlot(email){ const n=(_manualSendReserved.get(email)||0)-1; if(n<=0)_manualSendReserved.delete(email); else _manualSendReserved.set(email,n); }
 
+// ⚡ v190 LOTE 8: cache de 60s do /api/public-stats (rota pública que varre o
+// histórico inteiro e que a landing chama a cada 30s em toda aba aberta).
+let _publicStatsCache = null;
+
 // ── PERFORMANCE: debounce de persist para evitar escrita excessiva no disco ──
 const _persistDebounceTimers = new Map();
 function persistDebounced(file, data, delayMs = 2000) {
@@ -4831,12 +4846,41 @@ function persistDebounced(file, data, delayMs = 2000) {
     persist(file, data);
   }, delayMs));
 }
+// ⚡ v190 LOTE 8 — THROTTLE COM TETO (não é debounce puro).
+// O problema do debounce puro numa via CONTÍNUA: cada chamada faz
+// clearTimeout da anterior, então com tráfego constante (o robô de vários
+// usuários mandando a cada ~7min, 24/7) o timer pode nunca chegar a disparar
+// e um OOM/kill perderia TODO o histórico desde o último flush. O throttle
+// mantém a economia do debounce (não grava o banco inteiro a cada evento,
+// bloqueando o event loop pra todos) MAS garante uma gravação de verdade
+// pelo menos a cada `maxWaitMs` desde que o arquivo ficou sujo.
+const _persistSujoDesde = new Map();
+function persistThrottled(file, data, delayMs = 3000, maxWaitMs = 30000) {
+  const agora = Date.now();
+  if (!_persistSujoDesde.has(file)) _persistSujoDesde.set(file, agora);
+  if (agora - _persistSujoDesde.get(file) >= maxWaitMs) {
+    // teto estourado: grava AGORA (e cancela o debounce pendente)
+    if (_persistDebounceTimers.has(file)) {
+      clearTimeout(_persistDebounceTimers.get(file));
+      _persistDebounceTimers.delete(file);
+    }
+    _persistSujoDesde.delete(file);
+    return persist(file, data);
+  }
+  if (_persistDebounceTimers.has(file)) clearTimeout(_persistDebounceTimers.get(file));
+  _persistDebounceTimers.set(file, setTimeout(() => {
+    _persistDebounceTimers.delete(file);
+    _persistSujoDesde.delete(file);
+    persist(file, data);
+  }, delayMs));
+}
 // Força escrita imediata e cancela debounce pendente (usar no shutdown)
 function persistFlush(file, data) {
   if (_persistDebounceTimers.has(file)) {
     clearTimeout(_persistDebounceTimers.get(file));
     _persistDebounceTimers.delete(file);
   }
+  _persistSujoDesde.delete(file);
   persist(file, data);
 }
 
@@ -13842,7 +13886,17 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}if(DB_APP_INDEX[te]){delete DB
   }
 
 
+  // ⚡ v190 LOTE 8 — CACHE DE 60s. Esta rota varre TODOS os usuários e TODO o
+  // histórico de todos (5 reduce sobre milhares de envios), é PÚBLICA (sem
+  // cookie, sem rate-limit) e a landing chama a cada 30s em CADA aba aberta —
+  // inclusive de quem já está logado usando o app. Com 20 abas abertas era a
+  // varredura completa do banco 40x por minuto, bloqueando o event loop de
+  // todo mundo. Os números continuam REAIS, só podem estar até 60s velhos —
+  // são estatísticas de vitrine, não dinheiro nem limite de ninguém.
   if(pathname==="/api/public-stats"&&req.method==="GET"){
+    const agora=Date.now();
+    if(_publicStatsCache && agora-_publicStatsCache.em < 60_000)
+      return json(res,200,process.env.TEST_LOGIN_TOKEN?{..._publicStatsCache.dados,_calculos:_publicStatsCache.calculos}:_publicStatsCache.dados);
     const ds=todayStr();
     const totalUsers=Object.keys(DB_USERS).length;
     const vipUsers=Object.values(DB_USERS).filter(u=>isVipActive(u)).length;
@@ -13853,7 +13907,10 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}if(DB_APP_INDEX[te]){delete DB
     const totalSent=allHist.reduce((n,a)=>n+a.filter(h=>h.type!=="reply").length,0);
     const totalAuto=allHist.reduce((n,a)=>n+a.filter(h=>h.type==="auto").length,0);
     const out={totalUsers,vipUsers,todaySent,todayAuto,totalSent,totalAuto};
-    return json(res,200,out);
+    _publicStatsCache={em:agora,dados:out,calculos:(_publicStatsCache?.calculos||0)+1};
+    // só no npm test: prova que a 2ª chamada NÃO recalculou (o nº de cálculos
+    // reais fica visível no corpo, nunca em produção).
+    return json(res,200,process.env.TEST_LOGIN_TOKEN?{...out,_calculos:_publicStatsCache.calculos}:out);
   }
 
   // ── /api/public-wage-stats — GET, sem login (SEO: página "quanto ganha quem
