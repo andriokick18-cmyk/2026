@@ -919,7 +919,7 @@ function sv(v,...args){
   // NUNCA podia ficar "active" — forçar isso agora apagaria o destaque do
   // item certo assim que o loop abaixo o marcasse ativo).
   VIEWS.forEach(id=>{const ve=g("#v-"+id);if(ve)ve.classList.toggle("gone",id!==v);const si=g("#si-"+id);if(si)si.classList.toggle("active",id===v);const bn=g("#bn-"+id);if(bn)bn.classList.toggle("active",id===v);});const bnMore=g("#bn-more");if(bnMore)bnMore.classList.toggle("active",BN_MORE_VIEWS.includes(v));
-  if(v==="jobs"){setTimeout(loadLugares,400);updateManualSendGate();}if(v==="plans"){try{loadPlanos();}catch(e){}}if(v==="profile"){loadProfile();loadProfilesView();setTimeout(()=>{_loadSoundPref();renderSoundSelector();},100);}
+  if(v==="jobs"){setTimeout(loadLugares,400);updateManualSendGate();}if(v==="plans"){try{loadPlanos();}catch(e){}}if(v==="profile"){loadProfile();loadProfilesView();}
 
   if(v==="auto"){loadAutoView();if(U.autoJob?.active)startAutoPolling();}
   if(v==="logs"){logSkip=0;logTotal=0;logDone=false;loadLogs();}
@@ -5292,11 +5292,15 @@ async function loadPublicReviews(){
   }catch(e){/* falha silenciosa — seção some se algo der errado */}
 }
 async function doLogout(){
-  // v167 (bug real, auditoria 08/09/2026): rascunhos locais (editor de perfil
-  // + onboarding) são escopados por e-mail, mas em aparelho compartilhado é
-  // mais seguro limpar os desta conta ao sair — nunca sobra resquício pro
-  // próximo login usar por engano. Roda ANTES de zerar U (precisa do e-mail).
-  try{["h2b","h2a"].forEach(vt=>{try{localStorage.removeItem(_peDraftKey(vt));localStorage.removeItem(_obDraftKey(vt));}catch(e){}});}catch(e){}
+  // v167 (bug real, auditoria 08/09/2026): o rascunho local do editor de perfil
+  // é escopado por e-mail, mas em aparelho compartilhado é mais seguro limpar o
+  // desta conta ao sair — nunca sobra resquício pro próximo login usar por
+  // engano. Roda ANTES de zerar U (precisa do e-mail).
+  // 🩹 v203 LOTE 21: `_obDraftKey(vt)` saiu daqui — a função morreu com o
+  // wizard de onboarding (v175) e a chamada ficou. Era ReferenceError a cada
+  // logout, engolido pelo catch interno: o rascunho do EDITOR (primeiro
+  // removeItem da mesma linha) ainda saía, mas por sorte da ordem.
+  try{["h2b","h2a"].forEach(vt=>{try{localStorage.removeItem(_peDraftKey(vt));}catch(e){}});}catch(e){}
   // 🚨 v177-FIX6 (auditoria 14/09/2026): o logout limpava só os rascunhos em
   // localStorage e nunca tocava no sessionStorage — num aparelho/aba
   // compartilhado, a Conta B herdava o "já pulei o convite de currículo" da
@@ -5802,7 +5806,11 @@ function renderHomeActivity(){
   }).join("");
 }
 function renderHome(){
-  _showWelcome();
+  // 🩹 v203 LOTE 21 (BUG REAL DE PRODUÇÃO, achado na revisão no Chromium): o
+  // v198 LOTE 16 apagou `function _showWelcome()` e deixou a CHAMADA aqui, na
+  // PRIMEIRA linha do renderHome — ReferenceError a cada abertura da Home, que
+  // derrubava a função inteira: status do herói, atividade recente, próximo
+  // passo, card do pedido pendente e os 3 números da tela nunca renderizavam.
   try{renderHeroStatus();}catch(e){}
   try{renderHomeActivity();}catch(e){}
   try{renderNextStep();}catch(e){}
@@ -5885,84 +5893,17 @@ function renderHome(){
 // comprovante, status do automático e novidades") era uma promessa sem canal.
 // Removidos com o resto do convite de push.
 
-function playNotifSound(soundKey){
-  const s = soundKey || _selectedSound;
-  try{
-    const ctx=new(window.AudioContext||window.webkitAudioContext)();
-    const now=ctx.currentTime;
-    if(s==="aviao"){
-      // Som de avião original
-      const osc=ctx.createOscillator();const gn=ctx.createGain();
-      osc.connect(gn);gn.connect(ctx.destination);osc.type="sawtooth";
-      osc.frequency.setValueAtTime(90,now);osc.frequency.linearRampToValueAtTime(300,now+0.7);osc.frequency.linearRampToValueAtTime(160,now+1.1);
-      gn.gain.setValueAtTime(0,now);gn.gain.linearRampToValueAtTime(0.07,now+0.1);gn.gain.linearRampToValueAtTime(0.1,now+0.5);gn.gain.linearRampToValueAtTime(0,now+1.2);
-      osc.start(now);osc.stop(now+1.2);
-      const o2=ctx.createOscillator();const g2=ctx.createGain();o2.connect(g2);g2.connect(ctx.destination);
-      o2.type="sine";o2.frequency.setValueAtTime(480,now+0.3);o2.frequency.linearRampToValueAtTime(900,now+0.85);
-      g2.gain.setValueAtTime(0,now+0.3);g2.gain.linearRampToValueAtTime(0.05,now+0.5);g2.gain.linearRampToValueAtTime(0,now+1.1);
-      o2.start(now+0.3);o2.stop(now+1.1);
-    }else if(s==="ping"){
-      // Sino suave — dois toques
-      [0,0.35].forEach((t,i)=>{
-        const o=ctx.createOscillator();const gn=ctx.createGain();o.connect(gn);gn.connect(ctx.destination);
-        o.type="sine";o.frequency.value=880+(i*200);
-        gn.gain.setValueAtTime(0.15,now+t);gn.gain.exponentialRampToValueAtTime(0.001,now+t+0.6);
-        o.start(now+t);o.stop(now+t+0.7);
-      });
-    }else if(s==="chime"){
-      // Melodia ascendente (dó ré mi)
-      [261.6,329.6,392,523.3].forEach((freq,i)=>{
-        const o=ctx.createOscillator();const gn=ctx.createGain();o.connect(gn);gn.connect(ctx.destination);
-        o.type="triangle";o.frequency.value=freq;
-        gn.gain.setValueAtTime(0.12,now+i*0.18);gn.gain.exponentialRampToValueAtTime(0.001,now+i*0.18+0.5);
-        o.start(now+i*0.18);o.stop(now+i*0.18+0.6);
-      });
-    }else if(s==="alert"){
-      // Urgente — bip duplo forte
-      [0,0.2].forEach(t=>{
-        const o=ctx.createOscillator();const gn=ctx.createGain();o.connect(gn);gn.connect(ctx.destination);
-        o.type="square";o.frequency.value=1200;
-        gn.gain.setValueAtTime(0.12,now+t);gn.gain.exponentialRampToValueAtTime(0.001,now+t+0.15);
-        o.start(now+t);o.stop(now+t+0.18);
-      });
-    }else if(s==="suave"){
-      // Suave — onda senoidal lenta
-      const o=ctx.createOscillator();const gn=ctx.createGain();o.connect(gn);gn.connect(ctx.destination);
-      o.type="sine";o.frequency.setValueAtTime(440,now);o.frequency.linearRampToValueAtTime(660,now+0.8);
-      gn.gain.setValueAtTime(0,now);gn.gain.linearRampToValueAtTime(0.08,now+0.15);gn.gain.linearRampToValueAtTime(0,now+1.0);
-      o.start(now);o.stop(now+1.1);
-    }else if(s==="retro"){
-      // Game — beep retrô
-      [800,600,900,700].forEach((freq,i)=>{
-        const o=ctx.createOscillator();const gn=ctx.createGain();o.connect(gn);gn.connect(ctx.destination);
-        o.type="square";o.frequency.value=freq;
-        gn.gain.setValueAtTime(0.07,now+i*0.12);gn.gain.exponentialRampToValueAtTime(0.001,now+i*0.12+0.1);
-        o.start(now+i*0.12);o.stop(now+i*0.12+0.12);
-      });
-    }
-  }catch(e){console.warn("Audio:",e);}
-}
-
-// Renderiza seletor de sons na tela de Perfil
-function renderSoundSelector(){
-  const el=g("#sound-selector-wrap");if(!el)return;
-  el.innerHTML=`<div style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:8px">🎵 ${t('snd_title')}</div>
-  <div class="sound-selector">
-    ${Object.entries(SOUNDS).map(([key,s])=>`
-      <button class="sound-option${_selectedSound===key?" selected":""}" onclick="selectSound('${key}')" id="sound-opt-${key}">
-        <span class="sound-option-icon">${_sndLabel(key,s).split(" ")[0]}</span>
-        <span class="sound-option-label">${_sndLabel(key,s).split(" ").slice(1).join(" ")}</span>
-      </button>
-    `).join("")}
-  </div>`;
-}
-function selectSound(key){
-  _selectedSound=key;_saveSoundPref(key);
-  document.querySelectorAll(".sound-option").forEach(b=>b.classList.remove("selected"));
-  g("#sound-opt-"+key)?.classList.add("selected");
-  playNotifSound(key);
-  toast(`${_sndLabel(key,SOUNDS[key])} ${t('snd_sel')}`,"g");
-}
+// 🔇 v203 LOTE 21 (BUG REAL DE PRODUÇÃO, achado na revisão no Chromium): o
+// v189 LOTE 7 removeu as DEFINIÇÕES do subsistema de som (SOUNDS,
+// _selectedSound, _loadSoundPref/_saveSoundPref/_sndLabel) e deixou os
+// CONSUMIDORES vivos — inclusive a chamada `_loadSoundPref()` no TOPO do
+// arquivo. Isso estourava um ReferenceError no carregamento e MATAVA o
+// resto do app.js: tudo que era `const` depois daquela linha (LANG_DICT,
+// PIX_KEY/PIX_NAME, _curLang, _adminSettings…) ficava em TDZ pra sempre —
+// a tela do Pix do checkout quebrava ao renderizar a chave. Aqui morre o
+// resto do subsistema: playNotifSound/renderSoundSelector/selectSound não
+// tinham como funcionar sem as definições, e o elemento
+// #sound-selector-wrap não existe em nenhum HTML desde aquele commit.
 
 // ══════════════════════════════════════════════════════════
 //  NOTIFICAÇÕES LOCAIS (Notification API do navegador)
@@ -5989,13 +5930,7 @@ if ("serviceWorker" in navigator) {
       // Navega para a tela indicada pela notificação
       const url = new URL(msg.url, location.origin);
       const tab = url.searchParams.get("tab") || url.pathname.replace("/", "") || "";
-      if (tab) {
-        setTimeout(() => {
-          sv(tab);
-          // Se foi para respostas, toca o som selecionado
-          if (tab === "respostas" && msg.sound) playNotifSound(msg.sound);
-        }, 200);
-      }
+      if (tab) setTimeout(() => sv(tab), 200);
     }
   });
 }
@@ -6012,7 +5947,6 @@ if ("serviceWorker" in navigator) {
 // pelo #cv-prompt-overlay, que é o caminho que existe.
 
 // ── Inicialização ─────────────────────────────────────────
-_loadSoundPref();
 
 // (Captura de ?ref= removida — programa de indicação encerrado, KB-059)
 
@@ -7101,7 +7035,7 @@ const LANG_DICT = {
     "tut_t":"Central de Tutoriais","tut_s":"20 passo a passos com fotos reais — tudo o que dá pra fazer no H2BApply, explicado tela por tela","tut_ph":"🔍 O que você quer aprender? Ex.: currículo, automático, planos...","tut_v":"Nada encontrado com essa palavra — tente outro termo (ex.: \"enviar\", \"plano\", \"perfil\").","tut_load":"⏳ Carregando os tutoriais...", // 📖 v160
     "consent_title":"☑️ Antes de continuar","consent_b1":"É um serviço digital pago de automação de envio — o H2BApply nunca escreve o e-mail por você; o conteúdo enviado é sempre seu.","consent_b2":"O preço mostrado agora é o valor final a pagar.","consent_b3":"Depois de pagar via PIX, envie o comprovante e continue logado na mesma conta até a confirmação — automática quando bate, e sempre conferida pela nossa equipe.","consent_b4":"O risco de bloqueio da conta Gmail é do Google (terceiro), não do H2BApply — dá pra reduzir usando mais de uma conta de envio.","consent_b5":"Você pode acompanhar o status do seu pedido a qualquer momento na aba 🧾 Meus pedidos.","consent_check":"Li e entendo como o programa funciona e o que estou pagando.","consent_terms_link":"Ver Termos completos →","consent_required_msg":"Marque que você leu e entende antes de continuar.","consent_choose_plan":"Escolha um plano e o período antes de continuar.","plan_step1_title":"Escolha seu plano e período","plan_step1_intro":"Você paga <strong>diretamente</strong> pelo plano escolhido. Veja os limites de cada plano, escolha o período e o preço final aparece na hora, antes de pagar.","plan_calc_empty":"Escolha um plano e o período","plan_error_load":"Não deu pra carregar os planos.","plan_try_again":"Tentar de novo","plan_auto_faq_q":"🤖 Como funciona o Envio Automático?","plan_auto_faq_a":"O robô manda as candidaturas sozinho, pelo seu próprio Gmail, usando o currículo e os textos que você mesmo escreveu no seu perfil — ele nunca inventa nada. Esse recurso vem incluído nos planos VIPro e DoublePro desde o primeiro dia (o VIP é só manual: você escolhe e envia cada candidatura). Pra usar o automático, você escolhe a fonte de vagas, ajusta os filtros e escolhe o perfil, toca em Iniciar e pode até fechar o app: ele continua enviando sozinho, um a cada ~7 minutos (ritmo humano, pra proteger sua conta Gmail de bloqueio pelo Google), até bater o limite diário do seu plano — aí ele pausa sozinho e volta a enviar no dia seguinte.", // 💎 v170: compra direta de plano — consentimento informado (CEO mode, 09/09/2026); v172-FIX 12/09: removida menção a "moeda intermediária" (referência ao sistema antigo já retirado) + explicação do automático reorganizada (dono: "ficou um pouco confuso")
      // 🎯 v139: Vagas pra você (Home)
-    "snd_title":"Som de nova resposta","snd_sel":"selecionado!","fq1":"Fila concluída! Você aplicou para todas as vagas.","fq2":"🏆 Fila concluída! Aguarde as respostas chegarem.","fq3":"Todas as candidaturas enviadas! O sucesso está a caminho.","fq4":"Fila zerada! Você deu um grande passo hoje.","h_faq_visa":"<strong>Isso garante emprego ou visto? Não.</strong> O H2BApply é uma ferramenta que envia e-mails para você. A decisão de te contratar é do empregador. A decisão do visto é do consulado americano. Quanto mais candidaturas você enviar, maiores as chances de receber uma oferta.","g_260":"Adicione um segundo Gmail. O automático distribui os envios entre os dois emails, reduzindo risco de spam.","g_261":"Os e-mails sairão com o currículo e os textos do perfil escolhido no Passo 3 — assuntos e corpos alternam automaticamente contra spam.","g_262":"O sistema rotaciona entre os assuntos e corpos de e-mail cadastrados para evitar parecer spam. Quer ajustar algo? Toque em \"Trocar\" acima.","g_268":"Perfil único: seu perfil serve automaticamente para qualquer vaga, de qualquer planilha.","g_270":"Você escreve os textos — o H2BApply nunca preenche isso por você, só entrega.","g_273":"Máx. 3MB", // 🌐 v137c: sons/boas-vindas/extrato/FAQ + 11 textos longos da varredura
+    "fq1":"Fila concluída! Você aplicou para todas as vagas.","fq2":"🏆 Fila concluída! Aguarde as respostas chegarem.","fq3":"Todas as candidaturas enviadas! O sucesso está a caminho.","fq4":"Fila zerada! Você deu um grande passo hoje.","h_faq_visa":"<strong>Isso garante emprego ou visto? Não.</strong> O H2BApply é uma ferramenta que envia e-mails para você. A decisão de te contratar é do empregador. A decisão do visto é do consulado americano. Quanto mais candidaturas você enviar, maiores as chances de receber uma oferta.","g_260":"Adicione um segundo Gmail. O automático distribui os envios entre os dois emails, reduzindo risco de spam.","g_261":"Os e-mails sairão com o currículo e os textos do perfil escolhido no Passo 3 — assuntos e corpos alternam automaticamente contra spam.","g_262":"O sistema rotaciona entre os assuntos e corpos de e-mail cadastrados para evitar parecer spam. Quer ajustar algo? Toque em \"Trocar\" acima.","g_268":"Perfil único: seu perfil serve automaticamente para qualquer vaga, de qualquer planilha.","g_270":"Você escreve os textos — o H2BApply nunca preenche isso por você, só entrega.","g_273":"Máx. 3MB", // 🌐 v137c: sons/boas-vindas/extrato/FAQ + 11 textos longos da varredura
     // Nav
     "home":"Home","auto":"Auto",
     // Sidebar
@@ -7247,7 +7181,7 @@ const LANG_DICT = {
     "tut_t":"Tutorials Center","tut_s":"20 step-by-step guides with real screenshots — everything you can do on H2BApply, screen by screen","tut_ph":"🔍 What do you want to learn? E.g.: resume, automatic, plans...","tut_v":"Nothing found — try another word (e.g. \"send\", \"plan\", \"profile\").","tut_load":"⏳ Loading tutorials...", // 📖 v160
     "consent_title":"☑️ Before you continue","consent_b1":"This is a paid digital application-sending automation service — H2BApply never writes the e-mail for you; the content sent is always your own.","consent_b2":"The price shown now is the final amount to pay.","consent_b3":"After paying via PIX, send the receipt and stay signed in on the same account until confirmation — automatic when it matches, and always checked by our team.","consent_b4":"The risk of your Gmail account being blocked belongs to Google (a third party), not H2BApply — you can lower it by using more than one sending account.","consent_b5":"You can check your order status anytime in the 🧾 My orders tab.","consent_check":"I have read and understand how the program works and what I'm paying for.","consent_terms_link":"See full Terms →","consent_required_msg":"Check that you've read and understood before continuing.","consent_choose_plan":"Choose a plan and the period before continuing.","plan_step1_title":"Choose your plan and period","plan_step1_intro":"You pay <strong>directly</strong> for the plan you choose. See each plan's limits, pick the period, and the final price shows right away, before you pay.","plan_calc_empty":"Choose a plan and the period","plan_error_load":"Couldn't load the plans.","plan_try_again":"Try again","plan_auto_faq_q":"🤖 How does Automatic Sending work?","plan_auto_faq_a":"The robot sends applications by itself, through your own Gmail, using the resume and texts you wrote yourself in your profile — it never makes anything up. This feature is included in the VIPro and DoublePro plans from day one (VIP is manual only: you pick and send each application). To use automatic sending, you pick the job source, adjust the filters and pick your profile, tap Start, and you can even close the app: it keeps sending on its own, one every ~7 minutes (human pace, to protect your Gmail from being blocked by Google), until it hits your plan's daily limit — then it pauses on its own and resumes the next day.", // 💎 v170: compra direta de plano — consentimento informado (CEO mode, 09/09/2026); v172-FIX 12/09: removed "middleman currency" mention (old removed system) + reworded automatic explanation
      // 🎯 v139: Vagas pra você (Home)
-    "snd_title":"New reply sound","snd_sel":"selected!","fq1":"Queue finished! You applied to every job.","fq2":"🏆 Queue done! Now wait for the replies.","fq3":"All applications sent! Success is on the way.","fq4":"Queue cleared! You took a big step today.","h_faq_visa":"<strong>Does this guarantee a job or visa? No.</strong> H2BApply is a tool that sends emails for you. Hiring is the employer's decision. The visa is the US consulate's decision. The more applications you send, the higher your chances of getting an offer.","g_260":"Add a second Gmail. The auto-sender splits applications between both emails, reducing spam risk.","g_261":"Emails go out with the resume and texts of the profile chosen in Step 3 — subjects and bodies rotate automatically against spam.","g_262":"The system rotates through your saved email subjects and bodies to avoid looking like spam. Want to adjust something? Tap \"Change\" above.","g_268":"Single profile: your profile is automatically used for any job, from any sheet.","g_270":"You write the texts — H2BApply never fills this in for you, it only delivers.","g_273":"Max 3MB", // 🌐 v137c: sons/boas-vindas/extrato/FAQ + 11 textos longos da varredura
+    "fq1":"Queue finished! You applied to every job.","fq2":"🏆 Queue done! Now wait for the replies.","fq3":"All applications sent! Success is on the way.","fq4":"Queue cleared! You took a big step today.","h_faq_visa":"<strong>Does this guarantee a job or visa? No.</strong> H2BApply is a tool that sends emails for you. Hiring is the employer's decision. The visa is the US consulate's decision. The more applications you send, the higher your chances of getting an offer.","g_260":"Add a second Gmail. The auto-sender splits applications between both emails, reducing spam risk.","g_261":"Emails go out with the resume and texts of the profile chosen in Step 3 — subjects and bodies rotate automatically against spam.","g_262":"The system rotates through your saved email subjects and bodies to avoid looking like spam. Want to adjust something? Tap \"Change\" above.","g_268":"Single profile: your profile is automatically used for any job, from any sheet.","g_270":"You write the texts — H2BApply never fills this in for you, it only delivers.","g_273":"Max 3MB", // 🌐 v137c: sons/boas-vindas/extrato/FAQ + 11 textos longos da varredura
     "home":"Home","manual":"Manual","search":"Search","auto":"Auto","responses":"Replies",
     "notifications":"Notifications","plans":"💎 Plans","profile":"Profile","admin":"Admin Panel","logout":"Logout","logout_confirm":"Log out of your account? You can sign back in anytime with your username and password.",
     "auto_title":"Auto Send","auto_sub":"Tap to configure and start",
@@ -7366,7 +7300,7 @@ const LANG_DICT = {
     "tut_t":"Central de Tutoriales","tut_s":"20 guías paso a paso con fotos reales — todo lo que puedes hacer en H2BApply, pantalla por pantalla","tut_ph":"🔍 ¿Qué quieres aprender? Ej.: currículum, automático, planes...","tut_v":"Nada encontrado — prueba otra palabra (ej. \"enviar\", \"plan\", \"perfil\").","tut_load":"⏳ Cargando los tutoriales...", // 📖 v160
     "consent_title":"☑️ Antes de continuar","consent_b1":"Es un servicio digital pago de automatización de envío — H2BApply nunca escribe el correo por ti; el contenido enviado siempre es tuyo.","consent_b2":"El precio mostrado ahora es el valor final a pagar.","consent_b3":"Después de pagar vía PIX, envía el comprobante y sigue conectado en la misma cuenta hasta la confirmación — automática cuando coincide, y siempre revisada por nuestro equipo.","consent_b4":"El riesgo de bloqueo de la cuenta Gmail es de Google (tercero), no de H2BApply — se reduce usando más de una cuenta de envío.","consent_b5":"Puedes revisar el estado de tu pedido en cualquier momento en la pestaña 🧾 Mis pedidos.","consent_check":"Leí y entiendo cómo funciona el programa y qué estoy pagando.","consent_terms_link":"Ver Términos completos →","consent_required_msg":"Marca que leíste y entendiste antes de continuar.","consent_choose_plan":"Elige un plan y el período antes de continuar.","plan_step1_title":"Elige tu plan y período","plan_step1_intro":"Pagas <strong>directamente</strong> por el plan elegido. Mira los límites de cada plan, elige el período y el precio final aparece al instante, antes de pagar.","plan_calc_empty":"Elige un plan y el período","plan_error_load":"No se pudieron cargar los planes.","plan_try_again":"Intentar de nuevo","plan_auto_faq_q":"🤖 ¿Cómo funciona el Envío Automático?","plan_auto_faq_a":"El robot envía las solicitudes solo, por tu propio Gmail, usando el currículum y los textos que tú mismo escribiste en tu perfil — nunca inventa nada. Esta función viene incluida en los planes VIPro y DoublePro desde el primer día (el VIP es solo manual: eliges y envías cada solicitud). Para usar el automático, eliges la fuente de vacantes, ajustas los filtros y eliges tu perfil, tocas Iniciar y puedes hasta cerrar la app: sigue enviando solo, uno cada ~7 minutos (ritmo humano, para proteger tu cuenta Gmail de un bloqueo de Google), hasta llegar al límite diario de tu plan — ahí se pausa solo y vuelve a enviar al día siguiente.", // 💎 v170: compra direta de plano — consentimento informado (CEO mode, 09/09/2026); v172-FIX 12/09: quitada mención a "moneda intermediaria" (sistema antiguo ya retirado) + explicación del automático reorganizada
      // 🎯 v139: Vagas pra você (Home)
-    "snd_title":"Sonido de nueva respuesta","snd_sel":"¡seleccionado!","fq1":"¡Cola terminada! Te postulaste a todas las vacantes.","fq2":"🏆 ¡Cola terminada! Espera a que lleguen las respuestas.","fq3":"¡Todas las postulaciones enviadas! El éxito está en camino.","fq4":"¡Cola vaciada! Diste un gran paso hoy.","h_faq_visa":"<strong>¿Esto garantiza empleo o visa? No.</strong> H2BApply es una herramienta que envía correos por ti. Contratarte es decisión del empleador. La visa es decisión del consulado americano. Cuantas más postulaciones envíes, mayores las chances de recibir una oferta.","g_260":"Agrega un segundo Gmail. El automático reparte los envíos entre los dos correos, reduciendo el riesgo de spam.","g_261":"Los correos salen con el currículum y los textos del perfil elegido en el Paso 3 — asuntos y cuerpos alternan automáticamente contra el spam.","g_262":"El sistema rota entre los asuntos y cuerpos de correo guardados para no parecer spam. ¿Quieres ajustar algo? Toca \"Cambiar\" arriba.","g_268":"Perfil único: tu perfil sirve automáticamente para cualquier vacante, de cualquier planilla.","g_270":"Tú escribes los textos — H2BApply nunca los completa por ti, solo entrega.","g_273":"Máx. 3MB", // 🌐 v137c: sons/boas-vindas/extrato/FAQ + 11 textos longos da varredura
+    "fq1":"¡Cola terminada! Te postulaste a todas las vacantes.","fq2":"🏆 ¡Cola terminada! Espera a que lleguen las respuestas.","fq3":"¡Todas las postulaciones enviadas! El éxito está en camino.","fq4":"¡Cola vaciada! Diste un gran paso hoy.","h_faq_visa":"<strong>¿Esto garantiza empleo o visa? No.</strong> H2BApply es una herramienta que envía correos por ti. Contratarte es decisión del empleador. La visa es decisión del consulado americano. Cuantas más postulaciones envíes, mayores las chances de recibir una oferta.","g_260":"Agrega un segundo Gmail. El automático reparte los envíos entre los dos correos, reduciendo el riesgo de spam.","g_261":"Los correos salen con el currículum y los textos del perfil elegido en el Paso 3 — asuntos y cuerpos alternan automáticamente contra el spam.","g_262":"El sistema rota entre los asuntos y cuerpos de correo guardados para no parecer spam. ¿Quieres ajustar algo? Toca \"Cambiar\" arriba.","g_268":"Perfil único: tu perfil sirve automáticamente para cualquier vacante, de cualquier planilla.","g_270":"Tú escribes los textos — H2BApply nunca los completa por ti, solo entrega.","g_273":"Máx. 3MB", // 🌐 v137c: sons/boas-vindas/extrato/FAQ + 11 textos longos da varredura
     "home":"Inicio","manual":"Manual","search":"Buscar","auto":"Auto","responses":"Respuestas",
     "notifications":"Notificaciones","plans":"💎 Planes","profile":"Perfil","admin":"Panel Admin","logout":"Salir","logout_confirm":"¿Cerrar sesión de tu cuenta? Puedes volver a entrar cuando quieras con tu usuario y contraseña.",
     "auto_title":"Envío Automático","auto_sub":"Toca para configurar e iniciar",

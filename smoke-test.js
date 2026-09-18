@@ -1529,6 +1529,86 @@ async function drillRestauracaoBackup() {
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     }
 
+    // ═══ 🧹 v203 LOTE 21 — CSS DE TELAS QUE NÃO EXISTEM MAIS + O BUG QUE A
+    // REVISÃO VISUAL ACHOU ═══════════════════════════════════════════════
+    // (a) Os <style> do index.html carregavam 292 regras (~33KB) de features
+    // removidas de propósito: caixa de entrada/Respostas (.icard*,
+    // .inbox-*), a aba Enviadas antiga (.hcard*), o bloco Instagram da
+    // landing (.ig-*), os planos legados (.plan-card/.plan-vip/.badge-*),
+    // a landing antiga (.hero-*/.lsec/.lwarn-*/.step-*) e o seletor de som.
+    // (b) A revisão REAL no Chromium (Playwright, 1280px e 390×844) que este
+    // lote exigia achou dois ReferenceError de produção da MESMA classe:
+    // função removida, CHAMADA esquecida. Um matava o app.js inteiro a
+    // partir da linha (tudo que era `const` depois dela — LANG_DICT,
+    // PIX_KEY/PIX_NAME do checkout — ficava em TDZ pra sempre); o outro
+    // matava a Home. As duas guardas abaixo são permanentes.
+    {
+      const _idx21 = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+      const _estilos21 = [..._idx21.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join("\n");
+      const _familias21 = [".icard", ".hcard-", ".ig-", ".inbox-tab.", ".inbox-tab:", ".inbox-bulk-bar", ".plan-vip", ".plan-vipro", ".plan-free", ".plan-badge", ".plan-feat", ".badge-vip", ".badge-pro", ".badge-free", ".future-grid", ".lwarn-", ".lsec", ".linked-app-", ".pipeline-card", ".sound-option", ".sound-selector", ".hero-title", ".hero-stats", ".pub-stat", ".doc-file-", ".sug-cat-btn", ".faq-q", ".faq-a", ".steps-grid", ".plans-grid", ".dates-dropdown", ".chart-bar", ".log-main", ".ob-toggle", ".ob-tut-card"];
+      const _voltou21 = _familias21.filter((f) => _estilos21.includes(f));
+      check("🧹 v203-L21 (guarda com allowlist explícita): nenhuma das famílias de CSS comprovadamente MORTAS voltou ao <style> do index.html — são restos de telas removidas de propósito (caixa de entrada/Respostas, aba Enviadas antiga, Instagram da landing, planos legados, landing antiga, seletor de som). Classe montada por concatenação (ls-*, ti-*) fica FORA desta lista de propósito.",
+        _voltou21.length === 0, "voltaram: " + _voltou21.join(", "));
+      // `.hcard`/`.plan-card`/`.future-card` sobrevivem SÓ dentro de 2 regras
+      // MISTAS (junto de .jcard/.cv-slot, que são vivas) — e este lote não
+      // toca em regra mista de propósito. Contar é o que impede uma regra
+      // NOVA dessas famílias de voltar sem ninguém ver.
+      const _mistas21 = [".hcard", ".plan-card", ".future-card"].map((f) => f + "=" + (_estilos21.split(f).length - 1));
+      check("🧹 v203-L21: .hcard/.plan-card/.future-card só aparecem dentro das 2 regras MISTAS do tema claro (com .jcard/.cv-slot, que estão vivas) — regra mista nunca é podada, e o contador trava uma regra nova dessas famílias",
+        JSON.stringify(_mistas21) === JSON.stringify([".hcard=2", ".plan-card=1", ".future-card=1"]),
+        _mistas21.join(" "));
+      check("🧹 v203-L21: o CSS do index.html encolheu de verdade e as regras VIVAS continuam lá (a poda foi por seletor, nunca por bloco inteiro)",
+        _estilos21.length < 130_000 &&
+        [".jcard", ".btn", ".view", ".sidebar", ".bottom-nav", ".tpl-var", ".profile-card", ".cv-slot", ".chip", ".banner"].every((c) => _estilos21.includes(c)),
+        `tamanho do CSS inline: ${_estilos21.length}`);
+
+      // ── Guardas anti-FANTASMA (a classe dos 2 bugs achados no Chromium) ──
+      const _appF = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _extF = fs.readFileSync(path.join(__dirname, "h2b-extras-user.js"), "utf8");
+      const _inlineF = [..._idx21.matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1]).join("\n");
+      const _bundleF = _appF + "\n" + _extF + "\n" + _inlineF;
+      // Comentário é DOCUMENTAÇÃO: este repo registra função removida em
+      // comentário ("v198: showTip() removida") e isso não é chamada nenhuma.
+      // A ORDEM importa: tirar // ANTES de /* — existe um "(/*)" dentro de um
+      // comentário de linha que, ao contrário, engoliria 27KB de código real.
+      const _semComF = _bundleF.replace(/(^|[^:"'`\\])\/\/[^\n]*/g, "$1").replace(/\/\*[\s\S]*?\*\//g, " ");
+      const _PALAVRAS21 = new Set(["if", "for", "while", "switch", "catch", "function", "return", "typeof", "new", "do", "else", "await", "in", "of", "delete", "void", "instanceof", "case", "yield", "throw", "try", "finally", "const", "let", "var", "class", "import", "export", "default", "this", "super", "async", "get", "set"]);
+      const _GLOBAIS21 = new Set(["setTimeout", "setInterval", "clearTimeout", "clearInterval", "fetch", "alert", "confirm", "prompt", "queueMicrotask", "requestAnimationFrame", "cancelAnimationFrame", "structuredClone", "encodeURIComponent", "decodeURIComponent", "encodeURI", "decodeURI", "parseInt", "parseFloat", "isNaN", "isFinite", "String", "Number", "Boolean", "Object", "Array", "JSON", "Math", "Date", "Promise", "Map", "Set", "WeakMap", "WeakSet", "RegExp", "Error", "TypeError", "URL", "URLSearchParams", "Intl", "addEventListener", "removeEventListener", "postMessage", "scrollTo", "scrollBy", "scrollIntoView", "matchMedia", "getComputedStyle", "atob", "btoa", "Notification", "Image", "Blob", "File", "FileReader", "FormData", "Headers", "Request", "Response", "AbortController", "IntersectionObserver", "MutationObserver", "ResizeObserver", "AudioContext", "webkitAudioContext", "Symbol", "BigInt", "Proxy", "Reflect", "open", "close", "print", "focus", "blur", "gtag", "CustomEvent", "Event", "Audio", "DOMParser", "TextEncoder", "TextDecoder", "Uint8Array", "ArrayBuffer", "crypto", "performance", "navigator", "location", "history", "document", "window", "localStorage", "sessionStorage", "caches", "indexedDB",
+        // funções de CSS que aparecem dentro dos templates de estilo inline
+        "rgba", "rgb", "hsl", "hsla", "calc", "var", "url", "translate", "translateX", "translateY", "translateZ", "scale", "scaleX", "scaleY", "rotate", "skew", "matrix", "perspective", "clamp", "min", "max", "minmax", "repeat", "steps", "attr", "counter", "env", "brightness", "saturate", "contrast", "grayscale", "opacity", "format", "local"]);
+      const _declarado21 = (n) => {
+        const e = n.replace(/\$/g, "\\$");
+        return new RegExp("(^|[^\\w$.])(function\\s*\\*?\\s+|const\\s+|let\\s+|var\\s+|class\\s+)" + e + "\\b").test(_bundleF) ||
+          new RegExp("(^|[^\\w$.])window\\." + e + "\\s*=").test(_bundleF) ||
+          new RegExp("(^|[^\\w$.])" + e + "\\s*=\\s*(async\\s*)?(function|\\(|[A-Za-z_$][\\w$]*\\s*=>)").test(_bundleF) ||
+          new RegExp("[(,]\\s*" + e + "\\s*(,|\\)\\s*(=>|\\{)|=[^=])").test(_bundleF);
+      };
+      // (1) chamada de TOPO (coluna 0) no app.js: zero falso-positivo, e é
+      // exatamente o caso que mata o ARQUIVO INTEIRO (o resto nunca executa).
+      const _topoF = [];
+      _appF.split("\n").forEach((ln, i) => {
+        const m = ln.match(/^([A-Za-z_$][\w$]*)\s*\(/);
+        if (!m || _PALAVRAS21.has(m[1]) || _GLOBAIS21.has(m[1])) return;
+        if (!_declarado21(m[1])) _topoF.push(`app.js:${i + 1} ${m[1]}()`);
+      });
+      check("👻 v203-L21 (guarda permanente): nenhuma CHAMADA DE TOPO do app.js aponta pra função que não existe — um ReferenceError nessa posição aborta o arquivo INTEIRO e tudo que é `const` depois dela (LANG_DICT, PIX_KEY do checkout…) fica em TDZ pra sempre. Foi o que o v189 deixou com `_loadSoundPref()`.",
+        _topoF.length === 0, _topoF.join(" | "));
+      // (2) qualquer chamada no bundle a um nome com _ ou maiúscula (o formato
+      // dos identificadores deste código) sem declaração nenhuma — pega a
+      // chamada ESCONDIDA dentro de função, que foi o caso do `_showWelcome()`
+      // na 1ª linha do renderHome (a Home inteira não renderizava).
+      const _vistosF = new Set(), _fantF = [];
+      for (const m of _semComF.matchAll(/(^|=>|[;{}()=,&|!?:+[\]\n])\s*([A-Za-z_$][\w$]*)\s*\(/g)) {
+        const n = m[2];
+        if (_PALAVRAS21.has(n) || _GLOBAIS21.has(n) || _vistosF.has(n)) continue;
+        _vistosF.add(n);
+        if (!/[_A-Z]/.test(n)) continue; // sem _ nem maiúscula: palavra de texto corrido dentro de string
+        if (!_declarado21(n)) _fantF.push(n);
+      }
+      check("👻 v203-L21 (guarda permanente): nenhuma função do bundle do front é CHAMADA sem existir — remover a função e esquecer a chamada é a classe de bug que matou a Home (v198 apagou _showWelcome e deixou a chamada na 1ª linha do renderHome) e o logout (_obDraftKey, morto com o wizard no v175)",
+        _fantF.length === 0, "chamadas fantasma: " + _fantF.join(", "));
+    }
+
 
     // Migrações de cura (v20/v21)
     const raw = fs.readFileSync(path.join(DATA, "users.json"), "utf8");
@@ -5968,7 +6048,7 @@ async function drillRestauracaoBackup() {
       check("🛡️ v202-L20 (v73/v165, comportamental): conta Gmail EXTRA com autorização morta é ISOLADA (badge RECONECTAR) e o robô SEGUE pelas outras — a vaga sai pelo Gmail principal no mesmo ciclo, o job continua ativo e nada é apagado da conta doente",
         _startExtra.status === 200 && _okExtra === true &&
         (_udExtra?.auth?.senders || []).some((se) => se.email === "extraruim20@test.com" && se.tokenExpired === true && se.active === true) &&
-        GOOGLE.envios.some((e2) => e2.para === "rh1@extra20-test.com" && /extra20@test\.com/.test(e2.de || "")) &&
+        GOOGLE.envios.some((e2) => /^rh[12]@extra20-test\.com$/.test(e2.para) && /extra20@test\.com/.test(e2.de || "")) &&
         _jExtra.active === true && _jExtra.status !== "paused_auth_error",
         JSON.stringify({ senders: _udExtra?.auth?.senders, envios: GOOGLE.envios.map((e2) => e2.para), job: { a: _jExtra.active, s: _jExtra.status } }).slice(0, 380));
       GOOGLE.limpar();
