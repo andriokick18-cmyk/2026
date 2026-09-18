@@ -184,6 +184,12 @@ users["dormindo@test.com"] = { name: "Dormindo", plan: "free", cvs: [], profiles
 // mais reagendar pra meia-noite pra sempre com "0/0 envios" (fixture em
 // auto_jobs.json).
 users["planovencido@test.com"] = { name: "Plano Vencido", plan: "free", cvs: [], profiles: [] };
+// 🇧🇷 v199 LOTE 17: conta PRESA em inglês (legada / gravada por POST direto no
+// /api/settings, que aceitava pt|en|es). Como o site não tem seletor de idioma,
+// ela abria o app inteiro em EN sem NENHUM caminho de volta — a migração de
+// boot tem que curá-la sozinha.
+users["idiomaen@test.com"] = { name: "Idioma EN", plan: "free", cvs: [], profiles: [], language: "en" };
+users["idiomaptbr@test.com"] = { name: "Idioma PT-BR", plan: "free", cvs: [], profiles: [], language: "pt-BR" };
 users["legadoplano@test.com"] = {
   name: "Legado Plano", plan: "vipro", cvs: [], profiles: [],
   vip: { manualExpires: Date.now() + 20 * 86400_000, autoExpires: Date.now() + 20 * 86400_000, days: 30, source: "pix", active: true },
@@ -955,15 +961,24 @@ async function drillRestauracaoBackup() {
     check("🎨 index.html aponta pra fonte local (não mais CDN)",
       home.body.includes("/vendor/tabler-icons.min.css"));
 
-    // v86 (dono, 01/08): público 100% brasileiro — o site tem que abrir em
-    // PORTUGUÊS por padrão, nunca em inglês só porque o navegador do celular
-    // está em inglês. Guarda: o inicializador de idioma NÃO pode mais decidir
-    // pelo navegador (navigator.language) — só pela escolha salva do usuário,
-    // caindo em 'pt' por padrão. Se alguém reintroduzir a detecção por
-    // navegador, o site volta a abrir em inglês pra muitos brasileiros.
-    const _langInitOk = !frontAll.includes("navigator.language||'pt'") && /getItem\('h2b_lang'\)[\s\S]{0,160}return'pt'/.test(frontAll);
-    check("🇧🇷 v86: index.html abre em PORTUGUÊS por padrão (idioma não decidido mais pelo navigator.language)",
-      _langInitOk, "inicializador de _curLang não caiu no padrão PT esperado (localStorage → fallback 'pt')");
+    // 🇧🇷 v199 LOTE 17 — PORTUGUÊS FIXO DE VERDADE (a asserção antiga codificava
+    // o comportamento que morreu aqui). Até o v198 esta guarda exigia o padrão
+    // "localStorage h2b_lang → fallback 'pt'": ela protegia contra a detecção
+    // por navigator.language (v86) mas ABENÇOAVA o resíduo que era o bug — o
+    // idioma ainda podia virar 'en'/'es' pelo aparelho (valor gravado a partir
+    // do d.language do servidor) e NENHUMA tela do site tem botão pra voltar.
+    // Agora `_curLang` é uma constante: um valor só, atribuído uma vez.
+    // (mede o que EXECUTA, nunca o comentário que explica a remoção — mesma
+    // disciplina das guardas por frase do v189 LOTE 7.)
+    const _semComL17 = (t2) => t2.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ").replace(/<!--[\s\S]*?-->/g, " ");
+    const _frontL17 = _semComL17(frontAll);
+    const _langUmaAtribuicao = (_frontL17.match(/_curLang\s*=[^=]/g) || []).length === 1;
+    const _langInitOk = _frontL17.includes("const _curLang = 'pt';") && _langUmaAtribuicao &&
+      !_frontL17.includes("navigator.language") && !_frontL17.includes("h2b_lang") &&
+      !/lang-label|lang-flag|lang-opt/.test(_frontL17) &&
+      !/JSON\.stringify\(\{language:/.test(_frontL17);
+    check("🇧🇷 v199-L17: o app é PORTUGUÊS FIXO no código — _curLang é const 'pt' (1 atribuição só), sem leitura/gravação de h2b_lang, sem navigator.language, sem resíduo do seletor de idioma e sem POST de idioma pro servidor",
+      _langInitOk, `const=${_frontL17.includes("const _curLang = 'pt';")} atrib=${(_frontL17.match(/_curLang\s*=[^=]/g) || []).length} h2b_lang=${_frontL17.includes("h2b_lang")}`);
 
     // v103: 🤖 chat IA mora FIXO na sidebar (ordem do dono, 02/08 — revoga a
     // janela flutuante do v25). Guarda: painel #ia-side existe, o botão
@@ -5672,6 +5687,50 @@ async function drillRestauracaoBackup() {
       _l12Principal.json?.pdfMissing !== true &&
       !/is not defined|is not a function|Cannot read propert/i.test(String(_l12Principal.json?.errorRaw || _l12Principal.json?.error || "")),
       `status=${_l12Principal.status} raw=${String(_l12Principal.json?.errorRaw || "").slice(0, 90)}`);
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+
+    // ═══ 🇧🇷 v199 LOTE 17: português fixo — inclusive pra quem já ficou preso ═══
+    // O README e o CLAUDE.md dizem "o app não tem seletor de idioma... é só em
+    // português, de propósito". Só que o campo `language` aceitava pt|en|es e o
+    // front aplicava cegamente o que viesse do /api/status: conta com 'en'
+    // (legada do site antigo ou gravada por um POST direto) abria o site inteiro
+    // em inglês SEM caminho de volta, porque nenhuma tela tem botão de idioma.
+    // Corrigir só a porta de entrada deixaria essas contas presas PRA SEMPRE —
+    // por isso a cura é migração de boot (a régua da casa: causa raiz, e o dado
+    // já bugado é curado, nunca "conserta pra frente e esquece o passado").
+    const _l17Disco = () => { try { return JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8")); } catch { return {}; } };
+    const _l17U = _l17Disco();
+    check("🇧🇷 v199-L17: a migração de boot curou as contas presas em outro idioma — language='en' e 'pt-BR' viraram 'pt' NO DISCO (sem ela, quem já estava preso continuaria em inglês pra sempre)",
+      _l17U["idiomaen@test.com"]?.language === "pt" && _l17U["idiomaptbr@test.com"]?.language === "pt",
+      JSON.stringify({ en: _l17U["idiomaen@test.com"]?.language, ptbr: _l17U["idiomaptbr@test.com"]?.language }));
+    const _l17LogMig = /idioma normalizado pra "pt" em \d+ conta/.test(log);
+    check("🇧🇷 v199-L17: a migração de idioma LOGA quantas contas curou (migração muda dinheiro/acesso de ninguém, mas silenciosa ninguém audita)",
+      _l17LogMig, "linha [migração] 🇧🇷 não apareceu no log do boot");
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "idiomaen@test.com" });
+    const _l17Set = await req2("POST", "/api/settings", { language: "en" });
+    const _l17St = await get("/api/status");
+    const _l17Depois = _l17Disco();
+    check("🇧🇷 v199-L17: /api/settings NÃO grava mais 'en'/'es' — a rota responde ok (cliente antigo em cache nunca vê erro), o /api/status continua dizendo 'pt' e o disco não mudou: não existe mais como ficar preso num idioma sem botão de volta",
+      _l17Set.status === 200 && _l17St.json?.language === "pt" && _l17Depois["idiomaen@test.com"]?.language === "pt",
+      JSON.stringify({ set: _l17Set.status, status: _l17St.json?.language, disco: _l17Depois["idiomaen@test.com"]?.language }));
+    const _l17Pt = await req2("POST", "/api/settings", { language: "pt-BR" });
+    check("🇧🇷 v199-L17: 'pt-BR' (o valor que TODA conta antiga carrega) continua sendo aceito e normalizado pra 'pt' — a chave do dicionário é de 2 letras",
+      _l17Pt.status === 200 && _l17Disco()["idiomaen@test.com"]?.language === "pt", JSON.stringify({ status: _l17Pt.status }));
+    // Os dicionários EN/ES ficam VIVOS (decisão do dono) — o que morreu foram as
+    // chaves que nenhuma tela usa. Guarda nova: os 3 dicionários têm EXATAMENTE
+    // o mesmo conjunto de chaves. Chave que nasce em 1 língua só é o buraco de
+    // tradução que a guarda i18n-1 só pega quando a chave chega no HTML.
+    const _l17Dict = (lang) => {
+      const i = appJs.body.indexOf(`  ${lang}: {`), e = appJs.body.indexOf("\n  }", i);
+      return [...appJs.body.slice(i, e).matchAll(/"([a-zA-Z_0-9]+)"\s*:/g)].map((m) => m[1]);
+    };
+    const _l17Pt2 = _l17Dict("pt"), _l17En = _l17Dict("en"), _l17Es = _l17Dict("es");
+    const _l17SoPt = _l17Pt2.filter((k) => !_l17En.includes(k) || !_l17Es.includes(k));
+    const _l17Sobra = [..._l17En, ..._l17Es].filter((k) => !_l17Pt2.includes(k));
+    const _l17DupPt = _l17Pt2.filter((k, i2) => _l17Pt2.indexOf(k) !== i2);
+    check(`🌐 v199-L17: os 3 dicionários têm o MESMO conjunto de chaves, sem duplicata (pt=${_l17Pt2.length} en=${_l17En.length} es=${_l17Es.length}) — chave duplicada é sobrescrita em silêncio pelo JS e chave que existe em 1 língua só é buraco de tradução`,
+      _l17Pt2.length > 400 && _l17SoPt.length === 0 && _l17Sobra.length === 0 && _l17DupPt.length === 0,
+      JSON.stringify({ soPt: _l17SoPt.slice(0, 5), sobra: _l17Sobra.slice(0, 5), dup: _l17DupPt.slice(0, 5) }));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
 
     // 🛟 v191 LOTE 9 — drill de restauração de backup (servidor e disco só dele)

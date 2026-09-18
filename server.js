@@ -1309,6 +1309,7 @@ function boot() {
   _migrateCvBlobsToDisk(DB_USERS); // v21 (07/2026): PDFs base64 saem do users.json → disco (RAM e persist leves)
   _sweepOrphanCvFiles(DB_USERS);   // v21 (07/2026): apaga PDFs órfãos do disco (lixo do antigo delete sem unlink)
   _wipeCannedDefaults(DB_USERS);   // v22 (ordem do dono): remove texto enlatado de fábrica intocado — conteúdo é do usuário
+  _migrarIdiomaParaPt(DB_USERS);   // 🇧🇷 v199 LOTE 17: conta presa em EN/ES volta pro português (o site não tem seletor)
   DB_HIST   = mig(HIST_FILE,   path.join(DATA_DIR, "h2b_history.json"), {});
   DB_AUTO   = load(AUTO_FILE, {});
   DB_NOTES  = load(NOTES_FILE, {});
@@ -1555,6 +1556,29 @@ function _inferVisaType(p){
   if(Array.isArray(p?.sheets)&&p.sheets.some(s=>String(s).toLowerCase().includes("h2a")))return "h2a";
   return "h2b";
 }
+// 🇧🇷 v199 LOTE 17 — MIGRAÇÃO: idioma de TODO usuário vira "pt".
+// O site é só em português de propósito (regra do README) e não tem seletor de
+// idioma em tela nenhuma. Enquanto isso, o campo `language` aceitava 'en'/'es'
+// (e o front aplicava cegamente): quem tivesse esse valor gravado — conta legada
+// do site antigo, ou um POST direto em /api/settings — abria o app inteiro em
+// inglês SEM NENHUM caminho de volta. Corrigir só "pra frente" (fechar a
+// whitelist) deixaria essas contas presas pra sempre; por isso a cura roda aqui.
+// IDEMPOTENTE: no boot seguinte ninguém mais bate na condição e nada é logado.
+// (O "pt-BR" que as contas antigas carregam também é normalizado — a chave do
+// dicionário é de 2 letras, então o valor com região nunca casava com nada.)
+function _migrarIdiomaParaPt(users){
+  let tocados=0;
+  for(const em of Object.keys(users||{})){
+    const u=users[em]; if(!u||typeof u!=="object")continue;
+    if(u.language!==undefined && u.language!=="pt"){ u.language="pt"; tocados++; }
+  }
+  if(tocados){
+    persist(USERS_FILE, users);
+    console.log(`[migração] 🇧🇷 idioma normalizado pra "pt" em ${tocados} conta(s) — o app é só em português e não tem seletor pra desfazer.`);
+  }
+  return tocados;
+}
+
 function _migrateUsersToSingleProfile(users){
   // v19: era "perfil único"; virou "1 perfil POR TIPO DE VISTO" (máx. 2: H-2B
   // + H-2A). Cliente real tinha 2 perfis H-2B + 1 H-2A e a consolidação antiga
@@ -8953,7 +8977,7 @@ filtrar();
         phone:whatsapp,whatsapp,
         passwordSalt:salt,passwordHash:hash,
         created_at:new Date().toISOString(),plan:"free",vip:null,cvs:[],profiles:[],saved:[],
-        onboarded:false,isAdmin:_nasceAdmin,language:"pt-BR",
+        onboarded:false,isAdmin:_nasceAdmin,language:"pt", // v199 LOTE 17: o app é só em PT
       });
       const sid="usr_"+crypto.randomBytes(16).toString("hex");
       sessions[sid]={user_email:username,user_name:nomeCompleto,created_at:Date.now()};
@@ -11355,7 +11379,7 @@ filtrar();
     // planGateMsg). null quando não há provisório vencendo com pedido pendente.
     const _provPend = _provisorioPendente(p);
     return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,planRulesNotice:_prNotice,
-      provisorioPendente:_provPend?{pedidoId:_provPend.pedidoId,ref:_provPend.ref}:null,manualCdOff:p.manualCdOff===true,gmailConnected,gmailEmail,emailContato:p.emailContato||null,emailVerificado:!!p.emailVerificadoEm,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",estado:p.estado||p.state||"",language:p.language||"pt-BR",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.gmailConnectedAt||p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===(gmailEmail||s.user_email)||x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||300),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
+      provisorioPendente:_provPend?{pedidoId:_provPend.pedidoId,ref:_provPend.ref}:null,manualCdOff:p.manualCdOff===true,gmailConnected,gmailEmail,emailContato:p.emailContato||null,emailVerificado:!!p.emailVerificadoEm,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",estado:p.estado||p.state||"",language:p.language||"pt",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.gmailConnectedAt||p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===(gmailEmail||s.user_email)||x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||300),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
   }
 
   if(pathname==="/api/onboard"&&req.method==="POST"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});setUser(s.user_email,{onboarded:true});return json(res,200,{ok:true});}
@@ -11384,12 +11408,14 @@ filtrar();
       if(d.city!==undefined)upd.city=String(d.city).slice(0,100);
       // 🚨 v177-FIX6 (auditoria 14/09/2026): aceitava QUALQUER string de até 10
       // chars como idioma e devolvia ela no /api/status, onde o front aplica
-      // cegamente o que existir no dicionário. Whitelist das 3 línguas reais,
-      // normalizada pra 2 letras ("pt-BR"→"pt"); qualquer outra coisa é
-      // ignorada, nunca gravada.
+      // cegamente o que existir no dicionário. Whitelist, normalizada pra 2
+      // letras ("pt-BR"→"pt"); qualquer outra coisa é ignorada, nunca gravada.
+      // 🇧🇷 v199 LOTE 17: a whitelist virou "pt" e SÓ. O site não tem seletor de
+      // idioma (decisão de produto) — aceitar 'en'/'es' aqui era o único jeito
+      // de uma conta ficar presa num idioma que nenhuma tela sabe desfazer.
       if(d.language!==undefined){
         const _lg=String(d.language).slice(0,2).toLowerCase();
-        if(["pt","en","es"].includes(_lg))upd.language=_lg;
+        if(_lg==="pt")upd.language="pt";
       }
       // h2bProfile: objeto completo
       if(d.h2bProfile){
