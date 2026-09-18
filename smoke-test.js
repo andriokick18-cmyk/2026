@@ -402,6 +402,43 @@ async function testAuthWatchdogPush() {
     pushed && pushed.email === "vip@test.com" && /reconecte/i.test(pushed.payload?.title || ""), JSON.stringify(pushed)?.slice(0, 120));
 }
 
+// ── 🔁 v199 LOTE 19 — CICLO DE VIDA DO SERVIDOR (helper ÚNICO) ──────────
+// A suíte sobe servidor em 3 momentos (o principal, o drill de restauração do
+// v191 e os 2 bootes novos deste lote). Antes cada um tinha seu próprio
+// spawn/kill copiado: o do v191 esperava o evento 'exit' com teto, o principal
+// dava SIGKILL direto. Com 2 bootes novos no MESMO DATA_DIR, "matar e esperar
+// de verdade" virou requisito — se o processo antigo não morre, o próximo
+// spawn bate em porta ocupada e a suíte falha pelo motivo ERRADO. Um helper
+// só, usado por todos.
+function spawnServidor(env, onLog) {
+  const p = spawn(process.execPath, ["server.js"], {
+    cwd: __dirname, env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"],
+  });
+  p.stdout.on("data", (c) => onLog(String(c)));
+  p.stderr.on("data", (c) => onLog(String(c)));
+  return p;
+}
+// Resolve true se o processo REALMENTE saiu dentro do teto; senão manda
+// SIGKILL e resolve false (nunca deixa processo órfão segurando a porta).
+function matarServidor(proc, sinal = "SIGTERM", tetoMs = 15_000) {
+  return new Promise((resolve) => {
+    if (!proc || proc.exitCode !== null) return resolve(true);
+    let pronto = false;
+    const fim = (ok) => { if (!pronto) { pronto = true; resolve(ok); } };
+    proc.once("exit", () => fim(true));
+    try { proc.kill(sinal); } catch { return fim(false); }
+    setTimeout(() => { try { proc.kill("SIGKILL"); } catch {} setTimeout(() => fim(false), 800); }, tetoMs);
+  });
+}
+async function esperarNoAr(ping, ms) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    try { const r = await ping(); if (r.status) return true; } catch {}
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return false;
+}
+
 // ── 🛟 v191 LOTE 9 — DRILL REAL DE RESTAURAÇÃO DE BACKUP ────────────────
 // O roteiro de emergência (RESTAURACAO_BACKUP.md) era "ensaiado" só até a
 // metade: ninguém nunca tinha restaurado com o SERVIDOR VIVO e reiniciado
@@ -439,27 +476,11 @@ async function drillRestauracaoBackup() {
   });
   const subir = async () => {
     logB = "";
-    srvB = spawn(process.execPath, ["server.js"], {
-      cwd: __dirname,
-      env: { ...process.env, PORT: String(PORT_B), DATA_DIR: DATA_B, STORAGE: "json", TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890", BACKUP_BOOT_MS: "1200" },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    srvB.stdout.on("data", (c) => (logB += c));
-    srvB.stderr.on("data", (c) => (logB += c));
-    const t0 = Date.now();
-    while (Date.now() - t0 < 40_000) {
-      try { const r = await reqB("GET", "/api/status"); if (r.status) return true; } catch {}
-      await sleep(300);
-    }
-    return false;
+    srvB = spawnServidor({ PORT: String(PORT_B), DATA_DIR: DATA_B, STORAGE: "json", TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890", BACKUP_BOOT_MS: "1200" },
+      (t) => (logB += t));
+    return esperarNoAr(() => reqB("GET", "/api/status"), 40_000);
   };
-  const derrubar = (sinal) => new Promise((resolve) => {
-    if (!srvB) return resolve();
-    const p = srvB; srvB = null;
-    p.once("exit", () => resolve());
-    p.kill(sinal);
-    setTimeout(resolve, 12_000);
-  });
+  const derrubar = async (sinal) => { const p = srvB; srvB = null; await matarServidor(p, sinal); };
   const lerJson = (f) => { try { return JSON.parse(fs.readFileSync(path.join(DATA_B, f), "utf8")); } catch { return null; } };
   const pastasBackup = () => { try { return fs.readdirSync(path.join(DATA_B, "backups")).filter((d) => /^\d{4}-/.test(d)); } catch { return []; } };
 
@@ -588,18 +609,13 @@ async function drillRestauracaoBackup() {
 (async () => {
   console.log(`🧪 Smoke test — porta ${PORT}, dados em ${DATA}`);
   await testAuthWatchdogPush(); // unit puro, não precisa do servidor
-  const srv = spawn(process.execPath, ["server.js"], {
-    cwd: __dirname,
-    // 🚨 v172c-SEC: NUNCA testar com a senha de fábrica de produção (nem a
-    // antiga vazada, nem a nova) — o teste define a SUA PRÓPRIA senha via
-    // env, exatamente como uma instalação real deveria fazer (a env sempre
-    // vence o hash de fábrica embutido no código).
-    env: { ...process.env, PORT: String(PORT), DATA_DIR: DATA, STORAGE: "json", TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890", DOL_FEED_BASE: `http://127.0.0.1:${FEED_PORT}/feed`, DOL_API_BASE: `http://127.0.0.1:${FEED_PORT}/dol/`, H2A_BIM_MIN_PUBLICAR: "10", ADMIN_PANEL_PASS_ANDRIO: "teste-smoke-andrio-2026", ADMIN_PANEL_PASS_DIEGO: "teste-smoke-diego-2026" },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  // 🚨 v172c-SEC: NUNCA testar com a senha de fábrica de produção (nem a antiga
+  // vazada, nem a nova) — o teste define a SUA PRÓPRIA senha via env,
+  // exatamente como uma instalação real deveria fazer (a env sempre vence o
+  // hash de fábrica embutido no código).
+  const ENV_SRV = { PORT: String(PORT), DATA_DIR: DATA, STORAGE: "json", TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890", DOL_FEED_BASE: `http://127.0.0.1:${FEED_PORT}/feed`, DOL_API_BASE: `http://127.0.0.1:${FEED_PORT}/dol/`, H2A_BIM_MIN_PUBLICAR: "10", ADMIN_PANEL_PASS_ANDRIO: "teste-smoke-andrio-2026", ADMIN_PANEL_PASS_DIEGO: "teste-smoke-diego-2026" };
   let log = "";
-  srv.stdout.on("data", (c) => (log += c));
-  srv.stderr.on("data", (c) => (log += c));
+  let srv = spawnServidor(ENV_SRV, (t) => (log += t));
 
   try {
     check("servidor subiu e respondeu HTTP", await waitUp(40_000));
@@ -1041,6 +1057,27 @@ async function drillRestauracaoBackup() {
       /"sug_companies":"Companies"/.test(frontAll);
     check("🔎 v119: sugestões instantâneas da busca — dropdown no HTML, handlers no JS e rótulos no dicionário (PT+EN)",
       _v119Front, "id=q-sug, qSugInput/Pick/Key, _lugaresData ou chaves sug_* não encontrados");
+
+    // ═══ 🔖 v199 LOTE 19: o CACHE_NAME sobe DE VERDADE junto com o front ═══
+    // As 2 guardas que viviam aqui ("CACHE_NAME do sw.js subiu junto") só
+    // conferiam que a versão era >= v43 / >= v44 — condição permanentemente
+    // VERDADEIRA desde o dia em que nasceram. Ou seja: a próxima edição de
+    // app.js sem bump passava verde, exatamente a classe de bug (JS velho em
+    // cache + HTML novo = tela em branco) que a regra 4 existe pra evitar.
+    // Agora o sw.js guarda a IMPRESSÃO DIGITAL dos arquivos servidos ao
+    // cliente no momento do bump, e esta guarda recalcula e compara. Mudou 1
+    // byte de qualquer um deles sem passar pelo `npm run sw-bump`, a suíte
+    // quebra — e diz o comando. (O próprio sw-bump.js é a fonte única da
+    // lista de arquivos e da função de hash; nada é reimplementado aqui.)
+    const { fingerprintFront: _fpFront, ARQUIVOS_FRONT: _fpArquivos } = require("./sw-bump.js");
+    const _swSrc = fs.readFileSync(path.join(__dirname, "sw.js"), "utf8");
+    const _fpGravado = (_swSrc.match(/const CACHE_FRONT_FINGERPRINT = "([0-9a-f]*)";/) || [])[1];
+    const _fpReal = _fpFront(__dirname);
+    check(`🔖 v199-L19: o sw.js foi bumpado junto com o front — impressão digital de ${_fpArquivos.join(" + ")} bate com a gravada no CACHE_NAME`,
+      !!_fpGravado && _fpGravado === _fpReal,
+      _fpGravado
+        ? `o front mudou e o service worker NÃO subiu: rode \`npm run sw-bump -- "o que mudou"\` (gravado=${_fpGravado} real=${_fpReal}) — sem isso o aparelho da pessoa mistura JS velho em cache com HTML novo e a tela fica em branco`
+        : "sw.js sem CACHE_FRONT_FINGERPRINT — rode `npm run sw-bump`");
 
     // 🌐 i18n Etapa 1 (dono, 12/08 — "profissionalizar TODO o sistema de
     // tradução, sem falha nenhuma"): (a) GUARDA PERMANENTE — toda chave
@@ -2286,9 +2323,6 @@ async function drillRestauracaoBackup() {
         _admF6.includes("pedido novo (com ou sem comprovante)") &&
         _admF6.includes("NÃO manda aviso automático"),
         "rótulo do toggle ou o aviso do cancelamento voltaram a prometer o que o sistema não faz");
-      check("🚨 v177-FIX6 (estrutural): CACHE_NAME do sw.js subiu junto com a mudança em app.js/admin.html (regra da casa — senão o aparelho mistura JS velho com HTML novo)",
-        /const CACHE_NAME = "h2bapply-2026-v(4[3-9]|[5-9]\d|\d{3,})"/.test(fs.readFileSync(path.join(__dirname, "sw.js"), "utf8")),
-        "sw.js ainda está no cache antigo (v42 ou menor)");
 
       // ═══ 🚨 v177-FIX7: DUPLA ATIVAÇÃO sob concorrência DE VERDADE ═══
       // A guarda (pd.ativadoEm) depende de NÃO existir await entre a checagem
@@ -2348,9 +2382,6 @@ async function drillRestauracaoBackup() {
       check("🚨 v177-FIX8 (estrutural): mismatch de conta Google no Conectar-Gmail registra no authTimeline do DONO (antes ia pro e-mail digitado por engano, que quase nunca existe em DB_USERS — o raio-X do dono nunca via nada) e revoke que falha deixa rastro em vez de só um console.warn",
         _srvF7.includes('_authEvent(ownerEmailCS,"revoke_mismatch"') && _srvF7.includes('_authEvent(ownerEmailCS,"revoke_falhou"'),
         "trilha do revoke pós-mismatch voltou pro e-mail errado / sumiu");
-      check("🚨 v177-FIX8 (estrutural): CACHE_NAME do sw.js subiu de novo junto com a mudança em app.js",
-        /const CACHE_NAME = "h2bapply-2026-v(4[4-9]|[5-9]\d|\d{3,})"/.test(fs.readFileSync(path.join(__dirname, "sw.js"), "utf8")),
-        "sw.js não subiu junto com a mudança em app.js");
     }
     // Comprovante já usado (fingerprint) — mesma trilha do MC5-P1, sem
     // duplicar setup: cria um 2º usuário VIP com Gmail conectado e tenta
@@ -4825,11 +4856,13 @@ async function drillRestauracaoBackup() {
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
     }
 
-    // 🎯 usuário comum (não-admin) NUNCA acessa Respostas Certas — é dado
-    // privado do admin (respostas de e-mail de outra pessoa).
-    const rcAsUser = await get("/api/admin/reply-triage/status");
-    check("🎯 usuário comum recebe 403 em Respostas Certas (aba é admin-only de verdade, não só escondida no menu)",
-      rcAsUser.status === 403, rcAsUser.body.slice(0, 120));
+    // (v199 LOTE 19: aqui vivia um check com título de feature de OUTRO
+    // projeto — "Respostas Certas", `/api/admin/reply-triage/status`. Essa rota
+    // nunca existiu neste repo: o check só passava porque o portão genérico
+    // `/api/admin` devolve 403 pra qualquer caminho, então ele media o portão,
+    // não a feature. Um verde que não guarda nada é pior que nenhum check — dá
+    // a sensação de cobertura que não existe. O portão genérico continua
+    // provado pelos checks de admin de verdade, logo acima.)
 
     // ══════════════════════════════════════════════════════════════════════
     // 📥 v180 — IMPORTAR PLANILHA (JSON) E SEED ENRIQUECIDO
@@ -5812,6 +5845,159 @@ async function drillRestauracaoBackup() {
       _l17Pt2.length > 400 && _l17SoPt.length === 0 && _l17Sobra.length === 0 && _l17DupPt.length === 0,
       JSON.stringify({ soPt: _l17SoPt.slice(0, 5), sobra: _l17Sobra.slice(0, 5), dup: _l17DupPt.slice(0, 5) }));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+
+    // ⚙️ v199 LOTE 19: a versão do Node não pode ser 3 verdades diferentes.
+    // O repo declarava engines ">=18", o CI roda 22 e o Render decide sozinho
+    // (sem .node-version ele pode subir em outra major a qualquer momento) —
+    // ou seja, o que a suíte prova NÃO é necessariamente o que atende o
+    // cliente. Pinado no 22, que é o que o CI já prova a cada push.
+    const _pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8"));
+    const _nodeVer = fs.readFileSync(path.join(__dirname, ".node-version"), "utf8").trim();
+    const _ci = fs.readFileSync(path.join(__dirname, ".github/workflows/ci.yml"), "utf8");
+    const _ciNode = (_ci.match(/node-version:\s*(\d+)/) || [])[1];
+    check(`⚙️ v199-L19: a major do Node é UMA só nos 3 lugares — .node-version (${_nodeVer}, é o que o Render honra), engines do package.json (${_pkg.engines?.node}) e o CI (${_ciNode})`,
+      _nodeVer === _ciNode && _pkg.engines?.node === ">=" + _ciNode && _pkg.scripts?.["sw-bump"] === "node sw-bump.js",
+      JSON.stringify({ nodeVersion: _nodeVer, engines: _pkg.engines?.node, ci: _ciNode, swBump: _pkg.scripts?.["sw-bump"] }));
+
+    // ═══ 🔁 v199 LOTE 19: O 2º BOOT — o que este repo faz a cada commit ═══
+    // A suíte sempre subiu o servidor UMA vez, num DATA_DIR recém-criado. Só
+    // que este repo faz DEPLOY A CADA COMMIT: o boot que importa em produção é
+    // o SEGUNDO, com o disco já sujo do primeiro. Nada provava que as ~15
+    // migrações de boot são idempotentes (uma que reaplique mexe em dado real
+    // de gente pagante) nem que o robô no meio de um envio sobrevive ao
+    // reinício. Aqui o servidor é DERRUBADO de verdade (SIGTERM, esperando o
+    // evento 'exit' — sem isso o próximo spawn bateria em porta ocupada e a
+    // suíte falharia pelo motivo errado) e sobe de novo no MESMO DATA_DIR.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    // Estado "no meio do caminho" ANTES do restart: um robô mandando (o caso
+    // perigoso: o processo morre entre escolher a vaga e gravar) e outro
+    // dormindo no limite diário.
+    await req2("POST", "/api/test/auto-job", { token: TEST_TOKEN, email: "boot2sending@test.com",
+      job: { active: true, status: "sending", queue: [{ to: "rh@boot2-a.com", company: "Boot2 A" }, { to: "rh@boot2-b.com", company: "Boot2 B" }], source: "jan2026", startedAt: Date.now(), originalCount: 2 } });
+    await req2("POST", "/api/test/auto-job", { token: TEST_TOKEN, email: "boot2limite@test.com",
+      job: { active: true, status: "waiting_limit", queue: [{ to: "rh@boot2-c.com", company: "Boot2 C" }], source: "jul2025", startedAt: Date.now(), originalCount: 1 } });
+    // Pedido com ativação provisória viva (dinheiro na mesa) + sessão logada.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "boot2pedido@test.com", name: "Boot2 Pedido" });
+    // (o gancho TESTE_COMPROVANTE é o mesmo padrão do feed falso do DOL: só
+    // existe com TEST_LOGIN_TOKEN e faz a leitura do comprovante CONFERIR sem
+    // tocar em rede — é o que liga a ativação provisória de verdade.)
+    const _b2Ped = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true,
+      userName: "Boot2 Pedido", userWhatsapp: "11 98888-0002", userCity: "SP", nota: "TESTE_COMPROVANTE:100",
+      comprovante: Buffer.from("comprovante-boot2-unico").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    const _b2PedId = _b2Ped.json?.pedidoId;
+    await new Promise((r) => setTimeout(r, 500));
+    const _b2StAntes = (await get("/api/status")).json;
+    const _cookieAntes = COOKIE;
+
+    const _logAntes = log.length;
+    const _morreuLimpo = await matarServidor(srv, "SIGTERM");
+    check("🔁 v199-L19: o servidor desliga LIMPO com SIGTERM (o mesmo sinal do deploy do Render) — o processo sai sozinho dentro do teto, sem precisar de SIGKILL",
+      _morreuLimpo === true, "o processo não saiu no tempo e precisou de SIGKILL — algum handle ficou pendurado no desligamento");
+    srv = spawnServidor(ENV_SRV, (t) => (log += t));
+    const _subiu2 = await waitUp(40_000);
+    check("🔁 v199-L19: 2º boot no MESMO DATA_DIR (o que acontece a cada deploy deste repo) sobe e responde HTTP", _subiu2);
+    const _log2 = log.slice(_logAntes);
+    // Só os prefixos que significam APLICAÇÃO de migração — vários blocos
+    // logam mesmo sem fazer nada, e casar com eles daria falso vermelho.
+    const _reaplicou = [
+      [/\[migração\] 🇧🇷 idioma normalizado/, "idioma → pt"],
+      [/\[migração\] 🧾 \d+ comprovante\(s\) movidos/, "comprovantes pro disco"],
+      [/\[migração\] 🔓 lista de banidos ZERADA/, "lista de banidos"],
+      [/\[migração\] 🧹 backup\.json aposentado removido/, "backup.json aposentado"],
+      [/\[cv-blobs\] ✅ \d+ usuário\(s\) migrados/, "PDFs pro disco"],
+      [/\[perfil-por-visto\] ✅ Migração concluída: [1-9]/, "perfil por visto"],
+      [/\[cv-dedup\] ✅ Limpeza concluída: [1-9]/, "dedupe de currículo"],
+      [/\[db\] Migrando /, "renome de arquivo legado"],
+      [/\[migrate\] ✅ .* copiado para/, "planilha enriquecida pro /data"],
+    ].filter(([re]) => re.test(_log2)).map(([, nome]) => nome);
+    check("🔁 v199-L19: NENHUMA migração de boot reaplica no 2º boot — todas as ~15 são idempotentes de verdade (uma que reaplicasse mexeria de novo em dado de gente pagante a cada deploy)",
+      _reaplicou.length === 0, `reaplicaram: ${_reaplicou.join(", ")}`);
+    // O robô no meio do caminho não pode sumir nem perder fila.
+    const _b2A = await req2("POST", "/api/test/auto-job", { token: TEST_TOKEN, email: "boot2sending@test.com" });
+    const _b2B = await req2("POST", "/api/test/auto-job", { token: TEST_TOKEN, email: "boot2limite@test.com" });
+    check("🔁 v199-L19: o robô sobrevive ao reinício com a FILA INTEIRA — o job que estava 'sending' (processo morto no meio de um envio) e o que dormia em 'waiting_limit' voltam com as mesmas vagas na fila",
+      (_b2A.json?.job?.queue || []).length === 2 && (_b2B.json?.job?.queue || []).length === 1 &&
+      _b2A.json?.job?.source === "jan2026" && _b2B.json?.job?.source === "jul2025",
+      JSON.stringify({ sending: _b2A.json?.job?.status, fila: (_b2A.json?.job?.queue || []).length, limite: _b2B.json?.job?.status }));
+    // Dinheiro na mesa: o pedido provisório continua pendente e ativo.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "boot2pedido@test.com" });
+    const _b2Lista = await get("/api/pedidos");
+    const _b2Achado = (_b2Lista.json?.pedidos || []).find((x) => x.id === _b2PedId);
+    const _b2St = await get("/api/status");
+    check("🔁 v199-L19: o pedido com ativação provisória atravessa o deploy inteiro — continua PENDENTE na mesa do admin e o cliente continua com o plano ativo (era exatamente o cenário 'paguei e o site reiniciou')",
+      _b2StAntes?.needsPlan === false && !!_b2Achado && _b2Achado.status === "pendente" && _b2St.json?.needsPlan === false,
+      JSON.stringify({ antes: _b2StAntes?.needsPlan, pedido: _b2Achado?.status, depois: _b2St.json?.needsPlan, id: _b2PedId }));
+    // Sessão de LOGIN cai de propósito (decisão do dono, ver _loadSessionsFromDisk).
+    check("🔁 v199-L19: a sessão de login NÃO sobrevive ao reinício — e isso é DE PROPÓSITO (todos entram de novo a cada deploy); o log do boot declara a decisão em vez de deixar parecer bug",
+      /\[sessions\] 🔒 Deploy detectado/.test(_log2),
+      "o boot não declarou mais o descarte das sessões de login");
+    COOKIE = _cookieAntes;
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+
+    // ═══ 💾 v199 LOTE 19: o modo que roda EM PRODUÇÃO (SQLite dual-write) ═══
+    // A suíte inteira roda com STORAGE=json — o modo que o storage.js chama de
+    // "antigo". Em produção o padrão é SQLite com espelho JSON, e o motivo
+    // declarado dele é justamente acabar com o JSON truncado numa queda. Ou
+    // seja: o caminho que guarda o dinheiro dos clientes nunca era exercitado.
+    // Servidor próprio, disco próprio, e um restart pra provar que o que foi
+    // gravado no banco volta.
+    {
+      const DATA_S = fs.mkdtempSync(path.join(os.tmpdir(), "h2b-sqlite-"));
+      const PORT_S = PORT + 60;
+      let logS = "", srvS = null;
+      const reqS = (method, p2, payload) => new Promise((resolve, reject) => {
+        const body = payload === undefined ? null : JSON.stringify(payload);
+        const r = http.request(`http://127.0.0.1:${PORT_S}` + p2, { method,
+          headers: { ...(body ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) } : {}) } }, (res) => {
+          let b = ""; res.on("data", (c) => (b += c));
+          res.on("end", () => { let json2 = null; try { json2 = JSON.parse(b); } catch {} resolve({ status: res.statusCode, body: b, json: json2 }); });
+        });
+        r.on("error", reject); if (body) r.write(body); r.end();
+      });
+      try {
+        // JSONs legados no disco ANTES do 1º boot — são eles que o storage
+        // tem que IMPORTAR pro banco na primeira execução.
+        fs.writeFileSync(path.join(DATA_S, "users.json"), JSON.stringify({
+          "sqlite@test.com": { email: "sqlite@test.com", name: "SQLite ORIGINAL", plan: "free", created_at: new Date().toISOString(), cvs: [], profiles: [], saved: [], onboarded: true },
+        }));
+        fs.writeFileSync(path.join(DATA_S, "pedidos.json"), JSON.stringify([
+          { id: "pedsqlite1", userEmail: "sqlite@test.com", userName: "SQLite ORIGINAL", tipo: "plano", plano: "vip", dias: 30, valorTotal: 100, status: "pendente", createdAt: Date.now() }]));
+        // SEM STORAGE=json de propósito — este é o único boot da suíte no modo de produção.
+        srvS = spawnServidor({ PORT: String(PORT_S), DATA_DIR: DATA_S, TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890" }, (t) => (logS += t));
+        const _upS = await esperarNoAr(() => reqS("GET", "/api/status"), 40_000);
+        const _sqliteIndisponivel = /SQLite indispon[ií]vel/.test(logS);
+        if (_sqliteIndisponivel) {
+          // HONESTO: pular com aviso, nunca falso-verde. `node:sqlite` existe a
+          // partir do Node 22.5 (e este repo pina o 22 no .node-version); se o
+          // ambiente não tiver nem ele nem o better-sqlite3 opcional, o servidor
+          // cai pro JSON sozinho — comportamento correto, mas não é o que este
+          // bloco quer provar.
+          console.log("  ⏭️  v199-L19: modo SQLite PULADO — nem node:sqlite nem better-sqlite3 neste ambiente (o servidor caiu pro JSON, que é o fallback correto). Rode com Node >= 22.5 pra exercitar o modo de produção.");
+          check("💾 v199-L19: sem SQLite no ambiente, o servidor cai pro JSON e continua servindo (fallback do storage.js)", _upS === true, "nem no fallback o servidor subiu");
+        } else {
+          check("💾 v199-L19: boot no modo de PRODUÇÃO (SQLite + espelho JSON, sem STORAGE=json) sobe e cria o h2bapply.db — o caminho que guarda o dinheiro dos clientes nunca tinha sido exercitado pela suíte",
+            _upS === true && /SQLite ativo/.test(logS) && fs.existsSync(path.join(DATA_S, "h2bapply.db")),
+            `up=${_upS} db=${fs.existsSync(path.join(DATA_S, "h2bapply.db"))} log=${(logS.match(/\[storage\][^\n]*/g) || []).join(" | ").slice(0, 200)}`);
+          check("💾 v199-L19: os JSONs que já existiam no disco foram IMPORTADOS pro banco na 1ª execução (migração automática do storage.js), sem ninguém perder nada",
+            /⬆️\s+Migrado/.test(logS), (logS.match(/\[storage\][^\n]*/g) || []).join(" | ").slice(0, 240));
+          // Grava pelo servidor, reinicia, e confere que o dado volta.
+          await reqS("POST", "/api/test/login", { token: TEST_TOKEN, email: "sqlitenovo@test.com", name: "SQLite NOVO" });
+          await matarServidor(srvS, "SIGTERM");
+          logS = "";
+          srvS = spawnServidor({ PORT: String(PORT_S), DATA_DIR: DATA_S, TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890" }, (t) => (logS += t));
+          const _upS2 = await esperarNoAr(() => reqS("GET", "/api/status"), 40_000);
+          const _stS2 = await reqS("POST", "/api/test/login", { token: TEST_TOKEN, email: "sqlitenovo@test.com" });
+          check("💾 v199-L19: o que foi gravado no modo SQLite VOLTA depois de um restart — a conta criada antes do desligamento continua lá (e o usuário do JSON importado também)",
+            _upS2 === true && _stS2.status === 200 && !/SQLite indispon/.test(logS),
+            `up=${_upS2} status=${_stS2.status}`);
+        }
+      } catch (e) {
+        check("💾 v199-L19: drill do modo SQLite sem exceção", false, e.message);
+      } finally {
+        try { await matarServidor(srvS, "SIGKILL"); } catch {}
+        try { fs.rmSync(DATA_S, { recursive: true, force: true }); } catch {}
+      }
+    }
 
     // 🛟 v191 LOTE 9 — drill de restauração de backup (servidor e disco só dele)
     await drillRestauracaoBackup();

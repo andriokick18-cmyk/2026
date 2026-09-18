@@ -38,7 +38,13 @@ se referindo a outro repositório/projeto.
 4. **Service Worker**: toda mudança em `index.html`/`admin.html`/`app.js`
    que altere algo visível ou executável exige subir o `CACHE_NAME` em
    `sw.js` junto — senão aparelhos ficam com JS velho em cache e a tela
-   fica em branco ou desatualizada.
+   fica em branco ou desatualizada. **O comando é
+   `npm run sw-bump -- "o que mudou pro usuário"`** (v199 LOTE 19): ele sobe o
+   `CACHE_NAME` E regrava o `CACHE_FRONT_FINGERPRINT` (hash de index.html +
+   admin.html + app.js + h2b-extras-user.js) na mesma operação. Nunca edite
+   esses dois valores à mão. O smoke recalcula o hash e FALHA se o front
+   mudou sem o bump — antes as 2 guardas só conferiam "a versão é ≥ v43",
+   condição sempre verdadeira, que nunca pegaria a próxima mudança.
 5. Commits contam o **porquê**, não só o quê. Sem emojis a menos que já
    seja o padrão do arquivo/commit sendo seguido.
 6. Pesquise como sites/produtos de referência resolvem um problema de
