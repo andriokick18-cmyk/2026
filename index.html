@@ -3333,28 +3333,40 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
               <div id="plan-summary-content"></div>
             </div>
             <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px">
-              <div>
-                <label style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:5px" data-i18n="full_name">Nome completo *</label>
-                <input class="input" id="plan-form-name" type="text" placeholder="Seu nome completo" autocomplete="name">
+              <!-- v185 LOTE 3: o cadastro (v175) JÁ obriga nome, WhatsApp, cidade
+                   e estado. Pedir tudo de novo no meio da compra era digitação
+                   à toa (e a cidade nem vinha preenchida). Por padrão o passo 2
+                   só CONFIRMA esses dados; quem tiver conta legada (sem cidade
+                   ou estado) cai no formulário editável logo abaixo — conta
+                   antiga nunca pode travar a compra. -->
+              <div id="plan-dados-resumo" style="display:none;background:var(--sf2);border:1px solid var(--border);border-radius:10px;padding:12px 14px">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                  <div style="font-size:12px;font-weight:800;color:var(--t2)" data-i18n="pd_conf">✅ Confirme seus dados de contato</div>
+                </div>
+                <div id="plan-dados-linhas" style="display:flex;flex-direction:column;gap:5px;font-size:13px"></div>
+                <div style="font-size:11px;color:var(--t3);margin-top:9px">
+                  <span data-i18n="pd_errado">Algum dado está errado?</span>
+                  <span onclick="planCorrigirNoPerfil()" style="color:var(--blue);font-weight:700;cursor:pointer;text-decoration:underline" data-i18n="pd_corrigir">Corrigir no meu Perfil</span>
+                </div>
               </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div id="plan-dados-form" style="display:flex;flex-direction:column;gap:12px">
+                <div>
+                  <label style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:5px" data-i18n="full_name">Nome completo *</label>
+                  <input class="input" id="plan-form-name" type="text" placeholder="Seu nome completo" autocomplete="name">
+                </div>
                 <div>
                   <label style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:5px">WhatsApp * <span style="color:var(--t3);font-weight:400">(com DDD)</span></label>
                   <input class="input" id="plan-form-wpp" type="tel" placeholder="53 9 8145-3496" inputmode="tel">
                 </div>
-                <div>
-                  <label style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:5px">Telefone alternativo</label>
-                  <input class="input" id="plan-form-phone" type="tel" placeholder="Opcional" inputmode="tel">
-                </div>
-              </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-                <div>
-                  <label style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:5px">Cidade *</label>
-                  <input class="input" id="plan-form-city" type="text" placeholder="Sua cidade">
-                </div>
-                <div>
-                  <label style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:5px">Estado</label>
-                  <input class="input" id="plan-form-state" type="text" placeholder="SP, RS, MG...">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                  <div>
+                    <label style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:5px">Cidade *</label>
+                    <input class="input" id="plan-form-city" type="text" placeholder="Sua cidade">
+                  </div>
+                  <div>
+                    <label style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:5px">Estado *</label>
+                    <input class="input" id="plan-form-state" type="text" placeholder="SP, RS, MG...">
+                  </div>
                 </div>
               </div>
               <div>

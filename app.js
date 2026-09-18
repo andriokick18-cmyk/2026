@@ -145,14 +145,21 @@ addEventListener("DOMContentLoaded",async()=>{
   setInterval(function(){fetch("/api/warmup",{credentials:"include"}).catch(function(){});},4*60*1000);
 });
 
-async function checkStatus(){
-  // Esconde landing enquanto verifica sessão (evita flash para usuário já logado)
-  const _land=g("#landing");if(_land)_land.style.visibility="hidden";
-  try{
-    const r=await fetch("/api/status",{credentials:"include"});const d=await r.json();
-    if(_land)_land.style.visibility="";
-    if(d.connected){
-      U={connected:true,email:d.email,name:d.name||d.email,picture:d.picture||"",isAdmin:!!d.isAdmin,plan:d.plan||"free",vip:d.vip||null,todaySentManual:d.todaySentManual||0,manualLimit:d.manualLimit??0,manualRemaining:(d.manualRemaining??0),todaySentAuto:d.todaySentAuto||0,autoLimit:d.autoLimit??0,autoRemaining:(d.autoRemaining??0),autoEnabled:true,autoJob:d.autoJob||null,autoStats:d.autoStats||{sent:0,failed:0},onboarded:!!d.onboarded,profiles:d.profiles||[],senderEmails:d.senderEmails||[],senderMax:d.senderMax||1,adminSettings:d.adminSettings||null,totalSent:d.totalSent||0,totalManual:d.totalManual||0,totalAutoHist:d.totalAutoHist||0,totalReplies:d.totalReplies||0,
+// ── 🔁 v185 LOTE 3: applyStatus(d) — FONTE ÚNICA do "o que o servidor diz
+// sobre esta conta". Antes só o checkStatus() do boot montava o U inteiro; o
+// syncData() (chamado depois de comprar, de conectar Gmail, de voltar pra
+// Home) atualizava só manualLimit/autoLimit/remaining. Resultado real: a
+// ATIVAÇÃO PROVISÓRIA (intencional desde 21/07 — comprovante que confere
+// libera o plano NA HORA) existia no servidor e era INVISÍVEL na tela: a
+// pessoa clicava em "Ir para Envio Automático" logo após comprar e batia no
+// cartão vermelho "Plano necessário", porque U.needsPlan/U.vip continuavam
+// os do boot. Só um F5 resolvia, e ninguém sabia disso.
+// ⚠️ Esta função NÃO mexe em tela nenhuma (nada de showApp/sv) — senão
+// chamá-la no meio do checkout jogaria a pessoa pra Home.
+function applyStatus(d){
+  if(!d||!d.connected)return;
+  const _antes=U&&U.connected?{needsPlan:!!U.needsPlan,plan:U.plan,gmail:!!U.gmailConnected}:null;
+  U={...U,connected:true,email:d.email,name:d.name||d.email,picture:d.picture||"",isAdmin:!!d.isAdmin,plan:d.plan||"free",vip:d.vip||null,todaySentManual:d.todaySentManual||0,manualLimit:d.manualLimit??0,manualRemaining:(d.manualRemaining??0),todaySentAuto:d.todaySentAuto||0,autoLimit:d.autoLimit??0,autoRemaining:(d.autoRemaining??0),autoEnabled:true,autoJob:d.autoJob||null,autoStats:d.autoStats||{sent:0,failed:0},onboarded:!!d.onboarded,profiles:d.profiles||[],senderEmails:d.senderEmails||[],senderMax:d.senderMax||1,adminSettings:d.adminSettings||null,totalSent:d.totalSent||0,totalManual:d.totalManual||0,totalAutoHist:d.totalAutoHist||0,totalReplies:d.totalReplies||0,
   // Novos campos
   emailContato:d.emailContato||"",whatsapp:d.whatsapp||"",rankName:d.rankName||"",appAvatarId:d.appAvatarId||"",h2bProfile:d.h2bProfile||{},phone:d.phone||"",serverId:d.serverId||1,publicProfile:d.publicProfile||{},
   // 🔒 v172 (ORDEM DO DONO, 11/09/2026): gate de envio — plano pago ativo E
@@ -160,6 +167,20 @@ async function checkStatus(){
   // 🐛 v172c: gmailEmail é o Gmail REAL de envio (null se ainda não conectou)
   // — email é só a identidade de login (username sem @ pra conta nova).
   gmailConnected:!!d.gmailConnected,gmailEmail:d.gmailEmail||null,needsPlan:!!d.needsPlan};
+  UPROFILES=d.profiles||[];U.profiles=UPROFILES;
+  // Pedido pendente na Home: se o plano/gate mudou, o card em cache virou
+  // mentira — força uma releitura na próxima renderização.
+  if(_antes&&(_antes.needsPlan!==!!U.needsPlan||_antes.plan!==U.plan||_antes.gmail!==!!U.gmailConnected))_pendingOrderCache=undefined;
+}
+
+async function checkStatus(){
+  // Esconde landing enquanto verifica sessão (evita flash para usuário já logado)
+  const _land=g("#landing");if(_land)_land.style.visibility="hidden";
+  try{
+    const r=await fetch("/api/status",{credentials:"include"});const d=await r.json();
+    if(_land)_land.style.visibility="";
+    if(d.connected){
+      applyStatus(d);
       // 🌐 v149c (dono, 20/08: "tira aquele negócio de qual servidor você
       // está, agora só tem 1 server!") — os selos "Servidor N" do drawer e
       // do perfil foram removidos junto com a era multi-servidor.
@@ -174,7 +195,10 @@ async function checkStatus(){
         }catch(e){}
       }
       UPROFILES=d.profiles||[];if(U)U.profiles=UPROFILES;
-      CFG={name:d.name||"",country:d.country||"Brazil",phone:d.phone||"",city:d.city||"",language:d.language||"pt-BR",subject:d.settings?.subject||"",body:d.settings?.body||""};
+      // v185 LOTE 3: `estado` passou a viajar no /api/status (o cadastro v175 já
+      // obriga o campo) — é o que deixa o passo 2 da compra confirmar os dados
+      // em vez de pedir tudo de novo.
+      CFG={name:d.name||"",country:d.country||"Brazil",phone:d.phone||"",whatsapp:d.whatsapp||"",city:d.city||"",estado:d.estado||"",language:d.language||"pt-BR",subject:d.settings?.subject||"",body:d.settings?.body||""};
       DOCS=d.cvs||[];
       // Só redefine activeResIdx se ainda não foi definido (evita sobrescrever seleção do usuário)
       if(activeResIdx===null) activeResIdx=DOCS.filter(c=>(c.cvType||"resume")==="resume").slice(-1)[0]?.idx||null;
@@ -5329,7 +5353,10 @@ async function syncData(){
     // FIX-3: carrega IDs em fila automática para ocultar do envio manual
     if(U.autoJob?.active){try{const _as=await fetch("/api/auto/status",{credentials:"include"}).then(r=>r.json());_autoQueueIds=new Set(_as.autoQueueIds||[]);}catch{}}
     // Atualiza senderEmails e adminSettings do servidor
-    if(stR&&stR.ok){try{const sd=await stR.json();if(sd.connected){U.senderEmails=sd.senderEmails||[];U.adminSettings=sd.adminSettings||U.adminSettings;U.manualLimit=sd.manualLimit??U.manualLimit;U.autoLimit=sd.autoLimit??U.autoLimit;U.manualRemaining=sd.manualRemaining??U.manualRemaining;U.autoRemaining=sd.autoRemaining??U.autoRemaining;U.autoJob=sd.autoJob||U.autoJob;updateLimChip();}}catch{}}
+    // v185 LOTE 3: applyStatus() no lugar da lista parcial de campos — o
+    // plano, o vip e o needsPlan também precisam chegar aqui (era o que
+    // fazia a ativação provisória ficar invisível até um F5).
+    if(stR&&stR.ok){try{const sd=await stR.json();if(sd.connected){applyStatus(sd);updateLimChip();}}catch{}}
   }catch{}
 }
 // 🔒 v172 (ORDEM DO DONO, 11/09/2026): pedido SEPARADO do login — só existe
@@ -5899,13 +5926,21 @@ function renderNextStep(){
   const sentToday=U.todaySentManual||0;
   const autoActive=!!(U.autoJob&&U.autoJob.active);
   let step=null;
-  if(!hasProfile){
+  // ⚠️ v185 LOTE 3: quem NÃO tem plano pago ativo não consegue enviar NADA
+  // (free é 0/0 desde o v172) — mandar essa pessoa "buscar vagas" ou
+  // "ativar o automático" é mandar pra uma parede. O 1º ramo passa a ser o
+  // gate oficial do servidor (U.needsPlan, o MESMO campo que o /api/send e o
+  // /api/auto/start usam). NUNCA usar U.plan==='free' aqui: getPlan() devolve
+  // "vipro" pra quem só tem o automático, e foi essa a armadilha do v177-FIX8.
+  if(!U.isAdmin && U.needsPlan){
+    step={icon:"⭐",ic:"var(--purple)",bg:"linear-gradient(135deg,#f5f3ff,#ede9fe)",bd:"var(--purpleb)",title:t('ns0_t'),sub:t('ns0_s'),cta:t('ns0_c'),act:"goPlans"};
+  } else if(!hasProfile){
     step={icon:"📝",ic:"var(--blue)",bg:"linear-gradient(135deg,#eff6ff,#dbeafe)",bd:"var(--blueb)",title:t('ns1_t'),sub:t('ns1_s'),cta:t('ns1_c'),act:"goProfile"};
   } else if(!hasCv){
     step={icon:"📎",ic:"#d97706",bg:"linear-gradient(135deg,#fffbeb,#fef3c7)",bd:"#fcd34d",title:t('ns2_t'),sub:t('ns2_s'),cta:t('ns2_c'),act:"goProfile"};
   } else if(sentToday===0 && !autoActive){
     step={icon:"🚀",ic:"var(--green)",bg:"linear-gradient(135deg,#ecfdf5,#d1fae5)",bd:"var(--greenb)",title:t('ns3_t'),sub:t('ns3_s'),cta:t('ns3_c'),act:"goJobs"};
-  } else if(U.plan==="free" && (U.manualRemaining||0)<=0){
+  } else if((U.manualLimit||0)>0 && (U.manualRemaining||0)<=0){
     step={icon:"⭐",ic:"var(--purple)",bg:"linear-gradient(135deg,#f5f3ff,#ede9fe)",bd:"var(--purpleb)",title:t('ns4_t'),sub:t('ns4_s'),cta:t('ns4_c'),act:"goPlans"};
   } else if(U.plan!=="free" && !autoActive){
     step={icon:"🤖",ic:"var(--purple)",bg:"linear-gradient(135deg,#f5f3ff,#ede9fe)",bd:"var(--purpleb)",title:t('ns5_t'),sub:t('ns5_s'),cta:t('ns5_c'),act:"goAuto"};
@@ -5931,34 +5966,66 @@ function renderNextStep(){
 // acelera a aprovação — só deixa claro, sempre que a pessoa abrir o app, que
 // o pedido está na fila e não foi esquecido. Cache simples em memória
 // (_pendingOrderCache) pra não bater na API toda hora que a Home renderiza.
-let _pendingOrderCache=undefined; // undefined=ainda não checou, null=checou e não tem pendente, obj=pendente
+let _pendingOrderCache=undefined; // undefined=ainda não checou, null=checou e não tem nada a contar, obj=pedido
+let _pendingOrderCacheEm=0;         // quando o cache foi montado (envelhece em 5min)
+let _pedidoCanceladoDispensado=null; // id que o usuário fechou no X (só nesta sessão)
+const WA_SUPORTE="https://wa.me/5553981453496";
 async function renderPendingOrderCard(){
   const box=g("#home-pending-order");if(!box)return;
   if(!U.connected){box.style.display="none";return;}
+  // v185 LOTE 3: o cache vivia pra sempre — pedido aprovado (ou cancelado
+  // pelo robô do v178) continuava anunciado como "em análise" até a pessoa
+  // recarregar o app. Agora ele envelhece em 5min e é invalidado na hora em
+  // que o /api/status muda plano/gate (applyStatus).
+  if(_pendingOrderCache!==undefined&&Date.now()-_pendingOrderCacheEm>5*60_000)_pendingOrderCache=undefined;
   if(_pendingOrderCache===undefined){
     box.style.display="none"; // evita "flash" enquanto busca
     try{
       const r=await fetch("/api/pedidos",{credentials:"include"});
       const d=await jsonSafe(r);
-      const pend=(d?.pedidos||[]).find(p=>p.status==="pendente");
-      _pendingOrderCache=pend||null;
+      // ⚠️ Antes era .find(status==="pendente") — dependia da ORDEM em que a
+      // lista chegou e IGNORAVA o pedido cancelado: quem teve o pedido
+      // recusado (comprovante com valor divergente é cancelado sozinho desde
+      // o v178) simplesmente sumia da Home, sem NENHUM aviso, e ficava
+      // esperando um plano que nunca vinha. Agora vale o pedido MAIS RECENTE
+      // entre pendente e cancelado, e o cancelado só aparece por 7 dias.
+      const cand=(d?.pedidos||[]).filter(p=>p&&(p.status==="pendente"||(p.status==="cancelado"&&(Date.now()-(p.createdAt||0))<7*86400_000)))
+        .sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+      _pendingOrderCache=cand[0]||null;
     }catch(e){_pendingOrderCache=null;}
+    _pendingOrderCacheEm=Date.now();
     if(curView==="home")renderPendingOrderCard(); // reexibe já com o dado (se ainda na Home)
     return;
   }
   if(!_pendingOrderCache){box.style.display="none";return;}
   const p=_pendingOrderCache;
+  if(p.status==="cancelado"&&_pedidoCanceladoDispensado===p.id){box.style.display="none";return;}
   const planLbl={vip:"VIP Manual",vipro:"VIPro",doublepro:"DoublePro"}[p.plano]||p.plano||"seu pedido";
   const dt=p.createdAt?new Date(p.createdAt).toLocaleDateString("pt-BR",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}):"";
+  const cancelado=p.status==="cancelado";
+  const motivo=cancelado?String(p.motivoCancelamento||"").slice(0,220):"";
   box.style.display="block";
-  box.innerHTML=`<div style="background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1.5px solid #fcd34d;border-radius:14px;padding:13px 14px;display:flex;align-items:center;gap:12px">
-    <div style="width:42px;height:42px;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:21px;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.06)">⏳</div>
+  box.innerHTML=`<div style="background:${cancelado?"linear-gradient(135deg,#fef2f2,#fee2e2)":"linear-gradient(135deg,#fffbeb,#fef3c7)"};border:1.5px solid ${cancelado?"#fca5a5":"#fcd34d"};border-radius:14px;padding:13px 14px;display:flex;align-items:flex-start;gap:12px">
+    <div style="width:42px;height:42px;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:21px;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.06)">${cancelado?"❌":"⏳"}</div>
     <div style="flex:1;min-width:0">
-      <div style="font-size:10px;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.05em;margin-bottom:1px">Pedido em análise</div>
-      <div style="font-size:14px;font-weight:800;color:var(--text);line-height:1.25">${esc(planLbl)} em revisão</div>
-      <div style="font-size:11.5px;color:var(--t2);line-height:1.35;margin-top:2px">Enviado ${dt?"em "+dt:"recentemente"} · confirmação após revisão do admin · dúvidas: WhatsApp no rodapé</div>
+      <div style="font-size:10px;font-weight:800;color:${cancelado?"#991b1b":"#92400e"};text-transform:uppercase;letter-spacing:.05em;margin-bottom:1px">${cancelado?esc(t('po_canc')):esc(t('po_pend'))}</div>
+      <div style="font-size:14px;font-weight:800;color:var(--text);line-height:1.25">${esc(planLbl)} ${cancelado?esc(t('po_canc_t')):esc(t('po_pend_t'))}</div>
+      <div style="font-size:11.5px;color:var(--t2);line-height:1.35;margin-top:2px">${cancelado
+        ?(motivo?esc(t('po_motivo'))+": <strong>"+esc(motivo)+"</strong><br>":"")+esc(t('po_canc_s'))
+        :esc(t('po_pend_s'))+(dt?" · "+esc(dt):"")}</div>
+      <div style="margin-top:7px;display:flex;gap:8px;flex-wrap:wrap">
+        ${cancelado?`<button onclick="sv('plans')" style="background:var(--purple);color:#fff;border:none;border-radius:9px;padding:7px 12px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">${esc(t('po_refazer'))}</button>`:""}
+        <a href="${WA_SUPORTE}" target="_blank" rel="noopener noreferrer" style="background:#fff;border:1px solid var(--border2);color:var(--t2);border-radius:9px;padding:7px 12px;font-size:12px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:5px">💬 ${esc(t('po_wa'))}</a>
+      </div>
     </div>
+    ${cancelado?`<button onclick="dispensarPedidoCancelado('${esc(p.id)}')" aria-label="${esc(t('po_fechar'))}" title="${esc(t('po_fechar'))}" style="background:none;border:none;color:var(--t3);font-size:18px;cursor:pointer;line-height:1;padding:2px 4px;min-width:44px;min-height:44px">×</button>`:""}
   </div>`;
+}
+// O card vermelho não pode virar permanente: o X some com ele nesta sessão
+// (e o pedido continua visível em "Meus pagamentos", que é o registro real).
+function dispensarPedidoCancelado(id){
+  _pedidoCanceladoDispensado=id;
+  const box=g("#home-pending-order");if(box)box.style.display="none";
 }
 // ══ ATIVIDADE RECENTE — últimos envios reais do HIST (nunca inventa: sem histórico, mostra o vazio honesto) ══
 function renderHomeActivity(){
@@ -6044,8 +6111,12 @@ function renderHome(){
       if(ai)ai.textContent="✅";
     }else{
       ac.className="home-auto-card inactive";
-      if(at){at.textContent="🤖 Inicie o seu Automático";at.style.color="#fff";}
-      if(as){as.innerHTML="Envie currículos enquanto você trabalha. Não garantimos a vaga — mas garantimos que seu currículo <strong>chegue ao empregador</strong>.";as.style.color="rgba(255,255,255,.92)";}
+      // v185 LOTE 3: pra quem não tem plano ativo, "Inicie o seu Automático"
+      // é um convite pra um cadeado — o card-herói agora fala a verdade e
+      // leva pra Planos (mesmo gate do servidor, U.needsPlan).
+      const _semPlano=!U.isAdmin&&U.needsPlan;
+      if(at){at.textContent=_semPlano?t('ha_semplano_t'):"🤖 Inicie o seu Automático";at.style.color="#fff";}
+      if(as){as.innerHTML=_semPlano?esc(t('ha_semplano_s')):"Envie currículos enquanto você trabalha. Não garantimos a vaga — mas garantimos que seu currículo <strong>chegue ao empregador</strong>.";as.style.color="rgba(255,255,255,.92)";}
       if(ai)ai.textContent="🤖";
     }
   }
@@ -7470,6 +7541,7 @@ console.debug("[v14+] Onboarding, FAQ, Preview Auto, Follow-up, Score carregados
 const LANG_DICT = {
   pt: {
     "h_faq_gone":"Vagas somem do manual em dois casos: (1) voc\u00ea j\u00e1 enviou candidatura para aquela empresa, ou (2) aquela vaga est\u00e1 na fila do autom\u00e1tico. Isso \u00e9 correto \u2014 evita enviar duas vezes para a mesma empresa.", // 🌐 v137b
+    "ns0_t":"Escolha seu plano pra começar","ns0_s":"Sem plano ativo o envio fica bloqueado — nem manual, nem automático.","ns0_c":"Ver planos","ha_semplano_t":"⭐ Escolha seu plano","ha_semplano_s":"O envio de candidaturas (manual e automático) precisa de um plano ativo.","po_pend":"Pedido em análise","po_pend_t":"em revisão","po_pend_s":"Enviado · confirmação após revisão do admin","po_canc":"Pedido cancelado","po_canc_t":"não foi aceito","po_canc_s":"Você pode fazer um pedido novo com o valor certo.","po_motivo":"Motivo","po_refazer":"Fazer novo pedido","po_wa":"Falar no WhatsApp","po_fechar":"Fechar aviso","pd_conf":"✅ Confirme seus dados de contato","pd_errado":"Algum dado está errado?","pd_corrigir":"Corrigir no meu Perfil","pd_nome":"Nome","pd_wpp":"WhatsApp","pd_cidade":"Cidade","pd_toast":"Atualize seus dados aqui e volte em Planos pra concluir o pedido.",
     "ns1_t":"Crie seu perfil de candidatura","ns1_s":"\u00c9 o que vai nos e-mails para as empresas. Leva 1 minuto.","ns1_c":"Criar perfil","ns2_t":"Anexe seu curr\u00edculo (PDF)","ns2_s":"Sem curr\u00edculo anexado, suas candidaturas n\u00e3o saem.","ns2_c":"Anexar","ns3_t":"Tudo pronto! Comece a se candidatar","ns3_s":"Seu perfil est\u00e1 completo. Envie sua primeira candidatura de hoje.","ns3_c":"Buscar vagas","ns4_t":"Voc\u00ea atingiu o limite de hoje","ns4_s":"Vire VIP e envie at\u00e9 100 candidaturas por dia.","ns4_c":"Ver planos","ns5_t":"Ative o Envio Autom\u00e1tico","ns5_s":"Deixe o sistema enviar candidaturas enquanto voc\u00ea trabalha.","ns5_c":"Ativar","logs_none":"Nenhum log ainda","logs_none_s":"Os logs aparecem aqui quando voc\u00ea usar o Envio Autom\u00e1tico","notif_none_unread":"Nenhuma notifica\u00e7\u00e3o n\u00e3o lida \ud83c\udf89","notif_none":"Nenhuma notifica\u00e7\u00e3o por enquanto","snd_plane":"Avi\u00e3o","snd_plane_d":"Som de decolagem","sug_hero":"Sua ideia pode virar uma funcionalidade! Mande sua sugest\u00e3o para a equipe do H2BApply.","sc_vagas":"\ud83d\udcbc Sobre as vagas", // 🌐 v137: dinâmicos da varredura E2E
     "g_1":"Envio Autom\u00e1tico","g_2":"Configure e deixe o sistema trabalhar por voc\u00ea","g_3":"/m\u00eas","g_4":"Autom\u00e1tico + Manual","g_5":"M\u00e1ximo desempenho","g_6":"Atalhos R\u00e1pidos","g_7":"Curr\u00edculos","g_8":"M\u00eas","g_11":"N\u00fameros","g_12":"\ud83c\udde7\ud83c\uddf7 Portugu\u00eas","g_14":"(at\u00e9 600 caracteres)","g_15":"(at\u00e9 400 caracteres)","g_16":"(at\u00e9 300 caracteres)","g_17":"Ajuda o sistema a encontrar vagas certas pra voc\u00ea","g_18":"J\u00e1 foi aos EUA?","g_19":"\u274c N\u00e3o","g_20":"\ud83d\udde3\ufe0f N\u00edvel de ingl\u00eas","g_21":"\ud83d\udcd6 B\u00e1sico","g_22":"\ud83c\udf1f Avan\u00e7.","g_23":"\ud83c\udf3f \u00c1rea preferida","g_24":"\ud83c\udfd7\ufe0f Constru\u00e7\u00e3o","g_25":"\ud83e\udd9e Frutos do mar","g_26":"\ud83d\udcc5 1 m\u00eas","g_27":"Notifica\u00e7\u00f5es","g_28":"\ud83d\udeeb Alertas do H2BApply","g_29":"Toque no bot\u00e3o para ativar","g_30":"seu curr\u00edculo (PDF)","g_31":"texto do e-mail","g_32":"at\u00e9 2 perfis: um H-2B e um H-2A","g_33":"Anexa seu curr\u00edculo PDF em cada candidatura","g_34":"Define o texto do e-mail em ingl\u00eas","g_35":"Essencial para o Envio Autom\u00e1tico funcionar","g_36":"Curr\u00edculo usado:","g_37":"\ud83d\udcc8 \u00daltimos 7 dias","g_38":"Configura\u00e7\u00f5es exclusivas de administrador","g_39":"Sem expira\u00e7\u00e3o \u00b7 200 manual + 200 auto/dia \u00b7 Prioridade m\u00e1xima","g_40":"segundos entre cada envio","g_41":"3min (padr\u00e3o)","g_42":"Adicione Gmails acima para configurar limites","g_43":"\u00b7 invis\u00edvel para usu\u00e1rios","g_44":"Aten\u00e7\u00e3o:","g_45":"1 Gmail \u00fanico","g_46":"responsabilidade do usu\u00e1rio","g_49":"vagas pra voc\u00ea","g_50":"\ud83c\udfaf Seu perfil ser\u00e1 usado em todos os envios:","g_51":"\u25b6 Come\u00e7ar agora","g_52":"Envia sem parar 24/7. Reseta \u00e0 meia-noite e continua at\u00e9 zerar a fila.","g_53":"\ud83d\udd50 Agendar hor\u00e1rio","g_54":"Envia das X \u00e0s Y horas todo dia. Fora do hor\u00e1rio fica pausado.","g_55":"Iniciar \u00e0s","g_56":"Parar \u00e0s","g_62":"Pagamento via PIX","g_63":"*obrigat\u00f3rio","g_64":"Print da confirmação do Pix do seu pagamento","g_65":"Toque para selecionar o comprovante","g_66":"JPG, PNG, PDF \u2014 m\u00e1x 5MB","g_67":"at\u00e9 24h","g_68":"Para d\u00favidas, entre em contato:","g_69":"1 empresa confirmar = voc\u00ea est\u00e1 nos EUA \u2708\ufe0f","g_72":"Aprenda a usar o sistema do zero, passo a passo","g_73":"\ud83d\udccb O que voc\u00ea vai aprender:","g_74":"Resposta da empresa","g_75":"D\u00favidas Comuns","g_76":"Configurar seu Perfil","g_77":"Fa\u00e7a isso ANTES de enviar qualquer candidatura","g_78":"pa\u00eds","g_79":"Aba \"Perfis de Curr\u00edculo\" \u2014 Configurar curr\u00edculo e modelo","g_80":"upload do seu curr\u00edculo em PDF","g_81":"Sem curr\u00edculo, o perfil n\u00e3o \u00e9 salvo.","g_82":"assuntos e corpos de e-mail","g_83":"M\u00ednimo 3 varia\u00e7\u00f5es de cada.","g_84":"Seu perfil est\u00e1 configurado. Agora voc\u00ea pode enviar candidaturas.","g_85":"Envio Manual de Candidaturas","g_86":"Voc\u00ea escolhe cada vaga e envia uma por uma","g_87":"Escolha a planilha de vagas","g_88":"Mais vagas dispon\u00edveis.","g_89":"Como encontrar vagas para voc\u00ea","g_90":"Clique em uma vaga para ver os detalhes","g_91":"Veja o e-mail da empresa e as informa\u00e7\u00f5es da vaga","g_92":"O e-mail com seu curr\u00edculo \u00e9 enviado automaticamente!","g_93":"somem da lista","g_94":"Envio Autom\u00e1tico 24h","g_95":"O sistema envia enquanto voc\u00ea dorme","g_96":"\ud83e\udd16 O que \u00e9 o Envio Autom\u00e1tico?","g_97":"\"Envio Autom\u00e1tico\"","g_98":"quantidade de vagas","g_99":"\"Iniciar Autom\u00e1tico\"","g_100":"\u26a0\ufe0f Aten\u00e7\u00e3o:","g_101":"somem do envio manual","g_102":"A resposta cai direto no SEU Gmail","g_103":"seu pr\u00f3prio Gmail","g_104":"Abra o e-mail da empresa direto no seu Gmail","g_105":"Digite sua resposta em ingl\u00eas e envie \u2014 \u00e9 um e-mail seu, como qualquer outro","g_106":"\ud83d\udca1 Dica de resposta r\u00e1pida:","g_107":"Envie mais candidaturas por dia","g_108":"Gr\u00e1tis","g_109":"VIP · R$100/mês","g_110":"VIPro · R$150/mês","g_111":"DoublePro · R$250/mês","g_112":"\ud83c\udf81 Como ganhar VIP gr\u00e1tis:","g_113":"1 dia VIP Manual","g_114":"C\u00f3digos promocionais","g_115":"D\u00favidas Frequentes","g_116":"Respostas r\u00e1pidas para perguntas comuns","g_117":"N\u00e3o.","g_118":"Ainda com d\u00favidas?","g_119":"Assista aos v\u00eddeos explicativos no YouTube ou fale pelo Instagram","g_128":"desaparecer de qualquer lugar p\u00fablico","g_129":"fazer login novamente com o mesmo e-mail","g_130":"m\u00ednimo 10 caracteres","g_131":"Autom\u00e1tico","g_132":"Vaga n\u00e3o identificada","g_133":"\ud83d\udcc5 Dispon\u00edvel","g_134":"\u2753 D\u00favida","g_135":"Constru\u00e7\u00e3o","g_136":"Dep\u00f3sito","g_150":"Este perfil ser\u00e1 usado nos envios manuais e autom\u00e1ticos","g_151":"curr\u00edculo (PDF)","g_152":"\u2460 Informa\u00e7\u00f5es B\u00e1sicas","g_153":"\u00cdcone","g_154":"Escolha um \u00edcone para o perfil:","g_155":"\u2461 Curr\u00edculo &amp; Cover Letter (PDF)","g_156":"\ud83d\udcc4 Curr\u00edculo (PDF)","g_157":"\u2705 Curr\u00edculo vinculado a este perfil","g_158":"\ud83d\udce4 Novo arquivo \u2014 ser\u00e1 enviado ao salvar","g_159":"Clique ou arraste um PDF para fazer upload","g_160":"M\u00e1x. 5MB","g_161":"ou escolha da sua conta","g_162":"Carta de apresenta\u00e7\u00e3o \u2014 n\u00e3o obrigat\u00f3ria, mas aumenta as chances de resposta.","g_163":"apenas nas vagas do tipo de visto deste perfil","g_164":"\u2462 Assuntos do E-mail","g_165":"M\u00ednimo 3","g_166":"Vari\u00e1veis:","g_167":"\u2463 Corpos de E-mail","g_168":"\u2699\ufe0f Vari\u00e1veis \u2014 clique para copiar:","g_169":"3 corpos de e-mail","g_170":"Selecione as categorias para as quais este perfil ser\u00e1 usado automaticamente","g_171":"\u2464 Configura\u00e7\u00e3o","g_172":"Prote\u00e7\u00f5es sempre ativas:","g_173":"n\u00e3o podem ser desativados","g_174":"Not\u00edcias","g_186":"Cada perfil de curr\u00edculo tem o curr\u00edculo vinculado diretamente.","g_187":"O envio autom\u00e1tico sempre usa o PDF do perfil correto \u2014 sem confus\u00e3o.","g_190":"Crie seu primeiro Perfil de Curr\u00edculo para","g_191":"come\u00e7ar a enviar candidaturas","g_204":"S\u00f3 precisa estar logado uma vez.","g_212":". É por ela que conferimos o seu pagamento.","g_221":"No topo da tela de Envio Manual voc\u00ea v\u00ea 3 abas:","g_229":"10 autom\u00e1ticos/dia","g_230":"sem autom\u00e1tico","g_231":"100 autom\u00e1ticos/dia","g_233":"Por que minhas vagas sumiram do manual?","g_234":"O autom\u00e1tico parou. O que fa\u00e7o?","g_235":"Recebi um e-mail em ingl\u00eas. O que fa\u00e7o?","g_175":"Toque em qualquer candidatura para ver detalhes,","g_176":". O bot\u00e3o","g_177":"apaga tudo e faz as vagas voltarem para a lista (\u00fatil para recandidatar-se).","g_178":"Só o plano DoublePro pode conectar um 2º Gmail de envio (o robô reveza entre os dois e reduz o risco de bloqueio). VIP e VIPro usam 1 e-mail; sem plano não dá pra vincular Gmail.","g_179":"\ud83c\udfad Escolha seu avatar","g_180":"\ud83d\udca1 O que voc\u00ea escrever aqui aparece quando algu\u00e9m","g_181":"\ud83d\udc64 Sobre voc\u00ea","g_182":"\ud83d\udcbc Experi\u00eancias de trabalho","g_183":"\ud83d\udcac O que voc\u00ea acha do H2BApply?","g_184":"\ud83d\udcbe Salve com o bot\u00e3o","g_185":"no fim da p\u00e1gina.","g_188":". Voc\u00ea pode ter","g_189":"o perfil que voc\u00ea escolher no Passo 3 do assistente","g_192":"Estat\u00edsticas","g_193":"Gmails de envio","g_194":"10 envios GR\u00c1TIS/dia para todos!","g_195":"Enviar muitos emails com","g_196":"pode gerar bloqueio tempor\u00e1rio pelo Google. Recomendamos adicionar","g_197":"para distribuir os envios. O risco de bloqueio \u00e9 de","g_198":"\ud83d\udcec Pr\u00f3ximas candidaturas","g_199":"\u2014 Ver\u00e3o","g_202":"O envio alterna","g_203":"O autom\u00e1tico zerou a fila? Resetar enviados","g_205":"Hor\u00e1rio (Bras\u00edlia)","g_207":"🧾 Meus pedidos","g_210":"📸 Comprovante do pagamento","g_211":"📅 Data em que você pagou","g_213":"), seu plano é ativado","g_214":"Preencha seu","g_215":"(escreva \"Brazil\" em ingl\u00eas),","g_216":"com c\u00f3digo do pa\u00eds (+55 85 99999-9999) e","g_217":"D\u00ea um","g_218":"para o perfil. Ex: \"Meu Perfil Principal\" ou \"Landscape\"","g_219":"(obrigat\u00f3rio). Clique na \u00e1rea pontilhada ou arraste o arquivo.","g_220":"no final da tela.","g_222":"\u2014 Vagas de Ver\u00e3o nos EUA (temporada principal H-2B).","g_223":"\u2014 Vagas de Inverno. Menos vagas, mas ainda v\u00e1lidas.","g_224":"Clique no bot\u00e3o verde","g_225":"Vagas j\u00e1 enviadas","g_226":"que quer colocar no autom\u00e1tico","g_227":"As vagas que voc\u00ea coloca no autom\u00e1tico","g_228":"O H2BApply N\u00c3O l\u00ea nem guarda sua caixa de entrada \u2014 cada candidatura sai do","g_232":"ao se cadastrar (autom\u00e1tico)","g_236":"Se pedir documentos, entre em contato com um despachante de vistos.","g_237":"nas vari\u00e1veis de ambiente do servidor para ativar.","g_239":"Configura\u00e7\u00f5es","g_239b":"Sess\u00e3o","g_239c":"Mais","tut_center":"Central de Tutoriais","settings_adv":"Configura\u00e7\u00f5es avan\u00e7adas","g_240":"Enviar sugest\u00e3o ou ideia pros desenvolvedores","g_241":"Zona de perigo","g_242":"Sugest\u00f5es para os Devs","g_243":"Nova Sugest\u00e3o","g_244":"Sua sugest\u00e3o","g_245":"Fique de olho no","g_246":"para novidades!","g_253":"para evitar bloqueio por spam.","g_255":"para evitar spam.","g_256":"Planilhas compat\u00edveis","g_257":"Categorias de vaga","pe_eng_lbl":"🗣️ Seu inglês (opcional)","pe_eng_none":"Não falo","pe_eng_basic":"Básico","pe_eng_inter":"Intermediário","pe_eng_adv":"Avançado","pe_cnh_lbl":"Tenho CNH (carteira de motorista)","pe_cover_note":"📝 A <strong>cover letter</strong> (carta de apresentação) <strong>NÃO é obrigatória</strong> — só o <strong>résumé</strong> (seu currículo em PDF, logo acima) já basta pra se candidatar. Se tiver uma, ela vai junto e pode ajudar; se não tiver, pule esta parte sem problema.","pe_subj_title":"③ Título do e-mail (assunto)","pe_subj_help":"O <strong>título</strong> é a linha que o empregador vê na caixa de entrada antes de abrir — curto e direto, em inglês, ex.: <em>“Application for {vaga} — {nome}”</em>. Escreva <strong style='color:var(--red)'>3 versões diferentes</strong> (os 3 campos já estão abertos; pode adicionar mais). O sistema alterna entre elas a cada envio pra não parecer spam.","pe_count0":"0 de 3 preenchidos","pe_subj_add":"Adicionar outro título","pe_subj_warn":"Escreva pelo menos <strong>3 títulos diferentes</strong> (os campos com *) — é a proteção contra bloqueio por spam.","pe_body_title":"④ Corpo do e-mail (a mensagem)","pe_body_help":"O <strong>corpo</strong> é a mensagem completa que o empregador lê ao abrir: quem você é, a vaga que quer, sua experiência e como falar com você. Em inglês, com as suas palavras. Escreva <strong style='color:var(--red)'>3 versões diferentes</strong> (os 3 campos já estão abertos); as variáveis abaixo são trocadas automaticamente em cada envio.","pe_body_add":"Adicionar outro texto","pe_body_warn":"Escreva pelo menos <strong>3 textos diferentes</strong> (os campos com *) — é a proteção contra bloqueio por spam.", // 🌐 v136: varredura final (auto)
     "gu_t":"Como o H2BApply usa sua conta Google","gu_b":"Pedimos <strong>uma única permissão</strong> do Google: enviar e-mails pelo seu Gmail (<code style=\"background:rgba(255,255,255,.08);padding:1px 6px;border-radius:5px\">gmail.send</code>) — usada exclusivamente para enviar as candidaturas de emprego que <strong>você mesmo escreve e autoriza</strong>. O H2BApply <strong>nunca lê, nunca armazena e nunca acessa sua caixa de entrada</strong>. As respostas dos empregadores chegam direto no seu próprio Gmail. Você pode revogar o acesso a qualquer momento em myaccount.google.com.","gu_l":"Leia nossa Política de Privacidade completa →", // ✅ v145: transparência do uso da conta Google (verificação OAuth)
@@ -7646,6 +7718,7 @@ const LANG_DICT = {
   },
   en: {
     "h_faq_gone":"Jobs disappear from manual in two cases: (1) you already applied to that company, or (2) that job is in the auto queue. That's correct \u2014 it prevents emailing the same company twice.", // 🌐 v137b
+    "ns0_t":"Pick your plan to start","ns0_s":"Without an active plan, sending is blocked \u2014 manual and automatic.","ns0_c":"See plans","ha_semplano_t":"\u2b50 Pick your plan","ha_semplano_s":"Sending applications (manual and automatic) requires an active plan.","po_pend":"Order under review","po_pend_t":"under review","po_pend_s":"Sent \u00b7 confirmed after admin review","po_canc":"Order cancelled","po_canc_t":"was not accepted","po_canc_s":"You can place a new order with the correct amount.","po_motivo":"Reason","po_refazer":"Place a new order","po_wa":"Chat on WhatsApp","po_fechar":"Dismiss notice","pd_conf":"\u2705 Confirm your contact details","pd_errado":"Something wrong?","pd_corrigir":"Fix it in my Profile","pd_nome":"Name","pd_wpp":"WhatsApp","pd_cidade":"City","pd_toast":"Update your details here, then go back to Plans to finish the order.",
     "ns1_t":"Create your application profile","ns1_s":"It's what goes in the emails to companies. Takes 1 minute.","ns1_c":"Create profile","ns2_t":"Attach your resume (PDF)","ns2_s":"Without a resume attached, your applications won't go out.","ns2_c":"Attach","ns3_t":"All set! Start applying","ns3_s":"Your profile is complete. Send your first application today.","ns3_c":"Find jobs","ns4_t":"You hit today's limit","ns4_s":"Go VIP and send up to 100 applications a day.","ns4_c":"See plans","ns5_t":"Turn on Auto Send","ns5_s":"Let the system send applications while you work.","ns5_c":"Turn on","logs_none":"No logs yet","logs_none_s":"Logs show up here once you use Auto Send","notif_none_unread":"No unread notifications \ud83c\udf89","notif_none":"No notifications for now","snd_plane":"Airplane","snd_plane_d":"Takeoff sound","sug_hero":"Your idea can become a feature! Send your suggestion to the H2BApply team.","sc_vagas":"\ud83d\udcbc About the jobs", // 🌐 v137: dinâmicos da varredura E2E
     "g_1":"Auto Send","g_2":"Set it up and let the system work for you","g_3":"/mo","g_4":"Auto + Manual","g_5":"Maximum performance","g_6":"Quick Access","g_7":"Resumes","g_8":"Month","g_11":"Stats","g_12":"\ud83c\udde7\ud83c\uddf7 Portugu\u00eas","g_14":"(up to 600 characters)","g_15":"(up to 400 characters)","g_16":"(up to 300 characters)","g_17":"Helps the system find the right jobs for you","g_18":"Ever been to the USA?","g_19":"\u274c No","g_20":"\ud83d\udde3\ufe0f English level","g_21":"\ud83d\udcd6 Basic","g_22":"\ud83c\udf1f Advanced","g_23":"\ud83c\udf3f Preferred area","g_24":"\ud83c\udfd7\ufe0f Construction","g_25":"\ud83e\udd9e Seafood","g_26":"\ud83d\udcc5 1 month","g_27":"Notifications","g_28":"\ud83d\udeeb H2BApply alerts","g_29":"Tap the button to enable","g_30":"your resume (PDF)","g_31":"the email text","g_32":"up to 2 profiles: one H-2B and one H-2A","g_33":"Attaches your PDF resume to every application","g_34":"Sets the email text in English","g_35":"Essential for Auto Send to work","g_36":"Resume used:","g_37":"\ud83d\udcc8 Last 7 days","g_38":"Admin-only settings","g_39":"No expiration \u00b7 200 manual + 200 auto/day \u00b7 Top priority","g_40":"seconds between each send","g_41":"3min (default)","g_42":"Add Gmails above to set limits","g_43":"\u00b7 invisible to users","g_44":"Warning:","g_45":"1 single Gmail","g_46":"user's responsibility","g_49":"jobs for you","g_50":"\ud83c\udfaf Your profile will be used in every send:","g_51":"\u25b6 Start now","g_52":"Sends non-stop 24/7. Resets at midnight and keeps going until the queue is empty.","g_53":"\ud83d\udd50 Schedule hours","g_54":"Sends from X to Y o'clock every day. Outside that window it pauses.","g_55":"Start at","g_56":"Stop at","g_62":"Payment via PIX","g_63":"*required","g_64":"Screenshot of your PIX payment confirmation","g_65":"Tap to select the receipt","g_66":"JPG, PNG, PDF \u2014 max 5MB","g_67":"within 24h","g_68":"Questions? Contact us:","g_69":"1 company saying yes = you're in the USA \u2708\ufe0f","g_72":"Learn the system from scratch, step by step","g_73":"\ud83d\udccb What you'll learn:","g_74":"Company reply","g_75":"Common Questions","g_76":"Set Up Your Profile","g_77":"Do this BEFORE sending any application","g_78":"country","g_79":"\"Resume Profiles\" tab \u2014 set up resume and template","g_80":"upload your resume as PDF","g_81":"Without a resume, the profile won't save.","g_82":"email subjects and bodies","g_83":"At least 3 variations of each.","g_84":"Your profile is set. You can now send applications.","g_85":"Manual Application Sending","g_86":"You pick each job and send one by one","g_87":"Choose the job sheet","g_88":"More jobs available.","g_89":"How to find jobs for you","g_90":"Click a job to see the details","g_91":"See the company's email and the job info","g_92":"The email with your resume is sent automatically!","g_93":"disappear from the list","g_94":"24h Auto Send","g_95":"The system sends while you sleep","g_96":"\ud83e\udd16 What is Auto Send?","g_97":"\"Auto Send\"","g_98":"number of jobs","g_99":"\"Start Auto\"","g_100":"\u26a0\ufe0f Warning:","g_101":"disappear from manual sending","g_102":"Replies land straight in YOUR Gmail","g_103":"your own Gmail","g_104":"Open the company's email right in your Gmail","g_105":"Type your reply in English and send \u2014 it's your own email, like any other","g_106":"\ud83d\udca1 Quick reply tip:","g_107":"Send more applications per day","g_108":"Free","g_109":"VIP · $100/mo","g_110":"VIPro · $150/mo","g_111":"DoublePro · $250/mo","g_112":"\ud83c\udf81 How to earn free VIP:","g_113":"1 day of VIP Manual","g_114":"Promo codes","g_115":"FAQ","g_116":"Quick answers to common questions","g_117":"No.","g_118":"Still have questions?","g_119":"Watch the explainer videos on YouTube or reach out on Instagram","g_128":"disappear from anywhere public","g_129":"log in again with the same email","g_130":"at least 10 characters","g_131":"Auto","g_132":"Job not identified","g_133":"\ud83d\udcc5 Available","g_134":"\u2753 Question","g_135":"Construction","g_136":"Warehouse","g_150":"This profile will be used for manual and automatic sends","g_151":"resume (PDF)","g_152":"\u2460 Basic Info","g_153":"Icon","g_154":"Pick an icon for the profile:","g_155":"\u2461 Resume &amp; Cover Letter (PDF)","g_156":"\ud83d\udcc4 Resume (PDF)","g_157":"\u2705 Resume linked to this profile","g_158":"\ud83d\udce4 New file \u2014 will upload when you save","g_159":"Click or drag a PDF to upload","g_160":"Max 5MB","g_161":"or pick one from your account","g_162":"Cover letter \u2014 optional, but boosts reply chances.","g_163":"only for jobs matching this profile's visa type","g_164":"\u2462 Email Subjects","g_165":"At least 3","g_166":"Variables:","g_167":"\u2463 Email Bodies","g_168":"\u2699\ufe0f Variables \u2014 click to copy:","g_169":"3 email bodies","g_170":"Select the categories this profile will be used for automatically","g_171":"\u2464 Settings","g_172":"Always-on protections:","g_173":"cannot be turned off","g_174":"News","g_175":"Tap any application to see details,","g_176":". The","g_177":"button wipes everything and puts the jobs back on the list (handy to re-apply).","g_178":"Only the DoublePro plan can connect a 2nd sending Gmail (the robot rotates between both and lowers blocking risk). VIP and VIPro use 1 e-mail; without a plan you can't link a Gmail.","g_179":"\ud83c\udfad Pick your avatar","g_180":"\ud83d\udca1 Whatever you write here shows up when someone","g_181":"\ud83d\udc64 About you","g_182":"\ud83d\udcbc Work experience","g_183":"\ud83d\udcac What do you think of H2BApply?","g_184":"\ud83d\udcbe Save with the button","g_185":"at the bottom of the page.","g_186":"Each resume profile has its resume linked directly.","g_187":"Auto send always uses the right profile's PDF \u2014 no mix-ups.","g_188":". You can have","g_189":"the profile you pick in Step 3 of the wizard","g_190":"Create your first Resume Profile to","g_191":"start sending applications","g_192":"Statistics","g_193":"Sending Gmails","g_194":"10 FREE sends/day for everyone!","g_195":"Sending many emails with","g_196":"can trigger a temporary block by Google. We recommend adding","g_197":"to spread the sends. The block risk is","g_198":"\ud83d\udcec Upcoming applications","g_199":"\u2014 Summer","g_202":"Sending alternates","g_203":"Auto queue hit zero? Reset sent","g_204":"You only need to be logged in once.","g_205":"Time (Bras\u00edlia)","g_207":"🧾 My orders","g_210":"📸 Payment receipt","g_211":"📅 Date you paid","g_212":". That's how we verify your payment.","g_213":"), your plan is activated","g_214":"Fill in your","g_215":"(write \"Brazil\" in English),","g_216":"with country code (+55 85 99999-9999) and","g_217":"Give a","g_218":"name to the profile. E.g. \"My Main Profile\" or \"Landscape\"","g_219":"(required). Click the dotted area or drag the file.","g_220":"at the bottom of the screen.","g_221":"At the top of the Manual Send screen you'll see 3 tabs:","g_222":"\u2014 Summer jobs in the USA (main H-2B season).","g_223":"\u2014 Winter jobs. Fewer, but still valid.","g_224":"Click the green button","g_225":"Jobs already sent","g_226":"you want to add to auto","g_227":"The jobs you put on auto","g_228":"H2BApply does NOT read or store your inbox \u2014 every application goes out from your","g_229":"10 auto/day","g_230":"no auto","g_231":"100 auto/day","g_232":"on signup (automatic)","g_233":"Why did my jobs vanish from manual?","g_234":"Auto stopped. What do I do?","g_235":"I got an email in English. What do I do?","g_236":"If they ask for documents, contact a visa agent.","g_237":"in the server's environment variables to enable.","g_239":"Settings","g_239b":"Session","g_239c":"More","tut_center":"Tutorial Center","settings_adv":"Advanced settings","g_240":"Send a suggestion or idea to the devs","g_241":"Danger zone","g_242":"Suggestions for the Devs","g_243":"New Suggestion","g_244":"Your suggestion","g_245":"Keep an eye on","g_246":"for news!","g_253":"to avoid spam blocks.","g_255":"to avoid spam.","g_256":"Compatible sheets","g_257":"Job categories","pe_eng_lbl":"🗣️ Your English (optional)","pe_eng_none":"None","pe_eng_basic":"Basic","pe_eng_inter":"Intermediate","pe_eng_adv":"Advanced","pe_cnh_lbl":"I have a driver's license","pe_cover_note":"📝 The <strong>cover letter</strong> is <strong>NOT required</strong> — your <strong>résumé</strong> (the PDF right above) is enough to apply. If you have one it goes along and may help; if not, just skip this part.","pe_subj_title":"③ Email title (subject)","pe_subj_help":"The <strong>title</strong> is the line the employer sees in the inbox before opening — short and direct, in English, e.g. <em>“Application for {vaga} — {nome}”</em>. Write <strong style='color:var(--red)'>3 different versions</strong> (the 3 fields are already open; you can add more). The system rotates them on every send so it never looks like spam.","pe_count0":"0 of 3 filled in","pe_subj_add":"Add another title","pe_subj_warn":"Write at least <strong>3 different titles</strong> (the fields marked *) — that's the protection against spam blocks.","pe_body_title":"④ Email body (the message)","pe_body_help":"The <strong>body</strong> is the full message the employer reads: who you are, the job you want, your experience and how to reach you. In English, in your own words. Write <strong style='color:var(--red)'>3 different versions</strong> (the 3 fields are already open); the variables below are replaced automatically on every send.","pe_body_add":"Add another text","pe_body_warn":"Write at least <strong>3 different texts</strong> (the fields marked *) — that's the protection against spam blocks.", // 🌐 v136: varredura final (auto)
     "gu_t":"How H2BApply uses your Google account","gu_b":"We request <strong>a single permission</strong> from Google: sending e-mails through your Gmail (<code style=\"background:rgba(255,255,255,.08);padding:1px 6px;border-radius:5px\">gmail.send</code>) — used exclusively to send the job application e-mails that <strong>you yourself write and authorize</strong>. H2BApply <strong>never reads, never stores and never accesses your inbox</strong>. Employer replies arrive directly in your own Gmail. You can revoke access at any time at myaccount.google.com.","gu_l":"Read our full Privacy Policy →", // ✅ v145: transparência do uso da conta Google (verificação OAuth)
@@ -7797,6 +7870,7 @@ const LANG_DICT = {
   },
   es: {
     "h_faq_gone":"Los empleos desaparecen del manual en dos casos: (1) ya te postulaste a esa empresa, o (2) ese empleo est\u00e1 en la cola del autom\u00e1tico. Es correcto \u2014 evita escribir dos veces a la misma empresa.", // 🌐 v137b
+    "ns0_t":"Elige tu plan para empezar","ns0_s":"Sin plan activo el env\u00edo queda bloqueado \u2014 manual y autom\u00e1tico.","ns0_c":"Ver planes","ha_semplano_t":"\u2b50 Elige tu plan","ha_semplano_s":"Enviar postulaciones (manual y autom\u00e1tico) requiere un plan activo.","po_pend":"Pedido en revisi\u00f3n","po_pend_t":"en revisi\u00f3n","po_pend_s":"Enviado \u00b7 confirmaci\u00f3n tras la revisi\u00f3n del admin","po_canc":"Pedido cancelado","po_canc_t":"no fue aceptado","po_canc_s":"Puedes hacer un pedido nuevo con el valor correcto.","po_motivo":"Motivo","po_refazer":"Hacer nuevo pedido","po_wa":"Hablar por WhatsApp","po_fechar":"Cerrar aviso","pd_conf":"\u2705 Confirma tus datos de contacto","pd_errado":"\u00bfAlg\u00fan dato est\u00e1 mal?","pd_corrigir":"Corregir en mi Perfil","pd_nome":"Nombre","pd_wpp":"WhatsApp","pd_cidade":"Ciudad","pd_toast":"Actualiza tus datos aqu\u00ed y vuelve a Planes para concluir el pedido.",
     "ns1_t":"Crea tu perfil de postulaci\u00f3n","ns1_s":"Es lo que va en los correos a las empresas. Toma 1 minuto.","ns1_c":"Crear perfil","ns2_t":"Adjunta tu curr\u00edculum (PDF)","ns2_s":"Sin curr\u00edculum adjunto, tus postulaciones no salen.","ns2_c":"Adjuntar","ns3_t":"\u00a1Todo listo! Empieza a postularte","ns3_s":"Tu perfil est\u00e1 completo. Env\u00eda tu primera postulaci\u00f3n hoy.","ns3_c":"Buscar empleos","ns4_t":"Alcanzaste el l\u00edmite de hoy","ns4_s":"Hazte VIP y env\u00eda hasta 100 postulaciones al d\u00eda.","ns4_c":"Ver planes","ns5_t":"Activa el Env\u00edo Autom\u00e1tico","ns5_s":"Deja que el sistema env\u00ede postulaciones mientras trabajas.","ns5_c":"Activar","logs_none":"Sin registros todav\u00eda","logs_none_s":"Los registros aparecen aqu\u00ed cuando uses el Env\u00edo Autom\u00e1tico","notif_none_unread":"Ninguna notificaci\u00f3n sin leer \ud83c\udf89","notif_none":"Ninguna notificaci\u00f3n por ahora","snd_plane":"Avi\u00f3n","snd_plane_d":"Sonido de despegue","sug_hero":"\u00a1Tu idea puede volverse una funci\u00f3n! Env\u00eda tu sugerencia al equipo de H2BApply.","sc_vagas":"\ud83d\udcbc Sobre los empleos", // 🌐 v137: dinâmicos da varredura E2E
     "g_1":"Env\u00edo Autom\u00e1tico","g_2":"Configura y deja que el sistema trabaje por ti","g_3":"/mes","g_4":"Autom\u00e1tico + Manual","g_5":"M\u00e1ximo rendimiento","g_6":"Accesos R\u00e1pidos","g_7":"Curr\u00edculums","g_8":"Mes","g_11":"N\u00fameros","g_12":"\ud83c\udde7\ud83c\uddf7 Portugu\u00eas","g_14":"(hasta 600 caracteres)","g_15":"(hasta 400 caracteres)","g_16":"(hasta 300 caracteres)","g_17":"Ayuda al sistema a encontrar los empleos correctos para ti","g_18":"\u00bfYa fuiste a EE.UU.?","g_19":"\u274c No","g_20":"\ud83d\udde3\ufe0f Nivel de ingl\u00e9s","g_21":"\ud83d\udcd6 B\u00e1sico","g_22":"\ud83c\udf1f Avanzado","g_23":"\ud83c\udf3f \u00c1rea preferida","g_24":"\ud83c\udfd7\ufe0f Construcci\u00f3n","g_25":"\ud83e\udd9e Mariscos","g_26":"\ud83d\udcc5 1 mes","g_27":"Notificaciones","g_28":"\ud83d\udeeb Alertas de H2BApply","g_29":"Toca el bot\u00f3n para activar","g_30":"tu curr\u00edculum (PDF)","g_31":"el texto del correo","g_32":"hasta 2 perfiles: uno H-2B y uno H-2A","g_33":"Adjunta tu curr\u00edculum PDF en cada postulaci\u00f3n","g_34":"Define el texto del correo en ingl\u00e9s","g_35":"Esencial para que el Env\u00edo Autom\u00e1tico funcione","g_36":"Curr\u00edculum usado:","g_37":"\ud83d\udcc8 \u00daltimos 7 d\u00edas","g_38":"Configuraci\u00f3n exclusiva de administrador","g_39":"Sin expiraci\u00f3n \u00b7 200 manual + 200 auto/d\u00eda \u00b7 Prioridad m\u00e1xima","g_40":"segundos entre cada env\u00edo","g_41":"3min (predeterminado)","g_42":"Agrega Gmails arriba para configurar l\u00edmites","g_43":"\u00b7 invisible para los usuarios","g_44":"Atenci\u00f3n:","g_45":"1 solo Gmail","g_46":"responsabilidad del usuario","g_49":"empleos para ti","g_50":"\ud83c\udfaf Tu perfil se usar\u00e1 en todos los env\u00edos:","g_51":"\u25b6 Empezar ahora","g_52":"Env\u00eda sin parar 24/7. Se reinicia a medianoche y sigue hasta vaciar la cola.","g_53":"\ud83d\udd50 Programar horario","g_54":"Env\u00eda de X a Y horas cada d\u00eda. Fuera del horario queda en pausa.","g_55":"Iniciar a las","g_56":"Parar a las","g_62":"Pago vía PIX","g_63":"*obligatorio","g_64":"Captura de la confirmación del PIX de tu pago","g_65":"Toca para seleccionar el comprobante","g_66":"JPG, PNG, PDF \u2014 m\u00e1x 5MB","g_67":"hasta 24h","g_68":"\u00bfDudas? Cont\u00e1ctanos:","g_69":"1 empresa que confirme = est\u00e1s en EE.UU. \u2708\ufe0f","g_72":"Aprende el sistema desde cero, paso a paso","g_73":"\ud83d\udccb Lo que vas a aprender:","g_74":"Respuesta de la empresa","g_75":"Preguntas Comunes","g_76":"Configurar tu Perfil","g_77":"Haz esto ANTES de enviar cualquier postulaci\u00f3n","g_78":"pa\u00eds","g_79":"Pesta\u00f1a \"Perfiles de Curr\u00edculum\" \u2014 configurar curr\u00edculum y plantilla","g_80":"sube tu curr\u00edculum en PDF","g_81":"Sin curr\u00edculum, el perfil no se guarda.","g_82":"asuntos y cuerpos de correo","g_83":"M\u00ednimo 3 variaciones de cada uno.","g_84":"Tu perfil est\u00e1 listo. Ya puedes enviar postulaciones.","g_85":"Env\u00edo Manual de Postulaciones","g_86":"Eliges cada empleo y env\u00edas uno por uno","g_87":"Elige la planilla de empleos","g_88":"M\u00e1s empleos disponibles.","g_89":"C\u00f3mo encontrar empleos para ti","g_90":"Haz clic en un empleo para ver los detalles","g_91":"Ve el correo de la empresa y la informaci\u00f3n del empleo","g_92":"\u00a1El correo con tu curr\u00edculum se env\u00eda autom\u00e1ticamente!","g_93":"desaparecen de la lista","g_94":"Env\u00edo Autom\u00e1tico 24h","g_95":"El sistema env\u00eda mientras duermes","g_96":"\ud83e\udd16 \u00bfQu\u00e9 es el Env\u00edo Autom\u00e1tico?","g_97":"\"Env\u00edo Autom\u00e1tico\"","g_98":"cantidad de empleos","g_99":"\"Iniciar Autom\u00e1tico\"","g_100":"\u26a0\ufe0f Atenci\u00f3n:","g_101":"desaparecen del env\u00edo manual","g_102":"La respuesta cae directo en TU Gmail","g_103":"tu propio Gmail","g_104":"Abre el correo de la empresa directo en tu Gmail","g_105":"Escribe tu respuesta en ingl\u00e9s y env\u00eda \u2014 es un correo tuyo, como cualquier otro","g_106":"\ud83d\udca1 Tip de respuesta r\u00e1pida:","g_107":"Env\u00eda m\u00e1s postulaciones por d\u00eda","g_108":"Gratis","g_109":"VIP · R$100/mes","g_110":"VIPro · R$150/mes","g_111":"DoublePro · R$250/mes","g_112":"\ud83c\udf81 C\u00f3mo ganar VIP gratis:","g_113":"1 d\u00eda de VIP Manual","g_114":"C\u00f3digos promocionales","g_115":"Preguntas Frecuentes","g_116":"Respuestas r\u00e1pidas a preguntas comunes","g_117":"No.","g_118":"\u00bfTodav\u00eda con dudas?","g_119":"Mira los videos explicativos en YouTube o escr\u00edbenos por Instagram","g_128":"desaparecer de cualquier lugar p\u00fablico","g_129":"iniciar sesi\u00f3n de nuevo con el mismo correo","g_130":"m\u00ednimo 10 caracteres","g_131":"Autom\u00e1tico","g_132":"Empleo no identificado","g_133":"\ud83d\udcc5 Disponible","g_134":"\u2753 Duda","g_135":"Construcci\u00f3n","g_136":"Dep\u00f3sito","g_150":"Este perfil se usar\u00e1 en los env\u00edos manuales y autom\u00e1ticos","g_151":"curr\u00edculum (PDF)","g_152":"\u2460 Informaci\u00f3n B\u00e1sica","g_153":"\u00cdcono","g_154":"Elige un \u00edcono para el perfil:","g_155":"\u2461 Curr\u00edculum &amp; Cover Letter (PDF)","g_156":"\ud83d\udcc4 Curr\u00edculum (PDF)","g_157":"\u2705 Curr\u00edculum vinculado a este perfil","g_158":"\ud83d\udce4 Archivo nuevo \u2014 se subir\u00e1 al guardar","g_159":"Haz clic o arrastra un PDF para subirlo","g_160":"M\u00e1x. 5MB","g_161":"o elige uno de tu cuenta","g_162":"Carta de presentaci\u00f3n \u2014 opcional, pero aumenta las respuestas.","g_163":"solo en empleos del tipo de visa de este perfil","g_164":"\u2462 Asuntos del Correo","g_165":"M\u00ednimo 3","g_166":"Variables:","g_167":"\u2463 Cuerpos de Correo","g_168":"\u2699\ufe0f Variables \u2014 clic para copiar:","g_169":"3 cuerpos de correo","g_170":"Selecciona las categor\u00edas para las que este perfil se usar\u00e1 autom\u00e1ticamente","g_171":"\u2464 Configuraci\u00f3n","g_172":"Protecciones siempre activas:","g_173":"no se pueden desactivar","g_174":"Noticias","g_175":"Toca cualquier postulaci\u00f3n para ver detalles,","g_176":". El bot\u00f3n","g_177":"borra todo y devuelve los empleos a la lista (\u00fatil para volver a postularte).","g_178":"Solo el plan DoublePro puede conectar un 2º Gmail de envío (el robot rota entre los dos y reduce el riesgo de bloqueo). VIP y VIPro usan 1 e-mail; sin plan no se puede vincular Gmail.","g_179":"\ud83c\udfad Elige tu avatar","g_180":"\ud83d\udca1 Lo que escribas aqu\u00ed aparece cuando alguien","g_181":"\ud83d\udc64 Sobre ti","g_182":"\ud83d\udcbc Experiencia laboral","g_183":"\ud83d\udcac \u00bfQu\u00e9 opinas de H2BApply?","g_184":"\ud83d\udcbe Guarda con el bot\u00f3n","g_185":"al final de la p\u00e1gina.","g_186":"Cada perfil tiene su curr\u00edculum vinculado directamente.","g_187":"El autom\u00e1tico siempre usa el PDF del perfil correcto \u2014 sin confusiones.","g_188":". Puedes tener","g_189":"el perfil que elijas en el Paso 3 del asistente","g_190":"Crea tu primer Perfil de Curr\u00edculum para","g_191":"empezar a enviar postulaciones","g_192":"Estad\u00edsticas","g_193":"Gmails de env\u00edo","g_194":"\u00a110 env\u00edos GRATIS/d\u00eda para todos!","g_195":"Enviar muchos correos con","g_196":"puede generar un bloqueo temporal de Google. Recomendamos agregar","g_197":"para distribuir los env\u00edos. El riesgo de bloqueo es de","g_198":"\ud83d\udcec Pr\u00f3ximas postulaciones","g_199":"\u2014 Verano","g_202":"El env\u00edo alterna","g_203":"\u00bfEl autom\u00e1tico vaci\u00f3 la cola? Restablecer enviados","g_204":"Solo necesitas iniciar sesi\u00f3n una vez.","g_205":"Horario (Bras\u00edlia)","g_207":"🧾 Mis pedidos","g_210":"📸 Comprobante del pago","g_211":"📅 Fecha en que pagaste","g_212":". Con ella verificamos tu pago.","g_213":"), tu plan se activa","g_214":"Completa tu","g_215":"(escribe \"Brazil\" en ingl\u00e9s),","g_216":"con c\u00f3digo de pa\u00eds (+55 85 99999-9999) y","g_217":"Dale un","g_218":"nombre al perfil. Ej: \"Mi Perfil Principal\" o \"Landscape\"","g_219":"(obligatorio). Haz clic en el \u00e1rea punteada o arrastra el archivo.","g_220":"al final de la pantalla.","g_221":"En la parte superior del Env\u00edo Manual ver\u00e1s 3 pesta\u00f1as:","g_222":"\u2014 Empleos de verano en EE.UU. (temporada principal H-2B).","g_223":"\u2014 Empleos de invierno. Menos, pero a\u00fan v\u00e1lidos.","g_224":"Haz clic en el bot\u00f3n verde","g_225":"Empleos ya enviados","g_226":"que quieras poner en autom\u00e1tico","g_227":"Los empleos que pones en autom\u00e1tico","g_228":"H2BApply NO lee ni guarda tu bandeja de entrada \u2014 cada postulaci\u00f3n sale de tu","g_229":"10 autom\u00e1ticos/d\u00eda","g_230":"sin autom\u00e1tico","g_231":"100 autom\u00e1ticos/d\u00eda","g_232":"al registrarte (autom\u00e1tico)","g_233":"\u00bfPor qu\u00e9 mis empleos desaparecieron del manual?","g_234":"El autom\u00e1tico par\u00f3. \u00bfQu\u00e9 hago?","g_235":"Recib\u00ed un correo en ingl\u00e9s. \u00bfQu\u00e9 hago?","g_236":"Si piden documentos, contacta a un gestor de visas.","g_237":"en las variables de entorno del servidor para activar.","g_239":"Configuraci\u00f3n","g_239b":"Sesi\u00f3n","g_239c":"M\u00e1s","tut_center":"Centro de Tutoriales","settings_adv":"Configuraci\u00f3n avanzada","g_240":"Enviar una sugerencia o idea a los devs","g_241":"Zona de peligro","g_242":"Sugerencias para los Devs","g_243":"Nueva Sugerencia","g_244":"Tu sugerencia","g_245":"Mantente atento a","g_246":"\u00a1para novedades!","g_253":"para evitar bloqueos por spam.","g_255":"para evitar spam.","g_256":"Planillas compatibles","g_257":"Categor\u00edas de empleo","pe_eng_lbl":"🗣️ Tu inglés (opcional)","pe_eng_none":"No hablo","pe_eng_basic":"Básico","pe_eng_inter":"Intermedio","pe_eng_adv":"Avanzado","pe_cnh_lbl":"Tengo licencia de conducir","pe_cover_note":"📝 La <strong>cover letter</strong> (carta de presentación) <strong>NO es obligatoria</strong> — solo el <strong>résumé</strong> (tu currículum en PDF, arriba) ya basta para postularte. Si tienes una, va junto y puede ayudar; si no, salta esta parte sin problema.","pe_subj_title":"③ Título del e-mail (asunto)","pe_subj_help":"El <strong>título</strong> es la línea que el empleador ve en la bandeja de entrada antes de abrir — corto y directo, en inglés, ej.: <em>“Application for {vaga} — {nome}”</em>. Escribe <strong style='color:var(--red)'>3 versiones diferentes</strong> (los 3 campos ya están abiertos; puedes agregar más). El sistema las alterna en cada envío para no parecer spam.","pe_count0":"0 de 3 completados","pe_subj_add":"Agregar otro título","pe_subj_warn":"Escribe al menos <strong>3 títulos diferentes</strong> (los campos con *) — es la protección contra bloqueos por spam.","pe_body_title":"④ Cuerpo del e-mail (el mensaje)","pe_body_help":"El <strong>cuerpo</strong> es el mensaje completo que el empleador lee al abrir: quién eres, el puesto que quieres, tu experiencia y cómo contactarte. En inglés, con tus palabras. Escribe <strong style='color:var(--red)'>3 versiones diferentes</strong> (los 3 campos ya están abiertos); las variables de abajo se reemplazan automáticamente en cada envío.","pe_body_add":"Agregar otro texto","pe_body_warn":"Escribe al menos <strong>3 textos diferentes</strong> (los campos con *) — es la protección contra bloqueos por spam.", // 🌐 v136: varredura final (auto)
     "gu_t":"Cómo H2BApply usa tu cuenta de Google","gu_b":"Pedimos <strong>un único permiso</strong> de Google: enviar correos por tu Gmail (<code style=\"background:rgba(255,255,255,.08);padding:1px 6px;border-radius:5px\">gmail.send</code>) — usado exclusivamente para enviar las postulaciones de empleo que <strong>tú mismo escribes y autorizas</strong>. H2BApply <strong>nunca lee, nunca almacena y nunca accede a tu bandeja de entrada</strong>. Las respuestas de los empleadores llegan directo a tu propio Gmail. Puedes revocar el acceso en cualquier momento en myaccount.google.com.","gu_l":"Lee nuestra Política de Privacidad completa →", // ✅ v145: transparência do uso da conta Google (verificação OAuth)
@@ -8428,6 +8502,43 @@ function _planStep1Sync(){
   }
 }
 
+// ── v185 LOTE 3: dados de contato do passo 2 ────────────────────────────
+// O cadastro (v175) JÁ obriga nome, WhatsApp, cidade e estado — pedir tudo
+// de novo no meio da compra era digitação à toa (e a cidade nem vinha
+// preenchida). Com os 4 dados na conta, o passo 2 vira CONFIRMAÇÃO em
+// leitura, com link pra corrigir no Perfil. Conta legada (sem cidade ou sem
+// estado) cai no formulário editável — já pré-preenchido com o que existe.
+// Nunca travar a compra de quem se cadastrou antes do campo existir.
+function _planDadosDaConta(){
+  return {
+    nome:(U.name||CFG.name||'').trim(),
+    wpp:(U.whatsapp||CFG.whatsapp||U.phone||CFG.phone||'').trim(),
+    cidade:(CFG.city||'').trim(),
+    estado:(CFG.estado||'').trim(),
+  };
+}
+function _planPrepararDados(){
+  const dd=_planDadosDaConta();
+  const completo=!!(dd.nome&&dd.wpp&&dd.cidade&&dd.estado);
+  const boxR=g('#plan-dados-resumo'), boxF=g('#plan-dados-form');
+  if(boxR)boxR.style.display=completo?'block':'none';
+  if(boxF)boxF.style.display=completo?'none':'flex';
+  if(completo){
+    const linhas=g('#plan-dados-linhas');
+    if(linhas)linhas.innerHTML=[
+      [t('pd_nome'),dd.nome],[t('pd_wpp'),dd.wpp],[t('pd_cidade'),dd.cidade+' · '+dd.estado],
+    ].map(([k,v])=>`<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:var(--t3)">${esc(k)}</span><strong style="text-align:right">${esc(v)}</strong></div>`).join('');
+  }else{
+    const set=(id,v)=>{const e=g(id);if(e&&!e.value)e.value=v||'';};
+    set('#plan-form-name',dd.nome);set('#plan-form-wpp',dd.wpp);
+    set('#plan-form-city',dd.cidade);set('#plan-form-state',dd.estado);
+  }
+}
+function planCorrigirNoPerfil(){
+  sv('profile');
+  toast(t('pd_toast'),'au',6000);
+}
+
 function goToPlanStep2() {
   const plano=window._planoEscolhido,dias=window._diasEscolhido;
   if(!plano||!dias){ toast(t('consent_choose_plan'),'r'); return; }
@@ -8438,10 +8549,7 @@ function goToPlanStep2() {
   const NOME={vip:'⭐ VIP Manual',vipro:'🤖 VIPro',doublepro:'💎 DoublePro'};
   gaEvent('checkout_step2',{plan:plano,dias,value:total,currency:'BRL'});
 
-  const nameInp=g('#plan-form-name');
-  if(nameInp && !nameInp.value) nameInp.value=U.name||'';
-  const wppInp=g('#plan-form-wpp');
-  if(wppInp && !wppInp.value) wppInp.value=U.phone||'';
+  _planPrepararDados();
 
   const sc=g('#plan-summary-content');
   if(sc) sc.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;font-size:14px">
@@ -8546,17 +8654,58 @@ async function handleComprovante(ev) {
   reader.readAsDataURL(file);
 }
 
+// ── ⚡ v185 LOTE 3: a ativação provisória precisa APARECER ───────────────
+// Comprovante que confere libera o plano NA HORA no servidor (decisão do
+// dono, 21/07) — mas a tela nunca re-consultava o /api/status, então quem
+// acabou de comprar clicava em "Ir para Envio Automático" e batia no cadeado
+// "Plano necessário". Só um F5 resolvia. Aqui o front confere 3 vezes (5s,
+// 15s, 40s) e PARA — nada de setInterval permanente (Render Free, banda e
+// CPU). Falha de rede é silenciosa: o texto honesto de "um admin confirma"
+// continua valendo. E NUNCA prometemos o provisório de antemão: sem
+// GEMINI_API_KEY configurada ele simplesmente não acontece, e prometer o que
+// pode não vir é pior que não prometer nada.
+function _vigiarAtivacaoProvisoria(planoLabel){
+  const tentativas=[5000,15000,40000];
+  const tenta=(i)=>{
+    if(i>=tentativas.length)return;
+    setTimeout(async()=>{
+      try{
+        const r=await fetch('/api/status',{credentials:'include'});
+        const d=await r.json();
+        if(d&&d.connected){
+          applyStatus(d);
+          try{updateLimChip();}catch(e){}
+          if(!d.needsPlan){
+            const dTitle=g('#plan-done-title'), dMsg=g('#plan-done-msg');
+            if(dTitle)dTitle.textContent='⚡ Plano liberado na hora!';
+            if(dMsg)dMsg.innerHTML='O robô conferiu seu comprovante e já liberou o <strong>'+esc(planoLabel)+'</strong> — pode começar a enviar agora mesmo.<br>A confirmação final da equipe continua na fila (isso não muda nada pra você).<br><strong>Para dúvidas, entre em contato:</strong>';
+            toast('⚡ Plano liberado — já pode enviar!','g',7000);
+            try{renderHome();}catch(e){}
+            return; // acabou: não precisa das próximas conferidas
+          }
+        }
+      }catch(e){}
+      tenta(i+1);
+    },tentativas[i]);
+  };
+  tenta(0);
+}
+
 async function submitPlanOrder() {
   // v170: envia pedido de PLANO DIRETO (tipo:'plano') — o servidor
   // recalcula o preço oficial (plano+dias) e IGNORA qualquer valor mandado
   // pelo cliente. consentimento:true só vai se o checkbox estiver marcado
   // — sem isso o front nem tenta a chamada (o backend também recusa, 400).
   const plano=window._planoEscolhido, dias=window._diasEscolhido;
-  const name = g('#plan-form-name')?.value.trim() || '';
-  const wpp = g('#plan-form-wpp')?.value.trim() || '';
-  const phone = g('#plan-form-phone')?.value.trim() || '';
-  const city = g('#plan-form-city')?.value.trim() || '';
-  const state = g('#plan-form-state')?.value.trim() || '';
+  // v185 LOTE 3: com os dados completos na conta, o passo 2 é só confirmação
+  // (formulário escondido) — o pedido usa o que já está cadastrado. Conta
+  // legada sem cidade/estado segue pelo formulário editável.
+  const _dadosConta=_planDadosDaConta();
+  const _usaResumo=g('#plan-dados-form')?.style.display==='none';
+  const name = _usaResumo ? _dadosConta.nome : (g('#plan-form-name')?.value.trim() || '');
+  const wpp = _usaResumo ? _dadosConta.wpp : (g('#plan-form-wpp')?.value.trim() || '');
+  const city = _usaResumo ? _dadosConta.cidade : (g('#plan-form-city')?.value.trim() || '');
+  const state = _usaResumo ? _dadosConta.estado : (g('#plan-form-state')?.value.trim() || '');
   const nota = g('#plan-form-nota')?.value.trim() || '';
   const statusEl = g('#plan-submit-status');
   const btn = g('#plan-submit-btn');
@@ -8585,7 +8734,7 @@ async function submitPlanOrder() {
     const r = await fetch('/api/pedido', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tipo: 'plano', plano, dias, consentimento: true, userName: name, userWhatsapp: wpp, userPhone: phone, userCity: city, userState: state, nota, comprovante: _planComp64, comprovanteType: _planCompType, pagoEm: pagoEmTs }),
+      body: JSON.stringify({ tipo: 'plano', plano, dias, consentimento: true, userName: name, userWhatsapp: wpp, userCity: city, userState: state, nota, comprovante: _planComp64, comprovanteType: _planCompType, pagoEm: pagoEmTs }),
     });
     const d = await r.json();
     if(d.ok) {
@@ -8606,8 +8755,9 @@ async function submitPlanOrder() {
         const medTxt=(typeof med==="number"&&med>0)
           ?('normalmente em <strong>~'+(med<1?Math.max(1,Math.round(med*60))+' minutos':String(med).replace('.',',')+'h')+'</strong>')
           :'assim que possível';
-        if(dMsg) dMsg.innerHTML = 'Recebemos seu pedido e o comprovante.<br>Um admin confirma manualmente — '+medTxt+' — e assim que confirmado, seu <strong>'+(NOME[plano]||plano)+'</strong> é ativado. Avisamos por notificação!<br><strong>Para dúvidas, entre em contato:</strong>';
+        if(dMsg) dMsg.innerHTML = 'Recebemos seu pedido e o comprovante.<br>Um admin confirma manualmente — '+medTxt+' — e assim que confirmado, seu <strong>'+(NOME[plano]||plano)+'</strong> é ativado.<br><strong>Para dúvidas, entre em contato:</strong>';
         toast('✅ Pedido enviado! Aguarde a confirmação.', 'g');
+        _vigiarAtivacaoProvisoria(NOME[plano]||plano);
       }
       renderPushAsk('plan-push-ask','Quer saber NA HORA em que seu plano for ativado? Ative as notificações.');
       _pendingOrderCache=undefined;

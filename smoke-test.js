@@ -4430,7 +4430,60 @@ async function testAuthWatchdogPush() {
         _appL10.includes("email_locked") && _appL10.includes("j.hasEmail&&j.emailBloqueado"),
         "a fila do robô voltou a confiar no e-mail vindo da tela");
     }
-    // ═══ 🤖 v183 LOTE 2: MOTOR DE ENVIO — robô zumbi e duplicata em crash ══
+    // ═══ 🧾 v185 LOTE 3: A JORNADA DO PEDIDO — o usuário vê o que aconteceu ══
+    {
+      // (1) A ativação PROVISÓRIA (intencional, 21/07) existia no servidor e
+      // era invisível na tela: o front nunca re-consultava o /api/status
+      // depois de enviar o pedido, então quem comprava batia no cadeado
+      // "Plano necessário" e só um F5 resolvia. Este é o MESMO payload que o
+      // front agora reaplica (applyStatus).
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "provl3@test.com", name: "Provisorio Lote3" });
+      const _stAntesL3 = (await get("/api/status")).json;
+      const _pvL3 = await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, consentimento: true, userName: "Provisorio Lote3", userWhatsapp: "53 98145 3496", userCity: "Pelotas", userState: "RS", nota: "TESTE_COMPROVANTE:150", comprovante: Buffer.from("comp-l3-provisorio").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+      await new Promise((r) => setTimeout(r, 600));
+      const _stDepoisL3 = (await get("/api/status")).json;
+      check("🧾 v185-L3: comprovante que CONFERE libera o plano na hora (provisório) e o /api/status já reflete isso — needsPlan vira false e autoLimit passa de 0; é exatamente esse payload que a tela deixava de reaplicar (a pessoa batia no cadeado 'Plano necessário' e só um F5 resolvia)",
+        _pvL3.json?.ok === true && _stAntesL3?.needsPlan === true && (_stAntesL3?.autoLimit || 0) === 0 &&
+        _stDepoisL3?.needsPlan === false && (_stDepoisL3?.autoLimit || 0) > 0,
+        JSON.stringify({ antes: { needsPlan: _stAntesL3?.needsPlan, autoLimit: _stAntesL3?.autoLimit }, depois: { needsPlan: _stDepoisL3?.needsPlan, autoLimit: _stDepoisL3?.autoLimit } }));
+      // (2) /api/status expõe o ESTADO cadastrado (o cadastro v175 já obriga)
+      // — é o que deixa o passo 2 da compra confirmar em vez de pedir de novo
+      check("🧾 v185-L3: /api/status devolve `estado` junto com `city` — sem ele o passo 2 da compra não tinha como confirmar os dados e pedia cidade/estado de novo, com a cidade nem pré-preenchida",
+        typeof _stDepoisL3?.estado === "string" && "estado" in (_stDepoisL3 || {}),
+        JSON.stringify({ city: _stDepoisL3?.city, estado: _stDepoisL3?.estado }));
+      // (3) pedido CANCELADO devolve o motivo na whitelist do /api/pedidos
+      // (guarda de regressão da privacidade: nada de preCheck cru)
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cancl3@test.com", name: "Cancelado Lote3" });
+      const _pcL3 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Cancelado Lote3", userWhatsapp: "53 98145 3496", userCity: "Pelotas", userState: "RS" });
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      await req2("PATCH", "/api/pedido/" + _pcL3.json?.pedidoId, { status: "cancelado", notaAdmin: "comprovante mostra R$50, plano custa R$100" });
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cancl3@test.com", name: "Cancelado Lote3" });
+      const _pedsL3 = (await get("/api/pedidos")).json?.pedidos || [];
+      const _cancL3 = _pedsL3.find((x) => x.id === _pcL3.json?.pedidoId) || {};
+      check("🧾 v185-L3: pedido cancelado devolve `motivoCancelamento` pro dono (a Home passou a contar o que aconteceu em vez de o card simplesmente sumir) e a whitelist continua fechada — nada de preCheck cru nem notaAdmin interna",
+        _cancL3.status === "cancelado" && /R\$50/.test(_cancL3.motivoCancelamento || "") &&
+        !("preCheck" in _cancL3) && !("notaAdmin" in _cancL3) && !("criadoPor" in _cancL3),
+        JSON.stringify({ motivo: _cancL3.motivoCancelamento, chaves: Object.keys(_cancL3).join(",") }).slice(0, 220));
+      const _appL3 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _idxL3 = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+      const _srvL3 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      check("🧾 v185-L3 (estrutural): applyStatus(d) é a fonte única do estado da conta e o syncData() também a usa — o 'Próximo passo' decide por U.needsPlan (gate oficial do servidor), NUNCA por U.plan==='free' (getPlan devolve 'vipro' pra quem só tem o automático — armadilha do v177-FIX8)",
+        _appL3.includes("function applyStatus(d)") && /if\(stR&&stR\.ok\)\{try\{const sd=await stR\.json\(\);if\(sd\.connected\)\{applyStatus\(sd\);/.test(_appL3) &&
+        _appL3.includes("if(!U.isAdmin && U.needsPlan){") && !_appL3.includes('U.plan==="free" && (U.manualRemaining||0)<=0'),
+        "applyStatus/renderNextStep não estão no formato esperado");
+      check("🧾 v185-L3 (estrutural): a Home não manda mais 'falar no WhatsApp do rodapé' (escondido depois do login) — o card leva pro número que já é público no app; e o aviso de pedido cancelado tem X pra dispensar, pra não virar cartaz permanente",
+        !_appL3.includes("WhatsApp no rodapé") && _appL3.includes('const WA_SUPORTE="https://wa.me/5553981453496"') &&
+        _appL3.includes("function dispensarPedidoCancelado(") && _appL3.includes("7*86400_000"),
+        "o card da Home ainda aponta pro rodapé ou o cancelado não tem como ser dispensado");
+      check("🧾 v185-L3 (estrutural): o 'Telefone alternativo' do checkout morreu (campo que NENHUMA tela lia, pedido no meio de uma compra) e o passo 2 virou confirmação dos dados do cadastro, com queda pro formulário quando falta cidade/estado",
+        !_idxL3.includes("plan-form-phone") && !_appL3.includes("userPhone") && !_srvL3.includes("userPhone:d.userPhone") &&
+        _idxL3.includes('id="plan-dados-resumo"') && _idxL3.includes('id="plan-dados-form"') &&
+        _appL3.includes("function _planPrepararDados()") && _appL3.includes("function planCorrigirNoPerfil()"),
+        "resquício do userPhone ou o passo 2 não virou confirmação");
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    }
+
+    // ═══ 🤖 v184 LOTE 2: MOTOR DE ENVIO — robô zumbi e duplicata em crash ══
     {
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "zumbil2@test.com", name: "Zumbi Lote2" });
       // Estado NORMAL do motor: mandou a ÚLTIMA vaga da fila e está no
@@ -4441,10 +4494,10 @@ async function testAuthWatchdogPush() {
       const _nextL2 = Date.now() + 5 * 60_000;
       const _semFila = { active: true, queue: [], status: "waiting_interval", nextSendAt: _nextL2, source: "jan2026", originalCount: 3, lastSentAt: Date.now() - 2 * 60_000 };
       const _rL2 = await req2("POST", "/api/test/auto-job", { token: TEST_TOKEN, email: "zumbil2@test.com", job: _semFila, limparTimer: true, reativar: true });
-      check("🤖 v183-L2: job ativo com a fila VAZIA (mandou a última vaga e espera o refill de ~7min) volta a ser agendado depois de um restart — antes reactivateOneAutoJob devolvia false e o robô do cliente pagante simplesmente não voltava",
+      check("🤖 v184-L2: job ativo com a fila VAZIA (mandou a última vaga e espera o refill de ~7min) volta a ser agendado depois de um restart — antes reactivateOneAutoJob devolvia false e o robô do cliente pagante simplesmente não voltava",
         _rL2.json?.reativado === true && _rL2.json?.temTimer === true,
         JSON.stringify({ reativado: _rL2.json?.reativado, temTimer: _rL2.json?.temTimer }));
-      check("🤖 v183-L2: e o nextSendAt ORIGINAL é respeitado (o robô espera o tempo que FALTAVA) — reagendar disparando na hora furaria o intervalo humanizado de 7min contra o Gmail",
+      check("🤖 v184-L2: e o nextSendAt ORIGINAL é respeitado (o robô espera o tempo que FALTAVA) — reagendar disparando na hora furaria o intervalo humanizado de 7min contra o Gmail",
         _rL2.json?.job?.nextSendAt === _nextL2 && _rL2.json?.job?.status === "waiting_interval",
         JSON.stringify({ nextSendAt: _rL2.json?.job?.nextSendAt, esperado: _nextL2, status: _rL2.json?.job?.status }));
       // não deixa timer vivo mandando e-mail no meio da suíte
@@ -4455,16 +4508,16 @@ async function testAuthWatchdogPush() {
       const _antesSent = _lerSent();
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "persistel2@test.com", sentTo: ["empregador-persiste-l2@teste-h2b.com"] });
       const _depoisSent = _lerSent();
-      check("🤖 v183-L2: marcar empregador como JÁ CONTATADO grava em disco NA HORA (antes era debounce de 2s — um kill duro na janela devolvia a vaga enviada pra fila e o robô mandava a MESMA candidatura pro MESMO empregador)",
+      check("🤖 v184-L2: marcar empregador como JÁ CONTATADO grava em disco NA HORA (antes era debounce de 2s — um kill duro na janela devolvia a vaga enviada pra fila e o robô mandava a MESMA candidatura pro MESMO empregador)",
         !_antesSent.includes("empregador-persiste-l2@teste-h2b.com") && _depoisSent.includes("empregador-persiste-l2@teste-h2b.com"),
         "sent_emails.json não tinha o empregador logo após o markSent — voltou a ser debounced");
       const _srvL2 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
       const _deadFn = (_srvL2.match(/function _motivoVagaMorta\(row\)\{[\s\S]*?\n\}/) || [""])[0]
         .split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
-      check("🤖 v183-L2 (estrutural): a régua de vaga morta não pode voltar a olhar `row.exp` (meses de EXPERIÊNCIA, nunca vencimento) — só status do DOL e data de fim no passado decidem",
+      check("🤖 v184-L2 (estrutural): a régua de vaga morta não pode voltar a olhar `row.exp` (meses de EXPERIÊNCIA, nunca vencimento) — só status do DOL e data de fim no passado decidem",
         !!_deadFn && !/row\.exp/.test(_deadFn) && /WITHDRAWN/.test(_deadFn) && /_dataISO\(row\.de\)/.test(_deadFn),
         "o corpo de _motivoVagaMorta voltou a referenciar row.exp");
-      check("🤖 v183-L2 (estrutural): markSent grava síncrono (SENT_FILE é só conjunto de e-mail) e setAutoJob CONTINUA debounced — o arquivo do robô carrega a fila inteira de todo mundo e é escrito várias vezes por envio",
+      check("🤖 v184-L2 (estrutural): markSent grava síncrono (SENT_FILE é só conjunto de e-mail) e setAutoJob CONTINUA debounced — o arquivo do robô carrega a fila inteira de todo mundo e é escrito várias vezes por envio",
         /DB_SENT\[u\]\.add\(nd\);\s*\n\s*persistSent\(\);/.test(_srvL2) && !_srvL2.includes("persistSentDebounced") &&
         _srvL2.includes("const setAutoJob = (e,d) => { DB_AUTO[e]={...(DB_AUTO[e]||{}),...d}; persistDebounced(AUTO_FILE,DB_AUTO,5000); };"),
         "markSent voltou a ser debounced (ou setAutoJob virou síncrono)");

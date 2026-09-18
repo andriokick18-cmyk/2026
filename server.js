@@ -1777,7 +1777,7 @@ const hasSent = (u, d) => {
   return hist.some(h => _normEmail(h.to) === nd);
 };
 
-// 🛡️ v183 LOTE 2 — "vaga enviada NUNCA reaparece" é a única coisa que o
+// 🛡️ v184 LOTE 2 — "vaga enviada NUNCA reaparece" é a única coisa que o
 // produto promete que não pode falhar, e ela dependia de um debounce de 2s.
 // O comentário do motor dizia "salva ANTES de tentar envio (evita
 // reprocessamento em crash)", mas o que era salvo em disco na hora era NADA:
@@ -4906,7 +4906,7 @@ async function _doAutoSendInner(email) {
     return;
   }
 
-  // Tira o target da fila ANTES de tentar o envio. ⚠️ v183 LOTE 2: isto NÃO
+  // Tira o target da fila ANTES de tentar o envio. ⚠️ v184 LOTE 2: isto NÃO
   // é proteção contra crash — setAutoJob é debounced de propósito (DB_AUTO
   // carrega a fila inteira de todo mundo), então num kill duro a fila volta
   // do disco ANTIGA, com esta vaga dentro. Quem garante que o empregador não
@@ -5534,7 +5534,7 @@ const fillTpl=(tpl,v)=>(tpl||"")
 // o bloqueio em vez de esperar ele passar. Retorna true se agendou algo.
 function reactivateOneAutoJob(email, job, now){
   now = now || Date.now();
-  // 🛡️ v183 LOTE 2: exigir fila NÃO-VAZIA aqui matava em silêncio o job que
+  // 🛡️ v184 LOTE 2: exigir fila NÃO-VAZIA aqui matava em silêncio o job que
   // acabou de mandar a ÚLTIMA vaga da fila e está no intervalo humanizado de
   // ~7min esperando o refill (queue:[] + active:true + nextSendAt futuro é
   // estado NORMAL do motor). Este repo faz deploy a cada commit: o robô de um
@@ -8490,7 +8490,7 @@ filtrar();
     if(String(u.searchParams.get("token")||"")!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});
     return json(res,200,{ok:true,motivo:isQueueJobDead(u.searchParams.get("sheet")||"",u.searchParams.get("case")||"")});
   }
-  // 🧪 v183 LOTE 2: gancho de teste pro RESSUSCITAR do robô depois de um
+  // 🧪 v184 LOTE 2: gancho de teste pro RESSUSCITAR do robô depois de um
   // restart. reactivateOneAutoJob() só roda no boot (e no self-heal do
   // /api/auto/start), e o estado que interessa — job ativo com a fila VAZIA
   // esperando o refill de ~7min — não dá pra montar por rota normal. Aqui o
@@ -10268,7 +10268,10 @@ filtrar();
         criadoPor:s.user_email, // quem de fato fez a chamada (admin ou o próprio usuário)
         userName:d.userName||"",
         userWhatsapp:d.userWhatsapp||"",
-        userPhone:d.userPhone||"",
+        // v185 LOTE 3: userPhone (o "Telefone alternativo" do checkout) MORREU.
+        // Desde o v175 existe UM telefone só (o WhatsApp obrigatório do
+        // cadastro); o campo extra não era lido por NENHUMA tela nem por
+        // nenhum aviso — era digitação pedida à toa no meio de uma compra.
         userCity:d.userCity||"",
         userState:d.userState||"",
         userAddress:d.userAddress||"",
@@ -10936,7 +10939,7 @@ filtrar();
     // esconder esse throttling). Agora conta pela chave resolvida, mantendo o
     // username como fallback (conta legada, cujo histórico usa o próprio e-mail).
     const gmailEmail = resolveSendGmail(p);
-    return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,planRulesNotice:_prNotice,manualCdOff:p.manualCdOff===true,gmailConnected,gmailEmail,emailContato:p.emailContato||null,emailVerificado:!!p.emailVerificadoEm,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",language:p.language||"pt-BR",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===(gmailEmail||s.user_email)||x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||300),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
+    return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,planRulesNotice:_prNotice,manualCdOff:p.manualCdOff===true,gmailConnected,gmailEmail,emailContato:p.emailContato||null,emailVerificado:!!p.emailVerificadoEm,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",estado:p.estado||p.state||"",language:p.language||"pt-BR",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===(gmailEmail||s.user_email)||x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||300),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
   }
 
   if(pathname==="/api/onboard"&&req.method==="POST"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});setUser(s.user_email,{onboarded:true});return json(res,200,{ok:true});}
@@ -14195,14 +14198,14 @@ async function diagnoseJob(email) {
 
 // Watchdog global: roda a cada 2min
 setInterval(async () => {
-  const activeJobs = Object.entries(DB_AUTO).filter(([,j]) => j.active); // v183 LOTE 2: fila vazia aguardando refill também precisa de diagnóstico
+  const activeJobs = Object.entries(DB_AUTO).filter(([,j]) => j.active); // v184 LOTE 2: fila vazia aguardando refill também precisa de diagnóstico
   for (const [email] of activeJobs) {
     try { await diagnoseJob(email); } catch(e) { console.error(`[watchdog] erro em ${email}:`, e.message); }
   }
   // Detecta jobs marcados active=true mas sem timer E sem nextSendAt — orphans pós-crash
   const now = Date.now();
   for (const [email, job] of Object.entries(DB_AUTO)) {
-    // v183 LOTE 2: job ativo com fila VAZIA (esperando o refill de ~7min) é
+    // v184 LOTE 2: job ativo com fila VAZIA (esperando o refill de ~7min) é
     // estado normal — e era justamente quem ficava órfão pra sempre depois de
     // um restart. Quem decide é o nextOk abaixo, como já era pro resto.
     if (!job.active) continue;
