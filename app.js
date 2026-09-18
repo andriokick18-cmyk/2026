@@ -998,6 +998,13 @@ function _vfLive(ctx){return ctx==="manual"&&tab==="seasonal";} // aba "Vagas ao
 function _vfKey(ctx){return "h2b_vf_"+ctx+"_"+(_vfSheet(ctx)||"x");}
 function _vfClone(st){return JSON.parse(JSON.stringify(st));}
 function vfSave(ctx){try{localStorage.setItem(_vfKey(ctx),JSON.stringify(VF.st[ctx]));}catch(e){}}
+// 🔎 v181 LOTE 5: a busca da barra (#q) É o filtro `q` do motor — uma verdade
+// só. Antes ela vivia solta em `fQ` e o painel nem sabia que existia (o dono
+// viu "TEXAS 821" no painel com a lista em 21). `fQ` continua como espelho
+// da aba "Vagas ao Vivo" (a API do DOL não passa pelo motor de filtros).
+function _vfSetQ(v){const q=String(v||"").trim();fQ=q;if(VF.st.manual)VF.st.manual.q=q;vfSave("manual");}
+function _vfSyncQInput(){const el=g("#q");const q=(VF.st.manual&&VF.st.manual.q)||"";if(el&&el.value!==q)el.value=q;}
+
 // Estado por planilha sobrevive a trocar de aba/voltar da vaga/recarregar
 // (padrão LinkedIn f_* + lição do 13t: nunca perder o trabalho da pessoa).
 function vfLoad(ctx){
@@ -1005,13 +1012,23 @@ function vfLoad(ctx){
   VF.st[ctx]=Object.assign(_vfEmpty(),st&&typeof st==="object"?st:{});
   VF.fac[ctx]=null;
 }
-function vfAtivos(st){
+// 🔍 v181 LOTE 5 — o badge "🔍 N filtros" contava o que a tela NUNCA envia
+// (tipo/ativa são decorativos fora da aba ao vivo) e ignorava o que ela
+// envia: o "só com e-mail" (o filtro mais consequente da tela — desligá-lo
+// inclui vaga em que é IMPOSSÍVEL se candidatar) e a busca do manual, que
+// agora vive em VF.st.manual.q. Agora espelha EXATAMENTE o `ativos()` do
+// motor (mod-filtros.js) pros mesmos filtros que vão na query.
+function vfAtivos(st,ctx){
   let n=0;if(!st)return 0;
+  const live=_vfLive(ctx===undefined?VF.ctx:ctx);
   for(const k of ["estado","cidade","categoria","cargo","inicio","status","grupo"])if((st[k]||[]).length)n++;
   if(st.salarioMin>0)n++;if(st.vagasMin>0)n++;
-  if(st.q)n++;if(st.tipo&&st.tipo!=="all")n++;if(st.ativa)n++;
+  if(st.q)n++;
+  if(live){if(st.tipo&&st.tipo!=="all")n++;if(st.ativa)n++;}
+  else if(st.email)n++; // o motor conta `email` como filtro ativo — a tela não contava
   return n;
 }
+
 // Query string pro servidor — a MESMA pra lista (/api/sheet-meta), pra
 // contagem (/api/vagas/filtros) e pra montar a fila do robô.
 function vfParams(ctx,st){
@@ -1021,19 +1038,35 @@ function vfParams(ctx,st){
   if(st.salarioMin>0)p.set("salarioMin",String(st.salarioMin));
   if(st.vagasMin>0)p.set("vagasMin",String(st.vagasMin));
   if(ctx==="auto"||st.email)p.set("email","1"); // o robô só manda pra quem tem e-mail
-  if(ctx==="auto"&&st.q)p.set("q",st.q);
+  // 🔎 v181 LOTE 5 (bug real do dono): o painel dizia "TEXAS 821" enquanto a
+  // lista, com a MESMA busca, tinha 21 — `q` só era enviado no contexto
+  // "auto", então o rodapé "Ver N vagas", a contagem de CADA opção e os chips
+  // ignoravam por completo o que a pessoa digitou. O motor nunca teve essa
+  // limitação; era a tela que não mandava. Agora vai nos DOIS contextos.
+  if(st.q)p.set("q",st.q);
   return p;
 }
+
 async function vfFetch(ctx,st){
   const sheet=_vfSheet(ctx);if(!sheet||_vfLive(ctx))return null;
   const p=vfParams(ctx,st);p.set("sheet",sheet);p.set("hideSent","1");
   if(VF.busca.cargo)p.set("cargoBusca",VF.busca.cargo);
   if(VF.busca.cidade)p.set("cidadeBusca",VF.busca.cidade);
   const seq=++VF.seq;
-  const r=await fetch("/api/vagas/filtros?"+p,{credentials:"include"});const d=await r.json();
+  // ⏱️ v181 LOTE 5: TODAS as opções do painel vêm desta rota — no celular em
+  // rede ruim a promessa ficava pendurada e o painel abria vazio com spinner
+  // eterno. 8s e o erro aparece clicável, igual a lista já fazia.
+  const ctl=(typeof AbortController!=="undefined")?new AbortController():null;
+  const tmr=ctl?setTimeout(()=>{try{ctl.abort();}catch(e){}},8000):null;
+  let d=null;
+  try{
+    const r=await fetch("/api/vagas/filtros?"+p,{credentials:"include",signal:ctl?ctl.signal:undefined});
+    d=await r.json();
+  }finally{if(tmr)clearTimeout(tmr);}
   if(seq!==VF.seq)return null; // resposta antiga — descarta
   return d&&d.ok?d:null;
 }
+
 // ── Painel (bottom sheet) ────────────────────────────────────────────────
 function vfOpen(ctx){
   ctx=ctx==="auto"?"auto":"manual";
@@ -1061,14 +1094,19 @@ function vfRefresh(imediato){
     if(_vfLive(VF.ctx)){_vfRenderFoot(null);return;}
     const foot=g("#vf-apply");if(foot)foot.classList.add("vf-wait");
     try{const d=await vfFetch(VF.ctx,VF.draft);if(!d||!VF.draft)return;VF.facDraft=d;_vfRenderSecs(d);_vfRenderFoot(d);}
-    catch(e){_vfRenderFoot(null);}
+    // 🛑 v181 LOTE 5: o catch só trocava o rodapé e o corpo ficava vazio, mudo
+    // e com spinner PRA SEMPRE — o usuário concluía que o site não tem filtro.
+    // Mesmo padrão que a lista já usava: erro honesto e clicável.
+    catch(e){_vfRenderErro();_vfRenderFoot(null);}
     finally{const f2=g("#vf-apply");if(f2)f2.classList.remove("vf-wait");}
+
   },imediato?0:180);
 }
 // Seções (ordem = prioridade da pesquisa: tipo de trabalho, estado, salário,
 // mês de início, cidade/região, cargo, vagas abertas, e-mail, Double Pro).
 const VF_SECS=[
-  {k:"q",ico:"🔎",auto:true},
+  {k:"q",ico:"🔎"}, // v181: também no manual — a busca da barra é o MESMO filtro `q`
+
   {k:"categoria",ico:"📂"},
   {k:"estado",ico:"📍",busca:"estado"},
   {k:"salario",ico:"💰"},
@@ -1125,6 +1163,8 @@ const _vfOpt=(dim,v,label,n,on,disp)=>{
 };
 function _vfRenderSecs(d){
   const st=VF.draft;if(!st)return;
+  if(d){const er=g("#vf-erro");if(er)er.remove();} // v181: chegou dado → some o aviso de erro
+
   const live=_vfLive(VF.ctx);
   const fac=d?d.facetas:null,disp=d?d.disponibilidade:null;
   const setN=(k,txt)=>{const el=g("#vf-secn-"+k);if(el)el.textContent=txt||"";};
@@ -1251,12 +1291,40 @@ function _vfRenderSecs(d){
       show(k,has);
       if(!has)continue;
       if(!isDP){opts(k,`<div class="vf-note vf-note-lock">🔒 ${esc(t('vf_dp_lock'))} <span class="vf-link" onclick="vfClose();sv('plans')">${esc(t('vf_see_plans'))}</span></div>`);continue;}
-      opts(k,list.map(x=>_vfOpt(k,x.v,k==="grupo"?t('vf_grupo_lbl').replace("{g}",x.v):x.v,x.n,sel.includes(x.v))).join(""));
+      // v181: "Grupo A" não explica NADA pra um leigo — e é justamente um
+      // filtro de plano pago (argumento de venda). Uma linha em PT claro.
+      opts(k,list.map(x=>_vfOpt(k,x.v,k==="grupo"?t('vf_grupo_lbl').replace("{g}",x.v):_vfStatusLabel(x.v),x.n,sel.includes(x.v))).join("")+
+        (k==="grupo"?`<div class="vf-note">${esc(t('vf_grupo_expl'))}</div>`:""));
+
+
       setN(k,sel.length?String(sel.length):"");
     }
   }
 }
+// 🛑 v181 LOTE 5: painel sem opção nenhuma porque a rede falhou → mensagem
+// honesta e clicável no CORPO do painel (não só no rodapé), matando o
+// spinner do salário que ficava girando pra sempre.
+function _vfRenderErro(){
+  const body=g("#vf-body");if(!body)return;
+  const antiga=g("#vf-erro");if(antiga)antiga.remove();
+  const div=document.createElement("div");
+  div.id="vf-erro";div.className="vf-note vf-note-warn";
+  div.innerHTML=esc(t('vf_erro'))+' <span class="vf-link" onclick="vfRefresh(true)">'+esc(t('vf_erro_btn'))+'</span>';
+  body.insertBefore(div,body.firstChild);
+  const sp=g("#vf-opts-salario");if(sp&&sp.innerHTML.includes("spin"))sp.innerHTML="";
+}
+// 🗓️ v181 LOTE 5: "Começa logo" e "Recentes" ordenam por DATA — em planilha
+// sem data nenhuma (jan2026/jul2025: 11.446 vagas) o botão acendia e não
+// fazia nada. Some quando a planilha não tem data, e a ordenação volta pro
+// padrão se era uma dessas.
+function _vfSyncSortBtns(){
+  const d=VF.fac.manual;const semData=!!(d&&d.disponibilidade&&d.disponibilidade.inicio===0);
+  const live=_vfLive("manual");
+  for(const id of ["so-start","so-desc"]){const b=g("#"+id);if(b)b.style.display=(semData&&!live)?"none":"";}
+  if(semData&&!live&&(fSort==="start"||fSort==="desc"))setSort("random");
+}
 function _vfRenderFoot(d){
+
   const btn=g("#vf-apply");if(!btn)return;
   const clear=g("#vf-clear");if(clear)clear.style.display=vfAtivos(VF.draft)?"":"none";
   if(_vfLive(VF.ctx)||!d){btn.innerHTML=`<span>${esc(t('vf_apply_simple'))}</span>`;btn.classList.remove("vf-zero-btn");return;}
@@ -1271,7 +1339,8 @@ function _vfRenderFoot(d){
 function _vfChipList(ctx){
   const st=VF.st[ctx];const M=_vfMeses();const c=[];
   const push=(dim,v,lbl,cor)=>c.push({dim,v,lbl,cor});
-  if(ctx==="auto"&&st.q)push("q","","🔎 "+st.q,"var(--purple)");
+  if(st.q)push("q","","🔎 "+st.q,"var(--purple)"); // v181: também no manual (a busca é um filtro como outro qualquer)
+
   st.categoria.forEach(v=>push("categoria",v,"📂 "+_vfCatLabel(v),"var(--purple)"));
   st.estado.forEach(v=>push("estado",v,"📍 "+_vfEstadoNome(v),"var(--blue)"));
   if(st.salarioMin>0)push("salarioMin","","💰 "+t('vf_wage_more').replace("{v}",st.salarioMin),"var(--green)");
@@ -1279,9 +1348,15 @@ function _vfChipList(ctx){
   st.cidade.forEach(v=>push("cidade",v,"🏙️ "+_vfCidadeLabel(v),"var(--blue)"));
   if(st.cargo.length)push("cargo","","🏷️ "+(st.cargo.length===1?_vfTitleCase(st.cargo[0]):t('vf_n_cargos').replace("{n}",st.cargo.length)),"var(--purple)");
   if(st.vagasMin>0)push("vagasMin","","👥 "+t('vf_workers_more').replace("{v}",st.vagasMin),"var(--green)");
-  if(st.status.length)push("status","","📶 "+st.status.map(s=>s.slice(0,18)).join(", "),"#d97706");
+  if(st.status.length)push("status","","📶 "+st.status.map(s=>_vfStatusLabel(s)).join(", "),"#d97706");
+
   if(st.grupo.length)push("grupo","","🎟️ "+st.grupo.join(","),"#d97706");
   if(ctx==="manual"&&!_vfLive(ctx)&&st.email&&VF.fac.manual&&VF.fac.manual.facetas.email.sem>0)push("email","","✉️ "+t('vf_chip_email'),"var(--green)");
+  // v181: o "só com e-mail" DESLIGADO é o filtro mais consequente da tela
+  // (a lista passa a incluir vaga em que é impossível se candidatar) e não
+  // deixava rastro nenhum — sem chip, sem badge, sem "Limpar tudo".
+  if(ctx==="manual"&&!_vfLive(ctx)&&!st.email)push("email","","✉️ "+t('vf_chip_sem_email'),"#d97706");
+
   if(ctx==="manual"&&_vfLive(ctx)){if(st.tipo!=="all")push("tipo","",st.tipo==="agricultural"?"🌾 H-2A":"🔧 H-2B","var(--blue)");if(st.ativa)push("ativa","","✅ "+t('vf_ativas_lbl'),"var(--green)");}
   return c;
 }
@@ -1298,6 +1373,20 @@ function _vfCidadeLabel(v,label,estado){
   return nome+(est?" · "+_vfEstadoNome(est):"");
 }
 function _vfCatLabel(k){const l=window._catLabels&&window._catLabels[k]&&window._catLabels[k].label;return l||k;}
+// 🏷️ v181 LOTE 5: "Certified"/"Pending Processing" vinham CRUS do dado do
+// governo numa tela 100% em português — e é justamente um filtro de plano
+// pago (argumento de venda escrito num idioma que o comprador não fala). O
+// VALOR enviado ao servidor continua o literal do dado; só o RÓTULO traduz.
+function _vfStatusLabel(v){
+  const k=String(v||"").toLowerCase().trim();
+  if(k.includes("certif"))return t('vf_st_certified');
+  if(k.includes("pending"))return t('vf_st_pending');
+  if(k.includes("withdraw"))return t('vf_st_withdrawn');
+  if(k.includes("denied"))return t('vf_st_denied');
+  if(k.includes("expired"))return t('vf_st_expired');
+  return String(v||"");
+}
+
 function vfRenderChips(ctx){
   const box=g(ctx==="auto"?"#vf-chips-auto":"#vf-chips-manual");if(!box)return;
   const chips=_vfChipList(ctx);
@@ -1315,7 +1404,11 @@ function vfRemove(ctx,dim,v){
   const st=VF.st[ctx];if(!st)return;
   if(Array.isArray(st[dim])){ if(v&&dim!=="inicio"&&dim!=="cargo"&&dim!=="status"&&dim!=="grupo")st[dim]=st[dim].filter(x=>x!==v);else st[dim]=[]; }
   else if(dim==="salarioMin"||dim==="vagasMin")st[dim]=0;
-  else if(dim==="email"||dim==="ativa")st[dim]=false;
+  // v181: o e-mail tem chip nos DOIS estados (ligado = "só com e-mail",
+  // desligado = "incluindo vagas sem e-mail") — tirar o chip volta ao outro.
+  else if(dim==="email")st.email=!st.email;
+  else if(dim==="ativa")st[dim]=false;
+
   else if(dim==="tipo")st.tipo="all";
   else if(dim==="q")st.q="";
   vfSave(ctx);vfAfterChange(ctx);
@@ -1341,12 +1434,17 @@ function _vfRenderSugestoes(sugs,q){
 function vfIncluirSugestao(cat){
   const st=VF.st.manual;if(!st)return;
   if(!st.categoria.includes(cat))st.categoria.push(cat);
-  fQ="";const cx=g("#q");if(cx)cx.value="";
+  _vfSetQ("");const cx=g("#q");if(cx)cx.value="";
   vfSave("manual");vfAfterChange("manual");
+
 }
 function vfAfterChange(ctx){
   vfRenderChips(ctx);
   if(ctx==="manual"){
+    // v181: painel e barra de busca são o MESMO filtro — aplicar/remover/limpar
+    // no painel tem que aparecer na barra (e vice-versa), nunca dois estados.
+    fQ=(VF.st.manual&&VF.st.manual.q)||"";_vfSyncQInput();
+
     if(tab==="seasonal")loadJobs(true);
     else{sSkip=0;sDone=false;sJobs=[];const jl=g("#jlist");if(jl)jl.innerHTML=mkSkels(6);loadSheetMeta(true);}
     vfCountManual();
@@ -1355,8 +1453,12 @@ function vfAfterChange(ctx){
 // Contagem ao vivo do manual (pra chips/badge e pro "✉️ Só com e-mail" saber se esconde algo)
 async function vfCountManual(){
   if(_vfLive("manual"))return;
-  try{const d=await vfFetch("manual");if(d){VF.fac.manual=d;vfRenderChips("manual");}}catch(e){}
+  // v181: o catch era LITERALMENTE vazio — falha de rede sumia sem rastro e a
+  // tela seguia mostrando contagem velha (ou nenhuma).
+  try{const d=await vfFetch("manual");if(d){VF.fac.manual=d;vfRenderChips("manual");_vfSyncSortBtns();}}
+  catch(e){console.warn("[vf] contagem do manual falhou:",e&&e.message);if(!g("#vf-overlay")?.classList.contains("gone"))_vfRenderErro();}
 }
+
 // Passo 2 do robô: "N vagas com e-mail prontas" — honesto sobre planilha sem e-mail
 let _vfAutoSeq=0;
 async function vfAutoCount(){
@@ -1448,7 +1550,8 @@ async function loadTabCounts(){
 //  JOBS (Seasonal)
 // ═══════════════════════════════════════════
 let stmr;
-function onSearch(){clearTimeout(stmr);stmr=setTimeout(()=>{const q=g("#q").value.trim();if(q!==fQ){fQ=q;if(tab==="seasonal")loadJobs(true);else{sSkip=0;sDone=false;sJobs=[];loadSheetMeta(true);}}},350);}
+function onSearch(){clearTimeout(stmr);stmr=setTimeout(()=>{const q=g("#q").value.trim();if(q!==fQ){_vfSetQ(q);if(tab==="seasonal")loadJobs(true);else{sSkip=0;sDone=false;sJobs=[];loadSheetMeta(true);vfCountManual();}}},350);}
+
 /* v114/v173: índice de lugares/empresas/cargos REAIS da planilha atual
    (/api/lugares) — alimenta as sugestões instantâneas da busca (#q-sug).
    Escolheu estado/cidade na sugestão → vira filtro do VF na hora. */
@@ -1528,12 +1631,14 @@ function qSugInput(){
 function qSugPick(i){
   const it=_sugItems[i];if(!it)return;
   qSugClose();
-  if(it.kind==="estado"){const el=g("#q");if(el)el.value="";fQ="";qEstadoPick(it.v);return;}
-  if(it.kind==="cidade"){const el=g("#q");if(el)el.value="";fQ="";qCidadePick(it.v);return;}
+  if(it.kind==="estado"){const el=g("#q");if(el)el.value="";_vfSetQ("");qEstadoPick(it.v);return;}
+  if(it.kind==="cidade"){const el=g("#q");if(el)el.value="";_vfSetQ("");qCidadePick(it.v);return;}
+
   // empresa/cargo → vira a própria busca, na hora (sem esperar o debounce)
   const el=g("#q");if(el)el.value=it.v;
-  clearTimeout(stmr);fQ=it.v;
-  if(tab==="seasonal")loadJobs(true);else{sSkip=0;sDone=false;sJobs=[];loadSheetMeta(true);}
+  clearTimeout(stmr);_vfSetQ(it.v);
+  if(tab==="seasonal")loadJobs(true);else{sSkip=0;sDone=false;sJobs=[];loadSheetMeta(true);vfCountManual();}
+
 }
 function qSugKey(ev){
   const box=g("#q-sug");if(!box||!box.classList.contains("open")){if(ev.key==="Escape")qSugClose();return;}
@@ -1629,19 +1734,79 @@ async function loadJobs(reset=false){
   finally{loading=false;} // FIX: always libera lock
 }
 
+// 🕳️ v181 LOTE 5 — LISTA VAZIA HONESTA. Antes a tela dizia só "Nenhuma vaga
+// encontrada." (sem dizer QUAL filtro esvaziou, sem botão pra remover, sem
+// link pro painel) e o contador imprimia "0 vagas" numa planilha de 2.625 —
+// o caso real da aba Julho 2026, onde o governo não publicou e-mail nenhum e
+// o filtro "só com e-mail" é o padrão. Agora a frase diz a CAUSA e o que
+// fazer, com o número saindo da faceta que o painel já buscou.
+// Quanto sobraria SEM um filtro: calculado só onde a faceta dá o número
+// EXATO (nunca "chutar" um número pro usuário).
+function _vfSemFiltro(dim,d){
+  const f=d&&d.facetas,disp=d&&d.disponibilidade;if(!f||!disp)return 0;
+  if(dim==="salarioMin")return (f.salario?(f.salario.comSalario||0)+(f.salario.semSalario||0):0);
+  if(dim==="vagasMin")return (f.vagas&&f.vagas.limiares&&f.vagas.limiares[0]?f.vagas.limiares[0].n:0)+((f.vagas&&f.vagas.semDado)||0);
+  if(dim==="email")return f.email?(f.email.com||0)+(f.email.sem||0):0;
+  if(dim==="inicio")return (f.inicio||[]).reduce((a,x)=>a+(x.n||0),0)+((f.inicioSemData)||0);
+  if(dim==="estado")return (f.estado||[]).length<60&&disp.estado===d.totalBase?(f.estado||[]).reduce((a,x)=>a+(x.n||0),0):0;
+  if(dim==="categoria")return (f.categoria||[]).length<40?(f.categoria||[]).reduce((a,x)=>a+(x.n||0),0):0;
+  return 0; // cidade/cargo/status/grupo/q: a faceta é um top-N — nunca afirmar um total
+}
+function _vfVazioHtml(d){
+  const st=VF.st.manual||_vfEmpty();
+  const fac=VF.fac.manual;
+  const cx="text-align:center;padding:26px 18px;font-size:13.5px;color:var(--t2);line-height:1.6";
+  const btn=(txt,call,cor)=>`<button type="button" class="btn btn-sm" style="margin:6px 4px 0;background:${cor||"var(--purple)"};color:#fff;border:none">${esc(txt)}</button>`.replace("<button ",`<button onclick="${call}" `);
+  // (1) planilha que o governo ainda não liberou contato nenhum
+  const semEmailNaPlanilha=!!(fac&&fac.disponibilidade&&fac.disponibilidade.email===0)||(!!st.email&&(d.remainingTotal||0)>0&&(d.total||0)===0&&!vfAtivos(Object.assign({},st,{email:false}),"manual"));
+  if(semEmailNaPlanilha){
+    const n=(d.remainingTotal||0).toLocaleString("pt-BR");
+    const outra=window._sheetLatestKey&&window._sheetLatestKey!==tab
+      ? btn(t('vf_vazio_outra'),`setTab('${window._sheetLatestKey}')`,"var(--green)") : "";
+    return `<div style="${cx}"><div style="font-size:34px">⏳</div>`+
+      `<div style="font-weight:800;margin:6px 0 4px;color:var(--t1)">${esc(t('vf_vazio_sem_email_t'))}</div>`+
+      `<div>${esc(t('vf_vazio_sem_email').replace("{n}",n))}</div>${outra}</div>`;
+  }
+  // (2) filtros demais — diz quais estão ativos e aponta o culpado
+  const chips=_vfChipList("manual");
+  const lista=chips.length?`<div style="margin-top:10px;font-size:12.5px;color:var(--t3)">${esc(t('vf_vazio_ativos'))} <b>${chips.map(c=>esc(c.lbl)).join(" · ")}</b></div>`:"";
+  let dica="";
+  let melhor=null;
+  for(const c of chips){const n=_vfSemFiltro(c.dim,fac);if(n>0&&(!melhor||n>melhor.n))melhor={dim:c.dim,v:c.v,lbl:c.lbl,n};}
+  if(melhor){
+    dica=`<div style="margin-top:12px;font-size:13px;color:var(--t1)">${esc(t('vf_vazio_tirando').replace("{f}",melhor.lbl).replace("{n}",melhor.n.toLocaleString("pt-BR")))}</div>`+
+      btn(t('vf_vazio_tirar'),`vfRemove('manual','${melhor.dim}',${_vfAttr(melhor.v)})`,"var(--green)");
+  }
+  const busca=st.q?`<div style="margin-top:6px">${esc(t('vf_vazio_busca').replace("{q}",st.q))}</div>`:"";
+  return `<div style="${cx}"><div style="font-size:34px">🔍</div>`+
+    `<div style="font-weight:800;margin:6px 0 4px;color:var(--t1)">${esc(t('vf_vazio_t'))}</div>`+
+    `${busca}${lista}${dica}<div style="margin-top:10px">`+
+    btn(t('vf_vazio_ajustar'),"vfOpen('manual')")+btn(t('vf_clear'),"vfClear('manual')","var(--t3)")+`</div></div>`;
+}
 // ═══════════════════════════════════════════
 //  SHEET JOBS
 // ═══════════════════════════════════════════
+
 async function loadSheetMeta(reset=false){
   if(sLoading)return;sLoading=true;if(!reset)g("#lmore").innerHTML=`<div style="padding:14px;text-align:center"><span class="spin"></span></div>`;
   let _jobsToEnrich=[];
   try{
     // v173: TODOS os filtros vêm do VF — a MESMA query da contagem ao vivo
     // (/api/vagas/filtros), então "Ver N vagas" bate com a lista
-    const p=vfParams("manual");p.set("sheet",tab);p.set("skip",String(sSkip));p.set("top",String(PAGE));p.set("sort",fSort);p.set("hideSent","1");if(fQ)p.set("q",fQ);
+    // v181: `q` já vai dentro do vfParams (a MESMA query da contagem ao vivo)
+    const p=vfParams("manual");p.set("sheet",tab);p.set("skip",String(sSkip));p.set("top",String(PAGE));p.set("sort",fSort);p.set("hideSent","1");
+
     const r=await fetch("/api/sheet-meta?"+p,{credentials:"include"});const d=await r.json();
     if(reset)g("#jlist").innerHTML="";
-    if(!d.jobs?.length){sDone=true;g("#lmore").innerHTML=`<div style="padding:14px;text-align:center;font-size:13px;color:var(--t3)">${sJobs.length?"Sem mais vagas.":"Nenhuma vaga encontrada."}</div>`;if(reset)_vfRenderSugestoes(d.sugestoes,fQ);}
+    // 🕳️ v181 LOTE 5: o "de Y vagas" (última pista de que a planilha TEM
+    // conteúdo) só era atribuído dentro do else — com zero resultados ficava
+    // no 0 do reset e a tela imprimia "0 vagas" numa planilha de 2.625.
+    sTrueTotal=d.remainingTotal||sTrueTotal||0;
+    if(!d.jobs?.length){sDone=true;
+      if(sJobs.length)g("#lmore").innerHTML=`<div style="padding:14px;text-align:center;font-size:13px;color:var(--t3)">Sem mais vagas.</div>`;
+      else{g("#lmore").innerHTML="";g("#jlist").innerHTML=_vfVazioHtml(d);}
+      if(reset)_vfRenderSugestoes(d.sugestoes,(VF.st.manual&&VF.st.manual.q)||"");}
+
     else{
       // Filtrar vagas já enviadas e as que estão no automático — por NÚMERO
       // e também por E-MAIL do empregador (v38: a regra do dono é por e-mail;
@@ -1668,8 +1833,9 @@ async function loadSheetMeta(reset=false){
         var _jl=document.getElementById("jlist");if(_jl&&_jl.parentElement)_jl.parentElement.insertBefore(_bar,_jl);
       }
       _fj.forEach(function(j){sJobs.push(j);g("#jlist").insertAdjacentHTML("beforeend",mkSheetCard(j));});
-      if(reset)_vfRenderSugestoes(d.sugestoes,fQ);
+      if(reset)_vfRenderSugestoes(d.sugestoes,(VF.st.manual&&VF.st.manual.q)||"");
       // 🐛 v172e (auditoria, 12/09/2026): d.total já vem do servidor SEM os
+
       // enviados/fila (hideSent=1 filtra ANTES de contar — server.js
       // "total já é o total filtrado"). d.remainingTotal é o bruto da
       // planilha inteira, sem esse corte — usado só pro "de Y" abaixo.
@@ -4127,7 +4293,12 @@ async function loadDynamicSheets(){
     };
     (d.sheets||[]).filter(s2=>s2.emEnriquecimento).forEach(s2=>_selos(s2.key,'sheet-soon',false));
     const latest=(d.sheets||[]).find(s2=>s2.latest);
+    // v181: a planilha recomendada (com contato de verdade) vira o destino do
+    // botão "ver outra planilha" da lista vazia — nunca mandar o usuário pra
+    // uma planilha que também não dá pra se candidatar.
+    window._sheetLatestKey=latest?latest.key:null;
     if(latest)_selos(latest.key,'sheet-latest',true);
+
   }catch(e){
     console.warn('[sheets-list]',e.message);
     // v117 (incidente real, print de usuário 02/08: "não aparece a aba de
@@ -7204,7 +7375,8 @@ const LANG_DICT = {
     "ws2_title":"Filtros (opcional)","summer":"Verão",
     "snd_hint_admin":"Conta admin: até {n} e-mails de envio (revezamento automático).","snd_hint_dp":"Seu plano DoublePro permite 2 e-mails de envio (principal + 1 extra) — conecte o extra no Perfil pra reduzir risco de bloqueio.","snd_hint_1":"Seu plano permite 1 e-mail de envio (o principal). Só o DoublePro libera um 2º Gmail extra.","snd_hint_0":"Sem plano ativo não dá pra vincular Gmail nem enviar — veja os planos.","plan_emails_1":"1 e-mail de envio","plan_emails_2":"2 e-mails de envio (revezamento)",
     // 🔍 v173 — filtros de vagas (sistema novo)
-    "vf_btn":"Filtros","vf_btn_auto":"Filtrar vagas","vf_title":"🔍 Filtrar vagas","vf_title_auto":"🔍 Filtrar vagas do robô","vf_clear":"Limpar tudo","vf_apply":"Ver {n} vagas","vf_apply_auto":"Usar {n} vagas no robô","vf_apply_simple":"Aplicar filtros","vf_of":"de {m}","vf_more":"Ver mais ({n})","vf_less":"Ver menos","vf_remove":"Remover filtro","vf_filtered":"filtrado","vf_filtro":"filtro","vf_filtros":"filtros","vf_counting":"Contando vagas…","vf_nothing":"Nada encontrado com esse nome.","vf_pick_source":"Escolha a fonte das vagas primeiro (Passo 1)","vf_sec_q":"Palavra-chave","vf_q_ph":"Cargo, empresa, cidade ou nº do caso…","vf_sec_categoria":"Tipo de trabalho","vf_sec_estado":"Estado","vf_sec_salario":"Salário mínimo por hora","vf_sec_inicio":"Mês de início","vf_sec_cidade":"Cidade ou região","vf_sec_cargo":"Cargo específico","vf_sec_vagas":"Vagas abertas na empresa","vf_sec_email":"E-mail de contato","vf_sec_tipo":"Tipo de visto","vf_sec_ativa":"Status da vaga","vf_sec_status":"Status no DOL","vf_sec_grupo":"Grupo da loteria H-2B","vf_search_estado":"Buscar estado…","vf_search_cidade":"Buscar cidade…","vf_search_cargo":"Buscar cargo…","vf_wage_more":"${v}+/h","vf_workers_more":"{v}+ vagas","vf_faixa":"Nesta seleção: ${min} a ${max}/h · metade das vagas paga ${med}/h ou mais","vf_no_salary":"Esta planilha ainda não tem salário publicado pelo governo (DOL) — o filtro aparece quando o dado sair.","vf_no_email":"Esta planilha ainda não tem e-mails de contato publicados pelo governo — ainda não dá pra se candidatar por aqui.","vf_no_email_auto":"Esta planilha ainda não tem e-mails de contato publicados pelo governo — o robô não tem pra quem enviar aqui. Escolha outra fonte (Jan 2026, Jul 2025 ou H-2A).","vf_zero":"Nenhuma vaga com essa combinação — remova algum filtro. O número ao lado de cada opção mostra quantas vagas sobram.","vf_all_sent":"Você já enviou pra todas as vagas com e-mail desta planilha. Escolha outra fonte ou resete as enviadas.","vf_email_lbl":"Só vagas com e-mail (dá pra se candidatar)","vf_email_com":"{n} com e-mail","vf_email_sem":"{n} sem e-mail","vf_chip_email":"Só com e-mail","vf_sug":"Também há <b>{n}</b> vaga(s) em {cat} que não citam \"{q}\" no texto.","vf_sug_btn":"Incluir na busca","vf_regions":"Regiões turísticas","vf_cities":"Cidades","vf_n_cargos":"{n} cargos","vf_live_note":"Nesta aba (vagas ao vivo do DOL) os filtros são simples, sem contagem por opção. Nas planilhas, cada opção mostra quantas vagas sobram.","vf_ativas_lbl":"Só vagas ativas","vf_dp_lock":"Exclusivo do plano Double Pro.","vf_see_plans":"Ver planos →","vf_grupo_lbl":"Grupo {g}","vf_count_auto":"vagas com e-mail prontas pro robô","vf_ws2_sub":"Tipo de trabalho, estado, salário, mês de início… Cada opção mostra quantas vagas sobram. O robô só envia pra vagas com e-mail.","vf_meses":"Jan,Fev,Mar,Abr,Mai,Jun,Jul,Ago,Set,Out,Nov,Dez","winter":"Inverno",
+    "vf_btn":"Filtros","vf_btn_auto":"Filtrar vagas","vf_title":"🔍 Filtrar vagas","vf_title_auto":"🔍 Filtrar vagas do robô","vf_clear":"Limpar tudo","vf_apply":"Ver {n} vagas","vf_apply_auto":"Usar {n} vagas no robô","vf_apply_simple":"Aplicar filtros","vf_of":"de {m}","vf_more":"Ver mais ({n})","vf_less":"Ver menos","vf_remove":"Remover filtro","vf_filtered":"filtrado","vf_filtro":"filtro","vf_filtros":"filtros","vf_counting":"Contando vagas…","vf_nothing":"Nada encontrado com esse nome.","vf_pick_source":"Escolha a fonte das vagas primeiro (Passo 1)","vf_sec_q":"Palavra-chave","vf_q_ph":"Cargo, empresa, cidade ou nº do caso…","vf_sec_categoria":"Tipo de trabalho","vf_sec_estado":"Estado","vf_sec_salario":"Salário mínimo por hora","vf_sec_inicio":"Mês de início","vf_sec_cidade":"Cidade ou região","vf_sec_cargo":"Cargo específico","vf_sec_vagas":"Vagas abertas na empresa","vf_sec_email":"E-mail de contato","vf_sec_tipo":"Tipo de visto","vf_sec_ativa":"Status da vaga","vf_sec_status":"Status no DOL","vf_sec_grupo":"Grupo da loteria H-2B","vf_search_estado":"Buscar estado…","vf_search_cidade":"Buscar cidade…","vf_search_cargo":"Buscar cargo…","vf_wage_more":"${v}+/h","vf_workers_more":"{v}+ vagas","vf_faixa":"Nesta seleção: ${min} a ${max}/h · metade das vagas paga ${med}/h ou mais","vf_no_salary":"Esta planilha ainda não tem salário publicado pelo governo (DOL) — o filtro aparece quando o dado sair.","vf_no_email":"Esta planilha ainda não tem e-mails de contato publicados pelo governo — ainda não dá pra se candidatar por aqui.","vf_no_email_auto":"Esta planilha ainda não tem e-mails de contato publicados pelo governo — o robô não tem pra quem enviar aqui. Escolha outra fonte (Jan 2026, Jul 2025 ou H-2A).","vf_zero":"Nenhuma vaga com essa combinação — remova algum filtro. O número ao lado de cada opção mostra quantas vagas sobram.","vf_all_sent":"Você já enviou pra todas as vagas com e-mail desta planilha. Escolha outra fonte ou resete as enviadas.","vf_email_lbl":"Só vagas com e-mail (dá pra se candidatar)","vf_email_com":"{n} com e-mail","vf_email_sem":"{n} sem e-mail","vf_chip_email":"Só com e-mail","vf_sug":"Também há <b>{n}</b> vaga(s) em {cat} que não citam \"{q}\" no texto.","vf_sug_btn":"Incluir na busca","vf_regions":"Regiões turísticas","vf_cities":"Cidades","vf_n_cargos":"{n} cargos","vf_live_note":"Nesta aba (vagas ao vivo do DOL) os filtros são simples, sem contagem por opção. Nas planilhas, cada opção mostra quantas vagas sobram.","vf_ativas_lbl":"Só vagas ativas","vf_dp_lock":"Exclusivo do plano Double Pro.","vf_see_plans":"Ver planos →","vf_grupo_lbl":"Grupo {g}","vf_count_auto":"vagas com e-mail prontas pro robô","vf_ws2_sub":"Tipo de trabalho, estado, salário, mês de início… Cada opção mostra quantas vagas sobram. O robô só envia pra vagas com e-mail.","vf_meses":"Jan,Fev,Mar,Abr,Mai,Jun,Jul,Ago,Set,Out,Nov,Dez","vf_chip_sem_email":"Incluindo vagas sem e-mail (não dá pra se candidatar)","vf_erro":"Não deu pra carregar as opções.","vf_erro_btn":"Tentar de novo","vf_st_certified":"✅ Aprovada pelo governo","vf_st_pending":"⏳ Em análise no DOL","vf_st_withdrawn":"🚫 Retirada pelo empregador","vf_st_denied":"❌ Negada","vf_st_expired":"⌛ Vencida","vf_grupo_expl":"O governo sorteia as vagas H-2B em grupos (A, B, C…). O grupo indica a ordem em que o pedido do empregador entra no sorteio.","vf_vazio_t":"Nenhuma vaga com essa combinação de filtros.","vf_vazio_busca":"Sua busca por “{q}” não achou nada nesta planilha.","vf_vazio_ativos":"Filtros ativos agora:","vf_vazio_tirando":"Tirando {f}, aparecem {n} vagas.","vf_vazio_tirar":"Tirar esse filtro","vf_vazio_ajustar":"Ajustar filtros","vf_vazio_sem_email_t":"Planilha ainda em preparação","vf_vazio_sem_email":"Esta planilha tem {n} vagas, mas o governo ainda não publicou nenhum e-mail de contato — não dá pra se candidatar por aqui ainda. O robô completa sozinho assim que os contatos saírem.","vf_vazio_outra":"Ver a planilha recomendada","winter":"Inverno",
+
     
     
     
@@ -7359,7 +7531,8 @@ const LANG_DICT = {
     "ws1_title":"Choose job source","ws1_sub":"Select where to pull jobs from",
     "ws2_title":"Filters (optional)","summer":"Summer",
     "snd_hint_admin":"Admin account: up to {n} sending e-mails (automatic rotation).","snd_hint_dp":"Your DoublePro plan allows 2 sending e-mails (main + 1 extra) — connect the extra one in Profile to lower blocking risk.","snd_hint_1":"Your plan allows 1 sending e-mail (the main one). Only DoublePro unlocks a 2nd extra Gmail.","snd_hint_0":"Without an active plan you can't link a Gmail or send — see the plans.","plan_emails_1":"1 sending e-mail","plan_emails_2":"2 sending e-mails (rotation)",
-    "vf_btn":"Filters","vf_btn_auto":"Filter jobs","vf_title":"🔍 Filter jobs","vf_title_auto":"🔍 Filter jobs for the robot","vf_clear":"Clear all","vf_apply":"Show {n} jobs","vf_apply_auto":"Use {n} jobs in the robot","vf_apply_simple":"Apply filters","vf_of":"of {m}","vf_more":"Show more ({n})","vf_less":"Show less","vf_remove":"Remove filter","vf_filtered":"filtered","vf_filtro":"filter","vf_filtros":"filters","vf_counting":"Counting jobs…","vf_nothing":"Nothing found with that name.","vf_pick_source":"Choose the job source first (Step 1)","vf_sec_q":"Keyword","vf_q_ph":"Job title, employer, city or case number…","vf_sec_categoria":"Type of work","vf_sec_estado":"State","vf_sec_salario":"Minimum hourly wage","vf_sec_inicio":"Start month","vf_sec_cidade":"City or region","vf_sec_cargo":"Specific job title","vf_sec_vagas":"Open positions at the employer","vf_sec_email":"Contact e-mail","vf_sec_tipo":"Visa type","vf_sec_ativa":"Job status","vf_sec_status":"DOL status","vf_sec_grupo":"H-2B lottery group","vf_search_estado":"Search state…","vf_search_cidade":"Search city…","vf_search_cargo":"Search job title…","vf_wage_more":"${v}+/h","vf_workers_more":"{v}+ positions","vf_faixa":"In this selection: ${min} to ${max}/h · half of the jobs pay ${med}/h or more","vf_no_salary":"This sheet has no wage published by the government (DOL) yet — the filter appears once the data is out.","vf_no_email":"This sheet has no employer e-mails published by the government yet — you can't apply here yet.","vf_no_email_auto":"This sheet has no employer e-mails published by the government yet — the robot has nobody to send to here. Pick another source (Jan 2026, Jul 2025 or H-2A).","vf_zero":"No jobs match this combination — remove a filter. The number next to each option shows how many jobs remain.","vf_all_sent":"You already applied to every job with an e-mail in this sheet. Pick another source or reset your sent list.","vf_email_lbl":"Only jobs with an e-mail (you can apply)","vf_email_com":"{n} with e-mail","vf_email_sem":"{n} without e-mail","vf_chip_email":"With e-mail only","vf_sug":"There are also <b>{n}</b> job(s) in {cat} that don't mention \"{q}\".","vf_sug_btn":"Include in search","vf_regions":"Tourist regions","vf_cities":"Cities","vf_n_cargos":"{n} job titles","vf_live_note":"On this tab (live DOL jobs) filters are simple, without per-option counts. On the sheets, each option shows how many jobs remain.","vf_ativas_lbl":"Active jobs only","vf_dp_lock":"Double Pro plan only.","vf_see_plans":"See plans →","vf_grupo_lbl":"Group {g}","vf_count_auto":"jobs with e-mail ready for the robot","vf_ws2_sub":"Type of work, state, wage, start month… Each option shows how many jobs remain. The robot only sends to jobs with an e-mail.","vf_meses":"Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec","winter":"Winter",
+    "vf_btn":"Filters","vf_btn_auto":"Filter jobs","vf_title":"🔍 Filter jobs","vf_title_auto":"🔍 Filter jobs for the robot","vf_clear":"Clear all","vf_apply":"Show {n} jobs","vf_apply_auto":"Use {n} jobs in the robot","vf_apply_simple":"Apply filters","vf_of":"of {m}","vf_more":"Show more ({n})","vf_less":"Show less","vf_remove":"Remove filter","vf_filtered":"filtered","vf_filtro":"filter","vf_filtros":"filters","vf_counting":"Counting jobs…","vf_nothing":"Nothing found with that name.","vf_pick_source":"Choose the job source first (Step 1)","vf_sec_q":"Keyword","vf_q_ph":"Job title, employer, city or case number…","vf_sec_categoria":"Type of work","vf_sec_estado":"State","vf_sec_salario":"Minimum hourly wage","vf_sec_inicio":"Start month","vf_sec_cidade":"City or region","vf_sec_cargo":"Specific job title","vf_sec_vagas":"Open positions at the employer","vf_sec_email":"Contact e-mail","vf_sec_tipo":"Visa type","vf_sec_ativa":"Job status","vf_sec_status":"DOL status","vf_sec_grupo":"H-2B lottery group","vf_search_estado":"Search state…","vf_search_cidade":"Search city…","vf_search_cargo":"Search job title…","vf_wage_more":"${v}+/h","vf_workers_more":"{v}+ positions","vf_faixa":"In this selection: ${min} to ${max}/h · half of the jobs pay ${med}/h or more","vf_no_salary":"This sheet has no wage published by the government (DOL) yet — the filter appears once the data is out.","vf_no_email":"This sheet has no employer e-mails published by the government yet — you can't apply here yet.","vf_no_email_auto":"This sheet has no employer e-mails published by the government yet — the robot has nobody to send to here. Pick another source (Jan 2026, Jul 2025 or H-2A).","vf_zero":"No jobs match this combination — remove a filter. The number next to each option shows how many jobs remain.","vf_all_sent":"You already applied to every job with an e-mail in this sheet. Pick another source or reset your sent list.","vf_email_lbl":"Only jobs with an e-mail (you can apply)","vf_email_com":"{n} with e-mail","vf_email_sem":"{n} without e-mail","vf_chip_email":"With e-mail only","vf_sug":"There are also <b>{n}</b> job(s) in {cat} that don't mention \"{q}\".","vf_sug_btn":"Include in search","vf_regions":"Tourist regions","vf_cities":"Cities","vf_n_cargos":"{n} job titles","vf_live_note":"On this tab (live DOL jobs) filters are simple, without per-option counts. On the sheets, each option shows how many jobs remain.","vf_ativas_lbl":"Active jobs only","vf_dp_lock":"Double Pro plan only.","vf_see_plans":"See plans →","vf_grupo_lbl":"Group {g}","vf_count_auto":"jobs with e-mail ready for the robot","vf_ws2_sub":"Type of work, state, wage, start month… Each option shows how many jobs remain. The robot only sends to jobs with an e-mail.","vf_meses":"Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec","vf_chip_sem_email":"Including jobs with no e-mail (you can't apply)","vf_erro":"Couldn't load the options.","vf_erro_btn":"Try again","vf_st_certified":"✅ Approved by the government","vf_st_pending":"⏳ Under review at the DOL","vf_st_withdrawn":"🚫 Withdrawn by the employer","vf_st_denied":"❌ Denied","vf_st_expired":"⌛ Expired","vf_grupo_expl":"The government draws H-2B jobs in groups (A, B, C…). The group shows the order in which the employer's request enters the lottery.","vf_vazio_t":"No jobs match this combination of filters.","vf_vazio_busca":"Your search for “{q}” found nothing in this sheet.","vf_vazio_ativos":"Active filters right now:","vf_vazio_tirando":"Without {f}, {n} jobs show up.","vf_vazio_tirar":"Remove that filter","vf_vazio_ajustar":"Adjust filters","vf_vazio_sem_email_t":"Sheet still being prepared","vf_vazio_sem_email":"This sheet has {n} jobs, but the government hasn't published any contact e-mail yet — you can't apply here yet. The robot fills it in by itself once the contacts are out.","vf_vazio_outra":"Open the recommended sheet","winter":"Winter",
+
     
     
     
@@ -7506,7 +7679,8 @@ const LANG_DICT = {
     "ws1_title":"Elige la fuente de empleos","ws1_sub":"Selecciona de dónde tomar los empleos",
     "ws2_title":"Filtros (opcional)","summer":"Verano",
     "snd_hint_admin":"Cuenta admin: hasta {n} e-mails de envío (rotación automática).","snd_hint_dp":"Tu plan DoublePro permite 2 e-mails de envío (principal + 1 extra) — conecta el extra en Perfil para reducir el riesgo de bloqueo.","snd_hint_1":"Tu plan permite 1 e-mail de envío (el principal). Solo DoublePro libera un 2º Gmail extra.","snd_hint_0":"Sin plan activo no se puede vincular Gmail ni enviar — mira los planes.","plan_emails_1":"1 e-mail de envío","plan_emails_2":"2 e-mails de envío (rotación)",
-    "vf_btn":"Filtros","vf_btn_auto":"Filtrar empleos","vf_title":"🔍 Filtrar empleos","vf_title_auto":"🔍 Filtrar empleos del robot","vf_clear":"Limpiar todo","vf_apply":"Ver {n} empleos","vf_apply_auto":"Usar {n} empleos en el robot","vf_apply_simple":"Aplicar filtros","vf_of":"de {m}","vf_more":"Ver más ({n})","vf_less":"Ver menos","vf_remove":"Quitar filtro","vf_filtered":"filtrado","vf_filtro":"filtro","vf_filtros":"filtros","vf_counting":"Contando empleos…","vf_nothing":"Nada encontrado con ese nombre.","vf_pick_source":"Elige la fuente de empleos primero (Paso 1)","vf_sec_q":"Palabra clave","vf_q_ph":"Puesto, empresa, ciudad o nº de caso…","vf_sec_categoria":"Tipo de trabajo","vf_sec_estado":"Estado","vf_sec_salario":"Salario mínimo por hora","vf_sec_inicio":"Mes de inicio","vf_sec_cidade":"Ciudad o región","vf_sec_cargo":"Puesto específico","vf_sec_vagas":"Vacantes abiertas en la empresa","vf_sec_email":"E-mail de contacto","vf_sec_tipo":"Tipo de visa","vf_sec_ativa":"Estado del empleo","vf_sec_status":"Estado en el DOL","vf_sec_grupo":"Grupo de la lotería H-2B","vf_search_estado":"Buscar estado…","vf_search_cidade":"Buscar ciudad…","vf_search_cargo":"Buscar puesto…","vf_wage_more":"${v}+/h","vf_workers_more":"{v}+ vacantes","vf_faixa":"En esta selección: ${min} a ${max}/h · la mitad de los empleos paga ${med}/h o más","vf_no_salary":"Esta planilla aún no tiene salario publicado por el gobierno (DOL) — el filtro aparece cuando salga el dato.","vf_no_email":"Esta planilla aún no tiene e-mails de contacto publicados por el gobierno — todavía no se puede postular aquí.","vf_no_email_auto":"Esta planilla aún no tiene e-mails de contacto publicados por el gobierno — el robot no tiene a quién enviar aquí. Elige otra fuente (Ene 2026, Jul 2025 o H-2A).","vf_zero":"Ningún empleo con esa combinación — quita algún filtro. El número junto a cada opción muestra cuántos empleos quedan.","vf_all_sent":"Ya enviaste a todos los empleos con e-mail de esta planilla. Elige otra fuente o reinicia los enviados.","vf_email_lbl":"Solo empleos con e-mail (se puede postular)","vf_email_com":"{n} con e-mail","vf_email_sem":"{n} sin e-mail","vf_chip_email":"Solo con e-mail","vf_sug":"También hay <b>{n}</b> empleo(s) en {cat} que no mencionan \"{q}\".","vf_sug_btn":"Incluir en la búsqueda","vf_regions":"Regiones turísticas","vf_cities":"Ciudades","vf_n_cargos":"{n} puestos","vf_live_note":"En esta pestaña (empleos en vivo del DOL) los filtros son simples, sin conteo por opción. En las planillas, cada opción muestra cuántos empleos quedan.","vf_ativas_lbl":"Solo empleos activos","vf_dp_lock":"Exclusivo del plan Double Pro.","vf_see_plans":"Ver planes →","vf_grupo_lbl":"Grupo {g}","vf_count_auto":"empleos con e-mail listos para el robot","vf_ws2_sub":"Tipo de trabajo, estado, salario, mes de inicio… Cada opción muestra cuántos empleos quedan. El robot solo envía a empleos con e-mail.","vf_meses":"Ene,Feb,Mar,Abr,May,Jun,Jul,Ago,Sep,Oct,Nov,Dic","winter":"Invierno",
+    "vf_btn":"Filtros","vf_btn_auto":"Filtrar empleos","vf_title":"🔍 Filtrar empleos","vf_title_auto":"🔍 Filtrar empleos del robot","vf_clear":"Limpiar todo","vf_apply":"Ver {n} empleos","vf_apply_auto":"Usar {n} empleos en el robot","vf_apply_simple":"Aplicar filtros","vf_of":"de {m}","vf_more":"Ver más ({n})","vf_less":"Ver menos","vf_remove":"Quitar filtro","vf_filtered":"filtrado","vf_filtro":"filtro","vf_filtros":"filtros","vf_counting":"Contando empleos…","vf_nothing":"Nada encontrado con ese nombre.","vf_pick_source":"Elige la fuente de empleos primero (Paso 1)","vf_sec_q":"Palabra clave","vf_q_ph":"Puesto, empresa, ciudad o nº de caso…","vf_sec_categoria":"Tipo de trabajo","vf_sec_estado":"Estado","vf_sec_salario":"Salario mínimo por hora","vf_sec_inicio":"Mes de inicio","vf_sec_cidade":"Ciudad o región","vf_sec_cargo":"Puesto específico","vf_sec_vagas":"Vacantes abiertas en la empresa","vf_sec_email":"E-mail de contacto","vf_sec_tipo":"Tipo de visa","vf_sec_ativa":"Estado del empleo","vf_sec_status":"Estado en el DOL","vf_sec_grupo":"Grupo de la lotería H-2B","vf_search_estado":"Buscar estado…","vf_search_cidade":"Buscar ciudad…","vf_search_cargo":"Buscar puesto…","vf_wage_more":"${v}+/h","vf_workers_more":"{v}+ vacantes","vf_faixa":"En esta selección: ${min} a ${max}/h · la mitad de los empleos paga ${med}/h o más","vf_no_salary":"Esta planilla aún no tiene salario publicado por el gobierno (DOL) — el filtro aparece cuando salga el dato.","vf_no_email":"Esta planilla aún no tiene e-mails de contacto publicados por el gobierno — todavía no se puede postular aquí.","vf_no_email_auto":"Esta planilla aún no tiene e-mails de contacto publicados por el gobierno — el robot no tiene a quién enviar aquí. Elige otra fuente (Ene 2026, Jul 2025 o H-2A).","vf_zero":"Ningún empleo con esa combinación — quita algún filtro. El número junto a cada opción muestra cuántos empleos quedan.","vf_all_sent":"Ya enviaste a todos los empleos con e-mail de esta planilla. Elige otra fuente o reinicia los enviados.","vf_email_lbl":"Solo empleos con e-mail (se puede postular)","vf_email_com":"{n} con e-mail","vf_email_sem":"{n} sin e-mail","vf_chip_email":"Solo con e-mail","vf_sug":"También hay <b>{n}</b> empleo(s) en {cat} que no mencionan \"{q}\".","vf_sug_btn":"Incluir en la búsqueda","vf_regions":"Regiones turísticas","vf_cities":"Ciudades","vf_n_cargos":"{n} puestos","vf_live_note":"En esta pestaña (empleos en vivo del DOL) los filtros son simples, sin conteo por opción. En las planillas, cada opción muestra cuántos empleos quedan.","vf_ativas_lbl":"Solo empleos activos","vf_dp_lock":"Exclusivo del plan Double Pro.","vf_see_plans":"Ver planes →","vf_grupo_lbl":"Grupo {g}","vf_count_auto":"empleos con e-mail listos para el robot","vf_ws2_sub":"Tipo de trabajo, estado, salario, mes de inicio… Cada opción muestra cuántos empleos quedan. El robot solo envía a empleos con e-mail.","vf_meses":"Ene,Feb,Mar,Abr,May,Jun,Jul,Ago,Sep,Oct,Nov,Dic","vf_chip_sem_email":"Incluyendo empleos sin e-mail (no se puede postular)","vf_erro":"No se pudieron cargar las opciones.","vf_erro_btn":"Intentar de nuevo","vf_st_certified":"✅ Aprobada por el gobierno","vf_st_pending":"⏳ En análisis en el DOL","vf_st_withdrawn":"🚫 Retirada por el empleador","vf_st_denied":"❌ Negada","vf_st_expired":"⌛ Vencida","vf_grupo_expl":"El gobierno sortea los empleos H-2B en grupos (A, B, C…). El grupo indica el orden en que la solicitud del empleador entra en el sorteo.","vf_vazio_t":"Ningún empleo con esa combinación de filtros.","vf_vazio_busca":"Tu búsqueda por “{q}” no encontró nada en esta planilla.","vf_vazio_ativos":"Filtros activos ahora:","vf_vazio_tirando":"Sin {f}, aparecen {n} empleos.","vf_vazio_tirar":"Quitar ese filtro","vf_vazio_ajustar":"Ajustar filtros","vf_vazio_sem_email_t":"Planilla aún en preparación","vf_vazio_sem_email":"Esta planilla tiene {n} empleos, pero el gobierno aún no publicó ningún e-mail de contacto — todavía no se puede postular aquí. El robot la completa solo cuando salgan los contactos.","vf_vazio_outra":"Ver la planilla recomendada","winter":"Invierno",
+
     
     
     

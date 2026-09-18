@@ -3875,7 +3875,12 @@ function _buscaIdentificador(list, qRaw) {
   if (/^\d{4,8}$/.test(up)) return list.filter(r => String(r.c || "").toUpperCase().endsWith("-" + up));
   return null;
 }
+// 📅 Data ISO válida da linha (AAAA-MM-DD) ou "" — fonte ÚNICA usada pelas
+// ordenações por data (start/desc) e pela régua de temporada. Nunca dentro de
+// comparador de sort: o valor é calculado 1x por linha (decorate-sort).
+function _dataISO(v){const s=String(v||"").slice(0,10);return /^\d{4}-\d{2}-\d{2}$/.test(s)?s:"";}
 // v179: só estas ordenações existem. Qualquer outra coisa vinda da URL cai
+
 // no padrão estável — ordenação aleatória por requisição quebra a paginação
 // (a mesma vaga aparece 2x e outra nunca aparece).
 const SORTS_VALIDOS = new Set(["random", "asc", "desc", "wage", "start", "match"]);
@@ -3973,8 +3978,21 @@ function searchSheet(arr, q, state, category, skip, top, sort, matchCtx) {
   // NOTA: o shuffle real acontece no /api/auto/start após coletar todas as vagas.
   // Na busca paginada usamos ordem estável para garantir que skip/top
   // retornem registros corretos sem duplicatas ou lacunas entre páginas.
-  if (sort==="desc") list=[...list].reverse();
+  // 🗓️ v181 LOTE 5 — "Recentes" era literalmente a planilha AO CONTRÁRIO
+  // (`list.reverse()`): ordem de arquivo, sem nenhuma relação com data. Virou
+  // ordenação REAL por data de início, da mais recente pra mais antiga
+  // (decorate-sort-undecorate, lição do v162 — nunca parse dentro do
+  // comparador). Vaga sem data vai pro fim, mantendo a ordem estável (a
+  // paginação por skip/top continua correta). Em planilha SEM data nenhuma
+  // (jan2026/jul2025) a ordenação não muda nada — e a tela não oferece mais o
+  // botão nesse caso (disponibilidade.inicio === 0).
+  if (sort==="desc") {
+    list=list.map((r,i)=>({r,i,d:_dataISO(r.d)}))
+      .sort((a,b)=>(a.d?0:1)-(b.d?0:1)||(a.d&&b.d?b.d.localeCompare(a.d):0)||a.i-b.i)
+      .map(x=>x.r);
+  }
   // ── V953: ordenações determinísticas novas (estáveis p/ paginação) ──
+
   // wage  → maior salário primeiro, NORMALIZADO por unidade: dados reais têm
   //         'h' (16k), 'mo' (184) e vazio. Mensal ÷173h e semanal ÷40h viram
   //         equivalente/hora — senão $4.938/mês "ganha" de $30/h no sort.
@@ -3985,9 +4003,19 @@ function searchSheet(arr, q, state, category, skip, top, sort, matchCtx) {
     // do comparador).
     list=list.map(r=>({r,w:FILTROS.wageHora(r)})).sort((a,b)=>b.w-a.w).map(x=>x.r);
   }
+  // 🗓️ v181 LOTE 5 — "Começa logo" entregava "começou há mais tempo": a
+  // ordenação era crescente CRUA por r.d, então na H-2A (4.959 das 4.964 já
+  // começaram) as primeiras da lista eram de janeiro/fevereiro — contrato que
+  // começou há 8 meses. Agora são 3 FAIXAS: (0) ainda vai começar, da mais
+  // próxima pra mais distante; (1) já começou, da mais recente pra mais
+  // antiga; (2) sem data publicada, no fim, na ordem estável de sempre.
   else if (sort==="start") {
-    list=[...list].sort((a,b)=>String(a.d||"9999").localeCompare(String(b.d||"9999")));
+    const _hj=new Date().toISOString().slice(0,10);
+    list=list.map((r,i)=>{const d=_dataISO(r.d);return{r,i,d,f:d?(d>=_hj?0:1):2};})
+      .sort((a,b)=>a.f-b.f||(a.f===0?a.d.localeCompare(b.d):a.f===1?b.d.localeCompare(a.d):0)||a.i-b.i)
+      .map(x=>x.r);
   }
+
   // 🎯 match → vaga com melhor encaixe no perfil do candidato primeiro
   // (v82). Só ativa se o chamador passou um contexto — sem perfil,
   // cai no comportamento estável de sempre (nunca quebra quem não logou).

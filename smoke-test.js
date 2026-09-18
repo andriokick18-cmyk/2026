@@ -2461,6 +2461,94 @@ async function testAuthWatchdogPush() {
         "gate por vaga, exp ou lista branca de sort desfeitos");
     }
 
+    // ═══ 🖥️ v181 — LOTE 5: A TELA CONTA A MESMA HISTÓRIA QUE O SERVIDOR ═══
+    // O dono viu na prática: o painel anunciava "TEXAS 821" enquanto a lista,
+    // com a MESMA busca, tinha 21. A tela mandava `q` só no automático.
+    {
+      const _par = async (qs) => {
+        const vf = (await get("/api/vagas/filtros?" + qs)).json;
+        const sm = (await get("/api/sheet-meta?" + qs + "&top=1")).json;
+        return { vf: vf.total, sm: sm.total, qs };
+      };
+      const pares = [];
+      for (const qs of ["sheet=jan2026&email=1&q=cook", "sheet=jan2026&email=1&q=cook&estado=TEXAS",
+        "sheet=jan2026&q=welder&categoria=construction", "sheet=jul2025&q=housekeeper&email=1",
+        "sheet=h2a-jun2026&q=tractor&salarioMin=15", "sheet=h2a-jun2026&q=forklift&estado=FLORIDA"]) pares.push(await _par(qs));
+      check("🖥️ v181-L5 (caso 16): com busca ativa, o total do painel é IDÊNTICO ao da lista em 6 combinações — era a quebra mais visível da regra da casa (o painel ignorava o `q` e ranqueava TEXAS 821 numa lista de 21)",
+        pares.every((p) => p.vf === p.sm), JSON.stringify(pares));
+      const _appL5 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      check("🖥️ v181-L5 (estrutural): a busca do manual É o filtro `q` do motor (VF.st.manual.q, enviado nos DOIS contextos) — o `ctx===\"auto\"&&st.q` do vfParams e o `q` solto na lista morreram",
+        !/ctx==="auto"&&st\.q/.test(_appL5) && /if\(st\.q\)p\.set\("q",st\.q\)/.test(_appL5) &&
+        _appL5.includes("function _vfSetQ(") && !/p\.set\("hideSent","1"\);if\(fQ\)p\.set\("q",fQ\)/.test(_appL5),
+        "a busca do manual voltou a viver fora do motor de filtros");
+      // (2) lista vazia honesta: os 3 números que a frase precisa existem na rota
+      const vazio = (await get("/api/sheet-meta?sheet=jul2026&email=1&top=25")).json;
+      const vfVazio = (await get("/api/vagas/filtros?sheet=jul2026&email=1")).json;
+      check("🕳️ v181-L5: a aba Julho 2026 devolve total 0 com remainingTotal 2.625 e disponibilidade.email 0 — os 3 números que a frase honesta usa ('a planilha tem N vagas, mas o governo não publicou e-mail nenhum'); a tela imprimia '0 vagas' como se a planilha estivesse vazia",
+        (vazio.jobs || []).length === 0 && vazio.total === 0 && vazio.remainingTotal === 2625 &&
+        vfVazio.disponibilidade.email === 0 && vfVazio.totalPlanilha === 2625,
+        JSON.stringify({ total: vazio.total, rem: vazio.remainingTotal, email: vfVazio.disponibilidade.email }));
+      check("🕳️ v181-L5 (estrutural): `sTrueTotal` é atribuído ANTES do ramo vazio (era só dentro do else) e a lista vazia explica a CAUSA com botão de ação — nunca mais 'Nenhuma vaga encontrada' seco",
+        /sTrueTotal=d\.remainingTotal\|\|sTrueTotal\|\|0;\s*\n\s*if\(!d\.jobs\?\.length\)/.test(_appL5) &&
+        _appL5.includes("function _vfVazioHtml(") && _appL5.includes("vf_vazio_sem_email") && _appL5.includes("vf_vazio_tirando"),
+        "a lista vazia voltou a ser muda");
+      // (3) badge = ativos() do motor, pras MESMAS 8 combinações de estado
+      const { createFiltros: _cfL5 } = require(path.join(__dirname, "mod-filtros.js"));
+      const FL5 = _cfL5({ normalizeStateName: (s) => String(s || "").toUpperCase().trim(), normBusca: (s) => String(s || "").toLowerCase().trim(), cityMatchNormFn: () => null, regioes: {}, grupoDe: (r) => r.g || "", searchSheet: (arr) => ({ total: arr.length, items: arr }), categoriaLabel: (k) => k });
+      // espelho EXATO da vfAtivos(st) do app.js (contexto planilha, não ao vivo)
+      const vfAtivosFront = (st) => { let n = 0; for (const k of ["estado", "cidade", "categoria", "cargo", "inicio", "status", "grupo"]) if ((st[k] || []).length) n++; if (st.salarioMin > 0) n++; if (st.vagasMin > 0) n++; if (st.q) n++; if (st.email) n++; return n; };
+      const estados = [{}, { email: true }, { q: "cook" }, { q: "cook", email: true }, { estado: ["TEXAS"], q: "cook", email: true },
+        { estado: ["TEXAS"], categoria: ["food"], salarioMin: 15, email: true }, { cidade: ["ames|IOWA"], vagasMin: 5 },
+        { tipo: "agricultural", ativa: true, email: true }];
+      const badge = estados.map((st) => { const p = new URLSearchParams(); for (const k of ["estado", "cidade", "categoria", "cargo", "status", "grupo"]) (st[k] || []).forEach((v) => p.append(k, v)); (st.inicio || []).forEach((m) => p.append("inicio", String(m))); if (st.salarioMin > 0) p.set("salarioMin", String(st.salarioMin)); if (st.vagasMin > 0) p.set("vagasMin", String(st.vagasMin)); if (st.email) p.set("email", "1"); if (st.q) p.set("q", st.q); return { front: vfAtivosFront(st), motor: FL5.ativos(FL5.parse(p)) }; });
+      check("🔍 v181-L5: o badge '🔍 N filtros' espelha EXATAMENTE o ativos() do motor nas 8 combinações — contava tipo/ativa (que a tela nunca envia fora da aba ao vivo) e ignorava o 'só com e-mail', o filtro mais consequente da tela",
+        badge.every((b) => b.front === b.motor), JSON.stringify(badge));
+      check("🔍 v181-L5 (estrutural): o 'só com e-mail' DESLIGADO virou chip visível ('incluindo vagas sem e-mail — não dá pra se candidatar') e tirar o chip volta ao outro estado",
+        /else if\(st\.email\)n\+\+;/.test(_appL5) && _appL5.includes("vf_chip_sem_email") &&
+        /!st\.email\)push\("email"/.test(_appL5) && /else if\(dim==="email"\)st\.email=!st\.email;/.test(_appL5),
+
+        "chip do e-mail desligado ausente");
+      // (4) 🗓️ "Começa logo" entrega o que promete (caso 21)
+      const st10 = (await get("/api/sheet-meta?sheet=h2a-jun2026&sort=start&top=10")).json;
+      const _hj = new Date().toISOString().slice(0, 10);
+      const faixas = (st10.jobs || []).map((j) => { const d = String(j.start || "").slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(d) ? (d >= _hj ? 0 : 1) : 2; });
+      const semSort = (await get("/api/sheet-meta?sheet=h2a-jun2026&top=1")).json;
+      check("🗓️ v181-L5 (caso 21): 'Começa logo' entregava 'começou há mais tempo' (as 5 primeiras da H-2A eram de jan/fev — 8 meses atrás). Agora: nenhuma vaga já iniciada aparece antes de uma que ainda vai começar, e o total não muda",
+        faixas.length === 10 && faixas.every((f, i) => i === 0 || f >= faixas[i - 1]) && faixas[0] === 0 && st10.total === semSort.total,
+        JSON.stringify({ faixas, datas: (st10.jobs || []).map((j) => j.start), total: st10.total }));
+      const vfJan = (await get("/api/vagas/filtros?sheet=jan2026")).json;
+      check("🗓️ v181-L5: em jan2026/jul2025 a data de início é VAZIA em 100% das linhas (disponibilidade.inicio 0) — a tela esconde 🗓️/Recentes em vez de acender um botão que não faz nada em 11.446 vagas",
+        vfJan.disponibilidade.inicio === 0 && _appL5.includes("function _vfSyncSortBtns(") && /so-start","so-desc/.test(_appL5),
+        `inicio=${vfJan.disponibilidade.inicio}`);
+      // (5) "Recentes" virou ordenação REAL por data (decisão do dono)
+      const rec = (await get("/api/sheet-meta?sheet=h2a-jun2026&sort=desc&top=12")).json;
+      const datasRec = (rec.jobs || []).map((j) => String(j.start || "").slice(0, 10));
+      const _srvL5 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      check("🆕 v181-L5: 'Recentes' era literalmente a planilha AO CONTRÁRIO (list.reverse()) — ordem de arquivo vendida como data. Agora ordena de verdade pela data de início, da mais recente pra mais antiga, sem mudar o total",
+        datasRec.length === 12 && datasRec.every((d, i) => i === 0 || d <= datasRec[i - 1]) && rec.total === semSort.total &&
+        !/if \(sort==="desc"\) list=\[\.\.\.list\]\.reverse\(\);/.test(_srvL5),
+        JSON.stringify({ datas: datasRec, total: rec.total }));
+      check("🆕 v181-L5 (estrutural): as duas ordenações por data usam decorate-sort-undecorate com a data calculada 1x por linha (_dataISO) — nunca parse dentro do comparador (lição do v162)",
+        /function _dataISO\(/.test(_srvL5) && /list=list\.map\(\(r,i\)=>\{const d=_dataISO\(r\.d\)/.test(_srvL5) &&
+        !/sort\(\(a,b\)=>String\(a\.d\|\|"9999"\)/.test(_srvL5),
+        "ordenação por data voltou a parsear dentro do comparador");
+      // (6) rótulos PT do status + painel que não fica mudo
+      const _i18nL5 = ["vf_st_certified", "vf_st_pending", "vf_st_withdrawn", "vf_st_denied", "vf_erro", "vf_erro_btn", "vf_vazio_t", "vf_vazio_sem_email", "vf_vazio_tirando", "vf_chip_sem_email", "vf_grupo_expl"];
+      const _dictL5 = (lang) => { const i = _appL5.indexOf(`  ${lang}: {`); const e = _appL5.indexOf("\n  }", i); return _appL5.slice(i, e); };
+      const _ptL5 = _dictL5("pt"), _enL5 = _dictL5("en"), _esL5 = _dictL5("es");
+      const _faltamL5 = _i18nL5.filter((k) => !(_ptL5.includes(`"${k}":`) && _enL5.includes(`"${k}":`) && _esL5.includes(`"${k}":`)));
+      check("🏷️ v181-L5: 'Certified'/'Pending Processing' viraram rótulo em PT (✅ Aprovada pelo governo / ⏳ Em análise no DOL) e o grupo da loteria ganhou explicação — todas as strings novas no LANG_DICT nas 3 línguas",
+        _faltamL5.length === 0 && _appL5.includes("function _vfStatusLabel("), `faltando: ${_faltamL5.join(",")}`);
+      const dpStatus = (await get("/api/sheet-meta?sheet=jan2026&status=Certified&top=1")).json;
+      check("🏷️ v181-L5: o VALOR enviado ao servidor continua o LITERAL do dado (status=Certified → 9.240 em jan2026) — só o rótulo da tela traduz, o filtro não mexe",
+        dpStatus.total === 9240, `${dpStatus.total}`);
+      check("🛑 v181-L5: o painel não fica mais mudo com spinner eterno quando a rede falha — erro clicável no corpo (mesmo padrão da lista) e timeout de 8s no fetch das opções; nenhum catch vazio no bloco VF",
+        _appL5.includes("function _vfRenderErro(") && _appL5.includes("AbortController") &&
+        !/try\{const d=await vfFetch\("manual"\);if\(d\)\{VF\.fac\.manual=d;vfRenderChips\("manual"\);\}\}catch\(e\)\{\}/.test(_appL5),
+        "catch vazio / spinner eterno de volta no painel");
+    }
+
+
     // ═══ 📧 ORDEM DO DONO (13/09/2026): e-mails de envio por plano — grátis 0
     // (nem vincula Gmail), VIP/VIPro 1 (só o principal), DoublePro 2, admin 6.
     // Cortesia (code) e trial contam como sem plano pago. ═══
