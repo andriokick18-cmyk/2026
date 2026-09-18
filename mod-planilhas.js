@@ -116,7 +116,7 @@ function createPlanilhas(deps) {
     botLog, pushToUser, ADMIN_EMAILS,
     detectCategory, dedupe, verify, manifest,
     limparCidade,        // v182: régua ÚNICA de limpeza de cidade (server.js, ao lado do mapa de estados)
-    notificarRadares,
+    registrarVagasNovasNoRadar,
     isTest,              // true no npm test (TEST_LOGIN_TOKEN) — agendadores desligados
   } = deps;
 
@@ -490,7 +490,7 @@ function createPlanilhas(deps) {
       saveMeta();
       dolColeta.count = compact.length; dolColeta.progress = 100;
       const comEmail = compact.filter(r => r.e && String(r.e).includes("@")).length;
-      if (autoPub) { dcLog(`📢 Planilha PUBLICADA automaticamente: ${compact.length} vagas (${comEmail} com e-mail) — já disponível no Manual e no Automático.`); notificarRadares(compact, `Planilha nova ${sheetName}`).catch(() => { }); }
+      if (autoPub) { dcLog(`📢 Planilha PUBLICADA automaticamente: ${compact.length} vagas (${comEmail} com e-mail) — já disponível no Manual e no Automático.`); registrarVagasNovasNoRadar(compact, `Planilha nova ${sheetName}`).catch(() => { }); }
       else if (typeof autoPublishMin === "number") dcLog(`⚠️ Só ${compact.length} vagas válidas (mínimo pra publicar sozinho: ${autoPublishMin}) — ficou em RASCUNHO, revise no painel.`, "warn");
       else dcLog(`💾 Planilha salva em RASCUNHO: ${compact.length} vagas (${comEmail} já com e-mail). Revise e clique PUBLICAR pra liberar aos usuários.`);
       dcLog("🤖 O Enriquecimento automático completa os campos que faltarem (roda sozinho).");
@@ -601,7 +601,7 @@ function createPlanilhas(deps) {
         const chk = verify([...SHEET_H2A, ...novas], { caseField: "c" });
         if (!chk.ok) throw new Error(`integridade: duplicata após o merge (${chk.duplicateCases.length}) — NADA foi salvo`);
         SHEET_H2A.push(...novas);
-        notificarRadares(novas, "Vagas novas H-2A").catch(() => { });
+        registrarVagasNovasNoRadar(novas, "Vagas novas H-2A").catch(() => { });
       }
       if (novas.length || removidas > 0 || atualizadas > 0) {
         saveSheet("h2a-jun2026", SHEET_H2A);

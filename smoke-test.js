@@ -3076,7 +3076,7 @@ async function testAuthWatchdogPush() {
     // v174: além do upload manual do admin, a coleta do DOL, a publicação de
     // rascunho e as vagas novas H-2A também avisam o radar (bloco 📋 acima);
     // aqui fica a prova comportamental do caminho do upload, de ponta a
-    // ponta, em vez de só contar chamadas de notificarRadares() no texto.
+    // ponta, em vez de só contar chamadas de registrarVagasNovasNoRadar() no texto.
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radaruser@test.com", name: "Radar User" });
     // estado no formato NOME POR EXTENSO — é o que o front realmente manda
     // (o VF guarda "MASSACHUSETTS", não a sigla "MA" — normalizeStateName no
@@ -3090,9 +3090,49 @@ async function testAuthWatchdogPush() {
     check("📡 v134: admin consegue publicar planilha nova (/api/admin/sheet/upload)", rdUpload.json?.ok === true, rdUpload.body.slice(0, 160));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radaruser@test.com" });
     const rdGet3 = await get("/api/radar");
-    check("📡 v134: vaga nova casando com o radar (upload manual do admin) avisa de verdade — totalAvisos sobe e lastPushAt é carimbado",
-      rdGet3.json?.radar?.totalAvisos === 1 && rdGet3.json?.radar?.lastPushAt > 0,
-      JSON.stringify(rdGet3.json?.radar || {}).slice(0, 160));
+    // ⚠️ ATUALIZADO no v189 LOTE 7: esta asserção codificava um comportamento
+    // ERRADO — dizia "avisa de verdade" e checava `totalAvisos`, um contador
+    // que a tela mostrava como "🔔 N avisos já enviados" e que NUNCA
+    // correspondeu a aviso nenhum (não há push nesta reconstrução: pushToUser
+    // é no-op, PUSH_ENABLED=false, e a função nem chegava a chamá-lo). O que o
+    // radar faz de verdade — e agora o que se mede — é CONTAR as vagas novas
+    // que combinam com o filtro salvo, pra pessoa ver quando abrir o site.
+    check("📡 v134 + v189-L7: vaga nova casando com o radar é CONTADA de verdade (novas sobe com o nº real de vagas que combinam, ultimaEm carimbado) — e o contador de 'avisos enviados', que nunca correspondeu a aviso nenhum, morreu",
+      rdGet3.json?.radar?.novas === 1 && rdGet3.json?.radar?.ultimaEm > 0 &&
+      !("totalAvisos" in (rdGet3.json?.radar || {})) && !("lastPushAt" in (rdGet3.json?.radar || {})),
+      JSON.stringify(rdGet3.json?.radar || {}).slice(0, 200));
+    // 🚫 v189 LOTE 7 — GUARDA PERMANENTE: enquanto PUSH_ENABLED for false, NENHUM
+    // arquivo servido ao cliente pode prometer aviso/notificação. Não é questão
+    // de texto: não existe canal nenhum (sem VAPID, sem rota /api/push/*,
+    // pushToUser vazio), então toda promessa dessas é mentira pro usuário no
+    // momento em que ele mais confia no site (logo depois do Pix).
+    const _cfgL7 = fs.readFileSync(path.join(__dirname, "mod-config.js"), "utf8");
+    const _appL7 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+    const _idxL7 = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+    const _tutL7 = fs.readFileSync(path.join(__dirname, "tutorial-conteudo.html"), "utf8");
+    const _pushOff = /const PUSH_ENABLED\s*=\s*false/.test(_cfgL7);
+    // Tira comentários antes de medir: a guarda mede o que é EXECUTADO/servido,
+    // nunca o texto que explica por que a promessa foi removida (senão o
+    // próprio comentário "não promete mais aviso no celular" derrubaria o
+    // teste — a classe de falso-positivo da guarda anti-função-fantasma).
+    const _semCom = (txt) => txt.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ");
+    const _semHtmlCom = (txt) => txt.replace(/<!--[\s\S]*?-->/g, " ");
+    const _proibidas = [/Avisamos por notifica/i, /aviso no celular/i, /push no celular/i, /notifica[cç][aã]o no celular/i, /ative as notifica/i, /notifica[cç][õo]es ativadas/i];
+    const _achadas = [];
+    for (const [nome, txt] of [["app.js", _semCom(_appL7)], ["index.html", _semHtmlCom(_semCom(_idxL7))], ["tutorial-conteudo.html", _semHtmlCom(_tutL7)]])
+      for (const rx of _proibidas) { const m = txt.match(rx); if (m) _achadas.push(nome + ": " + m[0]); }
+    check("🚫 v189-L7 (guarda permanente): com PUSH_ENABLED=false, nenhum arquivo servido ao cliente promete aviso/notificação — o site parou de pedir uma permissão que nunca usaria e de prometer 'avisamos na hora' logo depois do Pix",
+      _pushOff && _achadas.length === 0,
+      `pushOff=${_pushOff} promessas=[${_achadas.join(" | ")}]`);
+    check("🚫 v189-L7 (estrutural): o convite de push e o auto-request no primeiro login foram REMOVIDOS (renderPushAsk/requestPushPermission/_autoPushSetup e os divs vazios que os hospedavam) — não sobrou plumbing morto pedindo permissão",
+      !/renderPushAsk|requestPushPermission|_autoPushSetup|_renderNotifToggle/.test(_semCom(_appL7)) &&
+      !_idxL7.includes("plan-push-ask") && !_idxL7.includes("auto-push-ask") &&
+      !/radar_alerts/.test(_appL7),
+      "sobrou código de pedido de push no front");
+    check("🌐 v189-L7: as chaves novas do Radar honesto existem nas 3 línguas (regra do dicionário) e o texto do radar não promete mais aviso",
+      (_appL7.match(/"radar_novas":/g) || []).length === 3 && (_appL7.match(/"radar_novas_zero":/g) || []).length === 3 &&
+      !/radar_sub":"[^"]*celular/.test(_appL7),
+      "radar_novas/radar_novas_zero não estão nas 3 línguas ou o radar_sub ainda fala em celular");
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     check("📡⭐ v134: front tem o botão 📡 Radar e o funil do limite (limitUpsell 1x/dia)",
       frontAll.includes("function radarModal") && frontAll.includes("function limitUpsell") && home.body.includes('id="radar-btn"') && frontAll.includes("h2b_upsell"),
@@ -3761,8 +3801,12 @@ async function testAuthWatchdogPush() {
       // v170 (09/09): 5 prints do fluxo antigo de diamante/doação/código saíram
       // do tutorial (t21-planos/t22-doacao/t23-troca/t25-missoes/t25-codigo —
       // telas que não existem mais) — piso recalibrado pra realidade atual.
+      // v189 LOTE 7: saiu também o print do card "Notificações" do Perfil —
+      // o passo "Ativar as notificações push" deixou de existir (o site não
+      // manda notificação nenhuma), então o print seria de uma tela que não
+      // existe. O arquivo t05-notificacoes.jpg foi apagado do repo junto.
       check("📖 v160: TODAS as fotos referenciadas nos tutoriais existem de verdade no disco (nenhum print quebrado)",
-        _imgsRef.length >= 10 && _faltando.length === 0,
+        _imgsRef.length >= 9 && _faltando.length === 0,
         JSON.stringify({ refs: _imgsRef.length, faltando: _faltando }).slice(0, 200));
       const _img160 = await _getBufA("/tut-img/t01-landing.jpg");
       const _trav160 = await get("/tut-img/..%2Fserver.js");
@@ -4396,9 +4440,12 @@ async function testAuthWatchdogPush() {
       });
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radar9@test.com" });
       const rd9rico = (await get("/api/radar")).json;
-      check("🎨 v182-L9 (40): quem pediu '$20+/h' não é mais avisado de vaga de $12/h que só casa no estado e na palavra — o radar é avaliado pelo MESMO FILTROS.filtrar da lista e da fila do robô, nunca por uma 3ª régua",
-        (rd9pobre.radar.totalAvisos || 0) === 0 && rd9rico.radar.totalAvisos === 1 && rd9rico.radar.lastPushAt > 0,
-        `pobre=${rd9pobre.radar.totalAvisos} rico=${rd9rico.radar.totalAvisos}`);
+      // ⚠️ v189 LOTE 7: mede `novas` (vagas novas que combinam de verdade) no
+      // lugar do antigo `totalAvisos` — o comportamento provado é o mesmo (a
+      // vaga pobre não entra, a rica entra), só o nome deixou de mentir.
+      check("🎨 v182-L9 (40) + v189-L7: quem pediu '$20+/h' não vê no radar a vaga de $12/h que só casa no estado e na palavra — o radar é avaliado pelo MESMO FILTROS.filtrar da lista e da fila do robô, nunca por uma 3ª régua",
+        (rd9pobre.radar.novas || 0) === 0 && rd9rico.radar.novas === 1 && rd9rico.radar.ultimaEm > 0,
+        `pobre=${rd9pobre.radar.novas} rico=${rd9rico.radar.novas}`);
       const _srvL9 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
       check("🎨 v182-L9 (40, estrutural): a régua própria do radar (includes/split de texto) morreu — sobrou _radarFiltrosDe + FILTROS.filtrar, e o modal diz exatamente o que está sendo avaliado",
         _srvL9.includes("function _radarFiltrosDe(") && _srvL9.includes("const matches=FILTROS.filtrar(novas,f,{isDP:_isDoublePro(u2)});") &&

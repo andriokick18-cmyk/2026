@@ -248,8 +248,6 @@ async function checkStatus(){
       }
       // Apply language AFTER showApp so all elements exist
       setTimeout(applyLang, 100);
-      // Dispara setup automático de push após login (com delay para app carregar)
-      setTimeout(()=>_autoPushSetup().catch(()=>{}), 1500);
     }else{showLanding();}
   }catch(e){console.warn("[boot]",e);showLanding();}
 }
@@ -1907,8 +1905,12 @@ function qSugKey(ev){
 function qSugClose(){const box=g("#q-sug");if(box){box.classList.remove("open");box.innerHTML="";}_sugIdx=-1;_sugItems=[];g("#q")?.setAttribute("aria-expanded","false");}
 function qSugBlur(){setTimeout(qSugClose,160);}
 
-/* 📡 v134: RADAR DE VAGAS (aprovado pelo dono) — salva os filtros atuais e
-   o servidor avisa por push quando entrar vaga nova que combina (máx 1/dia). */
+/* 📡 v134: RADAR DE VAGAS (aprovado pelo dono) — salva os filtros atuais.
+   🚫 v189 LOTE 7 (decisão do dono): NÃO manda push nem aviso no celular —
+   este site não tem canal de notificação nenhum. O radar é um FILTRO SALVO:
+   o servidor conta quantas vagas NOVAS entraram combinando com ele e a
+   pessoa vê esse número aqui, quando abre o site. Proibido voltar a
+   prometer aviso enquanto não existir um canal de verdade. */
 async function radarModal(){
   let r=null;try{const d=await fetch("/api/radar",{credentials:"include"}).then(x=>x.json());r=d.radar;}catch(e){}
   const ov=document.createElement("div");
@@ -1917,7 +1919,7 @@ async function radarModal(){
   const cur=r?`<div style="background:var(--sf2);border:1.5px solid var(--border2);border-radius:12px;padding:12px;margin-bottom:12px;font-size:13px">
       <b>📡 ${esc(t('radar_active'))}</b><br>
       <span style="color:var(--t2)">${_rChips.length?_rChips.map(c2=>esc(c2.lbl)).join(" · "):esc(t('radar_all'))}</span>
-      <div style="font-size:11px;color:var(--t3);margin-top:4px">🔔 ${(r.totalAvisos||0)} ${esc(t('radar_alerts'))}</div>
+      <div style="font-size:11px;color:var(--t3);margin-top:4px">${(r.novas||0)>0?("🆕 "+(r.novas||0)+" "+esc(t('radar_novas'))):esc(t('radar_novas_zero'))}</div>
       <button class="btn btn-danger btn-sm" style="margin-top:8px" onclick="radarRemove();this.closest('div[style*=fixed]').remove()">🗑️ ${esc(t('radar_off'))}</button>
     </div>`:"";
   ov.innerHTML=`<div style="background:var(--sf);border-radius:18px;padding:22px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25)">
@@ -1942,7 +1944,7 @@ async function radarCreate(){
   const payload={filtros:vfSnapshot("manual")};
   try{
     const d=await fetch("/api/radar",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}).then(x=>x.json());
-    if(d.ok){toast("📡 "+t('radar_created'),"g");try{_autoPushSetup().catch(()=>{});}catch(e){}}
+    if(d.ok)toast("📡 "+t('radar_created'),"g");
     else toast(d.error||"Erro","r");
   }catch(e){toast("❌ "+e.message,"r");}
 }
@@ -4928,8 +4930,7 @@ async function startAuto(overrideStartH, overrideEndH, _mode="now"){
     U.autoJob={...U.autoJob,mode:_mode};
     updateLimChip();updateAutoDot(true);updateAutoUI();startAutoPolling();
     // Fecha o wizard e abre direto o painel de monitoramento
-    setTimeout(()=>{const lv=g("#auto-live-section");const wz=g("#auto-wizard");if(lv)lv.style.display="block";if(wz)wz.style.display="none";if(typeof loadAutoLogs==="function")loadAutoLogs();
-      renderPushAsk("auto-push-ask","Seu robô trabalha com o app fechado — ative as notificações pra ele te avisar do progresso e se parar por algum motivo.");},100);
+    setTimeout(()=>{const lv=g("#auto-live-section");const wz=g("#auto-wizard");if(lv)lv.style.display="block";if(wz)wz.style.display="none";if(typeof loadAutoLogs==="function")loadAutoLogs();},100);
     const msg=_mode==="now"
       ?`🟢 Enviando agora! Contínuo até zerar a fila.`
       :(nowH>=startH&&nowH<endH
@@ -5721,42 +5722,16 @@ function _loadReadStateFromServer(serverIds){
 }
 function _saveReadState(){try{localStorage.setItem("h2b-inbox-read",JSON.stringify([..._READ_IDS]));}catch{}}
 
-function dismissNotifBanner(){
-  localStorage.setItem("h2b-notif-banner-dismissed","1");
-  const b=g("#inbox-notif-banner");if(b)b.style.display="none";
-}
-
-// v36: convite de push nos MOMENTOS de maior motivação (ligou o robô /
-// enviou o pedido) — o banner antigo só vivia na aba Respostas, e todos os
-// avisos importantes (robô parou, plano ativado, renovação, notícia) são
-// push. Só aparece se a permissão ainda não foi decidida (default), e o
-// clique é gesto do usuário (exigência dos navegadores).
-function renderPushAsk(elId,msg){
-  const el=g("#"+elId);if(!el)return;
-  if(!("Notification" in window)||Notification.permission!=="default"){el.style.display="none";return;}
-  el.style.display="block";
-  el.innerHTML=`<div style="background:linear-gradient(135deg,#eff6ff,#e0e7ff);border:1.5px solid var(--blueb);border-radius:12px;padding:11px 13px;display:flex;align-items:center;gap:10px;margin:10px 0">
-    <div style="font-size:20px;flex-shrink:0">🔔</div>
-    <div style="flex:1;font-size:12px;color:var(--t2);line-height:1.45">${msg}</div>
-    <button onclick="requestPushPermission();g('#${elId}').style.display='none'" style="background:var(--blue);color:#fff;border:none;border-radius:9px;padding:8px 12px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;flex-shrink:0">Ativar</button>
-  </div>`;
-}
-
-async function requestPushPermission(){
-  if(!("Notification" in window)){toast("Seu navegador não suporta notificações","r");return;}
-  const p=await Notification.requestPermission().catch(()=>"denied");
-  if(p==="granted"){
-    _notifEnabled=true;try{localStorage.setItem("h2b-notif","1");}catch{}
-    dismissNotifBanner();
-    _renderNotifToggle();
-    playPlaneSound();
-    toast("🔔 Notificações ativadas! Você será avisado de confirmação de comprovante, status do automático e novidades.","g");
-    // Testa notificação imediatamente
-    try{new Notification("✅ H2BApply",{body:"Notificações ativadas! Você será avisado de confirmação de comprovante, status do automático e novidades.",icon:"/icon-192.png",tag:"h2b-test"});}catch{}
-  }else if(p==="denied"){
-    toast("Permissão negada. Ative manualmente nas configurações do navegador.","r");
-  }
-}
+// 🚫 v189 LOTE 7 (decisão do dono): O SITE NÃO PEDE MAIS PERMISSÃO DE
+// NOTIFICAÇÃO. Aqui viviam `renderPushAsk` (o convite "🔔 Quer saber NA HORA
+// em que seu plano for ativado?" na tela de Pedido enviado e no robô ligado),
+// `requestPushPermission` e `dismissNotifBanner`. Nada nesta reconstrução
+// envia notificação: não há Web Push (pushToUser é no-op, PUSH_ENABLED=false,
+// sem VAPID nem rota /api/push/*) e o único `new Notification` do app era o
+// de TESTE, disparado na hora em que a permissão era concedida. Ou seja: o
+// site pedia uma permissão que nunca usaria, no momento mais sensível da
+// jornada (logo depois do Pix), e prometia um aviso que jamais chegaria.
+// PROIBIDO recriar o convite antes de existir um canal de verdade.
 
 // ── Modal Envio Automático ──────────────────────────────
 // ── Seleção de e-mails de envio no wizard do Automático ──────────────────
@@ -6137,47 +6112,11 @@ function renderHome(){
   }
 }
 
-// ── Notificações ──────────────────────────────────────────
-let _notifEnabled=false;
-let _lastUnreadCount=-1;
-
-function _loadNotifState(){
-  try{_notifEnabled=localStorage.getItem("h2b-notif")==="1";}catch{}
-  _renderNotifToggle();
-}
-
-function _renderNotifToggle(){
-  const btn=g("#notif-toggle-btn");const dot=g("#notif-toggle-dot");const msg=g("#notif-status-msg");
-  if(!btn)return;
-  btn.style.background=_notifEnabled?"#057a55":"var(--border2)";
-  if(dot)dot.style.transform=_notifEnabled?"translateX(24px)":"translateX(0)";
-  if(msg){
-    // v-2026: o site é só-envio (GMAIL_SEND_ONLY) e não lê a caixa de entrada
-    // de ninguém — este alerta é só de comprovante/automático/novidades, nunca de
-    // resposta de empregador (isso ficava contraditório com o texto fixo do
-    // card, que já avisa "não avisamos quando a empresa responde").
-    if(_notifEnabled){msg.style.color="var(--green)";msg.textContent="🛫 Ativado! Você será avisado de confirmação de comprovante, status do automático e novidades.";}
-    else{msg.style.color="var(--t3)";msg.textContent="Toque para ativar alertas de confirmação de comprovante, status do automático e novidades.";}
-  }
-}
-
-
-// ── Sons de notificação (6 opções) ──────────────────────────────
-const SOUNDS = {
-  aviao: { label: "✈️ Avião", desc: "Som de decolagem" }, // ⚠️ literal de propósito: t() aqui roda ANTES do LANG_DICT existir (TDZ) e mataria o app — a tradução é feita na hora de renderizar (_sndLabel/_sndDesc)
-  ping:  { label: "🔔 Ping",  desc: "Sino suave" },
-  chime: { label: "🎵 Chime", desc: "Melodia" },
-  alert: { label: "📣 Alerta", desc: "Urgente" },
-  suave: { label: "🌊 Suave",  desc: "Suave" },
-  retro: { label: "👾 Retro",  desc: "Game" },
-};
-let _selectedSound = "aviao";
-// 🌐 v137: tradução PREGUIÇOSA dos sons (na renderização, nunca no load)
-function _sndLabel(key,s){return key==="aviao"?("✈️ "+t('snd_plane')):s.label;}
-function _sndDesc(key,s){return key==="aviao"?t('snd_plane_d'):s.desc;}
-
-function _loadSoundPref(){try{_selectedSound=localStorage.getItem("h2b-sound")||"aviao";}catch{}}
-function _saveSoundPref(s){try{localStorage.setItem("h2b-sound",s);}catch{}}
+// 🚫 v189 LOTE 7: o card "Notificações" do Perfil (#notif-toggle-btn) não
+// existe no HTML desta reconstrução — `_loadNotifState`/`_renderNotifToggle`
+// giravam em falso e a mensagem deles ("Você será avisado de confirmação de
+// comprovante, status do automático e novidades") era uma promessa sem canal.
+// Removidos com o resto do convite de push.
 
 function playNotifSound(soundKey){
   const s = soundKey || _selectedSound;
@@ -6237,9 +6176,6 @@ function playNotifSound(soundKey){
   }catch(e){console.warn("Audio:",e);}
 }
 
-// Alias para manter compatibilidade
-function playPlaneSound(){playNotifSound("aviao");}
-
 // Renderiza seletor de sons na tela de Perfil
 function renderSoundSelector(){
   const el=g("#sound-selector-wrap");if(!el)return;
@@ -6270,67 +6206,12 @@ function selectSound(key){
 //  subscription VAPID que só chamava rotas inexistentes no servidor.
 // ══════════════════════════════════════════════════════════
 
-// Hook: quando notificações são ativadas/desativadas
-// ══════════════════════════════════════════════════════════
-//  AUTO-REQUEST DE NOTIFICAÇÃO NO PRIMEIRO LOGIN
-//  Solicita permissão automaticamente ao entrar pela 1ª vez,
-//  de forma não-intrusiva. Compatível com Android e desktop.
-// ══════════════════════════════════════════════════════════
-
-// Chave usada para controle por conta (não por navegador)
-function _pushPromptKey() {
-  return "h2b-push-prompted-" + (U.email || "anon");
-}
-function _hasPushBeenPrompted() {
-  try { return localStorage.getItem(_pushPromptKey()) === "1"; } catch { return false; }
-}
-function _markPushPrompted() {
-  try { localStorage.setItem(_pushPromptKey(), "1"); } catch {}
-}
-
-// Solicita permissão de notificação (local — sem backend de push real)
-async function _autoPushSetup() {
-  if (!("Notification" in window)) return;
-  if (!U.connected) return;
-
-  // Se já foi solicitado para esta conta, não pergunta de novo
-  if (_hasPushBeenPrompted()) return;
-
-  // Aguarda um momento para o app estar completamente carregado
-  await new Promise(r => setTimeout(r, 2500));
-  if (!U.connected) return; // verificação dupla
-
-  _markPushPrompted(); // marca imediatamente para não re-solicitar
-
-  // Se já foi concedido em sessão anterior, só sincroniza o estado local
-  if (Notification.permission === "granted") {
-    _notifEnabled = true;
-    try { localStorage.setItem("h2b-notif", "1"); } catch {}
-    _renderNotifToggle();
-    return;
-  }
-
-  // Se explicitamente negado, não re-solicita
-  if (Notification.permission === "denied") return;
-
-  // Solicita permissão via modal nativo do SO (primeiro login)
-  try {
-    const permission = await Notification.requestPermission();
-    if (permission === "granted") {
-      _notifEnabled = true;
-      try { localStorage.setItem("h2b-notif", "1"); } catch {}
-      _renderNotifToggle();
-      dismissNotifBanner();
-      // Pequena confirmação visual, não intrusiva
-      toast("🛫 Notificações ativadas! Você será avisado de confirmação de comprovante, status do automático e novidades.", "g");
-    } else {
-      // Usuário negou — respeita a decisão, não volta a perguntar
-      console.debug("[push] Permissão negada pelo usuário.");
-    }
-  } catch (err) {
-    console.warn("[push] requestPermission error:", err.message);
-  }
-}
+// 🚫 v189 LOTE 7: aqui morava o AUTO-REQUEST de permissão de notificação no
+// primeiro login (`_autoPushSetup` + as chaves de controle por conta). Ele
+// abria o pedido do navegador sozinho, 2,5s depois de entrar, e o toast de
+// sucesso prometia avisos que o sistema nunca manda. Pedir permissão que
+// nunca vai ser usada é o pior tipo de quebra de confiança — e ainda
+// "queima" o pedido pra um dia em que exista push de verdade.
 
 // ── Ouve mensagens do Service Worker (ex: navigate do notificationclick) ──
 if ("serviceWorker" in navigator) {
@@ -6375,10 +6256,7 @@ function _showFirstLoginWelcome() {
 
 // ── Inicialização ─────────────────────────────────────────
 _loadReadState();
-_loadNotifState();
 _loadSoundPref();
-// Solicita push no primeiro login (executado após checkStatus carregar U)
-setTimeout(()=>{ if(U.connected) _autoPushSetup().catch(()=>{}); }, 1000);
 
 // (Captura de ?ref= removida — programa de indicação encerrado, KB-059)
 
@@ -7586,9 +7464,9 @@ const LANG_DICT = {
     "sug_companies":"Empresas","sug_roles":"Cargos","sug_cities":"Cidades","sug_regions":"Regiões","sug_states":"Estados","sug_jobs":"vagas",
     "extra_gmail":"Gmail Extra para Envios","upgrade_to_enable":"Assine um plano para ativar.","tap_to_pick":"(toque para escolher)","search_btn":"Buscar",
     // 📡⭐ v134 — Radar de Vagas + funil do limite
-    "radar_btn":"📡 Radar","radar_title":"Radar de Vagas","radar_sub":"Salve os filtros de agora (busca, estado, cidade) e receba um aviso no celular quando entrar vaga NOVA que combina — no máximo 1 aviso por dia.",
+    "radar_btn":"📡 Radar","radar_title":"Radar de Vagas","radar_sub":"Guarde os filtros de agora (busca, estado, cidade, salário…) pra não ter que montar tudo de novo. Toda vez que entrar vaga NOVA que combina, o contador aqui sobe — é só abrir o Radar pra ver. O site não manda notificação: quem confere é você, quando abrir.",
     "radar_create":"Criar radar com os filtros atuais","radar_active":"Seu radar está LIGADO","radar_off":"Desligar radar",
-    "radar_all":"Todas as vagas novas","radar_alerts":"aviso(s) já enviados","radar_created":"Radar ligado! Você será avisado quando entrar vaga nova que combina.","radar_removed":"Radar desligado.",
+    "radar_all":"Todas as vagas novas","radar_novas":"vaga(s) nova(s) entraram combinando com este radar","radar_novas_zero":"Nenhuma vaga nova combinando até agora.","radar_created":"Radar salvo! Seus filtros ficam guardados aqui.","radar_removed":"Radar desligado.",
     "upsell_title":"Seu limite de hoje acabou — as vagas não esperam","upsell_left":"Ainda restam {n} vagas disponíveis HOJE que você não vai alcançar no plano atual. Assine um plano e continue agora mesmo — comprovante conferido, plano ativado.",
     "upsell_left_generic":"Amanhã o limite volta — mas as melhores vagas de hoje já terão recebido outros candidatos. Assine um plano e continue agora.",
     "upsell_cta":"Ver planos e assinar","upsell_later":"Continuar amanhã de graça",
@@ -7677,7 +7555,7 @@ const LANG_DICT = {
     "search_hint":"Digite o nome da empresa, um e-mail recebido, o ETA case number, o cargo ou o estado",
     // Responses
     "all_inbox":"Todos","unread":"Não lidas","favorites":"Favoritos","this_week":"Esta semana",
-    "enable_notif":"Ativar notificações","enable_notif_sub":"Receba avisos de confirmação de comprovante, status do automático e novidades — mesmo com o app fechado",
+    
     "activate":"Ativar","inbox_search_ph":"Buscar empresa, assunto...","notif_short":"Notif",
     "reply_alert":"Alerta de nova resposta","reply_alert_sub":"Som + aviso de confirmação de comprovante, status do automático e novidades (o site não lê e-mail — não avisamos quando a empresa responde)",
     "pipe_responded":"Respondeu","pipe_positive":"Interesse","pipe_interview":"Entrevista","pipe_offer":"Oferta",
@@ -7687,7 +7565,7 @@ const LANG_DICT = {
     // Profile
     "full_name":"Nome completo *","country":"País","city":"Cidade",
     "full_name_ph":"Seu nome completo","country_ph":"Brazil","save_data":"Salvar dados",
-    "tap_to_enable":"Toque no botão para ativar","new_profile":"Criar Novo Perfil",
+    "new_profile":"Criar Novo Perfil",
     "email_profiles":"Perfis de Currículo","profiles_desc":"Cada perfil define o assunto, o corpo do e-mail e o currículo a usar. O sistema escolhe o perfil certo para cada vaga automaticamente.",
     "no_profiles":"Nenhum perfil criado","no_profiles_sub":"Crie seu primeiro perfil para começar a enviar",
     "total_sent":"Total enviados","companies_lbl":"🏢 Empresas","states_lbl":"🗺️ Estados",
@@ -7699,7 +7577,7 @@ const LANG_DICT = {
     "ws2_title":"Filtros (opcional)","summer":"Verão",
     "snd_hint_admin":"Conta admin: até {n} e-mails de envio (revezamento automático).","snd_hint_dp":"Seu plano DoublePro permite 2 e-mails de envio (principal + 1 extra) — conecte o extra no Perfil pra reduzir risco de bloqueio.","snd_hint_1":"Seu plano permite 1 e-mail de envio (o principal). Só o DoublePro libera um 2º Gmail extra.","snd_hint_0":"Sem plano ativo não dá pra vincular Gmail nem enviar — veja os planos.","plan_emails_1":"1 e-mail de envio","plan_emails_2":"2 e-mails de envio (revezamento)",
     // 🔍 v173 — filtros de vagas (sistema novo)
-    "vf_btn":"Filtros","vf_btn_auto":"Filtrar vagas","vf_title":"🔍 Filtrar vagas","vf_title_auto":"🔍 Filtrar vagas do robô","vf_clear":"Limpar tudo","vf_apply":"Ver {n} vagas","vf_apply_auto":"Usar {n} vagas no robô","vf_apply_simple":"Aplicar filtros","vf_of":"de {m}","vf_more":"Ver mais ({n})","vf_less":"Ver menos","vf_remove":"Remover filtro","vf_filtered":"filtrado","vf_filtro":"filtro","vf_filtros":"filtros","vf_counting":"Contando vagas…","vf_nothing":"Nada encontrado com esse nome.","vf_pick_source":"Escolha a fonte das vagas primeiro (Passo 1)","vf_sec_q":"Palavra-chave","vf_q_ph":"Cargo, empresa, cidade ou nº do caso…","vf_sec_categoria":"Tipo de trabalho","vf_sec_estado":"Estado","vf_sec_salario":"Salário mínimo por hora","vf_sec_inicio":"Mês de início","vf_sec_cidade":"Cidade ou região","vf_sec_cargo":"Cargo específico","vf_sec_vagas":"Vagas abertas na empresa","vf_sec_email":"E-mail de contato","vf_sec_tipo":"Tipo de visto","vf_sec_ativa":"Status da vaga","vf_sec_status":"Status no DOL","vf_sec_grupo":"Grupo da loteria H-2B","vf_search_estado":"Buscar estado…","vf_search_cidade":"Buscar cidade…","vf_search_cargo":"Buscar cargo…","vf_wage_more":"${v}+/h","vf_workers_more":"{v}+ vagas","vf_faixa":"Nesta seleção: ${min} a ${max}/h · metade das vagas paga ${med}/h ou mais","vf_no_salary":"Esta planilha ainda não tem salário publicado pelo governo (DOL) — o filtro aparece quando o dado sair.","vf_no_email":"Esta planilha ainda não tem e-mails de contato publicados pelo governo — ainda não dá pra se candidatar por aqui.","vf_no_email_auto":"Esta planilha ainda não tem e-mails de contato publicados pelo governo — o robô não tem pra quem enviar aqui. Escolha outra fonte (Jan 2026, Jul 2025 ou H-2A).","vf_zero":"Nenhuma vaga com essa combinação — remova algum filtro. O número ao lado de cada opção mostra quantas vagas sobram.","vf_all_sent":"Você já enviou pra todas as vagas com e-mail desta planilha. Escolha outra fonte ou resete as enviadas.","vf_email_lbl":"Só vagas com e-mail (dá pra se candidatar)","vf_email_com":"{n} com e-mail","vf_email_sem":"{n} sem e-mail","vf_chip_email":"Só com e-mail","vf_sug":"Também há <b>{n}</b> vaga(s) em {cat} que não citam \"{q}\" no texto.","vf_sug_btn":"Incluir na busca","vf_regions":"Regiões turísticas","vf_cities":"Cidades","vf_n_cargos":"{n} cargos","vf_live_note":"Nesta aba (vagas ao vivo do DOL) os filtros são simples, sem contagem por opção. Nas planilhas, cada opção mostra quantas vagas sobram.","vf_ativas_lbl":"Só vagas ativas","vf_dp_lock":"Exclusivo do plano Double Pro.","vf_see_plans":"Ver planos →","vf_grupo_lbl":"Grupo {g}","vf_count_auto":"vagas com e-mail prontas pro robô","vf_ws2_sub":"Tipo de trabalho, estado, salário, mês de início… Cada opção mostra quantas vagas sobram. O robô só envia pra vagas com e-mail.","vf_no_cidade":"Esta planilha ainda não tem cidade publicada pelo governo (DOL) — o filtro aparece quando o dado sair.","vf_no_inicio":"Esta planilha ainda não tem data de início publicada pelo governo (DOL) — o filtro aparece quando o dado sair.","vf_no_cargo":"Esta planilha ainda não tem o cargo de cada vaga publicado pelo governo (DOL) — o filtro aparece quando o dado sair.","vf_no_vagas":"Esta planilha ainda não tem o número de vagas de cada empresa publicado pelo governo (DOL) — o filtro aparece quando o dado sair.","vf_no_exp":"Esta planilha ainda não tem a experiência exigida publicada pelo governo (DOL) — o filtro aparece quando o dado sair.","vf_no_temporada":"Esta planilha ainda não tem as datas da temporada publicadas pelo governo (DOL) — o filtro aparece quando o dado sair.","vf_ponte":"Usar os mesmos filtros da minha busca","vf_ponte_ok":"Filtros da sua busca copiados pro robô","vf_ws2_dyn":"Dá pra filtrar por {d}. Cada opção mostra quantas vagas sobram. O robô só envia pra vagas com e-mail.","radar_evaluated":"O radar vai avisar quando entrar vaga nova que passe em TODOS estes filtros:","email_locked":"E-mail do empregador liberado com plano ativo — toque pra ver os planos","vf_meses":"Jan,Fev,Mar,Abr,Mai,Jun,Jul,Ago,Set,Out,Nov,Dez","vf_chip_sem_email":"Incluindo vagas sem e-mail (não dá pra se candidatar)","vf_erro":"Não deu pra carregar as opções.","vf_erro_btn":"Tentar de novo","vf_st_certified":"✅ Aprovada pelo governo","vf_st_pending":"⏳ Em análise no DOL","vf_st_withdrawn":"🚫 Retirada pelo empregador","vf_st_denied":"❌ Negada","vf_st_expired":"⌛ Vencida","vf_grupo_expl":"O governo sorteia as vagas H-2B em grupos (A, B, C…). O grupo indica a ordem em que o pedido do empregador entra no sorteio.","vf_vazio_t":"Nenhuma vaga com essa combinação de filtros.","vf_vazio_busca":"Sua busca por “{q}” não achou nada nesta planilha.","vf_vazio_ativos":"Filtros ativos agora:","vf_vazio_tirando":"Tirando {f}, aparecem {n} vagas.","vf_vazio_tirar":"Tirar esse filtro","vf_vazio_ajustar":"Ajustar filtros","vf_vazio_sem_email_t":"Planilha ainda em preparação","vf_vazio_sem_email":"Esta planilha tem {n} vagas, mas o governo ainda não publicou nenhum e-mail de contato — não dá pra se candidatar por aqui ainda. O robô completa sozinho assim que os contatos saírem.","vf_vazio_outra":"Ver a planilha recomendada","vf_sec_exp":"Experiência exigida","vf_sec_temporada":"Temporada","vf_sec_visa":"Tipo de visto","vf_exp_0":"Não exige experiência","vf_exp_ate":"Até {n} meses","vf_exp_sem":"{n} vagas ainda não informam a experiência exigida.","vf_temp_futura":"🔜 Ainda vai começar","vf_temp_aberta":"▶️ Já começou","vf_temp_encerrada":"🏁 Temporada encerrada","vf_temp_semdata":"📆 Sem data publicada","vf_temp_nota":"Por padrão a lista esconde as vagas que já terminaram. Marque \"Temporada encerrada\" pra vê-las.","vf_um_valor":"Todas as vagas desta planilha têm o mesmo valor aqui: {v}. Por isso este filtro não separa nada e não é oferecido.","vf_meses_passados":"Ver meses que já começaram ({n})","vf_chip_encerradas":"Escondendo {n} vagas com temporada encerrada — mostrar","winter":"Inverno",
+    "vf_btn":"Filtros","vf_btn_auto":"Filtrar vagas","vf_title":"🔍 Filtrar vagas","vf_title_auto":"🔍 Filtrar vagas do robô","vf_clear":"Limpar tudo","vf_apply":"Ver {n} vagas","vf_apply_auto":"Usar {n} vagas no robô","vf_apply_simple":"Aplicar filtros","vf_of":"de {m}","vf_more":"Ver mais ({n})","vf_less":"Ver menos","vf_remove":"Remover filtro","vf_filtered":"filtrado","vf_filtro":"filtro","vf_filtros":"filtros","vf_counting":"Contando vagas…","vf_nothing":"Nada encontrado com esse nome.","vf_pick_source":"Escolha a fonte das vagas primeiro (Passo 1)","vf_sec_q":"Palavra-chave","vf_q_ph":"Cargo, empresa, cidade ou nº do caso…","vf_sec_categoria":"Tipo de trabalho","vf_sec_estado":"Estado","vf_sec_salario":"Salário mínimo por hora","vf_sec_inicio":"Mês de início","vf_sec_cidade":"Cidade ou região","vf_sec_cargo":"Cargo específico","vf_sec_vagas":"Vagas abertas na empresa","vf_sec_email":"E-mail de contato","vf_sec_tipo":"Tipo de visto","vf_sec_ativa":"Status da vaga","vf_sec_status":"Status no DOL","vf_sec_grupo":"Grupo da loteria H-2B","vf_search_estado":"Buscar estado…","vf_search_cidade":"Buscar cidade…","vf_search_cargo":"Buscar cargo…","vf_wage_more":"${v}+/h","vf_workers_more":"{v}+ vagas","vf_faixa":"Nesta seleção: ${min} a ${max}/h · metade das vagas paga ${med}/h ou mais","vf_no_salary":"Esta planilha ainda não tem salário publicado pelo governo (DOL) — o filtro aparece quando o dado sair.","vf_no_email":"Esta planilha ainda não tem e-mails de contato publicados pelo governo — ainda não dá pra se candidatar por aqui.","vf_no_email_auto":"Esta planilha ainda não tem e-mails de contato publicados pelo governo — o robô não tem pra quem enviar aqui. Escolha outra fonte (Jan 2026, Jul 2025 ou H-2A).","vf_zero":"Nenhuma vaga com essa combinação — remova algum filtro. O número ao lado de cada opção mostra quantas vagas sobram.","vf_all_sent":"Você já enviou pra todas as vagas com e-mail desta planilha. Escolha outra fonte ou resete as enviadas.","vf_email_lbl":"Só vagas com e-mail (dá pra se candidatar)","vf_email_com":"{n} com e-mail","vf_email_sem":"{n} sem e-mail","vf_chip_email":"Só com e-mail","vf_sug":"Também há <b>{n}</b> vaga(s) em {cat} que não citam \"{q}\" no texto.","vf_sug_btn":"Incluir na busca","vf_regions":"Regiões turísticas","vf_cities":"Cidades","vf_n_cargos":"{n} cargos","vf_live_note":"Nesta aba (vagas ao vivo do DOL) os filtros são simples, sem contagem por opção. Nas planilhas, cada opção mostra quantas vagas sobram.","vf_ativas_lbl":"Só vagas ativas","vf_dp_lock":"Exclusivo do plano Double Pro.","vf_see_plans":"Ver planos →","vf_grupo_lbl":"Grupo {g}","vf_count_auto":"vagas com e-mail prontas pro robô","vf_ws2_sub":"Tipo de trabalho, estado, salário, mês de início… Cada opção mostra quantas vagas sobram. O robô só envia pra vagas com e-mail.","vf_no_cidade":"Esta planilha ainda não tem cidade publicada pelo governo (DOL) — o filtro aparece quando o dado sair.","vf_no_inicio":"Esta planilha ainda não tem data de início publicada pelo governo (DOL) — o filtro aparece quando o dado sair.","vf_no_cargo":"Esta planilha ainda não tem o cargo de cada vaga publicado pelo governo (DOL) — o filtro aparece quando o dado sair.","vf_no_vagas":"Esta planilha ainda não tem o número de vagas de cada empresa publicado pelo governo (DOL) — o filtro aparece quando o dado sair.","vf_no_exp":"Esta planilha ainda não tem a experiência exigida publicada pelo governo (DOL) — o filtro aparece quando o dado sair.","vf_no_temporada":"Esta planilha ainda não tem as datas da temporada publicadas pelo governo (DOL) — o filtro aparece quando o dado sair.","vf_ponte":"Usar os mesmos filtros da minha busca","vf_ponte_ok":"Filtros da sua busca copiados pro robô","vf_ws2_dyn":"Dá pra filtrar por {d}. Cada opção mostra quantas vagas sobram. O robô só envia pra vagas com e-mail.","radar_evaluated":"O radar vai contar as vagas novas que passarem em TODOS estes filtros:","email_locked":"E-mail do empregador liberado com plano ativo — toque pra ver os planos","vf_meses":"Jan,Fev,Mar,Abr,Mai,Jun,Jul,Ago,Set,Out,Nov,Dez","vf_chip_sem_email":"Incluindo vagas sem e-mail (não dá pra se candidatar)","vf_erro":"Não deu pra carregar as opções.","vf_erro_btn":"Tentar de novo","vf_st_certified":"✅ Aprovada pelo governo","vf_st_pending":"⏳ Em análise no DOL","vf_st_withdrawn":"🚫 Retirada pelo empregador","vf_st_denied":"❌ Negada","vf_st_expired":"⌛ Vencida","vf_grupo_expl":"O governo sorteia as vagas H-2B em grupos (A, B, C…). O grupo indica a ordem em que o pedido do empregador entra no sorteio.","vf_vazio_t":"Nenhuma vaga com essa combinação de filtros.","vf_vazio_busca":"Sua busca por “{q}” não achou nada nesta planilha.","vf_vazio_ativos":"Filtros ativos agora:","vf_vazio_tirando":"Tirando {f}, aparecem {n} vagas.","vf_vazio_tirar":"Tirar esse filtro","vf_vazio_ajustar":"Ajustar filtros","vf_vazio_sem_email_t":"Planilha ainda em preparação","vf_vazio_sem_email":"Esta planilha tem {n} vagas, mas o governo ainda não publicou nenhum e-mail de contato — não dá pra se candidatar por aqui ainda. O robô completa sozinho assim que os contatos saírem.","vf_vazio_outra":"Ver a planilha recomendada","vf_sec_exp":"Experiência exigida","vf_sec_temporada":"Temporada","vf_sec_visa":"Tipo de visto","vf_exp_0":"Não exige experiência","vf_exp_ate":"Até {n} meses","vf_exp_sem":"{n} vagas ainda não informam a experiência exigida.","vf_temp_futura":"🔜 Ainda vai começar","vf_temp_aberta":"▶️ Já começou","vf_temp_encerrada":"🏁 Temporada encerrada","vf_temp_semdata":"📆 Sem data publicada","vf_temp_nota":"Por padrão a lista esconde as vagas que já terminaram. Marque \"Temporada encerrada\" pra vê-las.","vf_um_valor":"Todas as vagas desta planilha têm o mesmo valor aqui: {v}. Por isso este filtro não separa nada e não é oferecido.","vf_meses_passados":"Ver meses que já começaram ({n})","vf_chip_encerradas":"Escondendo {n} vagas com temporada encerrada — mostrar","winter":"Inverno",
 
 
     
@@ -7758,9 +7636,9 @@ const LANG_DICT = {
     "all_states":"All states","salary":"Salary","qty_jobs":"# Positions",
     "sug_companies":"Companies","sug_roles":"Job titles","sug_cities":"Cities","sug_regions":"Regions","sug_states":"States","sug_jobs":"jobs",
     "extra_gmail":"Extra Gmail for Sending","upgrade_to_enable":"Subscribe to a plan to enable it.","tap_to_pick":"(tap to choose)","search_btn":"Search",
-    "radar_btn":"📡 Radar","radar_title":"Job Radar","radar_sub":"Save your current filters (search, state, city) and get a phone alert when a NEW matching job arrives — at most 1 alert per day.",
+    "radar_btn":"📡 Radar","radar_title":"Job Radar","radar_sub":"Keep your current filters (search, state, city, wage…) so you don't have to set them all up again. Every time a NEW matching job comes in, the counter here goes up — just open the Radar to see it. The site sends no notification: you check it when you open the app.",
     "radar_create":"Create radar with current filters","radar_active":"Your radar is ON","radar_off":"Turn radar off",
-    "radar_all":"All new jobs","radar_alerts":"alert(s) sent so far","radar_created":"Radar on! You'll be alerted when a new matching job arrives.","radar_removed":"Radar off.",
+    "radar_all":"All new jobs","radar_novas":"new job(s) came in matching this radar","radar_novas_zero":"No new matching job so far.","radar_created":"Radar saved! Your filters are kept here.","radar_removed":"Radar off.",
     "upsell_title":"Today's limit is gone — jobs won't wait","upsell_left":"There are still {n} jobs available TODAY that you can't reach on your current plan. Subscribe to a plan and keep going right now — receipt confirmed, plan activated.",
     "upsell_left_generic":"The limit resets tomorrow — but today's best jobs will already have other applicants. Subscribe to a plan and keep going now.",
     "upsell_cta":"See plans & subscribe","upsell_later":"Continue free tomorrow",
@@ -7839,7 +7717,7 @@ const LANG_DICT = {
     "search_anything":"Search for anything",
     "search_hint":"Type the company name, a received email, the ETA case number, position or state",
     "all_inbox":"All","unread":"Unread","favorites":"Favorites","this_week":"This week",
-    "enable_notif":"Enable notifications","enable_notif_sub":"Get alerts for receipt confirmation, auto-send status and news — even with the app closed",
+    
     "activate":"Enable","inbox_search_ph":"Search company, subject...","notif_short":"Notif",
     "reply_alert":"New reply alert","reply_alert_sub":"Sound + alert for receipt confirmation, auto-send status and news (the site never reads your inbox — we can't tell you when a company replies)",
     "pipe_responded":"Responded","pipe_positive":"Interested","pipe_interview":"Interview","pipe_offer":"Offer",
@@ -7847,7 +7725,7 @@ const LANG_DICT = {
     
     "full_name":"Full name *","country":"Country","city":"City",
     "full_name_ph":"Your full name","country_ph":"Brazil","save_data":"Save data",
-    "tap_to_enable":"Tap the button to enable","new_profile":"Create New Profile",
+    "new_profile":"Create New Profile",
     "email_profiles":"Email Profiles","profiles_desc":"Each profile defines the subject, email body and resume to use. The system automatically picks the right profile for each job.",
     "no_profiles":"No profiles created","no_profiles_sub":"Create your first profile to start sending",
     "total_sent":"Total sent","companies_lbl":"🏢 Companies","states_lbl":"🗺️ States",
@@ -7857,7 +7735,7 @@ const LANG_DICT = {
     "ws1_title":"Choose job source","ws1_sub":"Select where to pull jobs from",
     "ws2_title":"Filters (optional)","summer":"Summer",
     "snd_hint_admin":"Admin account: up to {n} sending e-mails (automatic rotation).","snd_hint_dp":"Your DoublePro plan allows 2 sending e-mails (main + 1 extra) — connect the extra one in Profile to lower blocking risk.","snd_hint_1":"Your plan allows 1 sending e-mail (the main one). Only DoublePro unlocks a 2nd extra Gmail.","snd_hint_0":"Without an active plan you can't link a Gmail or send — see the plans.","plan_emails_1":"1 sending e-mail","plan_emails_2":"2 sending e-mails (rotation)",
-    "vf_btn":"Filters","vf_btn_auto":"Filter jobs","vf_title":"🔍 Filter jobs","vf_title_auto":"🔍 Filter jobs for the robot","vf_clear":"Clear all","vf_apply":"Show {n} jobs","vf_apply_auto":"Use {n} jobs in the robot","vf_apply_simple":"Apply filters","vf_of":"of {m}","vf_more":"Show more ({n})","vf_less":"Show less","vf_remove":"Remove filter","vf_filtered":"filtered","vf_filtro":"filter","vf_filtros":"filters","vf_counting":"Counting jobs…","vf_nothing":"Nothing found with that name.","vf_pick_source":"Choose the job source first (Step 1)","vf_sec_q":"Keyword","vf_q_ph":"Job title, employer, city or case number…","vf_sec_categoria":"Type of work","vf_sec_estado":"State","vf_sec_salario":"Minimum hourly wage","vf_sec_inicio":"Start month","vf_sec_cidade":"City or region","vf_sec_cargo":"Specific job title","vf_sec_vagas":"Open positions at the employer","vf_sec_email":"Contact e-mail","vf_sec_tipo":"Visa type","vf_sec_ativa":"Job status","vf_sec_status":"DOL status","vf_sec_grupo":"H-2B lottery group","vf_search_estado":"Search state…","vf_search_cidade":"Search city…","vf_search_cargo":"Search job title…","vf_wage_more":"${v}+/h","vf_workers_more":"{v}+ positions","vf_faixa":"In this selection: ${min} to ${max}/h · half of the jobs pay ${med}/h or more","vf_no_salary":"This sheet has no wage published by the government (DOL) yet — the filter appears once the data is out.","vf_no_email":"This sheet has no employer e-mails published by the government yet — you can't apply here yet.","vf_no_email_auto":"This sheet has no employer e-mails published by the government yet — the robot has nobody to send to here. Pick another source (Jan 2026, Jul 2025 or H-2A).","vf_zero":"No jobs match this combination — remove a filter. The number next to each option shows how many jobs remain.","vf_all_sent":"You already applied to every job with an e-mail in this sheet. Pick another source or reset your sent list.","vf_email_lbl":"Only jobs with an e-mail (you can apply)","vf_email_com":"{n} with e-mail","vf_email_sem":"{n} without e-mail","vf_chip_email":"With e-mail only","vf_sug":"There are also <b>{n}</b> job(s) in {cat} that don't mention \"{q}\".","vf_sug_btn":"Include in search","vf_regions":"Tourist regions","vf_cities":"Cities","vf_n_cargos":"{n} job titles","vf_live_note":"On this tab (live DOL jobs) filters are simple, without per-option counts. On the sheets, each option shows how many jobs remain.","vf_ativas_lbl":"Active jobs only","vf_dp_lock":"Double Pro plan only.","vf_see_plans":"See plans →","vf_grupo_lbl":"Group {g}","vf_count_auto":"jobs with e-mail ready for the robot","vf_ws2_sub":"Type of work, state, wage, start month… Each option shows how many jobs remain. The robot only sends to jobs with an e-mail.","vf_no_cidade":"This sheet has no city published by the government (DOL) yet — the filter appears once the data is out.","vf_no_inicio":"This sheet has no start date published by the government (DOL) yet — the filter appears once the data is out.","vf_no_cargo":"This sheet has no job title published by the government (DOL) yet — the filter appears once the data is out.","vf_no_vagas":"This sheet has no number of openings published by the government (DOL) yet — the filter appears once the data is out.","vf_no_exp":"This sheet has no required experience published by the government (DOL) yet — the filter appears once the data is out.","vf_no_temporada":"This sheet has no season dates published by the government (DOL) yet — the filter appears once the data is out.","vf_ponte":"Use the same filters from my search","vf_ponte_ok":"Your search filters were copied to the robot","vf_ws2_dyn":"You can filter by {d}. Each option shows how many jobs remain. The robot only sends to jobs with an e-mail.","radar_evaluated":"The radar will alert you when a new job matches ALL of these filters:","email_locked":"Employer e-mail unlocked with an active plan — tap to see the plans","vf_meses":"Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec","vf_chip_sem_email":"Including jobs with no e-mail (you can't apply)","vf_erro":"Couldn't load the options.","vf_erro_btn":"Try again","vf_st_certified":"✅ Approved by the government","vf_st_pending":"⏳ Under review at the DOL","vf_st_withdrawn":"🚫 Withdrawn by the employer","vf_st_denied":"❌ Denied","vf_st_expired":"⌛ Expired","vf_grupo_expl":"The government draws H-2B jobs in groups (A, B, C…). The group shows the order in which the employer's request enters the lottery.","vf_vazio_t":"No jobs match this combination of filters.","vf_vazio_busca":"Your search for “{q}” found nothing in this sheet.","vf_vazio_ativos":"Active filters right now:","vf_vazio_tirando":"Without {f}, {n} jobs show up.","vf_vazio_tirar":"Remove that filter","vf_vazio_ajustar":"Adjust filters","vf_vazio_sem_email_t":"Sheet still being prepared","vf_vazio_sem_email":"This sheet has {n} jobs, but the government hasn't published any contact e-mail yet — you can't apply here yet. The robot fills it in by itself once the contacts are out.","vf_vazio_outra":"Open the recommended sheet","vf_sec_exp":"Experience required","vf_sec_temporada":"Season","vf_sec_visa":"Visa type","vf_exp_0":"No experience required","vf_exp_ate":"Up to {n} months","vf_exp_sem":"{n} jobs don't state the required experience yet.","vf_temp_futura":"🔜 Hasn't started yet","vf_temp_aberta":"▶️ Already started","vf_temp_encerrada":"🏁 Season ended","vf_temp_semdata":"📆 No date published","vf_temp_nota":"By default the list hides jobs whose season already ended. Tick \"Season ended\" to see them.","vf_um_valor":"Every job in this sheet has the same value here: {v}. That's why this filter separates nothing and isn't offered.","vf_meses_passados":"Show months that already started ({n})","vf_chip_encerradas":"Hiding {n} jobs whose season ended — show them","winter":"Winter",
+    "vf_btn":"Filters","vf_btn_auto":"Filter jobs","vf_title":"🔍 Filter jobs","vf_title_auto":"🔍 Filter jobs for the robot","vf_clear":"Clear all","vf_apply":"Show {n} jobs","vf_apply_auto":"Use {n} jobs in the robot","vf_apply_simple":"Apply filters","vf_of":"of {m}","vf_more":"Show more ({n})","vf_less":"Show less","vf_remove":"Remove filter","vf_filtered":"filtered","vf_filtro":"filter","vf_filtros":"filters","vf_counting":"Counting jobs…","vf_nothing":"Nothing found with that name.","vf_pick_source":"Choose the job source first (Step 1)","vf_sec_q":"Keyword","vf_q_ph":"Job title, employer, city or case number…","vf_sec_categoria":"Type of work","vf_sec_estado":"State","vf_sec_salario":"Minimum hourly wage","vf_sec_inicio":"Start month","vf_sec_cidade":"City or region","vf_sec_cargo":"Specific job title","vf_sec_vagas":"Open positions at the employer","vf_sec_email":"Contact e-mail","vf_sec_tipo":"Visa type","vf_sec_ativa":"Job status","vf_sec_status":"DOL status","vf_sec_grupo":"H-2B lottery group","vf_search_estado":"Search state…","vf_search_cidade":"Search city…","vf_search_cargo":"Search job title…","vf_wage_more":"${v}+/h","vf_workers_more":"{v}+ positions","vf_faixa":"In this selection: ${min} to ${max}/h · half of the jobs pay ${med}/h or more","vf_no_salary":"This sheet has no wage published by the government (DOL) yet — the filter appears once the data is out.","vf_no_email":"This sheet has no employer e-mails published by the government yet — you can't apply here yet.","vf_no_email_auto":"This sheet has no employer e-mails published by the government yet — the robot has nobody to send to here. Pick another source (Jan 2026, Jul 2025 or H-2A).","vf_zero":"No jobs match this combination — remove a filter. The number next to each option shows how many jobs remain.","vf_all_sent":"You already applied to every job with an e-mail in this sheet. Pick another source or reset your sent list.","vf_email_lbl":"Only jobs with an e-mail (you can apply)","vf_email_com":"{n} with e-mail","vf_email_sem":"{n} without e-mail","vf_chip_email":"With e-mail only","vf_sug":"There are also <b>{n}</b> job(s) in {cat} that don't mention \"{q}\".","vf_sug_btn":"Include in search","vf_regions":"Tourist regions","vf_cities":"Cities","vf_n_cargos":"{n} job titles","vf_live_note":"On this tab (live DOL jobs) filters are simple, without per-option counts. On the sheets, each option shows how many jobs remain.","vf_ativas_lbl":"Active jobs only","vf_dp_lock":"Double Pro plan only.","vf_see_plans":"See plans →","vf_grupo_lbl":"Group {g}","vf_count_auto":"jobs with e-mail ready for the robot","vf_ws2_sub":"Type of work, state, wage, start month… Each option shows how many jobs remain. The robot only sends to jobs with an e-mail.","vf_no_cidade":"This sheet has no city published by the government (DOL) yet — the filter appears once the data is out.","vf_no_inicio":"This sheet has no start date published by the government (DOL) yet — the filter appears once the data is out.","vf_no_cargo":"This sheet has no job title published by the government (DOL) yet — the filter appears once the data is out.","vf_no_vagas":"This sheet has no number of openings published by the government (DOL) yet — the filter appears once the data is out.","vf_no_exp":"This sheet has no required experience published by the government (DOL) yet — the filter appears once the data is out.","vf_no_temporada":"This sheet has no season dates published by the government (DOL) yet — the filter appears once the data is out.","vf_ponte":"Use the same filters from my search","vf_ponte_ok":"Your search filters were copied to the robot","vf_ws2_dyn":"You can filter by {d}. Each option shows how many jobs remain. The robot only sends to jobs with an e-mail.","radar_evaluated":"The radar counts new jobs that match ALL of these filters:","email_locked":"Employer e-mail unlocked with an active plan — tap to see the plans","vf_meses":"Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec","vf_chip_sem_email":"Including jobs with no e-mail (you can't apply)","vf_erro":"Couldn't load the options.","vf_erro_btn":"Try again","vf_st_certified":"✅ Approved by the government","vf_st_pending":"⏳ Under review at the DOL","vf_st_withdrawn":"🚫 Withdrawn by the employer","vf_st_denied":"❌ Denied","vf_st_expired":"⌛ Expired","vf_grupo_expl":"The government draws H-2B jobs in groups (A, B, C…). The group shows the order in which the employer's request enters the lottery.","vf_vazio_t":"No jobs match this combination of filters.","vf_vazio_busca":"Your search for “{q}” found nothing in this sheet.","vf_vazio_ativos":"Active filters right now:","vf_vazio_tirando":"Without {f}, {n} jobs show up.","vf_vazio_tirar":"Remove that filter","vf_vazio_ajustar":"Adjust filters","vf_vazio_sem_email_t":"Sheet still being prepared","vf_vazio_sem_email":"This sheet has {n} jobs, but the government hasn't published any contact e-mail yet — you can't apply here yet. The robot fills it in by itself once the contacts are out.","vf_vazio_outra":"Open the recommended sheet","vf_sec_exp":"Experience required","vf_sec_temporada":"Season","vf_sec_visa":"Visa type","vf_exp_0":"No experience required","vf_exp_ate":"Up to {n} months","vf_exp_sem":"{n} jobs don't state the required experience yet.","vf_temp_futura":"🔜 Hasn't started yet","vf_temp_aberta":"▶️ Already started","vf_temp_encerrada":"🏁 Season ended","vf_temp_semdata":"📆 No date published","vf_temp_nota":"By default the list hides jobs whose season already ended. Tick \"Season ended\" to see them.","vf_um_valor":"Every job in this sheet has the same value here: {v}. That's why this filter separates nothing and isn't offered.","vf_meses_passados":"Show months that already started ({n})","vf_chip_encerradas":"Hiding {n} jobs whose season ended — show them","winter":"Winter",
 
 
     
@@ -7908,9 +7786,9 @@ const LANG_DICT = {
     "all_states":"Todos los estados","salary":"Salario","qty_jobs":"# Puestos",
     "sug_companies":"Empresas","sug_roles":"Puestos","sug_cities":"Ciudades","sug_regions":"Regiones","sug_states":"Estados","sug_jobs":"empleos",
     "extra_gmail":"Gmail Extra para Envíos","upgrade_to_enable":"Suscríbete a un plan para activarlo.","tap_to_pick":"(toca para elegir)","search_btn":"Buscar",
-    "radar_btn":"📡 Radar","radar_title":"Radar de Empleos","radar_sub":"Guarda tus filtros actuales (búsqueda, estado, ciudad) y recibe un aviso en el celular cuando llegue un empleo NUEVO que combine — máximo 1 aviso al día.",
+    "radar_btn":"📡 Radar","radar_title":"Radar de Empleos","radar_sub":"Guarda tus filtros actuales (búsqueda, estado, ciudad, salario…) para no armarlos de nuevo. Cada vez que entre un empleo NUEVO que combine, el contador de aquí sube — solo abre el Radar para verlo. El sitio no envía notificaciones: tú revisas cuando abres la app.",
     "radar_create":"Crear radar con los filtros actuales","radar_active":"Tu radar está ENCENDIDO","radar_off":"Apagar radar",
-    "radar_all":"Todos los empleos nuevos","radar_alerts":"aviso(s) enviados","radar_created":"¡Radar encendido! Te avisaremos cuando llegue un empleo nuevo que combine.","radar_removed":"Radar apagado.",
+    "radar_all":"Todos los empleos nuevos","radar_novas":"empleo(s) nuevo(s) entraron que combinan con este radar","radar_novas_zero":"Ningún empleo nuevo que combine hasta ahora.","radar_created":"¡Radar guardado! Tus filtros quedan aquí.","radar_removed":"Radar apagado.",
     "upsell_title":"Tu límite de hoy se acabó — los empleos no esperan","upsell_left":"Aún quedan {n} empleos disponibles HOY que no alcanzarás con tu plan actual. Suscríbete a un plan y sigue ahora mismo — comprobante confirmado, plan activado.",
     "upsell_left_generic":"El límite vuelve mañana — pero los mejores empleos de hoy ya tendrán otros candidatos. Suscríbete a un plan y sigue ahora.",
     "upsell_cta":"Ver planes y suscribirse","upsell_later":"Seguir gratis mañana",
@@ -7989,7 +7867,7 @@ const LANG_DICT = {
     "search_anything":"Busca cualquier cosa",
     "search_hint":"Escribe el nombre de la empresa, un email recibido, el ETA case number, el cargo o el estado",
     "all_inbox":"Todos","unread":"No leídas","favorites":"Favoritos","this_week":"Esta semana",
-    "enable_notif":"Activar notificaciones","enable_notif_sub":"Recibe avisos de confirmación de comprobante, estado del automático y novedades — incluso con la app cerrada",
+    
     "activate":"Activar","inbox_search_ph":"Buscar empresa, asunto...","notif_short":"Notif",
     "reply_alert":"Alerta de nueva respuesta","reply_alert_sub":"Sonido + aviso de confirmación de comprobante, estado del automático y novedades (el sitio no lee tu correo — no avisamos cuando la empresa responde)",
     "pipe_responded":"Respondió","pipe_positive":"Interesado","pipe_interview":"Entrevista","pipe_offer":"Oferta",
@@ -7997,7 +7875,7 @@ const LANG_DICT = {
     
     "full_name":"Nombre completo *","country":"País","city":"Ciudad",
     "full_name_ph":"Tu nombre completo","country_ph":"Brazil","save_data":"Guardar datos",
-    "tap_to_enable":"Toca el botón para activar","new_profile":"Crear Nuevo Perfil",
+    "new_profile":"Crear Nuevo Perfil",
     "email_profiles":"Perfiles de Email","profiles_desc":"Cada perfil define el asunto, el cuerpo del email y el currículum a usar. El sistema elige automáticamente el perfil correcto para cada empleo.",
     "no_profiles":"Sin perfiles creados","no_profiles_sub":"Crea tu primer perfil para empezar a enviar",
     "total_sent":"Total enviados","companies_lbl":"🏢 Empresas","states_lbl":"🗺️ Estados",
@@ -8007,7 +7885,7 @@ const LANG_DICT = {
     "ws1_title":"Elige la fuente de empleos","ws1_sub":"Selecciona de dónde tomar los empleos",
     "ws2_title":"Filtros (opcional)","summer":"Verano",
     "snd_hint_admin":"Cuenta admin: hasta {n} e-mails de envío (rotación automática).","snd_hint_dp":"Tu plan DoublePro permite 2 e-mails de envío (principal + 1 extra) — conecta el extra en Perfil para reducir el riesgo de bloqueo.","snd_hint_1":"Tu plan permite 1 e-mail de envío (el principal). Solo DoublePro libera un 2º Gmail extra.","snd_hint_0":"Sin plan activo no se puede vincular Gmail ni enviar — mira los planes.","plan_emails_1":"1 e-mail de envío","plan_emails_2":"2 e-mails de envío (rotación)",
-    "vf_btn":"Filtros","vf_btn_auto":"Filtrar empleos","vf_title":"🔍 Filtrar empleos","vf_title_auto":"🔍 Filtrar empleos del robot","vf_clear":"Limpiar todo","vf_apply":"Ver {n} empleos","vf_apply_auto":"Usar {n} empleos en el robot","vf_apply_simple":"Aplicar filtros","vf_of":"de {m}","vf_more":"Ver más ({n})","vf_less":"Ver menos","vf_remove":"Quitar filtro","vf_filtered":"filtrado","vf_filtro":"filtro","vf_filtros":"filtros","vf_counting":"Contando empleos…","vf_nothing":"Nada encontrado con ese nombre.","vf_pick_source":"Elige la fuente de empleos primero (Paso 1)","vf_sec_q":"Palabra clave","vf_q_ph":"Puesto, empresa, ciudad o nº de caso…","vf_sec_categoria":"Tipo de trabajo","vf_sec_estado":"Estado","vf_sec_salario":"Salario mínimo por hora","vf_sec_inicio":"Mes de inicio","vf_sec_cidade":"Ciudad o región","vf_sec_cargo":"Puesto específico","vf_sec_vagas":"Vacantes abiertas en la empresa","vf_sec_email":"E-mail de contacto","vf_sec_tipo":"Tipo de visa","vf_sec_ativa":"Estado del empleo","vf_sec_status":"Estado en el DOL","vf_sec_grupo":"Grupo de la lotería H-2B","vf_search_estado":"Buscar estado…","vf_search_cidade":"Buscar ciudad…","vf_search_cargo":"Buscar puesto…","vf_wage_more":"${v}+/h","vf_workers_more":"{v}+ vacantes","vf_faixa":"En esta selección: ${min} a ${max}/h · la mitad de los empleos paga ${med}/h o más","vf_no_salary":"Esta planilla aún no tiene salario publicado por el gobierno (DOL) — el filtro aparece cuando salga el dato.","vf_no_email":"Esta planilla aún no tiene e-mails de contacto publicados por el gobierno — todavía no se puede postular aquí.","vf_no_email_auto":"Esta planilla aún no tiene e-mails de contacto publicados por el gobierno — el robot no tiene a quién enviar aquí. Elige otra fuente (Ene 2026, Jul 2025 o H-2A).","vf_zero":"Ningún empleo con esa combinación — quita algún filtro. El número junto a cada opción muestra cuántos empleos quedan.","vf_all_sent":"Ya enviaste a todos los empleos con e-mail de esta planilla. Elige otra fuente o reinicia los enviados.","vf_email_lbl":"Solo empleos con e-mail (se puede postular)","vf_email_com":"{n} con e-mail","vf_email_sem":"{n} sin e-mail","vf_chip_email":"Solo con e-mail","vf_sug":"También hay <b>{n}</b> empleo(s) en {cat} que no mencionan \"{q}\".","vf_sug_btn":"Incluir en la búsqueda","vf_regions":"Regiones turísticas","vf_cities":"Ciudades","vf_n_cargos":"{n} puestos","vf_live_note":"En esta pestaña (empleos en vivo del DOL) los filtros son simples, sin conteo por opción. En las planillas, cada opción muestra cuántos empleos quedan.","vf_ativas_lbl":"Solo empleos activos","vf_dp_lock":"Exclusivo del plan Double Pro.","vf_see_plans":"Ver planes →","vf_grupo_lbl":"Grupo {g}","vf_count_auto":"empleos con e-mail listos para el robot","vf_ws2_sub":"Tipo de trabajo, estado, salario, mes de inicio… Cada opción muestra cuántos empleos quedan. El robot solo envía a empleos con e-mail.","vf_no_cidade":"Esta planilla aún no tiene ciudad publicada por el gobierno (DOL) — el filtro aparece cuando salga el dato.","vf_no_inicio":"Esta planilla aún no tiene fecha de inicio publicada por el gobierno (DOL) — el filtro aparece cuando salga el dato.","vf_no_cargo":"Esta planilla aún no tiene el puesto de cada empleo publicado por el gobierno (DOL) — el filtro aparece cuando salga el dato.","vf_no_vagas":"Esta planilla aún no tiene el número de vacantes de cada empresa publicado por el gobierno (DOL) — el filtro aparece cuando salga el dato.","vf_no_exp":"Esta planilla aún no tiene la experiencia exigida publicada por el gobierno (DOL) — el filtro aparece cuando salga el dato.","vf_no_temporada":"Esta planilla aún no tiene las fechas de la temporada publicadas por el gobierno (DOL) — el filtro aparece cuando salga el dato.","vf_ponte":"Usar los mismos filtros de mi búsqueda","vf_ponte_ok":"Los filtros de tu búsqueda se copiaron al robot","vf_ws2_dyn":"Puedes filtrar por {d}. Cada opción muestra cuántos empleos quedan. El robot solo envía a empleos con e-mail.","radar_evaluated":"El radar avisará cuando entre un empleo nuevo que pase TODOS estos filtros:","email_locked":"E-mail del empleador liberado con plan activo — toca para ver los planes","vf_meses":"Ene,Feb,Mar,Abr,May,Jun,Jul,Ago,Sep,Oct,Nov,Dic","vf_chip_sem_email":"Incluyendo empleos sin e-mail (no se puede postular)","vf_erro":"No se pudieron cargar las opciones.","vf_erro_btn":"Intentar de nuevo","vf_st_certified":"✅ Aprobada por el gobierno","vf_st_pending":"⏳ En análisis en el DOL","vf_st_withdrawn":"🚫 Retirada por el empleador","vf_st_denied":"❌ Negada","vf_st_expired":"⌛ Vencida","vf_grupo_expl":"El gobierno sortea los empleos H-2B en grupos (A, B, C…). El grupo indica el orden en que la solicitud del empleador entra en el sorteo.","vf_vazio_t":"Ningún empleo con esa combinación de filtros.","vf_vazio_busca":"Tu búsqueda por “{q}” no encontró nada en esta planilla.","vf_vazio_ativos":"Filtros activos ahora:","vf_vazio_tirando":"Sin {f}, aparecen {n} empleos.","vf_vazio_tirar":"Quitar ese filtro","vf_vazio_ajustar":"Ajustar filtros","vf_vazio_sem_email_t":"Planilla aún en preparación","vf_vazio_sem_email":"Esta planilla tiene {n} empleos, pero el gobierno aún no publicó ningún e-mail de contacto — todavía no se puede postular aquí. El robot la completa solo cuando salgan los contactos.","vf_vazio_outra":"Ver la planilla recomendada","vf_sec_exp":"Experiencia exigida","vf_sec_temporada":"Temporada","vf_sec_visa":"Tipo de visa","vf_exp_0":"No exige experiencia","vf_exp_ate":"Hasta {n} meses","vf_exp_sem":"{n} empleos aún no informan la experiencia exigida.","vf_temp_futura":"🔜 Todavía no empieza","vf_temp_aberta":"▶️ Ya empezó","vf_temp_encerrada":"🏁 Temporada terminada","vf_temp_semdata":"📆 Sin fecha publicada","vf_temp_nota":"Por defecto la lista esconde los empleos que ya terminaron. Marca \"Temporada terminada\" para verlos.","vf_um_valor":"Todos los empleos de esta planilla tienen el mismo valor aquí: {v}. Por eso este filtro no separa nada y no se ofrece.","vf_meses_passados":"Ver meses que ya empezaron ({n})","vf_chip_encerradas":"Escondiendo {n} empleos con temporada terminada — mostrar","winter":"Invierno",
+    "vf_btn":"Filtros","vf_btn_auto":"Filtrar empleos","vf_title":"🔍 Filtrar empleos","vf_title_auto":"🔍 Filtrar empleos del robot","vf_clear":"Limpiar todo","vf_apply":"Ver {n} empleos","vf_apply_auto":"Usar {n} empleos en el robot","vf_apply_simple":"Aplicar filtros","vf_of":"de {m}","vf_more":"Ver más ({n})","vf_less":"Ver menos","vf_remove":"Quitar filtro","vf_filtered":"filtrado","vf_filtro":"filtro","vf_filtros":"filtros","vf_counting":"Contando empleos…","vf_nothing":"Nada encontrado con ese nombre.","vf_pick_source":"Elige la fuente de empleos primero (Paso 1)","vf_sec_q":"Palabra clave","vf_q_ph":"Puesto, empresa, ciudad o nº de caso…","vf_sec_categoria":"Tipo de trabajo","vf_sec_estado":"Estado","vf_sec_salario":"Salario mínimo por hora","vf_sec_inicio":"Mes de inicio","vf_sec_cidade":"Ciudad o región","vf_sec_cargo":"Puesto específico","vf_sec_vagas":"Vacantes abiertas en la empresa","vf_sec_email":"E-mail de contacto","vf_sec_tipo":"Tipo de visa","vf_sec_ativa":"Estado del empleo","vf_sec_status":"Estado en el DOL","vf_sec_grupo":"Grupo de la lotería H-2B","vf_search_estado":"Buscar estado…","vf_search_cidade":"Buscar ciudad…","vf_search_cargo":"Buscar puesto…","vf_wage_more":"${v}+/h","vf_workers_more":"{v}+ vacantes","vf_faixa":"En esta selección: ${min} a ${max}/h · la mitad de los empleos paga ${med}/h o más","vf_no_salary":"Esta planilla aún no tiene salario publicado por el gobierno (DOL) — el filtro aparece cuando salga el dato.","vf_no_email":"Esta planilla aún no tiene e-mails de contacto publicados por el gobierno — todavía no se puede postular aquí.","vf_no_email_auto":"Esta planilla aún no tiene e-mails de contacto publicados por el gobierno — el robot no tiene a quién enviar aquí. Elige otra fuente (Ene 2026, Jul 2025 o H-2A).","vf_zero":"Ningún empleo con esa combinación — quita algún filtro. El número junto a cada opción muestra cuántos empleos quedan.","vf_all_sent":"Ya enviaste a todos los empleos con e-mail de esta planilla. Elige otra fuente o reinicia los enviados.","vf_email_lbl":"Solo empleos con e-mail (se puede postular)","vf_email_com":"{n} con e-mail","vf_email_sem":"{n} sin e-mail","vf_chip_email":"Solo con e-mail","vf_sug":"También hay <b>{n}</b> empleo(s) en {cat} que no mencionan \"{q}\".","vf_sug_btn":"Incluir en la búsqueda","vf_regions":"Regiones turísticas","vf_cities":"Ciudades","vf_n_cargos":"{n} puestos","vf_live_note":"En esta pestaña (empleos en vivo del DOL) los filtros son simples, sin conteo por opción. En las planillas, cada opción muestra cuántos empleos quedan.","vf_ativas_lbl":"Solo empleos activos","vf_dp_lock":"Exclusivo del plan Double Pro.","vf_see_plans":"Ver planes →","vf_grupo_lbl":"Grupo {g}","vf_count_auto":"empleos con e-mail listos para el robot","vf_ws2_sub":"Tipo de trabajo, estado, salario, mes de inicio… Cada opción muestra cuántos empleos quedan. El robot solo envía a empleos con e-mail.","vf_no_cidade":"Esta planilla aún no tiene ciudad publicada por el gobierno (DOL) — el filtro aparece cuando salga el dato.","vf_no_inicio":"Esta planilla aún no tiene fecha de inicio publicada por el gobierno (DOL) — el filtro aparece cuando salga el dato.","vf_no_cargo":"Esta planilla aún no tiene el puesto de cada empleo publicado por el gobierno (DOL) — el filtro aparece cuando salga el dato.","vf_no_vagas":"Esta planilla aún no tiene el número de vacantes de cada empresa publicado por el gobierno (DOL) — el filtro aparece cuando salga el dato.","vf_no_exp":"Esta planilla aún no tiene la experiencia exigida publicada por el gobierno (DOL) — el filtro aparece cuando salga el dato.","vf_no_temporada":"Esta planilla aún no tiene las fechas de la temporada publicadas por el gobierno (DOL) — el filtro aparece cuando salga el dato.","vf_ponte":"Usar los mismos filtros de mi búsqueda","vf_ponte_ok":"Los filtros de tu búsqueda se copiaron al robot","vf_ws2_dyn":"Puedes filtrar por {d}. Cada opción muestra cuántos empleos quedan. El robot solo envía a empleos con e-mail.","radar_evaluated":"El radar cuenta los empleos nuevos que pasen TODOS estos filtros:","email_locked":"E-mail del empleador liberado con plan activo — toca para ver los planes","vf_meses":"Ene,Feb,Mar,Abr,May,Jun,Jul,Ago,Sep,Oct,Nov,Dic","vf_chip_sem_email":"Incluyendo empleos sin e-mail (no se puede postular)","vf_erro":"No se pudieron cargar las opciones.","vf_erro_btn":"Intentar de nuevo","vf_st_certified":"✅ Aprobada por el gobierno","vf_st_pending":"⏳ En análisis en el DOL","vf_st_withdrawn":"🚫 Retirada por el empleador","vf_st_denied":"❌ Negada","vf_st_expired":"⌛ Vencida","vf_grupo_expl":"El gobierno sortea los empleos H-2B en grupos (A, B, C…). El grupo indica el orden en que la solicitud del empleador entra en el sorteo.","vf_vazio_t":"Ningún empleo con esa combinación de filtros.","vf_vazio_busca":"Tu búsqueda por “{q}” no encontró nada en esta planilla.","vf_vazio_ativos":"Filtros activos ahora:","vf_vazio_tirando":"Sin {f}, aparecen {n} empleos.","vf_vazio_tirar":"Quitar ese filtro","vf_vazio_ajustar":"Ajustar filtros","vf_vazio_sem_email_t":"Planilla aún en preparación","vf_vazio_sem_email":"Esta planilla tiene {n} empleos, pero el gobierno aún no publicó ningún e-mail de contacto — todavía no se puede postular aquí. El robot la completa solo cuando salgan los contactos.","vf_vazio_outra":"Ver la planilla recomendada","vf_sec_exp":"Experiencia exigida","vf_sec_temporada":"Temporada","vf_sec_visa":"Tipo de visa","vf_exp_0":"No exige experiencia","vf_exp_ate":"Hasta {n} meses","vf_exp_sem":"{n} empleos aún no informan la experiencia exigida.","vf_temp_futura":"🔜 Todavía no empieza","vf_temp_aberta":"▶️ Ya empezó","vf_temp_encerrada":"🏁 Temporada terminada","vf_temp_semdata":"📆 Sin fecha publicada","vf_temp_nota":"Por defecto la lista esconde los empleos que ya terminaron. Marca \"Temporada terminada\" para verlos.","vf_um_valor":"Todos los empleos de esta planilla tienen el mismo valor aquí: {v}. Por eso este filtro no separa nada y no se ofrece.","vf_meses_passados":"Ver meses que ya empezaron ({n})","vf_chip_encerradas":"Escondiendo {n} empleos con temporada terminada — mostrar","winter":"Invierno",
 
 
     
@@ -8138,13 +8016,6 @@ function applyLang(){
   _sBtnTextKeepEmoji('ibf-unread','🔴 '+t('unread'));
   _sBtnTextKeepEmoji('ibf-starred','⭐ '+t('favorites'));
   _sBtnTextKeepEmoji('ibf-new','🆕 '+t('this_week'));
-  // Notification banner
-  document.querySelectorAll('#inbox-notif-banner div').forEach(el=>{
-    if(el.textContent.match(/Ativar notificações|Enable notifications|Activar notificaciones/)) el.textContent=t('enable_notif');
-    if(el.textContent.match(/Seja avisado|Be notified|Recibe avisos/)) el.textContent=t('enable_notif_sub');
-  });
-  const notifActivateBtn=document.querySelector('#inbox-notif-banner button:first-of-type');
-  if(notifActivateBtn && notifActivateBtn.textContent.match(/Ativar|Activate|Activar/)) notifActivateBtn.textContent=t('activate');
   _sPlaceholder('inbox-search',t('inbox_search_ph'));
   // Inbox bulk bar
   _si('inbox-notif-tab-label','',t('notif_short'));
@@ -8192,7 +8063,6 @@ function applyLang(){
   document.querySelectorAll('#pf-sec-me [style*="font-size:11px;color:var(--t2)"]').forEach(el=>{
     if(el.textContent.match(/Som \+ aviso|Sound|Sonido/)) el.textContent=t('reply_alert_sub');
   });
-  _st('notif-status-msg',t('tap_to_enable'));
   // Profiles section
   document.querySelectorAll('#pf-sec-profiles .btn-primary').forEach(b=>{
     if(b.textContent.match(/Criar Novo|Create New|Crear Nuevo/)){
@@ -8774,7 +8644,6 @@ async function submitPlanOrder() {
         toast('✅ Pedido enviado! Aguarde a confirmação.', 'g');
         _vigiarAtivacaoProvisoria(NOME[plano]||plano);
       }
-      renderPushAsk('plan-push-ask','Quer saber NA HORA em que seu plano for ativado? Ative as notificações.');
       _pendingOrderCache=undefined;
       _mpLoaded=false;
 

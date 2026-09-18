@@ -3514,12 +3514,16 @@ function scheduleResumoDono(){
 
 
 // ── 📡 v134 — RADAR DE VAGAS (aprovado pelo dono, 13/08) ────────────────────
-// O usuário salva UM radar (estado(s)/cidade/busca/categoria) e recebe PUSH
-// quando entra vaga NOVA que combina — máx 1 push por dia por usuário
-// (anti-spam), opt-in por natureza (só tem radar quem criou; push só chega
-// pra quem ativou notificações). Chamado pelos 2 pontos onde vaga nova
-// entra no sistema: robô Vagas Novas H-2A (diário) e a planilha mensal
-// auto-publicada.
+// O usuário salva UM radar (os filtros inteiros da busca dele) e o sistema
+// marca quantas vagas NOVAS entraram combinando com ele. Chamado pelos 2
+// pontos onde vaga nova entra no sistema: robô Vagas Novas H-2A (diário) e a
+// planilha mensal auto-publicada.
+// 🚫 v189 LOTE 7 (decisão do dono): NÃO existe push nem aviso no celular.
+// Esta reconstrução não tem canal de notificação nenhum (pushToUser é no-op,
+// PUSH_ENABLED=false) — o radar é um FILTRO SALVO que conta as vagas novas e
+// mostra pro usuário quando ele abre o site. PROIBIDO voltar a escrever
+// "avisamos"/"push"/"aviso no celular" em qualquer tela enquanto não existir
+// um canal de verdade.
 // 📡 v182 LOTE 9 — FILTROS DO RADAR, UMA RÉGUA SÓ. Aceita o formato NOVO
 // (snapshot inteiro em `radar.filtros`) e o LEGADO (estados/cidade/q/categoria
 // de radares criados antes), e devolve sempre um filtro do motor ÚNICO — quem
@@ -3549,22 +3553,31 @@ function _radarFiltrosDe(r){
   const base=(r.filtros&&typeof r.filtros==="object")?r.filtros:_radarSanitiza(r);
   return FILTROS.parse(base);
 }
-async function notificarRadares(novas,origem){
+// 📡 v189 LOTE 7 — O RADAR É UM FILTRO SALVO, NÃO UM AVISO (decisão do dono).
+// Esta função se chamava "notificar" e contava `totalAvisos`, que a tela
+// mostrava como "🔔 N avisos já enviados" — mas NENHUM aviso saía daqui: não
+// há push (pushToUser é no-op, PUSH_ENABLED=false) e nem sequer era chamado.
+// O número subia sozinho e o usuário acreditava que tinha sido avisado N
+// vezes. Agora o que se registra é o que realmente acontece: quantas vagas
+// NOVAS entraram combinando com o filtro salvo (`radar.novas`, contagem real
+// de matches) e quando (`radar.ultimaEm`) — o usuário vê isso ao abrir o
+// Radar. A trava de 1x/dia saiu junto: ela era anti-spam de push, e contar
+// vaga nova não faz spam nenhum.
+async function registrarVagasNovasNoRadar(novas,origem){
   try{
     if(!Array.isArray(novas)||!novas.length)return 0;
-    const now=Date.now();let avisados=0;
+    const now=Date.now();let atingidos=0;
     for(const [em,u2] of Object.entries(DB_USERS)){
       const r=u2?.radar;if(!r||r.ativo===false)continue;
-      if(r.lastPushAt&&now-r.lastPushAt<20*3600_000)continue; // máx 1/dia
       const f=_radarFiltrosDe(r);
       if(!f||!FILTROS.ativos(f))continue;
       const matches=FILTROS.filtrar(novas,f,{isDP:_isDoublePro(u2)});
       if(!matches.length)continue;
-      setUser(em,{radar:{...r,lastPushAt:now,totalAvisos:(r.totalAvisos||0)+1}});
-      avisados++;
+      setUser(em,{radar:{...r,ultimaEm:now,novas:Math.min(9999,(r.novas||0)+matches.length)}});
+      atingidos++;
     }
-    if(avisados)console.log(`[radar] 📡 ${avisados} usuário(s) avisado(s) (${origem}, ${novas.length} vagas novas)`);
-    return avisados;
+    if(atingidos)console.log(`[radar] 📡 ${atingidos} radar(es) com vaga nova combinando (${origem}, ${novas.length} vagas novas)`);
+    return atingidos;
   }catch(e){console.warn("[radar]",e.message);return 0;}
 }
 
@@ -6523,7 +6536,9 @@ const PLANILHAS = _createPlanilhas({
   enrichBot: _enrichBot, enrichLog: _enrichLog, saveSheet: _saveEnrichedSheet,
   httpsReq, botLog, pushToUser, ADMIN_EMAILS, detectCategory, limparCidade,
   dedupe: _vagasDedupe, verify: _vagasVerify, manifest: _vagasManifest,
-  notificarRadares,
+  // 📡 v189 LOTE 7: o nome diz o que a função faz — CONTA vaga nova que
+  // combina com o filtro salvo. Não notifica ninguém (não há canal).
+  registrarVagasNovasNoRadar,
   isTest: !!process.env.TEST_LOGIN_TOKEN,
 });
 
@@ -7499,7 +7514,7 @@ ul li{margin-bottom:6px}
       fs.writeFileSync(SHEETS_META_FILE,JSON.stringify(DB_SHEETS_META,null,2));
       addLog(s.user_email,{status:"sistema",jobTitle:`📢 Planilha publicada: ${meta.name||key}`,company:`${rows.length} vagas — Chave: ${key}`});
       // 📡 v134: 1ª publicação = vaga nova chegando pros usuários → radar avisa
-      notificarRadares(rows,`publicacao:${key}`).catch(e=>console.warn("[radar] publicar:",e.message));
+      registrarVagasNovasNoRadar(rows,`publicacao:${key}`).catch(e=>console.warn("[radar] publicar:",e.message));
       console.log(`[sheet] 📢 "${key}" publicada por ${s.user_email} (${rows.length} vagas)`);
       return json(res,200,{ok:true,key,count:rows.length});
     }catch(e){return json(res,400,{error:"Corpo inválido: "+e.message});}
@@ -7687,7 +7702,7 @@ ul li{margin-bottom:6px}
       // reimportação só as vagas REALMENTE novas avisam — ninguém leva push de
       // uma vaga que já estava no site desde ontem.
       const _novasPraRadar=valid.slice(m.preservadas).filter(r=>r.e&&String(r.e).includes("@")); // planilha nova: preservadas=0, avisa de tudo
-      notificarRadares(_novasPraRadar,`upload:${keyReal}`).catch(e=>console.warn("[radar] notificar upload:",e.message));
+      registrarVagasNovasNoRadar(_novasPraRadar,`upload:${keyReal}`).catch(e=>console.warn("[radar] notificar upload:",e.message));
       return json(res,200,{ok:true,key:keyReal,builtin:!!_builtin,count:valid.length,total:vagas.length,duplicatesMerged,
         substituiu:jaExistia,atualizadas:m.atualizadas,adicionadas:m.adicionadas,preservadas:m.preservadas,
         importedRows:m.recebidas,comEmailAntes:m.emailAntes,comEmail:m.emailDepois});
@@ -11650,8 +11665,10 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
       const filtros=_radarSanitiza(d.filtros||d);
       const f=FILTROS.parse(filtros);
       if(!FILTROS.ativos(f))return json(res,400,{error:"Escolha ao menos 1 filtro antes de criar o radar."});
+      // 📡 v189 LOTE 7: filtro novo = contagem nova (o número mostrado é
+      // "vagas novas que entraram combinando com ESTE radar").
       const radar={filtros,ativo:true,createdAt:u2.radar?.createdAt||Date.now(),
-        lastPushAt:u2.radar?.lastPushAt||0,totalAvisos:u2.radar?.totalAvisos||0};
+        ultimaEm:0,novas:0};
       setUser(s.user_email,{radar});
       return json(res,200,{ok:true,radar,dimensoes:FILTROS.ativos(f)});
     }catch(e){return json(res,500,{error:e.message});}}}
