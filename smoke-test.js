@@ -868,7 +868,11 @@ async function testAuthWatchdogPush() {
     // aponta pra rota morta; (b) os números de plano da página "funciona"
     // são os de PLAN_LIMITS_NEW (fonte única) — mudou a tabela, esta guarda
     // obriga a atualizar a página de vendas junto.
-    const _seoFiles = ["h2bapply-funciona.html", "h2b-e-golpe.html", "como-usar.html", "tutorial-conteudo.html", "server.js"];
+    // v186 LOTE 4: /guia (prioridade 0.9 no sitemap) e /quanto-ganha-h2b (0.8)
+    // NÃO estavam nesta lista — e eram justamente as duas que continuavam com
+    // o CTA principal em /oauth/google, rota que não existe em server.js:
+    // quem chegava do Google clicava no botão principal e caía em 404.
+    const _seoFiles = ["h2bapply-funciona.html", "h2b-e-golpe.html", "como-usar.html", "tutorial-conteudo.html", "guia.html", "quanto-ganha-h2b.html", "server.js"];
     const _seoMorto = _seoFiles.filter((f) => fs.readFileSync(path.join(__dirname, f), "utf8").includes("/oauth/google"));
     check("🔗 v172j: NENHUMA página pública/template de SEO aponta pra /oauth/google (rota morta desde o v172c — era 404 no CTA principal)",
       _seoMorto.length === 0, `ainda apontam pra rota morta: ${_seoMorto.join(", ")}`);
@@ -880,6 +884,50 @@ async function testAuthWatchdogPush() {
       !/plano gratuito permanente|Free para sempre|🆓 Free/.test(_funciona);
     check("🔗 v172j: página de vendas /h2bapply-funciona mostra os limites de PLAN_LIMITS_NEW (não a tabela legada) e não vende plano grátis com envio",
       _planosOk, "limites da página de vendas divergem de mod-config.js ou voltou o card Free");
+
+    // ═══ 🌐 v186 LOTE 4: PÁGINAS PÚBLICAS — o botão principal caía em 404 ═══
+    {
+      // (a) o CTA de cadastro é SEMPRE /?cadastro=1 (regra v172j) — e o
+      // funil do GA não pode mais marcar method:'google' num cadastro que
+      // é usuário e senha desde o v172c.
+      const _pubFiles = ["h2bapply-funciona.html", "h2b-e-golpe.html", "guia.html", "quanto-ganha-h2b.html"];
+      const _pubSrc = Object.fromEntries(_pubFiles.map((f) => [f, fs.readFileSync(path.join(__dirname, f), "utf8")]));
+      const _semCta = _pubFiles.filter((f) => !_pubSrc[f].includes('href="/?cadastro=1"'));
+      const _gaGoogle = _pubFiles.filter((f) => /method:\s*'google'/.test(_pubSrc[f]));
+      check("🌐 v186-L4: as 4 páginas públicas levam pro cadastro que EXISTE (/?cadastro=1) e nenhuma marca method:'google' no funil do GA — o cadastro é usuário e senha desde o v172c",
+        _semCta.length === 0 && _gaGoogle.length === 0,
+        `sem CTA: ${_semCta.join(",")} · GA com google: ${_gaGoogle.join(",")}`);
+      // (b) nenhuma página pública (nem template do server) vende um login
+      // pelo Google que não existe
+      const _frases = ["entra com o Google", "login pelo Google", "entrar com o Google", "login com o Google", "Entre com sua conta Google", "entra com sua conta Google"];
+      const _srvL4 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      const _todos = { ..._pubSrc, "server.js": _srvL4 };
+      const _mentira = Object.entries(_todos).flatMap(([f, s2]) => _frases.filter((fr) => s2.includes(fr)).map((fr) => `${f}: "${fr}"`));
+      check("🌐 v186-L4: nenhuma página pública nem template de SEO do servidor vende 'login pelo Google' — a landing não tem Google nenhum desde o v172c (o Google só conecta o Gmail de ENVIO, depois do plano)",
+        _mentira.length === 0, _mentira.join(" · "));
+      // (c) a página "funciona" não pode prometer o que o app não faz: ler a
+      // caixa de entrada (o app é só-envio) nem gerar texto pelo usuário
+      const _fnc = _pubSrc["h2bapply-funciona.html"];
+      check("🌐 v186-L4: /h2bapply-funciona parou de prometer 'a resposta aparece no seu painel já traduzida' (o app NUNCA lê caixa de entrada — a resposta chega no Gmail da pessoa) e de dizer que o sistema 'gera' a carta (zero texto escrito pelo app)",
+        !/aparece no seu painel/.test(_fnc) && !/escreve \(ou gera\)/.test(_fnc) &&
+        /resposta chega direto na SUA caixa|chega direto na SUA caixa/i.test(_fnc) && /permanente/.test(_fnc),
+        "a página de vendas ainda promete leitura de inbox ou geração de carta");
+      // (d) FAQ estruturada (JSON-LD) = texto visível. O Google penaliza
+      // FAQPage que não bate com a página, e essa divergência envelhece
+      // sozinha a cada reescrita de copy — por isso a guarda compara.
+      const _ld = JSON.parse((_fnc.match(/<script type="application\/ld\+json">\s*(\{[\s\S]*?"FAQPage"[\s\S]*?\})\s*<\/script>/) || [])[1] || "{}");
+      const _visivel = _fnc.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g, "");
+      const _divergem = (_ld.mainEntity || []).filter((q) => !_visivel.includes(String(q.acceptedAnswer?.text || "")));
+      check("🌐 v186-L4: cada resposta do FAQPage (JSON-LD) aparece IGUAL no HTML visível de /h2bapply-funciona — FAQ estruturada que não bate com a página é penalizada pelo Google, e era o caso do login e do 'planos mensais, sem fidelidade'",
+        (_ld.mainEntity || []).length >= 5 && _divergem.length === 0,
+        `divergem: ${_divergem.map((q) => String(q.name).slice(0, 50)).join(" | ")}`);
+      // (e) a página de exclusão de conta precisa apontar pro caminho que EXISTE
+      const _del = await get("/excluir-conta");
+      check("🌐 v186-L4: /excluir-conta parou de mandar o usuário pra 'Configurações → Excluir minha conta' — essa tela NUNCA existiu (nem a rota /api/delete-account); agora os 2 caminhos são reais (WhatsApp do suporte e e-mail)",
+        _del.status === 200 && !_del.body.includes("Excluir minha conta") && !_srvL4.includes("/api/delete-account") &&
+        _del.body.includes("wa.me/5553981453496") && _del.body.includes("suporte@h2bapply.com"),
+        `status=${_del.status}`);
+    }
 
     // 🔖 v126 (Vagas Salvas) removido de propósito nesta reconstrução enxuta
     // (README.md) — não há mais aba/estado/rota pra testar aqui.

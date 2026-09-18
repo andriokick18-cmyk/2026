@@ -211,29 +211,29 @@ footer a{color:var(--blue);font-weight:600}
         <div class="step">
           <div class="step-n">1</div>
           <div>
-            <div class="step-label">Você entra com sua conta Google</div>
-            <div class="step-desc">Login feito pelo fluxo oficial de OAuth do Google — o H2BApply nunca vê nem armazena sua senha do Gmail.</div>
+            <div class="step-label">Você cria sua conta com usuário e senha</div>
+            <div class="step-desc">O cadastro é usuário e senha, com o seu Gmail confirmado por um código de 6 dígitos — a landing não tem nenhum botão do Google. O Google só entra em cena depois (passo 3), para enviar as candidaturas.</div>
           </div>
         </div>
         <div class="step">
           <div class="step-n">2</div>
           <div>
             <div class="step-label">Você monta seu perfil</div>
-            <div class="step-desc">Sobe seu currículo em PDF, escreve (ou gera) sua carta de apresentação e escolhe os setores e estados de interesse.</div>
+            <div class="step-desc">Sobe seu currículo em PDF, escreve o assunto e o texto do e-mail com as suas palavras (o sistema nunca escreve por você) e escolhe os setores e estados de interesse.</div>
           </div>
         </div>
         <div class="step">
           <div class="step-n">3</div>
           <div>
             <div class="step-label">O sistema busca vagas certificadas pelo DOL</div>
-            <div class="step-desc">A base de vagas vem de planilhas públicas do Departamento do Trabalho dos EUA. O H2BApply organiza esses dados e permite enviar candidaturas manualmente ou em piloto automático, com proteção anti-spam (rotação de assunto/corpo para não bloquear seu Gmail).</div>
+            <div class="step-desc">A base de vagas vem de planilhas públicas do Departamento do Trabalho dos EUA. Com um plano ativo, você conecta o SEU Gmail (permissão só de ENVIAR, nunca de ler a sua caixa) — é esse e-mail, e só ele, que vai assinar todas as suas candidaturas daí em diante, manuais ou no piloto automático, com proteção anti-spam (rotação de assunto/corpo para não bloquear seu Gmail).</div>
           </div>
         </div>
         <div class="step">
           <div class="step-n">4</div>
           <div>
-            <div class="step-label">Você acompanha as respostas</div>
-            <div class="step-desc">Quando um empregador responde, a mensagem aparece no seu painel já traduzida para português. Dali em diante, a negociação e o processo de visto seguem diretamente entre você e o empregador.</div>
+            <div class="step-label">O empregador responde no seu e-mail</div>
+            <div class="step-desc">A candidatura sai do SEU Gmail, então a resposta chega direto na SUA caixa de entrada — o H2BApply nunca lê a sua caixa e não recebe essas mensagens. Dali em diante, a negociação e o processo de visto seguem diretamente entre você e o empregador.</div>
           </div>
         </div>
       </div>
@@ -249,8 +249,8 @@ footer a{color:var(--blue);font-weight:600}
       </div>
     </div>
     <div class="card">
-      <div class="card-title"><i class="ti ti-lock" style="color:var(--green)"></i> Acesso via Google OAuth, sem senha</div>
-      <p>O login usa o protocolo oficial OAuth 2.0 do Google. Isso significa que você autoriza o H2BApply a enviar e-mails em seu nome pela API do Gmail, mas <strong>sua senha nunca é digitada, vista ou armazenada</strong> pela plataforma. Você pode revogar esse acesso a qualquer momento diretamente nas configurações da sua conta Google.</p>
+      <div class="card-title"><i class="ti ti-lock" style="color:var(--green)"></i> O H2BApply nunca vê a senha do seu Gmail</div>
+      <p>Sua conta no site é usuário e senha, criada aqui. O Google entra só depois, quando você já tem plano ativo e autoriza o envio pelo protocolo oficial OAuth 2.0: o H2BApply recebe permissão apenas para <strong>enviar</strong> e-mails em seu nome pela API do Gmail — nunca para ler a sua caixa de entrada — e <strong>sua senha nunca é digitada, vista ou armazenada</strong> pela plataforma. Você pode revogar esse acesso a qualquer momento nas configurações da sua conta Google. Atenção: esse Gmail é <strong>permanente</strong> — é o endereço que vai assinar todas as suas candidaturas, e não dá pra trocar depois.</p>
     </div>
     <div class="card">
       <div class="card-title"><i class="ti ti-users" style="color:var(--blue)"></i> Quem está por trás</div>
@@ -349,9 +349,9 @@ footer a{color:var(--blue);font-weight:600}
   "mainEntity": [
     {"@type":"Question","name":"O H2BApply garante que vou conseguir o visto ou emprego?","acceptedAnswer":{"@type":"Answer","text":"Não, e nenhuma empresa séria pode garantir isso — a decisão final é do empregador americano e do consulado. O H2BApply aumenta suas chances ao automatizar o envio de candidaturas para centenas de empregadores certificados pelo DOL, mas não controla a resposta deles."}},
     {"@type":"Question","name":"Preciso pagar para usar o H2BApply?","acceptedAnswer":{"@type":"Answer","text":"Para enviar candidaturas, sim. Criar a conta, montar o perfil e ver as vagas é grátis; o envio (manual ou automático) só libera com um plano ativo — a partir de R$ 100/mês (VIP Manual). VIPro e DoublePro incluem o robô automático."}},
-    {"@type":"Question","name":"O H2BApply tem acesso à minha senha do Gmail?","acceptedAnswer":{"@type":"Answer","text":"Não. O login é feito pelo OAuth oficial do Google — o H2BApply recebe apenas uma autorização para enviar e-mails em seu nome pela API do Gmail, sem nunca ver sua senha."}},
+    {"@type":"Question","name":"O H2BApply tem acesso à minha senha do Gmail?","acceptedAnswer":{"@type":"Answer","text":"Não. Sua conta no H2BApply é por usuário e senha. O Google só entra depois que você tem um plano ativo, quando autoriza o envio pelo seu próprio Gmail via OAuth oficial — o H2BApply recebe apenas a permissão de enviar e-mails em seu nome (nunca de ler sua caixa, nunca sua senha). Você pode revogar esse acesso quando quiser nas configurações da sua conta Google."}},
     {"@type":"Question","name":"De onde vêm as vagas mostradas no H2BApply?","acceptedAnswer":{"@type":"Answer","text":"De planilhas públicas do Departamento do Trabalho dos EUA (DOL), que lista os empregadores certificados a contratar trabalhadores estrangeiros via H-2B e H-2A."}},
-    {"@type":"Question","name":"Posso cancelar um plano pago quando quiser?","acceptedAnswer":{"@type":"Answer","text":"Sim. Os planos são mensais, sem fidelidade. Para dúvidas sobre cobrança ou cancelamento, o suporte responde por WhatsApp e e-mail."}}
+    {"@type":"Question","name":"Posso cancelar um plano pago quando quiser?","acceptedAnswer":{"@type":"Answer","text":"Não existe fidelidade nem renovação automática: você paga por um período (30, 60 ou 90 dias, ou 1 ano) e, quando ele termina, só renova se quiser. Para dúvidas sobre cobrança, o suporte responde por WhatsApp e e-mail (suporte@h2bapply.com)."}}
   ]
 }
 </script>

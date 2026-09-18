@@ -3640,12 +3640,12 @@ footer a{color:var(--blue);font-weight:600}
     <div class="section-head"><h2>Como se candidatar às vagas de ${titleCase}</h2><p>Nenhuma vaga é vendida — a candidatura é direta ao empregador</p></div>
     <div class="card">
       <p>As vagas H-2B e H-2A em ${titleCase} vêm de planilhas públicas do Departamento do Trabalho dos EUA, o mesmo órgão que certifica o salário mínimo obrigatório de cada uma. O H2BApply organiza esses dados e automatiza o envio da sua candidatura para os empregadores certificados — sem cobrar taxa de recrutamento, o que é proibido pelas próprias regras do programa.</p>
-      <p>Quer ver as vagas específicas de ${titleCase} disponíveis agora? Crie uma conta gratuita — leva menos de 1 minuto com login pelo Google.</p>
+      <p>Quer ver as vagas específicas de ${titleCase} disponíveis agora? Crie uma conta gratuita — leva menos de 1 minuto, com usuário e senha (sem conta do Google).</p>
     </div>
   </section>
   <div class="cta-section">
     <h3>Buscar vagas em ${titleCase} agora 🇺🇸</h3>
-    <p>Conta grátis, sem cartão de crédito. Você entra com o Google e já pode filtrar vagas por estado, categoria e salário.</p>
+    <p>Conta grátis, sem cartão de crédito. O cadastro é usuário e senha e você já pode filtrar vagas por estado, categoria e salário.</p>
     <div class="cta-btn-row">
       <a href="/?cadastro=1" class="btn-cta-white" onclick="gtag('event','sign_up_intent',{method:'password',source:'vagas-h2b-${entry.slug}-cta'})"><i class="ti ti-rocket"></i> Criar conta grátis</a>
       <a href="/quanto-ganha-h2b" class="btn-cta-outline"><i class="ti ti-chart-bar"></i> Ver salários por estado</a>
@@ -3801,12 +3801,12 @@ footer a{color:var(--blue);font-weight:600}
     <div class="section-head"><h2>Como se candidatar às vagas de ${catName}</h2><p>Nenhuma vaga é vendida — a candidatura é direta ao empregador</p></div>
     <div class="card">
       <p>As vagas H-2B e H-2A de ${catName} vêm de planilhas públicas do Departamento do Trabalho dos EUA, o mesmo órgão que certifica o salário mínimo obrigatório de cada uma. O H2BApply organiza esses dados e automatiza o envio da sua candidatura para os empregadores certificados — sem cobrar taxa de recrutamento, o que é proibido pelas próprias regras do programa.</p>
-      <p>Quer ver as vagas específicas de ${catName} disponíveis agora? Crie uma conta gratuita — leva menos de 1 minuto com login pelo Google.</p>
+      <p>Quer ver as vagas específicas de ${catName} disponíveis agora? Crie uma conta gratuita — leva menos de 1 minuto, com usuário e senha (sem conta do Google).</p>
     </div>
   </section>
   <div class="cta-section">
     <h3>Buscar vagas de ${catName} agora 🇺🇸</h3>
-    <p>Conta grátis, sem cartão de crédito. Você entra com o Google e já pode filtrar vagas por estado, categoria e salário.</p>
+    <p>Conta grátis, sem cartão de crédito. O cadastro é usuário e senha e você já pode filtrar vagas por estado, categoria e salário.</p>
     <div class="cta-btn-row">
       <a href="/?cadastro=1" class="btn-cta-white" onclick="gtag('event','sign_up_intent',{method:'password',source:'vagas-h2b-cat-${catKey}-cta'})"><i class="ti ti-rocket"></i> Criar conta grátis</a>
       <a href="/quanto-ganha-h2b" class="btn-cta-outline"><i class="ti ti-chart-bar"></i> Ver salários por estado</a>
@@ -4821,9 +4821,9 @@ function translateGmailErrorMsg(msg, toEmailCtx) {
   if (msg.includes("rateLimitExceeded") || msg.includes("userRateLimitExceeded") || msg.includes("User-rate limit"))
     return { type:"rate_limit", friendly:"⏳ Motivo: o próprio Google limita quantos e-mails uma conta Gmail pode mandar em pouco tempo — é uma proteção automática contra spam que existe pra QUALQUER conta Gmail (pessoal ou não), não é algo específico do H2BApply nem sinal de que sua conta tem algum defeito. Isso acontece quando muitos e-mails saem em sequência rápida, seja mandando manualmente ou pelo robô automático. Não é permanente: o Google libera de novo sozinho depois de alguns minutos. O que fazer: espere um pouco (geralmente 5 a 30 minutos) antes de tentar mandar de novo. No envio automático o sistema já sabe disso e espera + tenta de novo sozinho, sem precisar fazer nada." };
   if (msg.includes("invalid_grant") || msg.includes("Token has been expired or revoked"))
-    return { type:"auth", friendly:"🔐 Motivo: o H2BApply usa uma autorização que o Google dá quando você faz login com o Google — como uma chave de acesso pra poder mandar e-mail em seu nome. Essa chave expirou ou parou de valer, o que costuma acontecer se você trocou a senha do Google, revogou o acesso do H2BApply nas configurações da sua Conta Google, ou ficou muito tempo sem usar o app. O que fazer: faça login de novo no H2BApply (o mesmo botão de entrar com o Google) pra gerar uma chave nova." };
+    return { type:"auth", friendly:"🔐 Motivo: o H2BApply usa uma autorização que o Google dá quando você conecta o seu Gmail de envio — como uma chave de acesso pra poder mandar e-mail em seu nome. Essa chave expirou ou parou de valer, o que costuma acontecer se você trocou a senha do Google, revogou o acesso do H2BApply nas configurações da sua Conta Google, ou ficou muito tempo sem usar o app. O que fazer: conecte o seu Gmail de novo no H2BApply (o botão de conectar Gmail, na tela de envio) pra gerar uma chave nova." };
   if (msg.includes("insufficientPermissions") || msg.includes("Request had insufficient"))
-    return { type:"permission", friendly:"🔐 Motivo: quando você faz login com o Google, ele pede sua permissão pra deixar o H2BApply mandar e-mail em seu nome. Se essa permissão não foi concedida por completo (por exemplo, desmarcando alguma opção na tela do Google durante o login), o envio não funciona. O que fazer: saia da conta no H2BApply e faça login de novo, aceitando TODAS as permissões que a tela do Google pedir." };
+    return { type:"permission", friendly:"🔐 Motivo: quando você conecta o seu Gmail, o Google pede sua permissão pra deixar o H2BApply mandar e-mail em seu nome. Se essa permissão não foi concedida por completo (por exemplo, desmarcando alguma opção na tela do Google), o envio não funciona. O que fazer: conecte o seu Gmail de novo no H2BApply, aceitando TODAS as permissões que a tela do Google pedir." };
   if (msg.includes("suspended") || msg.includes("Account has been suspended") || msg.includes("Suspended"))
     return { type:"suspended", friendly:"⛔ Motivo: o próprio Google suspendeu temporariamente essa conta Gmail — geralmente por segurança (por exemplo, login de um lugar não reconhecido, ou o Google desconfiando de atividade automatizada). Isso é uma decisão do Google, o H2BApply não tem controle sobre isso. O que fazer: acesse gmail.com direto pelo navegador com essa conta e veja se aparece algum aviso, pedido de verificação ou confirmação de segurança — resolvendo isso lá, volta a funcionar." };
   if (msg.includes("sendDisabled") || msg.includes("Mail sending is disabled"))
@@ -6855,7 +6855,7 @@ const server=http.createServer(async(req,res)=>{
     </ul>
 
     <h2>5. Segurança dos dados</h2>
-    <p>Seus dados são armazenados em servidores seguros com acesso restrito. Utilizamos criptografia para proteger tokens de acesso. Você pode excluir sua conta e todos os dados a qualquer momento acessando seu perfil no app.</p>
+    <p>Seus dados são armazenados em servidores seguros com acesso restrito. Utilizamos criptografia para proteger tokens de acesso. Você pode pedir a exclusão da sua conta e dos seus dados a qualquer momento pela página <a href="/excluir-conta">/excluir-conta</a>.</p>
 
     <h2>6. Retenção de dados</h2>
     <p>Mantemos seus dados enquanto sua conta estiver ativa. Ao excluir sua conta em <a href="/delete-account">/excluir-conta</a>, seu acesso ao Gmail é revogado imediatamente no Google, sua sessão é encerrada e a conta é <strong>desativada</strong> (some do app e de qualquer lista pública, o envio automático para). Seu histórico de candidaturas e seus registros de pagamento/pedido são <strong>mantidos</strong> mesmo após a exclusão — não por opção comercial, mas porque a legislação brasileira (Código Civil e normas fiscais) exige guarda de registros financeiros/contábeis por prazo determinado, e porque preservar seu histórico permite restaurar sua conta automaticamente caso você entre novamente com o mesmo email. Se quiser a remoção definitiva dos seus dados em vez da desativação, use o canal de contato abaixo — atendemos o pedido dentro do prazo legal, respeitada a guarda obrigatória de registros financeiros.</p>
@@ -7175,19 +7175,18 @@ ul li{margin-bottom:6px}
 
   <div class="card">
     <h2>🔐 Acesso ao Google</h2>
-    <p>O H2BApply utiliza o <strong>Google OAuth</strong> apenas para autenticação e envio de emails via Gmail. Ao excluir sua conta, revogamos o token de acesso ao seu Gmail. Para garantia adicional, você também pode revogar o acesso diretamente em:</p>
+    <p>Sua conta no H2BApply é criada com usuário e senha — o <strong>Google OAuth</strong> é usado só depois, e só para ENVIAR e-mails pelo seu Gmail (nunca para ler sua caixa de entrada). Ao excluir sua conta, revogamos essa autorização no Google. Para garantia adicional, você também pode revogar o acesso diretamente em:</p>
     <p><a href="https://myaccount.google.com/permissions" target="_blank" class="email-link">myaccount.google.com/permissions</a></p>
     <p>Busque por "H2BApply" e clique em "Remover acesso".</p>
   </div>
 
   <div class="card">
     <h2>📧 Como solicitar a exclusão</h2>
-    <p><strong>Opção 1 — Pelo aplicativo (mais rápido):</strong></p>
+    <p><strong>Opção 1 — Pelo WhatsApp do suporte (mais rápido):</strong></p>
     <ul>
-      <li>Acesse <a href="https://h2bapply.com" class="email-link">h2bapply.com</a></li>
-      <li>Faça login com sua conta Google</li>
-      <li>Vá em <strong>Configurações → Excluir minha conta</strong></li>
-      <li>Confirme a exclusão — seus dados são removidos imediatamente</li>
+      <li>Chame o suporte em <a href="https://wa.me/5553981453496" class="email-link">wa.me/5553981453496</a></li>
+      <li>Diga o usuário e o e-mail cadastrados e peça a exclusão da conta</li>
+      <li>Confirmamos o pedido e processamos a exclusão</li>
     </ul>
     <p style="margin-top:12px"><strong>Opção 2 — Por email:</strong></p>
     <ul>
