@@ -690,9 +690,10 @@ function computeFinanceCanonico(){
 // 💰 Fonte única das janelas hoje/7d/30d/total de receita — todas as telas
 // (Visão do Dono, Sócios & Acerto, DRE) chamam esta função, nunca uma cópia
 // própria (2 verdades sobre o mesmo dinheiro podem divergir). Mesma correção
-// que computeFinanceCanonico aplica: se o pedido foi corrigido depois
-// (Conferência/pedido-set-valor) e o lançamento cru do caixa ainda não
-// reflete isso, o valor do PEDIDO vence — nunca duas fontes divergentes.
+// que computeFinanceCanonico aplica: se um pedido LEGADO foi corrigido antes
+// da v194 (os 2 caminhos de correção morreram com o LOTE 12) e o lançamento
+// cru do caixa ainda não reflete isso, o valor do PEDIDO vence — nunca duas
+// fontes divergentes.
 function computeEntradasJanelas(){
   const now=Date.now(),DAY=86400_000;
   const hojeISO=new Date(now-3*3600_000).toISOString().slice(0,10);
@@ -7567,51 +7568,16 @@ ul li{margin-bottom:6px}
 </html>`);
   }
 
-  // Corrigir valor de um pedido (admin)
-  if(pathname==="/api/admin/pedido-set-valor"&&req.method==="POST"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
-    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
-    // v77c (bug real achado revisando o v77b): faltava ler e parsear o body
-    // da requisição — a rota referenciava uma variável `body` que NUNCA
-    // existiu neste escopo (nem readBody nem JSON.parse eram chamados).
-    // Toda vez que essa rota era chamada, estourava ReferenceError DEPOIS
-    // do handler já ter começado a rodar de forma assíncrona, sem try/catch
-    // ao redor — a exceção nunca virava resposta HTTP, então a requisição
-    // ficava pendurada pra sempre (o admin via a tela girando sem fim; o
-    // smoke-test, que nunca tinha cobertura pra essa rota, travava direto
-    // nela). Corrigido: lê e parseia o body de verdade, com try/catch.
-    let pedidoId,valor;
-    try{
-      const d=JSON.parse(await readBody(req));
-      pedidoId=d.pedidoId; valor=d.valor;
-    }catch(e){ return json(res,400,{error:"Dados inválidos: "+e.message}); }
-    if(!pedidoId||!valor)return json(res,400,{error:"pedidoId e valor obrigatórios"});
-    const pd=DB_PEDIDOS.find(x=>x.id===pedidoId);
-    if(!pd)return json(res,404,{error:"Pedido não encontrado"});
-    const vAntes=pd.valorTotal;
-    pd.valorTotal=parseFloat(valor)||0;
-    pd.valorCorrigidoPor=s.user_email;
-    pd.valorCorrigidoEm=Date.now();
-    pd.valorOriginal=pd.valorOriginal||vAntes;
-    if(!persistPedidos()){
-      // Desfaz — não pode "parecer" corrigido se não gravou no disco.
-      pd.valorTotal=vAntes; delete pd.valorCorrigidoPor; delete pd.valorCorrigidoEm;
-      return json(res,500,{error:"⚠️ Não consegui gravar no disco — o valor NÃO foi corrigido. Tente de novo."});
-    }
-    // Atualizar também no financeiro se existir (mesmo pedido, mesmo dinheiro)
-    let finSyncOk=true;
-    try{
-      const finP=DB_FINANCEIRO.pagamentos.find(x=>x.pedidoId===pedidoId);
-      if(finP){
-        const finAntes=finP.valor;
-        finP.valor=pd.valorTotal;finP.notaCorrecao=`Valor corrigido de R$${vAntes} para R$${pd.valorTotal} por ${s.user_email}`;
-        if(!persistFinanceiro()){ finP.valor=finAntes; finSyncOk=false; console.error(`[pedido-set-valor] pedido ${pedidoId} salvo, mas SINCRONIZAÇÃO com financeiro falhou — valores podem divergir até nova tentativa.`); }
-      }
-    }catch(e){ finSyncOk=false; console.error('[pedido-set-valor] erro ao sincronizar financeiro:',e.message); }
-    console.log(`[pedido] valor corrigido: ${pedidoId} R$${vAntes}→R$${pd.valorTotal} por ${s.user_email}`);
-    return json(res,200,{ok:true,valorAntes:vAntes,valorNovo:pd.valorTotal,finSyncOk});
-  }
-
+  // 🚫 v194 LOTE 12 — A ROTA /api/admin/pedido-set-valor FOI REMOVIDA.
+  // Ordem do dono (v178, 14/09/2026): "não vai ter correção de pedidos... se a
+  // pessoa errar o pedido não vai ser aceito, pronto... vai ter que ser criado
+  // um novo pelo usuário". A rota continuava viva sem NENHUM botão no painel:
+  // por curl, qualquer admin reescrevia o valor de um pedido (ela nem olhava o
+  // status — reescrevia pago e cancelado, sincronizando o caixa junto) e
+  // ativava. Os campos de LEITURA da trilha (valorOriginal/valorCorrigidoPor/
+  // valorCorrigidoEm) continuam nas respostas: pedido antigo já carimbado não
+  // pode perder a história. Correção de valor de DESPESA/entrada manual segue
+  // existindo no Financeiro — o que morreu é corrigir o valor de um PEDIDO.
 
   // ════ GESTÃO DE PLANILHAS DE VAGAS ════════════════════════
   // GET /api/admin/sheets — lista todas as planilhas
@@ -10837,30 +10803,13 @@ filtrar();
       if(idx<0)return json(res,404,{error:"Pedido não encontrado (pode ter sido removido)."});
       const pd=DB_PEDIDOS[idx];
 
-      // ── Correção de VALOR pelo admin (aba Conferência) — com auditoria ────
-      // O valor original nunca some (valorOriginal), fica quem corrigiu e
-      // quando, e se o caixa já tem a entrada automática deste pedido, ela é
-      // corrigida JUNTO (uma verdade só — pedido e caixa nunca divergem).
+      // 🚫 v194 LOTE 12: o branch `corrigirValor` deste PATCH foi REMOVIDO
+      // junto com a rota /api/admin/pedido-set-valor — mesma ordem v178
+      // (valor errado CANCELA e o cliente refaz; não existe "corrigir e
+      // aprovar mesmo assim"). Sem chamador em tela nenhuma, ele era a 2ª
+      // porta pra reescrever o valor de um pedido ILEGIVEL/ERRO e ativar.
       if(d.corrigirValor!==undefined){
-        const nv=parseFloat(d.corrigirValor);
-        if(isNaN(nv)||nv<0||nv>100000)return json(res,400,{error:"Valor inválido."});
-        if(pd.valorOriginal===undefined)pd.valorOriginal=pd.valorTotal||0;
-        const antes=pd.valorTotal||0;
-        pd.valorTotal=nv;pd.valorCorrigidoPor=s.user_email;pd.valorCorrigidoEm=Date.now();
-        const _pgC=(DB_FINANCEIRO.pagamentos||[]).find(x=>x.pedidoId===pd.id&&x.source==="pedido_automatico");
-        if(_pgC){
-          _pgC.valor=nv;
-          if(!Array.isArray(DB_FINANCEIRO.alteracoes))DB_FINANCEIRO.alteracoes=[];
-          DB_FINANCEIRO.alteracoes.push({id:'alt_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6),
-            tipo:'corrigir_valor',por:_sessAdminNome(s),
-            porEmail:_sessAdminEmail(s),em:Date.now(),
-            motivo:`Conferência: valor do pedido #${pd.id.slice(-8).toUpperCase()} corrigido de R$${antes.toFixed(2)} para R$${nv.toFixed(2)}`,
-            antes:{valor:antes},depois:{valor:nv}});
-          persistFinanceiro();
-        }
-        persistPedidos();
-        console.log(`[conferencia] valor do pedido ${pd.id}: R$${antes} → R$${nv} (${s.user_email})`);
-        return json(res,200,{ok:true,pedido:pd,caixaCorrigido:!!_pgC});
+        return json(res,400,{error:"Correção de valor de pedido não existe mais: pedido com valor errado é CANCELADO e o cliente faz um novo com o valor certo (ordem do dono, v178).",correcaoRemovida:true});
       }
 
       // Validar senha de editor ao ativar
@@ -11063,8 +11012,11 @@ filtrar();
 
   // ── GET /api/admin/conferencia — TODOS os pagamentos desde a 1ª compra ────
   // (dono, 21/07/2026) Uma linha por pagamento: pedidos de plano (qualquer
-  // status, valor editável via PATCH corrigirValor, comprovante sob demanda
-  // via GET /api/pedido/:id). Sem imagens na lista (leve).
+  // status; comprovante sob demanda via GET /api/pedido/:id). Sem imagens na
+  // lista (leve). v194 LOTE 12: o valor do pedido NÃO é mais editável por
+  // lugar nenhum — valor errado cancela e o cliente refaz (ordem v178); os
+  // campos valorOriginal/valorCorrigidoPor continuam viajando como LEITURA
+  // da trilha de pedido antigo já carimbado.
   // 🧾 3.0-P7 — fonte ÚNICA da Conferência: a lista e a exportação usam o
   // MESMO builder e o MESMO filtro (nunca 2 verdades sobre os pagamentos).
   const _confData=()=>{
@@ -11440,10 +11392,22 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
       if (!String(d.subject).trim()) return json(res,400,{error:"O assunto do e-mail não pode estar em branco."});
       if (!String(d.message).trim()) return json(res,400,{error:"O corpo do e-mail não pode estar em branco."});
 
-      const isReply=!!(d.isReply);
+      // 🚫 v194 LOTE 12 — O RAMO `isReply` MORREU. Ele não tinha NENHUM
+      // chamador (a aba Respostas não existe nesta reconstrução e o app é
+      // só-envio), e era um bypass de verdade: com `isReply:true` + um
+      // threadId que o próprio /api/send devolveu, o envio pulava limite
+      // diário, cooldown, freio de rajada, "já enviei pra esse empregador"
+      // (regra 8) e a fila do automático — até 50 e-mails/dia extras pra
+      // empregadores JÁ contatados, gravados com countedAsManual:false.
+      // Cliente antigo em cache que ainda mande `threadId`/`messageId` não
+      // perde a candidatura: os campos são IGNORADOS e o envio segue como
+      // novo. Só `isReply:true` é recusado, com explicação.
+      if(d.isReply===true){
+        return json(res,400,{error:"Este aplicativo só ENVIA candidaturas novas — responder e-mail de empregador não existe aqui (nem lemos caixa de entrada). Atualize a página e envie a candidatura normalmente.",respostaRemovida:true});
+      }
 
       // ── DEDUP: impede envio simultâneo do mesmo email para o mesmo destinatário ──
-      dedupKey = s.user_email + "|" + toEmail + "|" + (isReply ? "reply" : "new");
+      dedupKey = s.user_email + "|" + toEmail + "|new";
       if (_manualSendInFlight.has(dedupKey)) {
         return json(res,409,{error:"Envio em andamento para este destinatário. Aguarde.",duplicate:true});
       }
@@ -11451,7 +11415,8 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
       // Remove lock após 15s (garante limpeza mesmo em erro)
       setTimeout(()=>_manualSendInFlight.delete(dedupKey), 15000);
 
-      if(!isReply){
+      { // v194 LOTE 12: bloco sem `if` — TODO envio passa por estas checagens
+        // (era `if(!isReply)`, e o ramo de resposta pulava todas elas).
         // v18-FIX: rajada — antes só a resposta (reply) tinha rateLimit(); o envio
         // de candidatura nova não tinha NENHUM freio de curto prazo, só o limite
         // diário (que por sua vez tinha a corrida corrigida abaixo). Agora também
@@ -11486,24 +11451,10 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
         // Rede de segurança: libera a reserva sozinha em 60s mesmo se algo impedir
         // o fluxo normal de chegar ao release explícito (ex. crash raro no meio do envio).
         setTimeout(()=>{ if(_reservedManualSlot){_releaseManualSlot(s.user_email);_reservedManualSlot=false;} }, 60_000);
-      }else{
-        // v18-SEC: antes isReply=true (valor enviado pelo CLIENTE, sem verificação)
-        // pulava TODAS as checagens acima — limite diário, "já enviado" e fila do
-        // automático — liberando até 50 envios/dia completamente fora do limite do
-        // plano, pra qualquer destinatário, bastando o cliente mandar isReply:true
-        // com um threadId inventado. Agora exige que o threadId corresponda a uma
-        // candidatura que ESTE usuário realmente enviou pelo H2BApply (índice real).
-        const _threadId=String(d.threadId||"").trim();
-        const _ix=ensureIdx(s.user_email);
-        if(!_threadId||!_ix.byThread[_threadId]){
-          return json(res,403,{error:"Não foi possível confirmar esta conversa. Resposta bloqueada por segurança."});
-        }
-        // Rate limit leve para respostas (50/dia) para evitar abuso
-        if(rateLimit(s.user_email+"_reply",50,86400_000))return json(res,429,{error:"Muitas respostas em um dia."});
       }
 
       const attachments=[];const getAtt=async idx=>{if(idx==null)return null;const m=p.cvs?.find(c=>c.idx===parseInt(idx,10));return m&&loadCv(s.user_email,m.idx)?{data:loadCv(s.user_email,m.idx),name:m.name}:null;};
-      if(!isReply){// Anexos só em candidaturas originais
+      {// Toda candidatura é NOVA — anexos sempre
         let resumeAttached=false;
         // 🚨 v177-FIX5 (auditoria 14/09/2026): o caminho alternativo pdfBase64
         // (currículo mandado direto no corpo, sem passar pelos Documentos)
@@ -11556,11 +11507,6 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
         }
       }
 
-      // Cabeçalhos de threading para manter na mesma conversa
-      const threadHeaders={};
-      if(isReply&&d.messageId){threadHeaders["In-Reply-To"]=d.messageId;threadHeaders["References"]=d.messageId;}
-      if(isReply&&d.threadId){threadHeaders["X-Gmail-Thread-Id"]=d.threadId;}
-
       // ── Multi-sender: selecionar email de envio ─────────────
       const requestedSender=(d.senderEmail||"").toLowerCase().trim()||null;
       const sid=getSessId(req);
@@ -11572,13 +11518,13 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
           const{token:senderTok,senderEmail:usedEmail}=await getSenderToken(s.user_email,requestedSender);
           if(senderTok){
             actualSenderEmail=usedEmail;
-            const raw2=buildMimeWithHeaders({to:toEmail,subject:d.subject,text:d.message,fromName:d.fromName||p.name||s.user_name||"H2BApply",fromEmail:usedEmail,attachments,threadHeaders});
-            const payload2={raw:raw2};if(isReply&&d.threadId)payload2.threadId=d.threadId;
+            const raw2=buildMimeWithHeaders({to:toEmail,subject:d.subject,text:d.message,fromName:d.fromName||p.name||s.user_name||"H2BApply",fromEmail:usedEmail,attachments});
+            const payload2={raw:raw2};
             const{status:gs2,body:gb2}=await httpsReq({hostname:"gmail.googleapis.com",path:"/gmail/v1/users/me/messages/send",method:"POST",headers:{"Authorization":"Bearer "+senderTok,"Content-Type":"application/json"}},payload2);
             if(gb2?.error)throw new Error(gb2.error.message||JSON.stringify(gb2.error));
             if(gs2!==200)throw new Error("Gmail HTTP "+gs2);
             r=gb2;
-          }else{r=await gmailSendWithThread(sid,{to:toEmail,subject:d.subject,text:d.message,fromName:d.fromName||p.name||s.user_name||"H2BApply",attachments,threadHeaders,threadId:isReply?(d.threadId||null):null});}
+          }else{r=await gmailSendWithThread(sid,{to:toEmail,subject:d.subject,text:d.message,fromName:d.fromName||p.name||s.user_name||"H2BApply",attachments});}
         }catch(e2){
           // 🛡️ v73: a conta ESCOLHIDA pelo usuário está em aquecimento — cair
           // pro principal sem checar ele também poderia furar a proteção da
@@ -11593,9 +11539,9 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
           }
           console.warn("[send] Sender extra falhou, usando principal:",e2.message);
           actualSenderEmail=s.user_email;
-          r=await gmailSendWithThread(sid,{to:toEmail,subject:d.subject,text:d.message,fromName:d.fromName||p.name||s.user_name||"H2BApply",attachments,threadHeaders,threadId:isReply?(d.threadId||null):null});
+          r=await gmailSendWithThread(sid,{to:toEmail,subject:d.subject,text:d.message,fromName:d.fromName||p.name||s.user_name||"H2BApply",attachments});
         }
-      }else if(!requestedSender && !isReply){
+      }else if(!requestedSender){
         // ── Round-robin automático no envio MANUAL (sem sender especificado) ──
         // Alterna entre principal e extras igualmente, igual ao automático
         try{
@@ -11603,7 +11549,7 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
           actualSenderEmail=rrEmail;
           if(rrTok&&rrEmail!==s.user_email){
             // Extra escolhido pelo round-robin
-            const rawRR=buildMimeWithHeaders({to:toEmail,subject:d.subject,text:d.message,fromName:d.fromName||p.name||s.user_name||"H2BApply",fromEmail:rrEmail,attachments,threadHeaders});
+            const rawRR=buildMimeWithHeaders({to:toEmail,subject:d.subject,text:d.message,fromName:d.fromName||p.name||s.user_name||"H2BApply",fromEmail:rrEmail,attachments});
             const payloadRR={raw:rawRR};
             const{status:gsRR,body:gbRR}=await httpsReq({hostname:"gmail.googleapis.com",path:"/gmail/v1/users/me/messages/send",method:"POST",headers:{"Authorization":"Bearer "+rrTok,"Content-Type":"application/json"}},payloadRR);
             if(gbRR?.error)throw new Error(gbRR.error.message||JSON.stringify(gbRR.error));
@@ -11612,7 +11558,7 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
             console.log(`[send/manual] 🔄 Round-robin manual → ${rrEmail}`);
           }else{
             // Principal escolhido pelo round-robin
-            r=await gmailSendWithThread(sid,{to:toEmail,subject:d.subject,text:d.message,fromName:d.fromName||p.name||s.user_name||"H2BApply",attachments,threadHeaders,threadId:isReply?(d.threadId||null):null});
+            r=await gmailSendWithThread(sid,{to:toEmail,subject:d.subject,text:d.message,fromName:d.fromName||p.name||s.user_name||"H2BApply",attachments});
           }
         }catch(e3){
           // v76: WARMUP_CAP_REACHED não é mais lançado pelo round-robin (ver
@@ -11620,16 +11566,19 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
           // é recusado por aquecimento, só cai pro principal em erro real.
           console.warn("[send/manual] Round-robin falhou, usando principal:",e3.message);
           actualSenderEmail=s.user_email;
-          r=await gmailSendWithThread(sid,{to:toEmail,subject:d.subject,text:d.message,fromName:d.fromName||p.name||s.user_name||"H2BApply",attachments,threadHeaders,threadId:isReply?(d.threadId||null):null});
+          r=await gmailSendWithThread(sid,{to:toEmail,subject:d.subject,text:d.message,fromName:d.fromName||p.name||s.user_name||"H2BApply",attachments});
         }
       }else{
-        // isReply=true: sempre usa email principal (manter conversa no mesmo remetente)
-        r=await gmailSendWithThread(sid,{to:toEmail,subject:d.subject,text:d.message,fromName:d.fromName||p.name||s.user_name||"H2BApply",attachments,threadHeaders,threadId:isReply?(d.threadId||null):null});
+        // v194 LOTE 12: o usuário ESCOLHEU explicitamente o e-mail principal
+        // (requestedSender === conta de login) — antes este else existia pro
+        // reply e este caso caía nele por acaso. Simplesmente "remover o else"
+        // quebraria essa escolha legítima.
+        r=await gmailSendWithThread(sid,{to:toEmail,subject:d.subject,text:d.message,fromName:d.fromName||p.name||s.user_name||"H2BApply",attachments});
       }
 
       const _tGmailMs = Date.now() - _sendT0;
       const now=new Date();
-      if(!isReply){
+      { // v194 LOTE 12: toda candidatura conta no histórico e no limite do dia
        try{
         // Só registra no histórico candidaturas originais
         const lim=getManualLimit(p);const h=getHist(s.user_email);const sent=countManualToday(h);
@@ -11709,11 +11658,6 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
         if(_reservedManualSlot){_releaseManualSlot(s.user_email);_reservedManualSlot=false;}
         return json(res,200,{ok:true,messageId:r.id,threadId:r.threadId||null,countedAsManual:true,warning:"Candidatura enviada, mas houve um problema ao atualizar o histórico — pode não aparecer na hora em Enviadas."});
        }
-      }else{
-        // Resposta: não conta, só confirma sucesso
-        console.log(`[reply] ✅ ${s.user_email} → ${toEmail} (thread: ${d.threadId||"?"})`);
-        _manualSendInFlight.delete(dedupKey);
-        return json(res,200,{ok:true,messageId:r.id,countedAsManual:false,isReply:true});
       }
     }catch(e){
       _manualSendInFlight.delete(dedupKey);

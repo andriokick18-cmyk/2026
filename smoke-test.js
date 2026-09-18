@@ -1803,11 +1803,23 @@ async function drillRestauracaoBackup() {
     // O pedido recém-ativado TEM entrada no caixa — não pode aparecer como divergência
     const dvComprador = (cf.json?.divergencias || []).filter((x) => x.email === "comprador@test.com");
     check("🔍 varredura de divergências roda e não acusa o fluxo saudável", Array.isArray(cf.json?.divergencias) && dvComprador.length === 0, JSON.stringify(dvComprador).slice(0, 140));
+    // ⚠️ ASSERÇÕES ATUALIZADAS no v194 LOTE 12: elas provavam que dava pra
+    // CORRIGIR o valor de um pedido — exatamente o que a ordem do dono (v178,
+    // 14/09/2026) proibiu: "não vai ter correção de pedidos... vai ter que ser
+    // criado um novo pelo usuário". Os dois caminhos (PATCH corrigirValor e
+    // POST /api/admin/pedido-set-valor) não tinham NENHUM botão no painel e
+    // reescreviam dinheiro por curl. Agora o que se prova é a recusa.
     const corr = await req2("PATCH", "/api/pedido/" + pdId, { corrigirValor: 147 });
-    check("✏️ corrigirValor altera o pedido preservando o original na trilha", corr.json?.ok === true && corr.json?.pedido?.valorTotal === 147 && corr.json?.pedido?.valorOriginal === 150, corr.body.slice(0, 140));
+    const pedDepois = await get("/api/pedido/" + pdId);
+    check("🚫 v194-L12: corrigir o VALOR de um pedido foi removido (ordem v178: valor errado cancela e o cliente refaz) — o PATCH recusa com explicação e o valor NÃO muda",
+      corr.status === 400 && corr.json?.correcaoRemovida === true && pedDepois.json?.pedido?.valorTotal === 150,
+      JSON.stringify({ status: corr.status, valorDepois: pedDepois.json?.pedido?.valorTotal }));
+    const setValorMorto = await req2("POST", "/api/admin/pedido-set-valor", { pedidoId: pdId, valor: 147 });
     const fin1b = await get("/api/admin/financeiro");
     const pgCorr = (fin1b.json?.pagamentos || []).find((x) => x.pedidoId === pdId);
-    check("✏️ correção de valor corrige o caixa JUNTO (uma verdade só)", corr.json?.caixaCorrigido === true && pgCorr?.valor === 147);
+    check("🚫 v194-L12: a rota /api/admin/pedido-set-valor (sem chamador em tela nenhuma, e que nem olhava o status — reescrevia pago e cancelado, sincronizando o caixa junto) foi REMOVIDA: 404, e o caixa segue com o valor original",
+      setValorMorto.status === 404 && pgCorr?.valor === 150,
+      JSON.stringify({ rota: setValorMorto.status, caixa: pgCorr?.valor }));
 
     // (v32: Robô de Renovação — /api/admin/renova-run não existe nesta
     // reconstrução.)
@@ -1935,13 +1947,18 @@ async function drillRestauracaoBackup() {
     const canc = await req2("PATCH", "/api/pedido/" + pdId, { status: "cancelado" });
     // 💼 MC5-P6: o cancelamento NUNCA mais APAGA a entrada do caixa — o
     // original fica ANULADO (história preservada) e entra o par de AJUSTE
-    // negativo pelo valor EFETIVO (pedido corrigido 150→147 vence o caixa).
-    // O líquido é idêntico ao da exclusão antiga; a história, não.
+    // negativo pelo valor EFETIVO. O líquido é idêntico ao da exclusão
+    // antiga; a história, não.
+    // ⚠️ VALOR ATUALIZADO no v194 LOTE 12: era −147 porque o teste acima
+    // CORRIGIA o pedido de 150 pra 147 — correção que não existe mais (ordem
+    // v178: valor errado cancela e o cliente refaz). O pedido mantém os R$150
+    // que entraram, então o par de ajuste é −150. A regra testada ("pedido
+    // vence caixa" no valor efetivo) continua exatamente a mesma.
     const fin2 = await get("/api/admin/financeiro");
     const _cOrig = (fin2.json?.pagamentos || []).find((x) => x.pedidoId === pdId && x.tipo !== "ajuste");
     const _cAj = (fin2.json?.pagamentos || []).find((x) => x.tipo === "ajuste" && x.ajustaPedidoId === pdId);
-    check("💼 MC5-P6: cancelamento estorna por AJUSTE− (original preservado+anulado, par −147 pelo valor efetivo) — o caixa nunca apaga",
-      canc.json?.ok === true && _cOrig && !!_cOrig.anuladoPor && _cAj && _cAj.valor === -147,
+    check("💼 MC5-P6: cancelamento estorna por AJUSTE− (original preservado+anulado, par −150 pelo valor efetivo do pedido) — o caixa nunca apaga",
+      canc.json?.ok === true && _cOrig && !!_cOrig.anuladoPor && _cAj && _cAj.valor === -150,
       JSON.stringify({ anulado: !!_cOrig?.anuladoPor, aj: _cAj?.valor }).slice(0, 120));
     // 🚨 v177-FIX2 (auditoria 14/09/2026): o estorno de dias mexia direto em
     // manualExpires/autoExpires sem deixar rastro no extrato vip.creditos —
@@ -4405,9 +4422,18 @@ async function drillRestauracaoBackup() {
     // essa rota antes do v77b, travou o processo inteiro por +40min até eu
     // achar). Guarda estrutural: confirma que a rota lê o body de verdade e
     // nunca mais referencia uma variável `body` não declarada.
-    check("🛡️ /api/admin/pedido-set-valor lê o body de verdade (JSON.parse(await readBody)) — nunca mais trava a requisição pra sempre",
-      !_srvSrc.includes("const {pedidoId,valor}=body;") && /pedido-set-valor[\s\S]{0,1200}?JSON\.parse\(await readBody\(req\)\)/.test(_srvSrc),
-      "rota pedido-set-valor não encontrada lendo o body via readBody logo depois do pathname check, ou o padrão quebrado antigo voltou");
+    // ⚠️ CHECK SUBSTITUÍDO no v194 LOTE 12: o do v77c garantia que a rota
+    // `pedido-set-valor` lia o body direito. A rota foi REMOVIDA (ordem v178),
+    // então a guarda vira NEGATIVA — senão a regra volta a entrar sozinha numa
+    // sessão futura. A lição do v77c (rota sem try/catch referenciando
+    // variável inexistente PENDURA a requisição pra sempre) continua valendo
+    // pra toda rota nova; o que não pode voltar é este caminho de dinheiro.
+    check("🚫 v194-L12 (estrutural): nenhum caminho de 'corrigir valor de pedido' pode voltar — nem a rota /api/admin/pedido-set-valor, nem o branch corrigirValor que reescrevia o pedido e o caixa",
+      !_srvSrc.includes('pathname==="/api/admin/pedido-set-valor"') &&
+      !_srvSrc.includes("pd.valorCorrigidoPor=s.user_email") &&
+      _srvSrc.includes("correcaoRemovida:true") &&
+      _srvSrc.includes("valorCorrigidoPor:pd.valorCorrigidoPor||null"),
+      "rota/branch de correção de valor de pedido de volta, ou a trilha de leitura (valorOriginal/valorCorrigidoPor) sumiu das respostas");
 
     // ═══ 🛡️ v75: rate limit do Google NÃO pausa mais o automático ═══
     // Ordem do dono (27/07): "automático só deve parar se o Google bloquear,
@@ -5215,6 +5241,36 @@ async function drillRestauracaoBackup() {
       _srvL9.includes("async function criarBackupCompleto()") && _srvL9.includes("await fsp.copyFile(") && _srvL9.includes("await fsp.cp(CVS_DIR") &&
       _srvL9.includes("criarBackupCompleto().catch(") && !/setTimeout\(criarBackupCompleto/.test(_srvL9) && !/setInterval\(criarBackupCompleto/.test(_srvL9),
       "criarBackupCompleto ainda é síncrono ou algum timer chama sem .catch");
+
+    // ═══ 🚫 v194 LOTE 12: o ramo isReply do /api/send MORREU ═══════════════
+    // Ele não tinha NENHUM chamador (a aba Respostas não existe nesta
+    // reconstrução e o app é só-envio) e era um bypass de verdade: com
+    // isReply:true + um threadId que o próprio /api/send devolveu, o envio
+    // pulava limite diário, cooldown, freio de rajada, "já enviei pra esse
+    // empregador" (regra 8) e a fila do automático.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "l12reply@test.com", name: "L12 Reply", refreshToken: "rt-l12-reply", plan: "doublepro", vip: { active: true, plan: "doublepro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 } });
+    const _l12HistAntes = ((await get("/api/history")).json?.history || []).length;
+    const _l12Reply = await req2("POST", "/api/send", { to: "rh@empresa-l12reply.com", subject: "Re: vaga", message: "obrigado pelo retorno", isReply: true, threadId: "thread-qualquer-123", messageId: "<abc@mail.gmail.com>" });
+    const _l12HistDepois = ((await get("/api/history")).json?.history || []).length;
+    check("🚫 v194-L12: envio com isReply:true é RECUSADO (400) com explicação — o caminho que dava até 50 e-mails/dia fora do limite do plano, pra empregador JÁ contatado e com countedAsManual:false, não existe mais; o histórico não cresce",
+      _l12Reply.status === 400 && _l12Reply.json?.respostaRemovida === true && _l12HistDepois === _l12HistAntes,
+      JSON.stringify({ status: _l12Reply.status, hist: [_l12HistAntes, _l12HistDepois] }));
+    const _l12Compat = await req2("POST", "/api/send", { to: "rh@empresa-l12compat.com", subject: "Application", message: "Olá, gostaria de me candidatar.", threadId: "thread-qualquer-123", messageId: "<abc@mail.gmail.com>" });
+    check("🚫 v194-L12: threadId/messageId de um cliente ANTIGO em cache são IGNORADOS (o envio segue como candidatura nova e chega na etapa do currículo) em vez de recusados — quem está com a tela velha não perde a candidatura",
+      _l12Compat.json?.respostaRemovida !== true && /curr[ií]culo|PDF/i.test(_l12Compat.body || ""),
+      `status=${_l12Compat.status} body=${(_l12Compat.body || "").slice(0, 90)}`);
+
+    // REGRESSÃO da cadeia de remetente: escolher o PRINCIPAL explicitamente
+    // caía, por acaso, no `else` que existia pro reply. "Só remover o else"
+    // quebraria esse caso legítimo.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "l12send@test.com", name: "L12 Send", refreshToken: "rt-l12-send", plan: "doublepro", vip: { active: true, plan: "doublepro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 } });
+    await req2("POST", "/api/cv/upload", { base64: Buffer.from("%PDF-1.4 " + "l12 ".repeat(400)).toString("base64"), name: "CV_L12.pdf", cvType: "resume" });
+    const _l12Principal = await req2("POST", "/api/send", { to: "rh@empresa-l12send.com", subject: "Application", message: "Olá, gostaria de me candidatar.", senderEmail: "l12send@test.com" });
+    check("🔁 v194-L12 (regressão): escolher explicitamente o e-mail PRINCIPAL como remetente continua funcionando — o envio passa por todas as etapas e só para na chamada REAL ao Gmail (que recusa a credencial de teste), sem nenhum erro vindo do nosso código",
+      _l12Principal.json?.pdfMissing !== true &&
+      !/is not defined|is not a function|Cannot read propert/i.test(String(_l12Principal.json?.errorRaw || _l12Principal.json?.error || "")),
+      `status=${_l12Principal.status} raw=${String(_l12Principal.json?.errorRaw || "").slice(0, 90)}`);
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
 
     // 🛟 v191 LOTE 9 — drill de restauração de backup (servidor e disco só dele)
     await drillRestauracaoBackup();
