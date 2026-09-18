@@ -136,6 +136,35 @@ const _expDaLinha = (r) => {
   return Number.isFinite(n) && n >= 0 && n <= 600 ? n : -1;
 };
 const _iso = (v) => { const s = String(v || "").slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : ""; };
+// 🏷️ v181 LOTE 7 — FAMÍLIA DE CARGO. O título vem CRU do DOL e a mesma
+// ocupação se parte em várias opções com a contagem fatiada: em jan2026 são
+// 1.806 títulos distintos, 1.192 aparecem 1 única vez, e "landscape laborer"
+// (2.120) + "landscape laborers" (231) + "laborer, landscape" (9) eram 3
+// chips pro mesmo trabalho. A FAMÍLIA é o título normalizado: minúsculo, sem
+// acento, sem pontuação (então NUNCA tem vírgula — senão voltaria o bug do
+// _csv do v179), sem "and/&", plural simples removido e palavras ORDENADAS
+// (é o que junta "laborer, landscape" com "landscape laborer"). Onde existe
+// SOC (classificação oficial do governo, estável), a família é o SOC — na
+// H-2A isso junta as 393 grafias de "farmworker" numa opção só.
+const _famNorm = (s) => {
+  const x = String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!x) return "";
+  const w = [];
+  for (const tk of x.split(" ")) {
+    if (!tk || tk === "and" || tk === "amp") continue;
+    w.push(tk.length > 3 && tk.endsWith("s") && !tk.endsWith("ss") ? tk.slice(0, -1) : tk);
+  }
+  return [...new Set(w)].sort().join(" ");
+};
+// Chave de família a partir de um valor QUALQUER (nosso ou do cliente).
+// Idempotente: aplicar de novo numa chave já emitida devolve ela mesma.
+const _famKey = (raw) => {
+  const s = String(raw || "").trim();
+  if (/^soc:/i.test(s)) { const k = _famNorm(s.slice(4)); return k ? "soc:" + k : ""; }
+  return _famNorm(s);
+};
+
 // Faixa da temporada: 0 futura · 1 aberta · 2 encerrada · 3 sem data.
 const _temporadaDe = (d, de, hoje) => {
   if (!d && !de) return 3;
@@ -166,7 +195,18 @@ function createFiltros(deps) {
     const c = _norm(cidade); if (!c) return "";
     return c + "|" + String(estado || "");
   };
+  // Cargo vindo do cliente → chave de FAMÍLIA. Aceita (a) a chave que a
+  // faceta emitiu, (b) um título literal antigo ("Cooks, Restaurant" salvo no
+  // aparelho ou em job.filters de robô rodando) e (c) qualquer grafia do
+  // mesmo cargo — os 3 caminhos terminam na mesma família.
+  const _cargoKeyDoCliente = (v, ix) => {
+    const k = _famKey(v);
+    if (!k) return "";
+    if (ix.famSet.has(k)) return k;
+    return ix.famPorTitulo.get(_famNorm(v)) || k;
+  };
   // Valor canônico vindo do cliente ("labelle|FLORIDA") → mesma chave do
+
   // índice, tolerante a caixa/grafia do estado.
   const _ciKeyDoCliente = (v) => {
     const s = String(v || ""); const i = s.lastIndexOf("|");
@@ -297,7 +337,9 @@ function createFiltros(deps) {
       s: new Array(n), ci: new Array(n), ciN: new Array(n), ciKey: new Array(n), k: new Array(n), t: new Array(n), tl: new Array(n),
       wh: new Float32Array(n), wk: new Int32Array(n), m: new Int8Array(n), am: new Int32Array(n), st: new Array(n), g: new Array(n), em: new Uint8Array(n),
       exp: new Int16Array(n), tp: new Uint8Array(n), vi: new Array(n),
+      tFam: new Array(n), famSet: new Set(), famPorTitulo: new Map(),
     };
+
     for (let i = 0; i < n; i++) {
       const r = rows[i] || {};
       ix.s[i] = normalizeStateName(r.s);
@@ -307,6 +349,14 @@ function createFiltros(deps) {
       ix.k[i] = String(r.k || "other").toLowerCase();
       const t = String(r.t || "").trim().replace(/\s+/g, " ");
       ix.t[i] = t; ix.tl[i] = t.toLowerCase();
+      // família do cargo: SOC quando existe (classificação oficial), senão o
+      // título normalizado. O mapa título→família mantém COMPATÍVEL o valor
+      // antigo (título literal salvo no aparelho ou num job.filters de robô
+      // que já está rodando) — ele continua casando com a família certa.
+      const fam = t ? (r.soc ? ("soc:" + _famNorm(r.soc)) || _famNorm(t) : _famNorm(t)) : "";
+      ix.tFam[i] = fam;
+      if (fam) { ix.famSet.add(fam); const tf = _famNorm(t); if (tf && !ix.famPorTitulo.has(tf)) ix.famPorTitulo.set(tf, fam); }
+
       ix.wh[i] = wageHora(r);
       ix.wk[i] = parseInt(r.wk, 10) > 0 ? parseInt(r.wk, 10) : 0;
       const dIso = _iso(r.d), deIso = _iso(r.de);
@@ -367,9 +417,11 @@ function createFiltros(deps) {
       }
       case "cargo": {
         if (!f.cargo.length) return out;
-        const set = new Set(f.cargo);
-        for (let i = 0; i < n; i++) out[i] = set.has(ix.tl[i]) ? 1 : 0; return out;
+        const set = new Set(f.cargo.map(v => _cargoKeyDoCliente(v, ix)).filter(Boolean));
+        if (!set.size) return out;
+        for (let i = 0; i < n; i++) out[i] = set.has(ix.tFam[i]) ? 1 : 0; return out;
       }
+
       case "salarioMin": {
         if (!(f.salarioMin > 0)) return out;
         for (let i = 0; i < n; i++) out[i] = ix.wh[i] >= f.salarioMin ? 1 : 0; return out;
@@ -560,15 +612,27 @@ function createFiltros(deps) {
     // categoria
     { const m = semDim("categoria"); const c = new Map(); for (let i = 0; i < n; i++) if (m[i]) c.set(ix.k[i], (c.get(ix.k[i]) || 0) + 1);
       fac.categoria = _top(c, 40).map(([v, q]) => ({ v, label: categoriaLabel ? categoriaLabel(v) : v, n: q })); }
-    // cargo (título exato) — top N; com `cargoBusca` filtra por substring
-    { const m = semDim("cargo"); const c = new Map(); const lbl = new Map();
+    // cargo — 1 opção por FAMÍLIA (v181): a contagem soma todas as grafias e
+    // o rótulo é a grafia MAIS FREQUENTE dentro da família ("Landscape
+    // Laborer 2.360" no lugar de 3 chips de 2.120/231/9). A busca por texto
+    // continua olhando o TÍTULO de cada linha — a família entra na lista se
+    // qualquer grafia dela casar com o que foi digitado.
+    { const m = semDim("cargo"); const c = new Map(); const graf = new Map();
       const busca = String(opts.cargoBusca || "").toLowerCase().trim();
-      for (let i = 0; i < n; i++) { if (!m[i] || !ix.tl[i]) continue; if (busca && !ix.tl[i].includes(busca)) continue; c.set(ix.tl[i], (c.get(ix.tl[i]) || 0) + 1); if (!lbl.has(ix.tl[i])) lbl.set(ix.tl[i], ix.t[i]); }
-      // os já selecionados sempre aparecem (mesmo fora do top), pra poder desmarcar
+      for (let i = 0; i < n; i++) {
+        if (!m[i] || !ix.tFam[i]) continue;
+        if (busca && !ix.tl[i].includes(busca)) continue;
+        const key = ix.tFam[i];
+        c.set(key, (c.get(key) || 0) + 1);
+        let gm = graf.get(key); if (!gm) { gm = new Map(); graf.set(key, gm); }
+        gm.set(ix.t[i], (gm.get(ix.t[i]) || 0) + 1);
+      }
       const top = _top(c, opts.cargoLimite || 40);
-      for (const sel of f.cargo) if (!top.some(([v]) => v === sel)) top.push([sel, c.get(sel) || 0]);
-      fac.cargo = top.map(([v, q]) => ({ v, label: lbl.get(v) || v, n: q }));
+      // os já selecionados sempre aparecem (mesmo fora do top), pra poder desmarcar
+      for (const sel of f.cargo) { const k = _cargoKeyDoCliente(sel, ix); if (k && !top.some(([v]) => v === k)) top.push([k, c.get(k) || 0]); }
+      fac.cargo = top.map(([v, q]) => ({ v, label: _grafiaLabel(graf.get(v), v), n: q }));
       fac.cargoDistintos = c.size; }
+
     // cidade — 1 opção por CIDADE+ESTADO (chave canônica) + regiões turísticas
     { const m = semDim("cidade"); const c = new Map(); const st = new Map(); const graf = new Map();
       for (let i = 0; i < n; i++) {

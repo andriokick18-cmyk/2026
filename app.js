@@ -1458,7 +1458,8 @@ function _vfChipList(ctx){
   if(st.inicio.length)push("inicio","","📅 "+st.inicio.map(m=>_vfMesLabel(m)).join(", "),"var(--blue)");
 
   st.cidade.forEach(v=>push("cidade",v,"🏙️ "+_vfCidadeLabel(v),"var(--blue)"));
-  if(st.cargo.length)push("cargo","","🏷️ "+(st.cargo.length===1?_vfTitleCase(st.cargo[0]):t('vf_n_cargos').replace("{n}",st.cargo.length)),"var(--purple)");
+  if(st.cargo.length)push("cargo","","🏷️ "+(st.cargo.length===1?_vfCargoLabel(st.cargo[0],ctx):t('vf_n_cargos').replace("{n}",st.cargo.length)),"var(--purple)");
+
   if(st.vagasMin>0)push("vagasMin","","👥 "+t('vf_workers_more').replace("{v}",st.vagasMin),"var(--green)");
   if(st.status.length)push("status","","📶 "+st.status.map(s=>_vfStatusLabel(s)).join(", "),"#d97706");
 
@@ -1495,6 +1496,16 @@ function _vfCidadeLabel(v,label,estado){
   return nome+(est?" · "+_vfEstadoNome(est):"");
 }
 function _vfCatLabel(k){const l=window._catLabels&&window._catLabels[k]&&window._catLabels[k].label;return l||k;}
+// v181 LOTE 7: a opção de cargo que o servidor emite é a chave de FAMÍLIA
+// ("laborer landscape") — quem tem o rótulo humano ("Landscape Laborer", a
+// grafia mais frequente da planilha) é a faceta. Sem faceta carregada, cai
+// no próprio texto em Title Case (nunca fica em branco).
+function _vfCargoLabel(v,ctx){
+  const fc=VF.fac[ctx||"manual"];
+  const l=fc&&fc.facetas&&(fc.facetas.cargo||[]).find(x=>x.v===v);
+  return _vfTitleCase((l&&l.label)||String(v||"").replace(/^soc:/,""));
+}
+
 // 🏷️ v181 LOTE 5: "Certified"/"Pending Processing" vinham CRUS do dado do
 // governo numa tela 100% em português — e é justamente um filtro de plano
 // pago (argumento de venda escrito num idioma que o comprador não fala). O

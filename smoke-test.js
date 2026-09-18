@@ -2157,18 +2157,29 @@ async function testAuthWatchdogPush() {
     // no servidor real deste repositório (não copiados de relatório).
     {
       const vfH = (await get("/api/vagas/filtros?sheet=h2a-jun2026")).json;
-      // (1) valor de faceta é OPACO — cargo COM vírgula tem que bater
-      const comVirg = (vfH.facetas.cargo || []).filter((x) => x.v.includes(",")).slice(0, 2);
+      // (1) valor de faceta é OPACO — valor COM vírgula não pode ser
+      // re-quebrado pelo servidor.
+      // ⚠️ ATUALIZADO no v181 LOTE 7: a faceta de cargo passou a emitir a
+      // chave de FAMÍLIA, que por construção NÃO tem vírgula (é o título
+      // normalizado sem pontuação) — não existe mais opção de cargo com
+      // vírgula pra conferir. A regra continua valendo e é provada pelo
+      // caminho que ainda tem vírgula de verdade: o título literal antigo
+      // ("Farmworkers and Laborers, Crop, Nursery, and Greenhouse" salvo no
+      // aparelho ou num job.filters de robô que já está rodando), que tem que
+      // casar com a família inteira em vez de virar 4 pedaços soltos.
+      const _titulosComVirgula = ["Farmworkers and Laborers, Crop, Nursery, and Greenhouse", "Farmworkers, Farm & Ranch Animals"];
       const paresVirg = [];
-      for (const c of comVirg) {
-        const sm = (await get(`/api/sheet-meta?sheet=h2a-jun2026&cargo=${encodeURIComponent(c.v)}&top=1`)).json;
-        paresVirg.push({ v: c.v.slice(0, 30), faceta: c.n, lista: sm.total });
+      for (const tl of _titulosComVirgula) {
+        const sm = (await get(`/api/sheet-meta?sheet=h2a-jun2026&cargo=${encodeURIComponent(tl)}&top=1`)).json;
+        const fam = (vfH.facetas.cargo || []).find((x) => String(x.label || "").toLowerCase() === tl.toLowerCase());
+        paresVirg.push({ v: tl.slice(0, 30), faceta: fam ? fam.n : -1, lista: sm.total });
       }
-      check("🎯 v179-L1: cargo com VÍRGULA no nome — o chip anunciava 217 e a lista devolvia 108 (o servidor re-quebrava o próprio valor por vírgula); agora faceta === lista",
-        comVirg.length >= 2 && paresVirg.every((p) => p.faceta === p.lista), JSON.stringify(paresVirg));
-      const semVirg = (vfH.facetas.cargo || []).find((x) => !x.v.includes(",") && x.n > 100);
+      check("🎯 v179-L1: valor COM vírgula nunca é re-quebrado pelo servidor — o chip anunciava 217 e a lista devolvia 108 (v179); no v181 o cargo virou FAMÍLIA e o título literal com vírgula (valor legado) casa com a família inteira",
+        paresVirg.length === 2 && paresVirg.every((p) => p.faceta > 0 && p.faceta === p.lista), JSON.stringify(paresVirg));
+      const semVirg = (vfH.facetas.cargo || []).find((x) => x.n > 100);
       const smSV = (await get(`/api/sheet-meta?sheet=h2a-jun2026&cargo=${encodeURIComponent(semVirg.v)}&top=1`)).json;
-      check("🎯 v179-L1: cargo SEM vírgula não regrediu (guarda do conserto acima)", smSV.total === semVirg.n, `${semVirg.v}: ${semVirg.n} vs ${smSV.total}`);
+      check("🎯 v179-L1: a opção que a faceta de cargo emite devolve exatamente o que ela anuncia (guarda do conserto acima)", smSV.total === semVirg.n, `${semVirg.v}: ${semVirg.n} vs ${smSV.total}`);
+
       // (2) parse(URL) e parse(objeto) — fila inicial do robô × refill
       const { createFiltros: _cfL1 } = require(path.join(__dirname, "mod-filtros.js"));
       const FL1 = _cfL1({ normalizeStateName: (s) => String(s || "").toUpperCase().trim(), normBusca: (s) => String(s || "").toLowerCase().trim(), cityMatchNormFn: (t) => { const q = String(t || "").toLowerCase().trim(); return q ? ((c) => c.includes(q)) : null; }, regioes: {}, grupoDe: (r) => r.g || "", searchSheet: (arr) => ({ total: arr.length, items: arr }), categoriaLabel: (k) => k });
@@ -2664,6 +2675,70 @@ async function testAuthWatchdogPush() {
         _appL6.includes("function _vfMesLabel(") && _faltaL6.length === 0,
         `faltando: ${_faltaL6.join(",")}`);
     }
+
+    // ═══ 🏷️ v181 — LOTE 7: CARGO POR FAMÍLIA ═══
+    // O título vem cru do DOL: em jan2026 são 1.806 títulos distintos, 1.192
+    // aparecem 1 única vez, e "landscape laborer" (2.120) + "landscape
+    // laborers" (231) + "laborer, landscape" (9) eram 3 chips pro MESMO
+    // trabalho. A lista de cargos era, na prática, ruído que nunca cabia na
+    // tela. Agora a faceta agrupa por FAMÍLIA (SOC quando existe, senão o
+    // título normalizado) — e o valor antigo continua casando.
+    {
+      const _t7 = async (qs) => (await get("/api/sheet-meta?" + qs + "&top=1")).json.total;
+      const vfJ7 = (await get("/api/vagas/filtros?sheet=jan2026")).json;
+      const vfH7 = (await get("/api/vagas/filtros?sheet=h2a-jun2026")).json;
+      const land = (vfJ7.facetas.cargo || []).find((x) => x.v === "laborer landscape");
+      check("🏷️ v181-L7: as 3 grafias de 'Landscape Laborer' (2.120 + 231 + 9) viraram UMA opção de 2.360 com o rótulo da grafia mais frequente — e clicar devolve exatamente os 2.360 que o chip anuncia",
+        land && land.n === 2360 && land.label === "Landscape Laborer" && (await _t7("sheet=jan2026&cargo=" + encodeURIComponent("laborer landscape"))) === 2360,
+        JSON.stringify(land));
+      const crop = (vfH7.facetas.cargo || []).find((x) => x.v === "soc:crop farmworker greenhouse laborer nursery");
+      check("🏷️ v181-L7: onde existe SOC (classificação oficial do governo) a família é o SOC — na H-2A as 393 grafias de farmworker viraram 1 opção de 2.515, faceta === lista, e a planilha caiu de 723 cargos distintos pra 38 famílias (cobertura do top-40: 100%)",
+        crop && crop.n === 2515 && (await _t7("sheet=h2a-jun2026&cargo=" + encodeURIComponent(crop.v))) === 2515 &&
+        vfH7.facetas.cargoDistintos === 38 && vfH7.facetas.cargo.reduce((a, x) => a + x.n, 0) === 4964,
+        JSON.stringify({ crop, distintos: vfH7.facetas.cargoDistintos }));
+      check("🏷️ v181-L7: jan2026 caiu de 1.806 cargos distintos pra 1.492 famílias e a cobertura do top-40 subiu de 55,8% pra 61,5% — a chave de família NUNCA contém vírgula (senão voltaria o bug do _csv do v179)",
+        vfJ7.facetas.cargoDistintos === 1492 && vfJ7.disponibilidade.cargoDistintos === 1492 &&
+        (vfJ7.facetas.cargo || []).every((x) => !x.v.includes(",")) &&
+        vfJ7.facetas.cargo.reduce((a, x) => a + x.n, 0) / vfJ7.total > 0.6,
+        JSON.stringify({ distintos: vfJ7.facetas.cargoDistintos, cobertura: (vfJ7.facetas.cargo.reduce((a, x) => a + x.n, 0) / vfJ7.total * 100).toFixed(1) }));
+      // COMPATIBILIDADE: valor antigo (título literal salvo no aparelho / em
+      // job.filters de robô rodando) continua casando — e agora com a família
+      const compat = [];
+      for (const [sh, v0, esp] of [["jan2026", "Landscape Laborer", 2360], ["jan2026", "landscape laborers", 2360],
+        ["jan2026", "laborer, landscape", 2360], ["h2a-jun2026", "Farmworker", 2515],
+        ["h2a-jun2026", "farmworkers and laborers, crop, nursery, and greenhouse", 2515],
+        ["h2a-jun2026", "ag equipment operator", 1611]]) compat.push({ v0, esp, got: await _t7(`sheet=${sh}&cargo=${encodeURIComponent(v0)}`) });
+      check("🏷️ v181-L7 (compatibilidade — o risco do lote): TODO valor de cargo antigo continua funcionando (título literal, outra grafia, com vírgula, caixa diferente) e agora cai na família certa — é o que impede um robô já rodando de perder o refill depois do deploy",
+        compat.every((c) => c.got === c.esp), JSON.stringify(compat));
+      // casos 1-2: contagem = lista continua verdade pras 30 opções mais comuns
+      const divergem7 = [];
+      for (const o of (vfH7.facetas.cargo || []).slice(0, 15)) {
+        const l = await _t7(`sheet=h2a-jun2026&cargo=${encodeURIComponent(o.v)}`);
+        if (l !== o.n) divergem7.push({ v: o.v, faceta: o.n, lista: l });
+      }
+      for (const o of (vfJ7.facetas.cargo || []).slice(0, 15)) {
+        const l = await _t7(`sheet=jan2026&cargo=${encodeURIComponent(o.v)}`);
+        if (l !== o.n) divergem7.push({ v: o.v, faceta: o.n, lista: l });
+      }
+      check("🏷️ v181-L7 (casos 1–2): nas 30 famílias mais comuns das 2 planilhas, a contagem do chip é EXATAMENTE o que a lista devolve — a regra da casa continua de pé depois de trocar o valor que a faceta emite",
+        divergem7.length === 0, JSON.stringify(divergem7).slice(0, 300));
+      // busca dentro da lista de cargos + multi-seleção somando
+      const busca7 = (await get("/api/vagas/filtros?sheet=jan2026&cargoBusca=cook")).json;
+      const duas = (busca7.facetas.cargo || []).slice(0, 2);
+      const soma = duas.reduce((a, x) => a + x.n, 0);
+      const listaDuas = await _t7(`sheet=jan2026&cargo=${encodeURIComponent(duas[0].v)}&cargo=${encodeURIComponent(duas[1].v)}`);
+      check("🏷️ v181-L7: a busca dentro da lista de cargos continua olhando o TÍTULO de cada linha (a família entra se qualquer grafia dela casar) e marcar 2 famílias SOMA — OU dentro da mesma dimensão, como manda a régua do motor",
+        duas.length === 2 && duas.every((x) => x.n > 0) && listaDuas === soma,
+        JSON.stringify({ duas, soma, lista: listaDuas }));
+      const _modL7 = fs.readFileSync(path.join(__dirname, "mod-filtros.js"), "utf8");
+      const _appL7 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      check("🏷️ v181-L7 (estrutural): a família é UMA função só no motor (_famNorm/_famKey, idempotente e sem vírgula), o índice guarda tFam + o mapa título→família da compatibilidade, e a tela mostra o rótulo humano da faceta (nunca a chave crua)",
+        /const _famNorm = /.test(_modL7) && /const _famKey = /.test(_modL7) && /tFam: new Array\(n\)/.test(_modL7) &&
+        /famPorTitulo/.test(_modL7) && /_cargoKeyDoCliente/.test(_modL7) &&
+        !/set\.has\(ix\.tl\[i\]\)/.test(_modL7) && _appL7.includes("function _vfCargoLabel("),
+        "família de cargo desfeita no motor ou na tela");
+    }
+
 
 
 
