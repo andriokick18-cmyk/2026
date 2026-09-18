@@ -513,7 +513,16 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 .q-sug-it:hover,.q-sug-it.on{background:var(--sf3)}
 .search-inp{width:100%;background:var(--sf2);border:1.5px solid var(--border2);border-radius:var(--r);padding:9px 10px 9px 33px;font-size:16px;color:var(--text);outline:none;transition:all .16s;-webkit-appearance:none;font-family:inherit}
 .search-inp:focus{border-color:var(--blue);background:#fff;box-shadow:0 0 0 3px rgba(26,86,219,.1)}
+/* v182 LOTE 9: o × de limpar a busca (o campo irmão da aba Enviadas já tinha).
+   Alvo de toque de 44px, como o resto da tela promete. */
+#q-clear{position:absolute;right:2px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--t3);font-size:20px;font-weight:800;line-height:1;width:44px;height:44px;align-items:center;justify-content:center;border-radius:50%;font-family:inherit}
+#q-clear:hover{color:var(--text);background:var(--sf3)}
 .filters-row{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px}
+/* v182 LOTE 9: a 390px o scrollWidth é 818 contra 368 visíveis — 3 botões
+   nascem fora da tela SEM nenhum sinal. A borda apagada só aparece enquanto
+   ainda há coisa pra rolar (a classe é ligada/desligada por JS), então nunca
+   mente dizendo que tem mais quando já acabou. */
+.filters-row.has-more{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 26px),rgba(0,0,0,.12));mask-image:linear-gradient(to right,#000 calc(100% - 26px),rgba(0,0,0,.12))}
 .filters-row::-webkit-scrollbar{display:none}
 .fsel{background:var(--sf2);border:1.5px solid var(--border2);border-radius:8px;padding:5px 22px 5px 9px;font-size:16px;font-family:inherit;color:var(--text);outline:none;cursor:pointer;height:30px;flex-shrink:0;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2394a3b8'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 7px center}
 .fsel:focus{border-color:var(--blue)}
@@ -2536,9 +2545,9 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
                instantâneas vindas de /api/lugares) + botão 🔍 Filtros (painel único
                com contagem por opção) + ordenação. Os antigos seletores de
                estado/cidade e o modal de filtros foram substituídos pelo VF. -->
-          <div class="search-wrap" style="min-width:170px"><i class="ti ti-search"></i><input class="search-inp" type="text" id="q" data-i18n-ph="q_ph" placeholder="Cargo, empresa..." oninput="onSearch();qSugInput()" onkeydown="qSugKey(event)" onfocus="qSugInput()" onblur="qSugBlur()" autocomplete="off" inputmode="search" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="q-sug"><div id="q-sug" class="q-sug" role="listbox" aria-label="Sugestões de busca"></div></div>
+          <div class="search-wrap" style="min-width:170px"><i class="ti ti-search"></i><input class="search-inp" type="text" id="q" data-i18n-ph="q_ph" placeholder="Cargo, empresa..." oninput="onSearch();qSugInput()" onkeydown="qSugKey(event)" onfocus="qSugInput()" onblur="qSugBlur()" autocomplete="off" inputmode="search" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="q-sug" style="padding-right:42px"><button type="button" id="q-clear" onclick="limparBusca()" data-i18n-al="vf_remove" aria-label="Remover filtro" title="Limpar" style="display:none">×</button><div id="q-sug" class="q-sug" role="listbox" aria-label="Sugestões de busca"></div></div>
           <div class="filters-row" id="filters-row">
-            <button class="fbtn" id="btn-vf-manual" onclick="vfOpen('manual')" style="font-weight:800;color:#7c3aed;border:1.5px solid rgba(124,58,237,.4);background:rgba(124,58,237,.1);white-space:nowrap;min-height:36px">
+            <button class="fbtn" id="btn-vf-manual" onclick="vfOpen('manual')" style="font-weight:800;color:#7c3aed;border:1.5px solid rgba(124,58,237,.4);background:rgba(124,58,237,.1);white-space:nowrap">
               <i class="ti ti-adjustments-horizontal"></i> <span data-i18n="vf_btn">Filtros</span>
               <span id="vf-badge-manual" class="vf-badge" style="display:none"></span>
             </button>
@@ -3063,6 +3072,13 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
               <button type="button" class="btn btn-secondary w100" id="btn-vf-auto" onclick="vfOpen('auto')" style="justify-content:center;gap:8px;font-weight:800;color:#7c3aed;border:1.5px solid rgba(124,58,237,.4);background:rgba(124,58,237,.08);min-height:44px">
                 <i class="ti ti-adjustments-horizontal"></i> 🔍 <span data-i18n="vf_btn_auto">Filtrar vagas</span>
                 <span id="vf-badge-auto" class="vf-badge" style="display:none"></span>
+              </button>
+              <!-- v182 LOTE 9: quem passou 10 minutos montando os filtros na
+                   busca manual chegava aqui com o painel ZERADO e tinha que
+                   repetir tudo. O botão só aparece quando há filtro montado
+                   lá (vfPonteSync). -->
+              <button type="button" class="btn btn-secondary w100" id="btn-vf-ponte" onclick="vfUsarFiltrosDaBusca()" style="justify-content:center;gap:8px;font-weight:700;margin-top:8px;min-height:44px;display:none">
+                <i class="ti ti-arrow-down-to-arc"></i> <span data-i18n="vf_ponte">Usar os mesmos filtros da minha busca</span>
               </button>
               <div id="vf-chips-auto" class="vf-chips" style="margin-top:8px"></div>
               <div id="vf-count-auto" class="vf-count" style="display:none"></div>
@@ -3630,12 +3646,12 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
 .vf-sec-n:empty{display:none}
 .vf-search{width:100%;height:40px;border-radius:10px;border:1.5px solid var(--border2);background:var(--sf2);padding:0 12px;font-size:13px;font-family:inherit;color:var(--text);margin-bottom:8px}
 .vf-opts{display:flex;flex-wrap:wrap;gap:6px}
-.vf-opt{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:6px 12px;border-radius:20px;border:1.5px solid var(--border2);background:var(--sf2);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;line-height:1.2;text-align:left}
+.vf-opt{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:6px 12px;border-radius:20px;border:1.5px solid var(--border2);background:var(--sf2);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;line-height:1.2;text-align:left}
 .vf-opt .n{font-size:11px;font-weight:700;color:var(--t3)}
 .vf-opt.on{border-color:var(--purple);background:var(--purplel);color:var(--purple)}
 .vf-opt.on .n{color:var(--purple)}
 .vf-opt.off{opacity:.38;cursor:not-allowed}
-.vf-more{min-height:40px;padding:6px 12px;border-radius:20px;border:1.5px dashed var(--border2);background:none;color:var(--blue);font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit}
+.vf-more{min-height:44px;padding:6px 12px;border-radius:20px;border:1.5px dashed var(--border2);background:none;color:var(--blue);font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit}
 .vf-sub{flex-basis:100%;font-size:11px;font-weight:800;color:var(--t3);text-transform:uppercase;letter-spacing:.05em;margin:2px 0 -2px}
 .vf-note{flex-basis:100%;font-size:12px;color:var(--t2);line-height:1.45}
 .vf-note-warn{background:var(--amberl);border:1px solid var(--amberb);border-radius:10px;padding:8px 10px;color:#92400e}
@@ -3656,8 +3672,13 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
 #vf-apply.vf-wait{opacity:.75}
 #vf-apply.vf-zero-btn{background:var(--amber)!important}
 .vf-chips{display:none;flex-wrap:wrap;gap:5px;align-items:center}
-.vf-chip{display:inline-flex;align-items:center;gap:4px;background:var(--sf2);border:1.5px solid var(--c,var(--purple));border-radius:20px;padding:4px 10px;font-size:11.5px;font-weight:700;color:var(--c,var(--purple));min-height:30px}
-.vf-chip button{background:none;border:none;cursor:pointer;color:inherit;padding:0 2px;line-height:1;font-size:15px;font-weight:800;min-width:24px;min-height:24px}
+.vf-chip{display:inline-flex;align-items:center;gap:4px;background:var(--sf2);border:1.5px solid var(--c,var(--purple));border-radius:20px;padding:4px 10px;font-size:11.5px;font-weight:700;color:var(--c,var(--purple));min-height:36px}
+/* v182 LOTE 9: o × do chip media 24×24 — e é o gesto MAIS usado pra desfazer
+   um filtro no celular. Agora 44px de largura e, na vertical, o ::after estica
+   a área de toque até 44px sem inchar o chip (os 4px de cada lado cabem no
+   espaço entre as linhas de chips: nunca rouba o clique do vizinho). */
+.vf-chip button{position:relative;background:none;border:none;cursor:pointer;color:inherit;padding:0 2px;line-height:1;font-size:16px;font-weight:800;min-width:44px;min-height:36px;display:inline-flex;align-items:center;justify-content:center;font-family:inherit}
+.vf-chip button::after{content:"";position:absolute;left:0;right:0;top:-4px;bottom:-4px}
 .vf-chip-clear{border-color:var(--border2);color:var(--t3);cursor:pointer;font-family:inherit}
 .vf-badge{background:var(--purple);color:#fff;border-radius:10px;padding:0 6px;font-size:10px;font-weight:800;margin-left:3px;line-height:16px}
 .vf-count{font-size:12.5px;font-weight:700;color:var(--green);background:var(--greenl);border:1px solid var(--greenb);border-radius:10px;padding:8px 12px;margin-top:8px;line-height:1.45}
@@ -3666,7 +3687,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
 [data-theme="dark"] .vf-note-warn,[data-theme="dark"] .vf-note-lock,[data-theme="dark"] .vf-count-warn,[data-theme="dark"] .vf-zero{color:#fbbf24}
 </style>
 <div class="overlay gone" id="vf-overlay" onclick="if(event.target===this)vfClose()">
-  <div class="modal vf-modal" role="dialog" aria-labelledby="vf-title">
+  <div class="modal vf-modal" role="dialog" aria-modal="true" aria-labelledby="vf-title">
     <div class="mhandle"></div>
     <div class="vf-hd">
       <div class="vf-hd-t" id="vf-title">🔍 Filtrar vagas</div>

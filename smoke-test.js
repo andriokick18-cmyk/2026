@@ -3005,9 +3005,14 @@ async function testAuthWatchdogPush() {
     check("📡 v134: radar sem NENHUM filtro é recusado (400) — radar de tudo viraria spam", rdVazio.status === 400, rdVazio.body.slice(0, 120));
     const rdSave = await req2("POST", "/api/radar", { estados: ["MA"], cidade: "Martha's Vineyard", q: "housekeeper" });
     const rdGet = await get("/api/radar");
-    check("📡 v134: radar salva e aparece no GET (estados/cidade/busca, ativo)",
-      rdSave.json?.ok === true && rdGet.json?.radar?.estados?.[0] === "MA" && rdGet.json?.radar?.ativo === true,
-      rdGet.body.slice(0, 140));
+    // ⚠️ ATUALIZADO no v182 LOTE 9: o radar guarda o SNAPSHOT INTEIRO dos
+    // filtros em `radar.filtros` (antes só 4 dimensões soltas). O corpo LEGADO
+    // ({estados, cidade, q, categoria}) continua sendo aceito — front antigo em
+    // cache não pode perder o radar de ninguém.
+    check("📡 v134 + v182-L9: radar salva e aparece no GET (corpo legado continua aceito, normalizado pro snapshot único)",
+      rdSave.json?.ok === true && rdGet.json?.radar?.filtros?.estado?.[0] === "MA" &&
+      rdGet.json?.radar?.filtros?.cidade?.[0] === "Martha's Vineyard" && rdGet.json?.radar?.ativo === true,
+      rdGet.body.slice(0, 200));
     const rdOff = await req2("POST", "/api/radar", { remove: true });
     const rdGet2 = await get("/api/radar");
     check("📡 v134: desligar o radar remove de verdade", rdOff.json?.ok === true && rdGet2.json?.radar === null, rdGet2.body.slice(0, 100));
@@ -4268,6 +4273,84 @@ async function testAuthWatchdogPush() {
         _admL8.includes("function _plFilaHtml(") && _admL8.includes("sem descrição") && _admL8.includes("_plFilaHtml(d.enrichFila)"),
         "o painel voltou a esconder o que falta em cada planilha");
       await req2("DELETE", "/api/admin/sheet/enrich-l8");
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // 🎨 v182 — LOTE 9: DELEITE, MOBILE E ACESSIBILIDADE
+    // Quatro dimensões sumiam CALADAS quando a planilha não tem o dado, a
+    // busca não tinha × pra limpar, o botão de filtros era o MENOR alvo da
+    // fileira, o painel não fechava no Escape nem movia o foco, o Passo 2 do
+    // robô não tinha ponte com a busca manual e o 📡 Radar salvava 4 das 11
+    // dimensões que a pessoa montou.
+    // ══════════════════════════════════════════════════════════════════════
+    {
+      const _appL9 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _idxL9 = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+      // (36) dimensão sem dado AVISA, não some — nas 3 línguas (regra 6f)
+      const _chavesL9 = ["vf_no_cidade", "vf_no_inicio", "vf_no_cargo", "vf_no_vagas", "vf_no_exp", "vf_no_temporada", "vf_ponte", "vf_ws2_dyn", "radar_evaluated"];
+      check("🎨 v182-L9 (36): as 6 dimensões que sumiam caladas (cidade, mês de início, cargo, vagas, experiência, temporada) passaram a mostrar o MESMO aviso âmbar do salário/e-mail — e cada texto novo existe nas 3 línguas do dicionário",
+        _chavesL9.every((k) => (_appL9.match(new RegExp('"' + k + '":', "g")) || []).length === 3) &&
+        ['_semDado("cidade"', '_semDado("inicio"', '_semDado("cargo"', '_semDado("vagas"', '_semDado("exp"', '_semDado("temporada"'].every((x) => _appL9.includes(x)) &&
+        !_appL9.includes('const has=disp.cidade>0||sel.length;show("cidade",!live&&has);'),
+        "alguma dimensão voltou a sumir sem explicar, ou faltou tradução");
+      // (37) a busca vira chip removível E tem × no campo
+      check("🎨 v182-L9 (37): a busca tem × pra limpar dentro do campo (o campo irmão da aba Enviadas já tinha) e vira chip removível sobre a lista, fora do painel",
+        _idxL9.includes('id="q-clear"') && _idxL9.includes("limparBusca()") && _appL9.includes("function limparBusca(") &&
+        _appL9.includes('if(st.q)push("q","","🔎 "+st.q') && _idxL9.includes('id="vf-chips-manual"'),
+        "× da busca / chip da busca não encontrados");
+      // (38) alvos ≥44px, aria-modal, foco, ESC e aria-pressed
+      check("🎨 v182-L9 (38): alvos de toque ≥44px (o botão 🔍 Filtros tinha min-height:36px INLINE, que vencia a regra mobile de 44px; as opções tinham 40 e o × do chip 24) e o painel ganhou aria-modal",
+        !/id="btn-vf-manual"[^>]*min-height:36px/.test(_idxL9) &&
+        /\.vf-opt\{[^}]*min-height:44px/.test(_idxL9) && /\.vf-more\{min-height:44px/.test(_idxL9) &&
+        /\.vf-chip button\{[^}]*min-width:44px/.test(_idxL9) && _idxL9.includes('role="dialog" aria-modal="true"'),
+        "algum alvo de toque voltou a ficar abaixo de 44px");
+      check("🎨 v182-L9 (38): o painel move o foco pro primeiro controle ao abrir, devolve pro botão ao fechar, fecha no Escape (reaproveitando vfClose) e cada opção declara aria-pressed",
+        _appL9.includes("VF.foco=document.activeElement") && _appL9.includes('aria-pressed="${on?"true":"false"}"') &&
+        /e\.key!=="Escape"[\s\S]{0,160}vfClose\(\)/.test(_appL9),
+        "foco/Escape/aria-pressed não encontrados");
+      // (39) ponte manual → robô + subtítulo honesto
+      check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
+        _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&
+        _appL9.includes('VF.st.auto=Object.assign(_vfClone(st),{email:true})') && _appL9.includes("function _vfWs2Sub(") && _appL9.includes("_vfWs2Sub(d);vfPonteSync();"),
+        "ponte manual→robô não encontrada");
+      check("🎨 v182-L9 (39/40): o snapshot dos filtros é função ÚNICA — o robô usa com e-mail forçado, o Radar usa o mesmo sem forçar nada",
+        _appL9.includes("function vfSnapshot(ctx,extra)") && _appL9.includes('function vfSnapshotAuto(extra){return vfSnapshot("auto",Object.assign({email:true}') &&
+        _appL9.includes('const payload={filtros:vfSnapshot("manual")}'),
+        "vfSnapshot deixou de ser a fonte única do snapshot");
+      // (40) o radar guarda TUDO e é avaliado pelo MESMO motor
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radar9@test.com", name: "Radar Nove" });
+      const rd9 = await req2("POST", "/api/radar", { filtros: { estado: ["MASSACHUSETTS"], categoria: ["housekeeper"], q: "housekeeper", salarioMin: 20, vagasMin: 2, exp: [0] } });
+      const rd9g = (await get("/api/radar")).json;
+      check("🎨 v182-L9 (40): o radar guarda o snapshot COMPLETO — salário, vagas abertas e experiência (que antes eram jogados fora) chegam inteiros ao servidor",
+        rd9.json?.ok === true && rd9.json.dimensoes === 6 && rd9g.radar.filtros.salarioMin === 20 && rd9g.radar.filtros.vagasMin === 2 &&
+        rd9g.radar.filtros.exp[0] === 0 && rd9g.radar.filtros.estado[0] === "MASSACHUSETTS" && rd9g.radar.filtros.categoria[0] === "housekeeper" && rd9g.radar.filtros.q === "housekeeper",
+        JSON.stringify(rd9g.radar && rd9g.radar.filtros).slice(0, 220));
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      await req2("POST", "/api/admin/sheet/upload", {
+        name: "Radar Nove Pobre", key: "radar9-pobre",
+        data: [{ c: "H-400-R9-0001", e: "rh@radar9pobre.com", n: "Radar Nove Pobre LLC", t: "Housekeeper", s: "MASSACHUSETTS", k: "housekeeper", w: "12.00", wunit: "h", wk: 5, exp: 0 }],
+      });
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radar9@test.com" });
+      const rd9pobre = (await get("/api/radar")).json;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      await req2("POST", "/api/admin/sheet/upload", {
+        name: "Radar Nove Rico", key: "radar9-rico",
+        data: [{ c: "H-400-R9-0002", e: "rh@radar9rico.com", n: "Radar Nove Rico LLC", t: "Housekeeper", s: "MASSACHUSETTS", k: "housekeeper", w: "25.00", wunit: "h", wk: 5, exp: 0 }],
+      });
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radar9@test.com" });
+      const rd9rico = (await get("/api/radar")).json;
+      check("🎨 v182-L9 (40): quem pediu '$20+/h' não é mais avisado de vaga de $12/h que só casa no estado e na palavra — o radar é avaliado pelo MESMO FILTROS.filtrar da lista e da fila do robô, nunca por uma 3ª régua",
+        (rd9pobre.radar.totalAvisos || 0) === 0 && rd9rico.radar.totalAvisos === 1 && rd9rico.radar.lastPushAt > 0,
+        `pobre=${rd9pobre.radar.totalAvisos} rico=${rd9rico.radar.totalAvisos}`);
+      const _srvL9 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      check("🎨 v182-L9 (40, estrutural): a régua própria do radar (includes/split de texto) morreu — sobrou _radarFiltrosDe + FILTROS.filtrar, e o modal diz exatamente o que está sendo avaliado",
+        _srvL9.includes("function _radarFiltrosDe(") && _srvL9.includes("const matches=FILTROS.filtrar(novas,f,{isDP:_isDoublePro(u2)});") &&
+        !_srvL9.includes("if(r.cidade&&!hay.includes(_nrm(r.cidade)))return false;") &&
+        _appL9.includes("radar_evaluated") && _appL9.includes('id="radar-agora"'),
+        "o radar voltou a ter régua própria");
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      await req2("DELETE", "/api/admin/sheet/radar9-pobre");
+      await req2("DELETE", "/api/admin/sheet/radar9-rico");
     }
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
 
