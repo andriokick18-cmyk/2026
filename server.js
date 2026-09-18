@@ -1782,12 +1782,47 @@ const buildUserSentSet = (u) => {
 // tinham o id — sem isso, sumiam da aba se saíssem da tela).
 // v139: mapeamento linha-compacta → snapshot (fonte única — usado pelas
 // Vagas Salvas E pelo Vagas Pra Você; nunca duplicar este shape).
-function _vagaSnapshot(r){
+function _vagaSnapshot(r,verEmail){
+  const _e=String(r.e||"").trim().toLowerCase();
   return {id:r.c,caseNum:r.c,title:r.t||"Seasonal Worker",company:r.n||"",city:r.ci||"",state:r.s||"",
-    wage:r.w?`$${r.w}/${r.wunit||"h"}`:"",email:r.e||"",visa:r.visa||"",category:r.k||"other",
+    wage:r.w?`$${r.w}/${r.wunit||"h"}`:"",email:verEmail===false?mascararEmail(_e):_e,
+    hasEmail:!!(_e&&_e.includes("@")),emailBloqueado:verEmail===false&&!!_e,
+    visa:r.visa||"",category:r.k||"other",
     url:r.c&&String(r.c).startsWith("H-")?`https://seasonaljobs.dol.gov/jobs/${r.c}`:""};
 }
 
+// ═══ 🔒 v182 LOTE 10 — O E-MAIL DO EMPREGADOR É O ATIVO QUE O CLIENTE PAGA ═══
+// Provado com curl SEM cookie nenhum: /api/sheet-meta?sheet=jan2026&top=2000
+// devolvia os e-mails de 2.000 empregadores em texto puro — 5 requisições e
+// qualquer scraper levava os 9.240 da planilha inteira. A regra "ZERO envio
+// grátis" protegia o ENVIO; a lista de contatos estava aberta.
+// Agora o endereço COMPLETO só viaja pra sessão com plano ativo (isVipActive)
+// ou admin. Pra visitante/grátis vai mascarado ("k••••@gmail.com") com
+// `hasEmail:true` preservado: contagem, filtros e "só com e-mail" continuam
+// IDÊNTICOS, porque nenhum deles lê o endereço — só a existência dele (o corte
+// e as facetas rodam no servidor, sobre a linha real).
+function mascararEmail(e){
+  const s2=String(e||"").trim().toLowerCase();
+  const i=s2.indexOf("@");
+  if(i<1)return "";
+  return s2[0]+"••••"+s2.slice(i);
+}
+// Cópia da vaga com o e-mail mascarado (nunca muta o objeto do cache — as
+// listas do DOL e da planilha são compartilhadas entre TODOS os usuários).
+function jobComEmailVisivel(job,ver){
+  if(!job)return job;
+  const e=String(job.email||"").trim().toLowerCase();
+  if(ver||!e)return job;
+  return {...job,email:mascararEmail(e),emailBloqueado:true};
+}
+// Uma pergunta só, usada por TODA rota que devolve vaga com e-mail.
+function podeVerEmailVaga(req){
+  try{
+    const sess=getSess(req); if(!sess?.user_email) return false;
+    const u=getUser(sess.user_email); if(!u) return false;
+    return isAdminVip(u) || isVipActive(u);
+  }catch(e){ return false; }
+}
 // 🎯 v139: cache do ranking "pra você" (10min por usuário) — só o RANKING é
 // cacheado; o corte de enviados/fila (regra 8) roda fresco em toda resposta.
 const _praVoceCache=new Map();
@@ -7969,12 +8004,14 @@ filtrar();
     const _minWageJobs=parseFloat(u.searchParams.get("minWage")||"0")||0;
     const skip=Math.max(0,parseInt(u.searchParams.get("skip")||"0",10));const top=Math.min(50,Math.max(1,parseInt(u.searchParams.get("top")||"25",10)));
     if(Date.now()-lastFetch>CACHE_TTL)refreshCache().catch(()=>{});
-    try{const{jobs,total}=await fetchDOL(skip,top,opts);return json(res,200,{jobs,total,skip,from_cache:false});}
+    try{const{jobs,total}=await fetchDOL(skip,top,opts);const _verDol=podeVerEmailVaga(req);
+      return json(res,200,{jobs:(jobs||[]).map(j2=>jobComEmailVisivel(j2,_verDol)),total,skip,from_cache:false});}
     catch(e){
       // DOL offline → planilha local como fallback principal
       const _shRows=getAllSheets().filter(r=>r.e&&r.e.includes("@"));
       // FIX: usar todos os campos enriquecidos (ci, de, ph, desc, url) — não hardcoded
-      const _shJobs=_shRows.map(r=>({id:r.c,caseNum:r.c,title:r.t||"Seasonal Worker",company:r.n||"–",city:r.ci||"–",state:r.s||"–",wage:r.w?`$${r.w}/${r.wunit||"h"}`:"–",workers:r.wk||null,start:r.d||"–",end:r.de||"–",email:r.e,phone:r.ph||"",phone2:r.ph2||"",url:r.c&&r.c.startsWith("H-")?`https://seasonaljobs.dol.gov/jobs/${r.c}`:"",desc:r.desc||"",soc:r.soc||"",active:true,visa:r.visa||"H-2B",hasEmail:true,category:r.k||"other",fromSheet:true}));
+      const _verEmailJobs=podeVerEmailVaga(req); // 🔒 v182 LOTE 10
+      const _shJobs=_shRows.map(r=>({id:r.c,caseNum:r.c,title:r.t||"Seasonal Worker",company:r.n||"–",city:r.ci||"–",state:r.s||"–",wage:r.w?`$${r.w}/${r.wunit||"h"}`:"–",workers:r.wk||null,start:r.d||"–",end:r.de||"–",email:_verEmailJobs?r.e:mascararEmail(r.e),emailBloqueado:!_verEmailJobs,phone:r.ph||"",phone2:r.ph2||"",url:r.c&&r.c.startsWith("H-")?`https://seasonaljobs.dol.gov/jobs/${r.c}`:"",desc:r.desc||"",soc:r.soc||"",active:true,visa:r.visa||"H-2B",hasEmail:true,category:r.k||"other",fromSheet:true}));
       let src=_shJobs.length?_shJobs:jobsCache.length?[...jobsCache]:[...FALLBACK_JOBS];
       const{query:q,state,jobType,jobStatus,beginDate}=opts;
       // v112b: MESMA régua de busca do searchSheet — normaliza apóstrofo/
@@ -8039,6 +8076,7 @@ filtrar();
     const _uMeta=_sMeta?.user_email?getUser(_sMeta.user_email):null;
     const _dpMeta=_isDoublePro(_uMeta);
     const _corteMeta=hideSent?_excluirEnviadosFn(_sMeta?.user_email):null;
+    const _verEmailMeta=!!(_uMeta&&(isAdminVip(_uMeta)||isVipActive(_uMeta)));
     const preFiltered=FILTROS.filtrar(baseArr,f,{except:["q"],excluir:_corteMeta,isDP:_dpMeta});
     // 🎯 v82: contexto de match (perfil H2B + perfil por visto) do usuário
     // logado — null pra visitante sem sessão/perfil, cai sempre no
@@ -8076,7 +8114,10 @@ filtrar();
         wageRaw:r.w||null, wageMax:r.wmax||null,
         wageInfo:r.winfo||null,
         workers:r.wk||null,
-        email:emailVal||null, hasEmail:!!(emailVal&&emailVal.includes("@")),
+        // 🔒 v182 LOTE 10: `hasEmail` (o que a TELA e os filtros usam) nunca muda;
+        // o endereço só sai inteiro pra plano ativo/admin.
+        email:(emailVal?(_verEmailMeta?emailVal:mascararEmail(emailVal)):null), hasEmail:!!(emailVal&&emailVal.includes("@")),
+        emailBloqueado:!_verEmailMeta&&!!emailVal,
         phone:r.ph||null, phone2:r.ph2||null,
         website:r.site||null,
         desc:r.desc||null,
@@ -8155,8 +8196,8 @@ filtrar();
         }
       }
     }catch(eP){ console.warn("[sheet-detail] persist:",eP.message); }
-    return json(res,200,{job:r[c]||null,notFound:!r[c]});}catch(e){return json(res,500,{error:e.message});}}
-  if(pathname==="/api/sheet-batch"&&req.method==="POST"){try{const d=JSON.parse(await readBody(req));const cases=(d.cases||[]).slice(0,10).map(c=>String(c).trim().toUpperCase());const jobs=await fetchByCase(cases);return json(res,200,{jobs});}catch(e){return json(res,500,{error:e.message});}}
+    return json(res,200,{job:jobComEmailVisivel(r[c],podeVerEmailVaga(req))||null,notFound:!r[c]});}catch(e){return json(res,500,{error:e.message});}}
+  if(pathname==="/api/sheet-batch"&&req.method==="POST"){try{const d=JSON.parse(await readBody(req));const cases=(d.cases||[]).slice(0,10).map(c=>String(c).trim().toUpperCase());const jobs=await fetchByCase(cases);const _ver=podeVerEmailVaga(req);const _out={};for(const k of Object.keys(jobs||{}))_out[k]=jobComEmailVisivel(jobs[k],_ver);return json(res,200,{jobs:_out});}catch(e){return json(res,500,{error:e.message});}}
 
   // ── Generate cover ────────────────────────────────────
   // v22 (ORDEM DO DONO): /api/generate-cover removido — o "IA gera" era um
@@ -11535,6 +11576,7 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
         _praVoceCache.set(em,cand);
       }
       const sentSet=buildUserSentSet(em);
+      const _verEmailPV=podeVerEmailVaga(req); // 🔒 v182 LOTE 10
       const aj=getAutoJob(em);
       const qEmails=new Set();
       if(aj&&Array.isArray(aj.queue))for(const it of aj.queue){const qe=_normEmail(it.email||it.to);if(qe)qEmails.add(qe);}
@@ -11543,7 +11585,7 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
         const e2=_normEmail(c.row.e);
         if(!e2||seen.has(e2)||sentSet.has(e2)||qEmails.has(e2))continue;
         seen.add(e2);
-        out.push({..._vagaSnapshot(c.row),sheet:c.row._sheet||"",matchScore:c.score,matchWhy:c.why});
+        out.push({..._vagaSnapshot(c.row,_verEmailPV),sheet:c.row._sheet||"",matchScore:c.score,matchWhy:c.why});
         if(out.length>=8)break;
       }
       return json(res,200,{ok:true,jobs:out});
@@ -11992,17 +12034,20 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
         let noEmailCount = 0;
         for(const cn of d.cases){
           const meta = d.caseMeta?.[cn] || {};
-          // Prioridade: 1) caseMeta.email (vem do sheet-meta já populado), 2) planilha local, 3) meta.to
-          let emailRaw = (meta.email||"").trim() || (meta.to||"").trim();
-          if(!emailRaw){
-            const row = sheetByCase.get(String(cn).toUpperCase());
-            if(row?.e) emailRaw = (row.e||"").trim();
-          }
+          // 🔒 v182 LOTE 10: a PLANILHA DO SERVIDOR manda — a prioridade era o
+          // `caseMeta.email` vindo da TELA, e desde que o endereço só sai
+          // inteiro pra plano ativo, um JSON velho no aparelho (carregado
+          // enquanto o plano estava vencido) poderia colocar um e-mail
+          // MASCARADO na fila do robô. A linha real é a fonte; o que veio da
+          // tela é só fallback, e endereço mascarado nunca entra.
+          const rowPri = sheetByCase.get(String(cn).toUpperCase());
+          let emailRaw = (rowPri?.e||"").trim() || (meta.email||"").trim() || (meta.to||"").trim();
+          if(emailRaw.includes("•")) emailRaw = "";
           if(!emailRaw){ noEmailCount++; continue; }
           const _p = parseEmail(emailRaw);
           if(!_p.ok || _p.email === s.user_email.toLowerCase()) continue;
           if(_sentSetStart.has(_normEmail(_p.email))){ skippedAlreadySent++; continue; } // já enviou pra esse empregador
-          const row = sheetByCase.get(String(cn).toUpperCase());
+          const row = rowPri;
           // Título real: usa o título da planilha (campo t) em vez de occupation genérico
           const realTitle = meta.title || row?.t || meta.company || cn;
           queue.push({

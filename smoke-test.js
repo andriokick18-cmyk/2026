@@ -318,6 +318,15 @@ const reqSlow = (method, p, payload, gapMs) => new Promise((resolve, reject) => 
   setTimeout(() => r.end(body.subarray(meio)), gapMs);
 });
 const get = (p) => req2("GET", p);
+// 🔒 v182 LOTE 10: requisição ANÔNIMA de verdade — sem cookie nenhum, do jeito
+// que um scraper bate. O req2 mantém um jar de sessão; aqui não vai nada.
+const getSemCookie = (p) => new Promise((resolve, reject) => {
+  const r = http.request(BASE + p, { method: "GET" }, (res) => {
+    let b = ""; res.on("data", (c) => (b += c));
+    res.on("end", () => { let json = null; try { json = JSON.parse(b); } catch { } resolve({ status: res.statusCode, body: b, json }); });
+  });
+  r.on("error", reject); r.end();
+});
 // Variante binária de get() — pra respostas não-JSON (CSV/imagem) onde o
 // corpo precisa chegar como Buffer intacto, nunca decodificado/truncado.
 const _getBufA = (p) => new Promise((resolve, reject) => {
@@ -4351,6 +4360,75 @@ async function testAuthWatchdogPush() {
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
       await req2("DELETE", "/api/admin/sheet/radar9-pobre");
       await req2("DELETE", "/api/admin/sheet/radar9-rico");
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // 🔒 v182 — LOTE 10: O E-MAIL DO EMPREGADOR É O ATIVO QUE O CLIENTE PAGA
+    // Provado com curl SEM cookie: /api/sheet-meta?sheet=jan2026&top=2000
+    // devolvia os e-mails de 2.000 empregadores em texto puro — 5 requisições
+    // e qualquer um levava os 9.240 da planilha inteira. A regra "ZERO envio
+    // grátis" protegia o ENVIO; a lista de contatos estava aberta.
+    // ══════════════════════════════════════════════════════════════════════
+    {
+      const URL10 = "/api/sheet-meta?sheet=jan2026&top=3&email=1&hideSent=0";
+      const anon = (await getSemCookie(URL10)).json;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "gratis10@test.com", name: "Gratis Dez" });
+      const gratis = (await get(URL10)).json;
+      const detGratis = (await get("/api/sheet-detail?case=" + encodeURIComponent(anon.jobs[0].caseNum))).json;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "pagante10@test.com", name: "Pagante Dez", refreshToken: "rt-pagante10", plan: "vipro", vip: { manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000, active: true, plan: "vipro" } });
+      const pagante = (await get(URL10)).json;
+      const detPagante = (await get("/api/sheet-detail?case=" + encodeURIComponent(anon.jobs[0].caseNum))).json;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      const admin = (await get(URL10)).json;
+      const mascararEmailLocal = (e) => { const x = String(e || "").toLowerCase(); const i = x.indexOf("@"); return i < 1 ? "" : x[0] + "••••" + x.slice(i); };
+      const _mascarado = (e) => typeof e === "string" && e.includes("••••") && e.includes("@") && !/^[a-z0-9._%+-]{2,}@/i.test(e);
+      check("🔒 v182-L10: SEM cookie nenhum (scraper) o endereço sai MASCARADO — e `hasEmail` continua true, porque é dele que a tela, a contagem e o 'só com e-mail' dependem, nunca do texto do endereço",
+        anon && anon.jobs.length === 3 && anon.jobs.every((j) => _mascarado(j.email) && j.hasEmail === true && j.emailBloqueado === true),
+        JSON.stringify(anon && anon.jobs.map((j) => j.email)));
+      check("🔒 v182-L10: sessão GRÁTIS também recebe mascarado (é o mesmo ativo que o cliente paga pra ter) — na aba, o card mostra '🔒 liberado com plano ativo' em vez do texto mascarado cru",
+        gratis.jobs.every((j) => _mascarado(j.email) && j.hasEmail === true) && _mascarado(detGratis.job.email) && detGratis.job.emailBloqueado === true,
+        JSON.stringify({ lista: gratis.jobs[0].email, detalhe: detGratis.job.email }));
+      check("🔒 v182-L10: sessão com PLANO ATIVO recebe o endereço COMPLETO — na lista e no detalhe da vaga (é com ele que o modal de envio manual é preenchido)",
+        pagante.jobs.every((j) => j.email && !j.email.includes("•") && j.email.includes("@") && !j.emailBloqueado) &&
+        detPagante.job.email === pagante.jobs[0].email,
+        JSON.stringify({ lista: pagante.jobs[0].email, detalhe: detPagante.job.email }));
+      check("🔒 v182-L10: admin recebe completo (opera o site) e o CONJUNTO devolvido é idêntico nos 4 casos — mascarar não muda a contagem, nem a ordem, nem quem entra na lista",
+        admin.jobs.every((j) => j.email && !j.email.includes("•")) &&
+        anon.total === gratis.total && gratis.total === pagante.total && pagante.total === admin.total &&
+        JSON.stringify(anon.jobs.map((j) => j.caseNum)) === JSON.stringify(pagante.jobs.map((j) => j.caseNum)),
+        `totais anon=${anon.total} gratis=${gratis.total} pagante=${pagante.total} admin=${admin.total}`);
+      // o filtro "só com e-mail" não pode depender do mascaramento
+      const fAnon = (await getSemCookie("/api/vagas/filtros?sheet=jan2026&email=1")).json;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "pagante10@test.com" });
+      const fPag = (await get("/api/vagas/filtros?sheet=jan2026&email=1")).json;
+      check("🔒 v182-L10: 'só com e-mail' devolve a MESMA contagem com e sem plano (9.240 em jan2026) — a faceta lê a EXISTÊNCIA do e-mail na linha real, nunca o texto que viajou pro cliente",
+        fAnon.total === 9240 && fAnon.total === fPag.total && fAnon.facetas.email.com === fPag.facetas.email.com,
+        `anon=${fAnon.total} pagante=${fPag.total}`);
+      // o envio manual de quem PAGA continua de ponta a ponta
+      const _alvo = pagante.jobs[0].email;
+      const envio = await req2("POST", "/api/send", { to: _alvo, subject: "Application", message: "Olá, gostaria de me candidatar." });
+      const envioMascarado = await req2("POST", "/api/send", { to: mascararEmailLocal(_alvo), subject: "Application", message: "Olá, gostaria de me candidatar." });
+      // O endereço REAL passa do gate de plano (402) e da validação de
+      // destinatário e só para no passo SEGUINTE (currículo em PDF) — o envio
+      // de verdade pelo Gmail a suíte nunca chama. Já o endereço MASCARADO é
+      // recusado como destinatário inválido: se algum dia um JSON velho da
+      // tela chegar aqui, ele morre na porta, nunca vira e-mail enviado.
+      check("🔒 v182-L10: o envio manual de quem PAGA não quebrou — o endereço real da lista passa pelo gate de plano e pela validação de destinatário (para só no passo seguinte, o PDF), enquanto o endereço MASCARADO é recusado na porta",
+        envio.status !== 402 && /curr[ií]culo|PDF/i.test(envio.body || "") &&
+        envioMascarado.status === 400 && /destinat|inv[áa]lido/i.test(envioMascarado.body || ""),
+        `real=${envio.status}:${(envio.body || "").slice(0, 70)} · mascarado=${envioMascarado.status}:${(envioMascarado.body || "").slice(0, 70)}`);
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      const _srvL10 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      const _appL10 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      check("🔒 v182-L10 (estrutural): a máscara é função ÚNICA (mascararEmail + podeVerEmailVaga) e está em TODA rota que devolve vaga com e-mail — lista, detalhe, lote, vagas ao vivo e 'pra você'",
+        _srvL10.includes("function mascararEmail(") && _srvL10.includes("function podeVerEmailVaga(") && _srvL10.includes("function jobComEmailVisivel(") &&
+        (_srvL10.match(/podeVerEmailVaga\(req\)/g) || []).length >= 4 && _srvL10.includes("isAdminVip(u) || isVipActive(u)") &&
+        !/email:emailVal\|\|null/.test(_srvL10),
+        "alguma rota voltou a devolver o e-mail cru");
+      check("🔒 v182-L10 (estrutural): a fila do robô é montada com a LINHA REAL do servidor (não com o JSON da tela) e endereço mascarado nunca entra nela",
+        _srvL10.includes('let emailRaw = (rowPri?.e||"").trim() || (meta.email||"").trim()') && _srvL10.includes('if(emailRaw.includes("•")) emailRaw = "";') &&
+        _appL10.includes("email_locked") && _appL10.includes("j.hasEmail&&j.emailBloqueado"),
+        "a fila do robô voltou a confiar no e-mail vindo da tela");
     }
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
 
