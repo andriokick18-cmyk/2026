@@ -4430,6 +4430,61 @@ async function testAuthWatchdogPush() {
         _appL10.includes("email_locked") && _appL10.includes("j.hasEmail&&j.emailBloqueado"),
         "a fila do robô voltou a confiar no e-mail vindo da tela");
     }
+    // ═══ 🔐 v183 LOTE 1: QUEM APROVOU E DE QUEM É O DINHEIRO ═══════════════
+    // Desde o v177-FIX a sessão do painel pode ter como CHAVE INTERNA o
+    // USERNAME reservado ("diego"), e toda a atribuição financeira só
+    // entendia E-MAIL: editorFromEmail("diego") caía no default "andrew"
+    // (aprovação do Diego gravada como "Andrew") e isAdminEmail("diego") era
+    // false, então _finDonoDe devolvia "sem dono" e o acerto entre sócios
+    // perdia o dono de TODA entrada aprovada pelo painel.
+    {
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      const _socAntes = (await get("/api/admin/socios")).json;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "compradorl1@test.com", name: "Comprador Lote1" });
+      const _pdL1 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Comprador Lote1", userWhatsapp: "53 98145 3496", userCity: "Pelotas" });
+      const _pdL1Id = _pdL1.json?.pedidoId;
+      // sessão do PAINEL pelo login por senha do Diego (chave interna = username)
+      COOKIE = "";
+      const _logDiegoL1 = await req2("POST", "/api/admin-panel/login", { user: "diego", password: "teste-smoke-diego-2026" });
+      const _actL1 = await req2("PATCH", "/api/pedido/" + _pdL1Id, { status: "ativo" });
+      const _pedsL1 = (await get("/api/pedidos")).json?.pedidos || [];
+      const _pdL1Full = _pedsL1.find((x) => x.id === _pdL1Id) || {};
+      check("🔐 v183-L1: pedido aprovado pela sessão do painel do DIEGO fica registrado como 'Diego' (antes saía 'Andrew', porque editorFromEmail lia o USERNAME da sessão em vez do e-mail real do sócio)",
+        _logDiegoL1.status === 200 && _actL1.json?.ok === true && _pdL1Full._ativadoEditor === "Diego" && _pdL1Full._ativadoEditorEmail === "jesuscristh22@gmail.com" && _pdL1Full.ativadoPor === "jesuscristh22@gmail.com",
+        JSON.stringify({ editor: _pdL1Full._ativadoEditor, email: _pdL1Full._ativadoEditorEmail, ativadoPor: _pdL1Full.ativadoPor }));
+      const _socDepois = (await get("/api/admin/socios")).json;
+      const _dDiego = (_socDepois?.socios?.diego?.recebido || 0) - (_socAntes?.socios?.diego?.recebido || 0);
+      const _dDerDiego = (_socDepois?.socios?.diego?.derivado || 0) - (_socAntes?.socios?.diego?.derivado || 0);
+      const _dSemDono = (_socDepois?.entradas?.semDono?.n || 0) - (_socAntes?.entradas?.semDono?.n || 0);
+      check("🔐 v183-L1: o R$100 aprovado pelo Diego entra no acerto COMO DELE (modo derivado da trilha) — e a fila de 'entradas sem dono' NÃO cresceu (era pra lá que todo dinheiro aprovado pelo painel ia)",
+        _dDiego === 100 && _dDerDiego === 1 && _dSemDono === 0,
+        JSON.stringify({ deltaRecebidoDiego: _dDiego, deltaDerivado: _dDerDiego, deltaSemDono: _dSemDono }));
+      const _banL1 = await get("/api/admin/banned-emails");
+      const _sentL1 = await req2("POST", "/api/admin/health-sentinel/run", {});
+      check("🔐 v183-L1: as guardas de 'admin hardcoded' reconhecem a sessão do painel por username — /api/admin/banned-emails e /api/admin/health-sentinel/run respondem 200, não 403 (o painel do Diego levava 403 nas duas)",
+        _banL1.status === 200 && _sentL1.status === 200, JSON.stringify({ banned: _banL1.status, sentinel: _sentL1.status }));
+      // o vigia mede o canal de e-mail que REALMENTE existe (mod-notif), não
+      // o Gmail pessoal do ADMIN_EMAIL — que nem conta tem desde o v172c.
+      const _repL1 = _sentL1.json?.report || {};
+      check("🔐 v183-L1: o sentinela passou a medir a CONTA DE NOTIFICAÇÕES (mod-notif, v175) — o alarme vermelho de 'notificações mudas' era disparado a cada 6h só porque getUser(ADMIN_EMAIL) é null desde o v172c",
+        typeof _repL1.notif === "object" && typeof _repL1.notif.ok === "boolean",
+        JSON.stringify({ notif: _repL1.notif, adminToken: _repL1.adminToken }));
+      const _sentSrcL1 = fs.readFileSync(path.join(__dirname, "mod-sentinel.js"), "utf8");
+      const _srvSrcL1 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      check("🔐 v183-L1 (estrutural): o botLog de resumo do sentinela fica VERMELHO pela conta de notificações, nunca mais por S.adminToken (alarme falso treinava o dono a ignorar o log onde o alarme real aparece)",
+        _sentSrcL1.includes("S.notif?.ok?'info':'error'") && !/S\.adminToken\?\.ok\?'info':'error'/.test(_sentSrcL1) &&
+        !_sentSrcL1.includes("TOKEN DO ADMIN QUEBRADO"),
+        "o resumo do sentinela ainda decide 'error' pelo token do Gmail pessoal do admin");
+      check("🔐 v183-L1 (estrutural): _sessAdminEmail(s) é a fonte ÚNICA de 'qual e-mail representa esta sessão' — nenhuma guarda de admin nem atribuição financeira lê s.user_email cru",
+        _srvSrcL1.includes("function _sessAdminEmail(s)") && _srvSrcL1.includes("function _sessAdminNome(s)") &&
+        _srvSrcL1.includes("admin_email:login.email") &&
+        !/isAdminEmail\(s\.user_email\)/.test(_srvSrcL1) && !/editorFromEmail\(s\.user_email\)/.test(_srvSrcL1) &&
+        !/ativadoPorEmail:s\.user_email/.test(_srvSrcL1),
+        "ainda existe guarda/atribuição lendo s.user_email cru");
+      COOKIE = "";
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    }
+
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
 
     const disk = fs.readdirSync(path.join(DATA, "cvs"));

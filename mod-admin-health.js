@@ -11,7 +11,11 @@
 "use strict";
 
 function createAdminHealthRouter(ctx){
-  const { getSess, getUser, isAdminVip, isAdminEmail, json, readBody,
+  // 🔐 v183 LOTE 1: sessAdminEmail(s) traduz a sessão do painel (cuja chave
+  // interna pode ser o USERNAME reservado "andrio"/"diego") pro e-mail REAL
+  // do admin — sem ele isAdminEmail("diego") era false e o painel levava 403
+  // nas 4 rotas abaixo. Injetado porque o módulo não vê o escopo do server.
+  const { getSess, getUser, isAdminVip, isAdminEmail, json, readBody, sessAdminEmail,
           DB_USERS, DB_AUTO, DB_PEDIDOS, getAutoJob, setAutoJob,
           sendNotifEmail, storageInfo,
           queueSanitizerRun, healthSentinelRun, pendingOrderAlert } = ctx;
@@ -50,12 +54,12 @@ function createAdminHealthRouter(ctx){
     // ── 🩺 Execução manual da varredura ───────────────────────
     if(pathname==="/api/admin/health-sentinel/run"&&req.method==="POST"){
       const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."}),true;
-      if(!isAdminEmail(s.user_email))return json(res,403,{error:"Apenas admins."}),true;
+      if(!isAdminEmail(sessAdminEmail(s)))return json(res,403,{error:"Apenas admins."}),true;
       try{
         if(typeof queueSanitizerRun==="function")queueSanitizerRun();
         if(typeof healthSentinelRun==="function")await healthSentinelRun();
         if(typeof pendingOrderAlert==="function")await pendingOrderAlert();
-        console.log(`[health-sentinel] ▶️ Execução manual por ${s.user_email}`);
+        console.log(`[health-sentinel] ▶️ Execução manual por ${sessAdminEmail(s)}`);
         json(res,200,{ok:true,report:global._healthSentinel});
       }catch(e){json(res,500,{error:e.message});}
       return true;
@@ -64,7 +68,7 @@ function createAdminHealthRouter(ctx){
     // ── 🔓 Libera 1 job preso em paused_no_vip (caso-a-caso — KB-860) ──
     if(pathname==="/api/admin/health-sentinel/release-no-vip"&&req.method==="POST"){
       const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."}),true;
-      if(!isAdminEmail(s.user_email))return json(res,403,{error:"Apenas admins."}),true;
+      if(!isAdminEmail(sessAdminEmail(s)))return json(res,403,{error:"Apenas admins."}),true;
       let b={};try{b=JSON.parse((await readBody(req))||"{}");}catch{json(res,400,{error:"Body inválido."});return true;}
       const email=(b.email||"").trim().toLowerCase();
       const job=getAutoJob(email);
@@ -78,7 +82,7 @@ function createAdminHealthRouter(ctx){
     // ── M02: Notificar TODOS com auth_error de uma vez ───────
     if(pathname==="/api/admin/notify-all-auth-error"&&req.method==="POST"){
       const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."}),true;
-      if(!isAdminEmail(s.user_email))return json(res,403,{error:"Apenas admins."}),true;
+      if(!isAdminEmail(sessAdminEmail(s)))return json(res,403,{error:"Apenas admins."}),true;
       const authErrEmails=Object.entries(DB_AUTO()||{}).filter(([,j])=>j?.status==="paused_auth_error").map(([e])=>e);
       let sent=0;const failed=[];
       for(const email of authErrEmails){
@@ -94,7 +98,7 @@ function createAdminHealthRouter(ctx){
     if(!global._adminActionLog)global._adminActionLog=[];
     if(pathname==="/api/admin/action-log"&&req.method==="GET"){
       const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."}),true;
-      if(!isAdminEmail(s.user_email))return json(res,403,{error:"Apenas admins."}),true;
+      if(!isAdminEmail(sessAdminEmail(s)))return json(res,403,{error:"Apenas admins."}),true;
       json(res,200,{ok:true,log:global._adminActionLog.slice(0,100)});
       return true;
     }

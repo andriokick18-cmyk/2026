@@ -493,6 +493,28 @@ const DIEGO_ADMIN_EMAILS = new Set(String(process.env.DIEGO_ADMIN_EMAILS||"jesus
 function editorFromEmail(email){
   return DIEGO_ADMIN_EMAILS.has(String(email||"").trim().toLowerCase()) ? "diego" : "andrew";
 }
+// 🔐 v183 LOTE 1 — QUEM APROVOU / DE QUEM É O DINHEIRO.
+// Desde o v177-FIX a sessão do painel pode ter como CHAVE INTERNA o USERNAME
+// reservado ("andrio"/"diego") em vez do e-mail real — decisão deliberada pra
+// nunca existirem 2 contas pro mesmo admin. Só que toda a cadeia de
+// ATRIBUIÇÃO entende E-MAIL: editorFromEmail("diego") caía no default
+// "andrew" (toda aprovação do Diego virava "Andrew" na trilha) e
+// isAdminEmail("diego") é false, então _finDonoDe devolvia "sem dono" e o
+// acerto entre sócios perdia o dono de TODA entrada aprovada pelo painel.
+// A sessão agora carrega TAMBÉM o e-mail real (admin_email) e este helper é a
+// fonte ÚNICA de "qual e-mail representa esta sessão". Sessão antiga (gravada
+// antes deste commit) e sessão de usuário comum caem no fallback — mesmo
+// comportamento de sempre.
+function _sessAdminEmail(s){ return String((s&&(s.admin_email||s.user_email))||""); }
+// Nome humano do admin da sessão pro extrato de créditos (dadoPor). Estava
+// repetido em 3 rotas (set-plan / vip-activate / set-expiry) já lendo o
+// s.user_email errado — agora é uma régua só, pelo e-mail real da sessão.
+function _sessAdminNome(s){
+  const em=_sessAdminEmail(s);
+  if(isAdminEmail(em)&&em===ADMIN_EMAIL)return "Andrio";
+  if(ADMIN_EMAIL_2&&em===ADMIN_EMAIL_2)return "Diego";
+  return em;
+}
 // Notifications: { notifications: [{id, title, body, createdAt, createdBy, readBy:[email,...]}] }
 let DB_NOTIF = { notifications: [] };
 let DB_SUGGESTIONS = []; // Array de sugestões dos usuários
@@ -5752,7 +5774,7 @@ function isAdmin(req, res) {
   const s = getSess(req);
   if (!s?.user_email) { json(res, 401, { error: "Não autenticado." }); return false; }
   const p = getUser(s.user_email);
-  if (!p?.isAdmin && !isAdminEmail(s.user_email)) { json(res, 403, { error: "Acesso negado." }); return false; }
+  if (!p?.isAdmin && !isAdminEmail(_sessAdminEmail(s))) { json(res, 403, { error: "Acesso negado." }); return false; }
   return true;
 }
 
@@ -6686,7 +6708,7 @@ const server=http.createServer(async(req,res)=>{
       return res.end();
     }
     const adUser = getUser(adSess.user_email);
-    if(!isAdminEmail(adSess.user_email) && !isAdminVip(adUser)){
+    if(!isAdminEmail(_sessAdminEmail(adSess)) && !isAdminVip(adUser)){
       // Logado mas não é admin — tela de erro
       const errorPage = `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -8281,7 +8303,11 @@ filtrar();
       const _key=(_existenteAdmin&&_existenteAdmin.isAdmin)?login.user:login.email;
       if(!getUser(_key))setUser(_key,{email:_key,name:login.nome,created_at:new Date().toISOString(),plan:"free",vip:null,cvs:[],profiles:[],saved:[],onboarded:true,isAdmin:true});
       const sid="adm_"+crypto.randomBytes(16).toString("hex");
-      sessions[sid]={user_email:_key,user_name:login.nome,created_at:Date.now()};
+      // v183 LOTE 1: admin_email guarda o e-mail REAL do admin mesmo quando a
+      // chave interna da conta é o username reservado — sem ele, toda a
+      // atribuição financeira (editorFromEmail/isAdminEmail) lia "diego"/
+      // "andrio" como se fosse um e-mail e falhava calada.
+      sessions[sid]={user_email:_key,admin_email:login.email,user_name:login.nome,created_at:Date.now()};
       persistSessionsDebounced(500);
       console.log(`[admin-panel] 🔐 Login por senha: ${login.user} (${_key}${_key!==login.email?", e-mail real "+login.email:""})`);
       res.writeHead(200,{"Content-Type":"application/json","Set-Cookie":makeCookieStr(sid)});
@@ -9157,14 +9183,14 @@ filtrar();
   // admin não tinha como saber com qual grafia o e-mail estava na lista).
   if(pathname==="/api/admin/banned-emails"&&req.method==="GET"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    if(!isAdminEmail(s.user_email))return json(res,403,{error:"Apenas admins."});
+    if(!isAdminEmail(_sessAdminEmail(s)))return json(res,403,{error:"Apenas admins."});
     return json(res,200,{ok:true,emails:DB_BLOCKED.emails});
   }
   // 🩺 v155 — Admin: POR QUE ESTE E-MAIL NÃO ENTRA? Testa as portas de
   // bloqueio locais de uma vez: ban, conta existe?, flags de trial.
   if(pathname==="/api/admin/diagnostico-login"&&req.method==="GET"){
     const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
-    if(!(adm?.isAdmin||isAdminEmail(s?.user_email||"")))return json(res,403,{error:"Só admin."});
+    if(!(adm?.isAdmin||isAdminEmail(_sessAdminEmail(s))))return json(res,403,{error:"Só admin."});
     try{
       const email=String(u.searchParams.get("email")||"").toLowerCase().trim();
       if(!email.includes("@"))return json(res,400,{error:"email inválido"});
@@ -9184,12 +9210,12 @@ filtrar();
   // mora em computeSocios() (fonte única, régua do canônico); a tela só mostra.
   if(pathname==="/api/admin/socios"&&req.method==="GET"){
     const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
-    if(!(adm?.isAdmin||isAdminEmail(s?.user_email||"")))return json(res,403,{error:"Só admin."});
+    if(!(adm?.isAdmin||isAdminEmail(_sessAdminEmail(s))))return json(res,403,{error:"Só admin."});
     try{return json(res,200,{ok:true,...computeSocios()});}catch(e){return json(res,500,{error:e.message});}
   }
   if(pathname==="/api/admin/socios/split"&&req.method==="POST"){
     const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
-    if(!(adm?.isAdmin||isAdminEmail(s?.user_email||"")))return json(res,403,{error:"Só admin."});
+    if(!(adm?.isAdmin||isAdminEmail(_sessAdminEmail(s))))return json(res,403,{error:"Só admin."});
     try{
       const d=JSON.parse(await readBody(req));
       const a=parseFloat(d.andrio),g=parseFloat(d.diego);
@@ -9204,7 +9230,7 @@ filtrar();
   // ── 💼 MC4-P3: DRE MENSAL + relatório executivo + exportação (CSV ;+BOM)
   if(pathname==="/api/admin/dre"&&req.method==="GET"){
     const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
-    if(!(adm?.isAdmin||isAdminEmail(s?.user_email||"")))return json(res,403,{error:"Só admin."});
+    if(!(adm?.isAdmin||isAdminEmail(_sessAdminEmail(s))))return json(res,403,{error:"Só admin."});
     try{
       const dre=computeDreMensal();
       if((u.searchParams.get("fmt")||"")==="csv"){
@@ -9224,7 +9250,7 @@ filtrar();
   // régua do acerto (_finValorEfetivo/_finDonoDe) + gastos, com ; e BOM.
   if(pathname==="/api/admin/financeiro/exportar"&&req.method==="GET"){
     const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
-    if(!(adm?.isAdmin||isAdminEmail(s?.user_email||"")))return json(res,403,{error:"Só admin."});
+    if(!(adm?.isAdmin||isAdminEmail(_sessAdminEmail(s))))return json(res,403,{error:"Só admin."});
     try{
       const n2=v=>String((Number(v)||0).toFixed(2)).replace(".",",");
       const cel=v=>{const t2=String(v==null?"":v).replace(/"/g,'""');return /[",;\n]/.test(t2)?'"'+t2+'"':t2;};
@@ -9249,7 +9275,7 @@ filtrar();
   // ── 📕 MC4-P5: FECHAMENTO MENSAL (imutável — 409 pra refechar) ─────────
   if(pathname==="/api/admin/fechamento"&&req.method==="POST"){
     const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
-    if(!(adm?.isAdmin||isAdminEmail(s?.user_email||"")))return json(res,403,{error:"Só admin."});
+    if(!(adm?.isAdmin||isAdminEmail(_sessAdminEmail(s))))return json(res,403,{error:"Só admin."});
     try{
       const d=JSON.parse(await readBody(req));
       const mes=String(d.mes||"").trim();
@@ -9262,14 +9288,14 @@ filtrar();
   }
   if(pathname==="/api/admin/fechamentos"&&req.method==="GET"){
     const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
-    if(!(adm?.isAdmin||isAdminEmail(s?.user_email||"")))return json(res,403,{error:"Só admin."});
+    if(!(adm?.isAdmin||isAdminEmail(_sessAdminEmail(s))))return json(res,403,{error:"Só admin."});
     try{return json(res,200,{ok:true,..._fechamentosComVivo()});}catch(e){return json(res,500,{error:e.message});}
   }
   // 🕰️ MC5-P7 — fecha AGORA todos os meses antigos abertos (o mesmo motor do
   // automático do dia 3; ignorarDia3:true pula a margem, pro admin/vigia).
   if(pathname==="/api/admin/fechamento/auto"&&req.method==="POST"){
     const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
-    if(!(adm?.isAdmin||isAdminEmail(s?.user_email||"")))return json(res,403,{error:"Só admin."});
+    if(!(adm?.isAdmin||isAdminEmail(_sessAdminEmail(s))))return json(res,403,{error:"Só admin."});
     try{
       const d=JSON.parse(await readBody(req)||"{}");
       const r=d.ignorarDia3===true?_autoFecharMesesAntigos(s.user_email):_autoFecharMesAnterior(s.user_email);
@@ -9284,7 +9310,7 @@ filtrar();
   // strings base64 já residentes e fs.stat dos arquivos em disco.
   if(pathname==="/api/admin/memoria"&&req.method==="GET"){
     const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
-    if(!(adm?.isAdmin||isAdminEmail(s?.user_email||"")))return json(res,403,{error:"Só admin."});
+    if(!(adm?.isAdmin||isAdminEmail(_sessAdminEmail(s))))return json(res,403,{error:"Só admin."});
     try{
       const MB=v=>Math.round(v/1048576*10)/10;
       const mu=process.memoryUsage();
@@ -9340,7 +9366,7 @@ filtrar();
   // quando ele mandar; o auto-ban do delete-account foi removido).
   if(pathname==="/api/admin/ban-email"&&req.method==="POST"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    if(!isAdminEmail(s.user_email))return json(res,403,{error:"Apenas admins."});
+    if(!isAdminEmail(_sessAdminEmail(s)))return json(res,403,{error:"Apenas admins."});
     try{
       const d=JSON.parse(await readBody(req));
       const emailLow=String(d.email||"").trim().toLowerCase();
@@ -9358,7 +9384,7 @@ filtrar();
   // ── Admin: desbanir email ─────────────────────────────────
   if(pathname==="/api/admin/unban-email"&&req.method==="POST"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    if(!isAdminEmail(s.user_email))return json(res,403,{error:"Apenas admins podem desbanir."});
+    if(!isAdminEmail(_sessAdminEmail(s)))return json(res,403,{error:"Apenas admins podem desbanir."});
     try{
       const d=JSON.parse(await readBody(req));
       const {email}=d;if(!email)return json(res,400,{error:"email obrigatório"});
@@ -9373,7 +9399,7 @@ filtrar();
   // ── Admin: ver histórico anti-abuse de trial ──────────────
   if(pathname==="/api/admin/trial-abuse"&&req.method==="GET"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    if(!isAdminEmail(s.user_email))return json(res,403,{error:"Apenas admins."});
+    if(!isAdminEmail(_sessAdminEmail(s)))return json(res,403,{error:"Apenas admins."});
     // IPs com múltiplas contas usando trial
     const suspectIps=Object.entries(DB_TRIAL_USED.ips||{})
       .filter(([,emails])=>emails.length>1)
@@ -9385,7 +9411,7 @@ filtrar();
   // ── Admin: revogar trial de usuário específico ────────────
   if(pathname==="/api/admin/revoke-trial"&&req.method==="POST"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    if(!isAdminEmail(s.user_email))return json(res,403,{error:"Apenas admins."});
+    if(!isAdminEmail(_sessAdminEmail(s)))return json(res,403,{error:"Apenas admins."});
     try{
       const d=JSON.parse(await readBody(req));
       const {email,reason}=d;if(!email)return json(res,400,{error:"email obrigatório"});
@@ -9405,7 +9431,7 @@ filtrar();
   // ── Admin: notificar usuário com paused_auth_error (1-click) ──────────────
   if(pathname==="/api/admin/notify-auth-error"&&req.method==="POST"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    if(!isAdminEmail(s.user_email))return json(res,403,{error:"Apenas admins."});
+    if(!isAdminEmail(_sessAdminEmail(s)))return json(res,403,{error:"Apenas admins."});
     try{
       const d=JSON.parse(await readBody(req));
       const {email}=d;if(!email)return json(res,400,{error:"email obrigatório"});
@@ -9558,14 +9584,12 @@ filtrar();
       // SEGURANÇA: nunca substitui arrays completos — só adiciona/atualiza itens
       // Logger da trilha de auditoria (append-only) — usado também nos ADDS,
       // que antes NÃO eram auditados (só edição/exclusão apareciam no Histórico).
-      const _quemAdd = s.user_email===ADMIN_EMAIL ? "Andrio"
-                     : (typeof ADMIN_EMAIL_2!=="undefined"&&ADMIN_EMAIL_2&&s.user_email===ADMIN_EMAIL_2) ? "Diego"
-                     : s.user_email;
+      const _quemAdd = _sessAdminNome(s); // v183 LOTE 1: pelo e-mail REAL da sessão
       const _logAdd=(tipo,registro,motivo)=>{
         if(!Array.isArray(DB_FINANCEIRO.alteracoes)) DB_FINANCEIRO.alteracoes=[];
         const {comprovante,img,...limpo}=registro||{};
         DB_FINANCEIRO.alteracoes.push({id:'alt_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6),
-          tipo, por:_quemAdd, porEmail:s.user_email, em:Date.now(),
+          tipo, por:_quemAdd, porEmail:_sessAdminEmail(s), em:Date.now(),
           motivo:String(motivo||'').slice(0,300), antes:null, depois:limpo});
       };
       // GARANTIA DE VERDADE (2026-07-08): se persistFinanceiro() falhar (disco
@@ -9617,10 +9641,8 @@ filtrar();
         if(!pg.id) pg.id='fin_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6);
         if(!pg.criadoEm) pg.criadoEm=Date.now();
         // Quem LANÇOU vem da sessão — não pode ser forjado pelo corpo (mesmo padrão do gasto).
-        pg.lancadoPorEmail=s.user_email;
-        pg.lancadoPor = s.user_email===ADMIN_EMAIL ? "Andrio"
-                       : (ADMIN_EMAIL_2 && s.user_email===ADMIN_EMAIL_2) ? "Diego"
-                       : (pg.lancadoPor||s.user_email);
+        pg.lancadoPorEmail=_sessAdminEmail(s);
+        pg.lancadoPor = _sessAdminNome(s)!==_sessAdminEmail(s) ? _sessAdminNome(s) : (pg.lancadoPor||_sessAdminEmail(s));
         // Comprovante OPCIONAL, mesma validação do gasto (antes ficava só no
         // localStorage de quem lançou — o outro sócio nunca via a imagem).
         if(pg.comprovante && typeof pg.comprovante==='string'){
@@ -9650,10 +9672,8 @@ filtrar();
         if(!gs.id) gs.id='gst_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6);
         if(!gs.criadoEm) gs.criadoEm=Date.now();
         // Quem LANÇOU vem da sessão — não pode ser forjado pelo corpo.
-        gs.lancadoPorEmail=s.user_email;
-        gs.lancadoPor = s.user_email===ADMIN_EMAIL ? "Andrio"
-                       : (ADMIN_EMAIL_2 && s.user_email===ADMIN_EMAIL_2) ? "Diego"
-                       : (gs.lancadoPor||s.user_email);
+        gs.lancadoPorEmail=_sessAdminEmail(s);
+        gs.lancadoPor = _sessAdminNome(s)!==_sessAdminEmail(s) ? _sessAdminNome(s) : (gs.lancadoPor||_sessAdminEmail(s));
         // Data do GASTO separada da data de lançamento (pertence ao mês em que ocorreu).
         gs.dataGasto = gs.dataGasto || new Date(gs.criadoEm).toISOString();
         // Quem BANCOU o gasto (acerto entre sócios): andrio | diego | empresa.
@@ -9695,14 +9715,12 @@ filtrar();
       // ── Trilha de auditoria: NADA é apagado/editado sem histórico ──
       // Cada alteração grava: quem (sessão, não forjável), quando, motivo,
       // valor anterior e novo. A trilha (alteracoes[]) é append-only.
-      const _quem = s.user_email===ADMIN_EMAIL ? "Andrio"
-                  : (typeof ADMIN_EMAIL_2!=="undefined"&&ADMIN_EMAIL_2&&s.user_email===ADMIN_EMAIL_2) ? "Diego"
-                  : s.user_email;
+      const _quem = _sessAdminNome(s); // v183 LOTE 1: pelo e-mail REAL da sessão
       const _logAlt=(tipo,antes,depois,motivo)=>{
         if(!Array.isArray(DB_FINANCEIRO.alteracoes)) DB_FINANCEIRO.alteracoes=[];
         const strip=o=>{if(!o)return o;const{comprovante,img,...r}=o;return r;};
         DB_FINANCEIRO.alteracoes.push({id:'alt_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6),
-          tipo, por:_quem, porEmail:s.user_email, em:Date.now(),
+          tipo, por:_quem, porEmail:_sessAdminEmail(s), em:Date.now(),
           motivo:String(motivo||'').slice(0,300), antes:strip(antes), depois:strip(depois)});
       };
       // ── REPASSES ENTRE SÓCIOS ─────────────────────────────────────────
@@ -9721,7 +9739,7 @@ filtrar();
           id:'rep_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6),
           de, para, valor, dataRepasse,
           nota:String(rp.nota||"").slice(0,200),
-          lancadoPorEmail:s.user_email, lancadoPor:_quem, criadoEm:Date.now()
+          lancadoPorEmail:_sessAdminEmail(s), lancadoPor:_quem, criadoEm:Date.now()
         };
         // 💼 MC5-P5: repasse também aceita COMPROVANTE (mesma validação e o
         // mesmo fingerprint do gasto/entrada) — dinheiro entre sócios com prova.
@@ -9930,7 +9948,7 @@ filtrar();
       // alimentava o extrato vip.creditos (addCredito), então a Auditoria
       // Financeira por usuário não via essa concessão no "quanto já foi dado
       // e por quê". Agora toda rota que soma dias grava no mesmo ledger.
-      if(plan!=='free')addCredito(email,{dias:30,tipo:"gratis",origem:"admin",motivo:`set-plan → ${plan}`,dadoPor:isAdminEmail(s.user_email)&&s.user_email===ADMIN_EMAIL?"Andrio":(ADMIN_EMAIL_2&&s.user_email===ADMIN_EMAIL_2?"Diego":s.user_email)});
+      if(plan!=='free')addCredito(email,{dias:30,tipo:"gratis",origem:"admin",motivo:`set-plan → ${plan}`,dadoPor:_sessAdminNome(s)});
       if(plan!=='free')acordarRoboAposPlano(email); // v125: robô dormindo por limite antigo acorda já
       // 11/07 (caso Cleiton): plano foi ativado 3x e sumia após cada restart porque
       // o persist falhava em silêncio com o disco cheio. Agora VERIFICA a gravação
@@ -10006,7 +10024,7 @@ filtrar();
   if(pathname==="/api/admin/delete-user"&&req.method==="POST"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
     const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Acesso negado."});
-    if(!isAdminEmail(s.user_email))return json(res,403,{error:"Apenas admins hardcoded podem deletar contas."});
+    if(!isAdminEmail(_sessAdminEmail(s)))return json(res,403,{error:"Apenas admins hardcoded podem deletar contas."});
     try{
       const d=JSON.parse(await readBody(req));
       const {email}=d;if(!email)return json(res,400,{error:"email obrigatório"});
@@ -10124,7 +10142,7 @@ filtrar();
       let targetEmail=s.user_email;
       if(d.userEmail){
         const reqUser=getUser(s.user_email);
-        const reqIsAdmin=isAdminVip(reqUser)||isAdminEmail(s.user_email);
+        const reqIsAdmin=isAdminVip(reqUser)||isAdminEmail(_sessAdminEmail(s));
         const te=(d.userEmail||"").trim().toLowerCase();
         if(reqIsAdmin && te){
           // Admin pode criar pedido para qualquer email válido
@@ -10140,7 +10158,7 @@ filtrar();
       // enviado é para ESSE valor exato. Aprovação ativa o plano DIRETO.
       const planoKey={vip:"vip",vipro:"vipro",doublepro:"doublepro"}[String(d.plano||"").toLowerCase()];
       const diasReq=parseInt(d.dias,10)||0;
-      const _isAdminCaller=isAdminVip(getUser(s.user_email))||isAdminEmail(s.user_email);
+      const _isAdminCaller=isAdminVip(getUser(s.user_email))||isAdminEmail(_sessAdminEmail(s));
       let valorOficial=null;
       if(planoKey&&(PLANO_PRECO_TAB[planoKey]||{})[diasReq]!=null){
         valorOficial=PLANO_PRECO_TAB[planoKey][diasReq];
@@ -10461,8 +10479,8 @@ filtrar();
           _pgC.valor=nv;
           if(!Array.isArray(DB_FINANCEIRO.alteracoes))DB_FINANCEIRO.alteracoes=[];
           DB_FINANCEIRO.alteracoes.push({id:'alt_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6),
-            tipo:'corrigir_valor',por:s.user_email===ADMIN_EMAIL?'Andrio':(ADMIN_EMAIL_2&&s.user_email===ADMIN_EMAIL_2?'Diego':s.user_email),
-            porEmail:s.user_email,em:Date.now(),
+            tipo:'corrigir_valor',por:_sessAdminNome(s),
+            porEmail:_sessAdminEmail(s),em:Date.now(),
             motivo:`Conferência: valor do pedido #${pd.id.slice(-8).toUpperCase()} corrigido de R$${antes.toFixed(2)} para R$${nv.toFixed(2)}`,
             antes:{valor:antes},depois:{valor:nv}});
           persistFinanceiro();
@@ -10559,9 +10577,9 @@ filtrar();
         // sessão de admin (login por usuário+senha em /api/admin-panel/login desde
         // o v172b, nunca mais Google) já garante quem é o editor; o e-mail da sessão
         // identifica quem fez a ação.
-        const editorKey=editorFromEmail(s.user_email);
+        const editorKey=editorFromEmail(_sessAdminEmail(s));
         pd._ativadoEditor=editorKey==="andrew"?"Andrew":"Diego";
-        pd._ativadoEditorEmail=s.user_email;
+        pd._ativadoEditorEmail=_sessAdminEmail(s);
       }
 
       // v21: status só da máquina de estados oficial. As guardas de duplicidade
@@ -10575,7 +10593,7 @@ filtrar();
       if(d.notaAdmin!==undefined)pd.notaAdmin=String(d.notaAdmin).slice(0,500);
 
       if(d.status==="ativo"&&!pd.ativadoEm){
-        pd.ativadoPor=s.user_email;
+        pd.ativadoPor=_sessAdminEmail(s);
         pd.ativadoEm=Date.now();
         // ── COMPRA DIRETA DE PLANO (v170 — dono, 09/09/2026): aprovar o
         // pedido ativa o plano NA HORA, sem etapa intermediária. O caixa
@@ -10634,7 +10652,7 @@ filtrar();
             data:new Date().toISOString(),
             dataPagamento:pd.pagoEm?new Date(pd.pagoEm).toISOString():new Date().toISOString(),
             pedidoId:pd.id,source:"pedido_automatico",
-            ativadoPor:pd._ativadoEditor||"Admin",ativadoPorEmail:s.user_email,
+            ativadoPor:pd._ativadoEditor||"Admin",ativadoPorEmail:_sessAdminEmail(s),
             // 💼 MC5-P5: dono do dinheiro só entra se veio EXPLÍCITO no enum.
             // Sem ele, o campo é OMITIDO — computeSocios deriva honestamente
             // da trilha (ativadoPorEmail) e conta como "derivado", em vez de
@@ -10653,7 +10671,7 @@ filtrar();
       }
 
       if(d.status==="cancelado"){
-        const _rC=_cancelarPedidoInterno(pd,{por:s.user_email,notaAdmin:d.notaAdmin});
+        const _rC=_cancelarPedidoInterno(pd,{por:_sessAdminEmail(s),notaAdmin:d.notaAdmin});
         if(!_rC.ok){
           console.log(`[pedido] ⛔ duplo cancelamento barrado: ${pd.id} (já cancelado por ${_rC.body.canceladoPor})`);
           return json(res,_rC.status,_rC.body);
@@ -11258,7 +11276,7 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
           // FIX: salvar caseNum para que /api/sent-ids possa filtrar a vaga da planilha
           caseNum: d.caseNum || "",
           // v74: idem ao envio automático — só admin guarda o texto literal enviado.
-          ...((isAdminVip(p)||isAdminEmail(s.user_email)) ? { subjectSent: String(d.subject||"").slice(0,500), bodySent: String(d.message||"").slice(0,3000) } : {}),
+          ...((isAdminVip(p)||isAdminEmail(_sessAdminEmail(s))) ? { subjectSent: String(d.subject||"").slice(0,500), bodySent: String(d.message||"").slice(0,3000) } : {}),
         };
         addHist(s.user_email, histEntry);
         // v18-FIX: libera a reserva do limite AQUI — o histórico real (addHist)
@@ -11461,7 +11479,7 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
 
 
   if(pathname==="/api/diag"&&req.method==="GET"){
-    const sd=getSess(req);if(!sd?.user_email||!isAdminEmail(sd.user_email))return json(res,403,{error:"Acesso negado."});
+    const sd=getSess(req);if(!sd?.user_email||!isAdminEmail(_sessAdminEmail(sd)))return json(res,403,{error:"Acesso negado."});
     return json(res,200,{
       uptime_s:Math.round(process.uptime()),
       memory_mb:Math.round(process.memoryUsage().heapUsed/1024/1024),
@@ -12160,7 +12178,7 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
   // ── ADMIN: Reinicia todos os workers travados de uma vez ───────────────────────
   if(pathname==="/api/admin/restart-all-stalled"&&req.method==="POST"){
     const s=getSess(req);
-    if(!s?.user_email||!isAdminEmail(s.user_email))return json(res,403,{error:"Acesso negado."});
+    if(!s?.user_email||!isAdminEmail(_sessAdminEmail(s)))return json(res,403,{error:"Acesso negado."});
     let restarted=0, tokensFailed=0, skipped=0;
     const SAFE_WAIT_STATUSES = new Set(["waiting_limit","waiting_rate_limit","waiting_interval","waiting_token_retry"]);
     for(const[email,job] of Object.entries(DB_AUTO)){
@@ -12377,7 +12395,7 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
       }
       v.active=true;
       v.giftHistory=[...(v.giftHistory||[]).slice(-19),{em:now,dias,motivo:motivo.slice(0,160),
-        por:s.user_email===ADMIN_EMAIL?"Andrio":(ADMIN_EMAIL_2&&s.user_email===ADMIN_EMAIL_2?"Diego":s.user_email)}];
+        por:_sessAdminNome(s)}];
       setUser(email,{vip:v});
       console.log(`[gift-days] +${dias}d para ${email} por ${s.user_email} — ${motivo.slice(0,80)}`);
       return json(res,200,{ok:true,dias,manualExpires:v.manualExpires,autoExpires:v.autoExpires||0,
@@ -12430,7 +12448,7 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
       // um cliente legítimo. O restante mede max(manual, auto), então a
       // evidência registra o MAIOR dos dois relógios concedidos.
       const _credDias=Math.max(days,autoDays);
-      if(_credDias>0) addCredito(d.email,{dias:_credDias,tipo:"gratis",origem:"admin",motivo:`Ativação admin — ${planName} (manual ${days}d · auto ${autoDays}d)`+(d.note?` (${d.note})`:""),dadoPor:isAdminEmail(s.user_email)&&s.user_email===ADMIN_EMAIL?"Andrio":(ADMIN_EMAIL_2&&s.user_email===ADMIN_EMAIL_2?"Diego":s.user_email)});
+      if(_credDias>0) addCredito(d.email,{dias:_credDias,tipo:"gratis",origem:"admin",motivo:`Ativação admin — ${planName} (manual ${days}d · auto ${autoDays}d)`+(d.note?` (${d.note})`:""),dadoPor:_sessAdminNome(s)});
       console.log(`[admin] ✅ Ativou ${planName} → ${d.email} (manual:${days}d→${new Date(manualExpires).toLocaleDateString('pt-BR')} auto:${autoDays}d→${autoExpires>now?new Date(autoExpires).toLocaleDateString('pt-BR'):'–'})`);
 
       // (Bônus de indicação por compra removido — 2026-07-03, KB-059)
@@ -12531,7 +12549,7 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
       // carimba adjustedCreditado — ajustes ANTIGOS, sem crédito, são
       // ancorados pelo auditor via adjustedAt e ficam fora da acusação.
       const _diasSet=Math.max(manualDays>0?manualDays:0,autoDays>0?autoDays:0);
-      if(_diasSet>0)addCredito(d.email,{dias:_diasSet,tipo:"gratis",origem:"set-expiry",motivo:`Vencimento definido pelo admin: manual ${manualDays}d · auto ${autoDays}d (${planName})`,dadoPor:isAdminEmail(s.user_email)&&s.user_email===ADMIN_EMAIL?"Andrio":(ADMIN_EMAIL_2&&s.user_email===ADMIN_EMAIL_2?"Diego":s.user_email)});
+      if(_diasSet>0)addCredito(d.email,{dias:_diasSet,tipo:"gratis",origem:"set-expiry",motivo:`Vencimento definido pelo admin: manual ${manualDays}d · auto ${autoDays}d (${planName})`,dadoPor:_sessAdminNome(s)});
       console.log("[admin] set-expiry "+d.email+" manual:"+manualDays+"d auto:"+autoDays+"d plano:"+planName);
       return json(res,200,{ok:true,vip,planName,
         manualExpiresDate:manualExpires>0?new Date(manualExpires).toLocaleDateString("pt-BR"):null,
@@ -12758,7 +12776,7 @@ if(pathname==="/api/admin/contabilidade/divergencia"&&req.method==="POST"){
     const assinatura=String(d.assinatura||"").trim();
     if(!email||!assinatura)return json(res,400,{error:"email e assinatura são obrigatórios."});
     if(d.concordo!==true)return json(res,200,{ok:true,gravado:false});
-    DB_DIVERGENCIAS_OK[assinatura]={email,confirmadoEm:Date.now(),confirmadoPor:s.user_email};
+    DB_DIVERGENCIAS_OK[assinatura]={email,confirmadoEm:Date.now(),confirmadoPor:_sessAdminEmail(s)};
     persist(DIVERGENCIAS_OK_FILE,DB_DIVERGENCIAS_OK);
     return json(res,200,{ok:true,gravado:true});
   }catch(e){return json(res,500,{error:e.message});}
@@ -12787,16 +12805,14 @@ if(pathname==="/api/admin/contabilidade/gasto"&&req.method==="POST"){
       const _allowC=["image/jpeg","image/jpg","image/png","image/webp","application/pdf"];
       comprovanteType=_allowC.includes(gs.comprovanteType)?gs.comprovanteType:"image/jpeg";
     }
-    const _quem=s.user_email===ADMIN_EMAIL?"Andrio"
-               :(typeof ADMIN_EMAIL_2!=="undefined"&&ADMIN_EMAIL_2&&s.user_email===ADMIN_EMAIL_2)?"Diego"
-               :s.user_email;
+    const _quem=_sessAdminNome(s); // v183 LOTE 1: pelo e-mail REAL da sessão
     const novo={
       id:"gst_"+Date.now().toString(36)+"_"+crypto.randomBytes(4).toString("hex"),
       valor,categoria,pagoPor,
       descricao:String(gs.descricao||gs.nota||"").slice(0,300),
       dataGasto:gs.dataGasto||new Date().toISOString(),
       criadoEm:Date.now(),
-      lancadoPorEmail:s.user_email,lancadoPor:_quem,
+      lancadoPorEmail:_sessAdminEmail(s),lancadoPor:_quem,
       comprovante,comprovanteType,temComprovante:!!comprovante,
       comprovanteHash:comprovante?_hashCompC(comprovante):null
     };
@@ -12804,7 +12820,7 @@ if(pathname==="/api/admin/contabilidade/gasto"&&req.method==="POST"){
     DB_FINANCEIRO.gastos.unshift(novo);
     if(!Array.isArray(DB_FINANCEIRO.alteracoes))DB_FINANCEIRO.alteracoes=[];
     DB_FINANCEIRO.alteracoes.push({id:"alt_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,6),
-      tipo:"add_gasto",por:_quem,porEmail:s.user_email,em:Date.now(),
+      tipo:"add_gasto",por:_quem,porEmail:_sessAdminEmail(s),em:Date.now(),
       motivo:"Gasto: R$"+valor.toFixed(2)+" · pago por "+pagoPor+" · "+categoria,antes:null,depois:{id:novo.id,valor,categoria,pagoPor}});
     if(!persistFinanceiro()){
       DB_FINANCEIRO.gastos=DB_FINANCEIRO.gastos.filter(x=>x.id!==novo.id);
@@ -12844,9 +12860,7 @@ if(pathname==="/api/admin/contabilidade/pagamento"&&req.method==="POST"){
       const _allowP=["image/jpeg","image/jpg","image/png","image/webp","application/pdf"];
       comprovanteType=_allowP.includes(pg.comprovanteType)?pg.comprovanteType:"image/jpeg";
     }
-    const _quem=s.user_email===ADMIN_EMAIL?"Andrio"
-               :(typeof ADMIN_EMAIL_2!=="undefined"&&ADMIN_EMAIL_2&&s.user_email===ADMIN_EMAIL_2)?"Diego"
-               :s.user_email;
+    const _quem=_sessAdminNome(s); // v183 LOTE 1: pelo e-mail REAL da sessão
     const novo={
       id:"fin_"+Date.now().toString(36)+"_"+crypto.randomBytes(4).toString("hex"),
       email,nome:pg.nome||email||"",tipo,valor,
@@ -12854,7 +12868,7 @@ if(pathname==="/api/admin/contabilidade/pagamento"&&req.method==="POST"){
       data:new Date().toISOString(),
       dataPagamento:pg.dataPagamento?new Date(pg.dataPagamento).toISOString():new Date().toISOString(),
       criadoEm:Date.now(),
-      lancadoPorEmail:s.user_email,lancadoPor:_quem,
+      lancadoPorEmail:_sessAdminEmail(s),lancadoPor:_quem,
       ...(recebidoPor?{recebidoPor}:{}),
       comprovante,comprovanteType,temComprovante:!!comprovante,
       comprovanteHash:comprovante?_hashCompP(comprovante):null
@@ -12863,7 +12877,7 @@ if(pathname==="/api/admin/contabilidade/pagamento"&&req.method==="POST"){
     DB_FINANCEIRO.pagamentos.unshift(novo);
     if(!Array.isArray(DB_FINANCEIRO.alteracoes))DB_FINANCEIRO.alteracoes=[];
     DB_FINANCEIRO.alteracoes.push({id:"alt_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,6),
-      tipo:"add_pagamento",por:_quem,porEmail:s.user_email,em:Date.now(),
+      tipo:"add_pagamento",por:_quem,porEmail:_sessAdminEmail(s),em:Date.now(),
       motivo:(tipo==="avulsa"?"Entrada avulsa: ":"Entrada de cliente: ")+"R$"+valor.toFixed(2)+" · recebido por "+(recebidoPor||"(sem dono — vai derivar da trilha)"),
       antes:null,depois:{id:novo.id,valor,tipo}});
     if(!persistFinanceiro()){
@@ -13619,7 +13633,7 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}if(DB_APP_INDEX[te]){delete DB
         // v172b (dono, 12/09): login do painel admin agora exige usuário+senha (scrypt,
         // /api/admin-panel/login) — aqui só reaproveita a identidade da sessão já
         // autenticada (e-mail de admin logado), sem pedir senha de novo por ação.
-        const editorKey=editorFromEmail(s.user_email);
+        const editorKey=editorFromEmail(_sessAdminEmail(s));
         const editorName=editorKey==="andrew"?"Andrew":"Diego";
         const now=Date.now();
         const upd={};
@@ -13790,7 +13804,7 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}if(DB_APP_INDEX[te]){delete DB
   if(pathname==="/api/admin/reviews" && req.method==="GET"){
     const s=getSess(req); if(!s?.user_email) return json(res,401,{error:"Não autenticado"});
     const p=getUser(s.user_email)||{};
-    if(!p.isAdmin && !isAdminEmail(s.user_email)) return json(res,403,{error:"Acesso negado"});
+    if(!p.isAdmin && !isAdminEmail(_sessAdminEmail(s))) return json(res,403,{error:"Acesso negado"});
     const filter=(u.searchParams.get("status")||"pending").trim();
     const list=filter==="all" ? (DB_REVIEWS||[]) : (DB_REVIEWS||[]).filter(r=>r.status===filter);
     const counts={pending:0,approved:0,rejected:0};
@@ -13802,7 +13816,7 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}if(DB_APP_INDEX[te]){delete DB
   if(pathname==="/api/admin/reviews/status" && req.method==="POST"){
     const s=getSess(req); if(!s?.user_email) return json(res,401,{error:"Não autenticado"});
     const p=getUser(s.user_email)||{};
-    if(!p.isAdmin && !isAdminEmail(s.user_email)) return json(res,403,{error:"Acesso negado"});
+    if(!p.isAdmin && !isAdminEmail(_sessAdminEmail(s))) return json(res,403,{error:"Acesso negado"});
     try{
       const d=JSON.parse(await readBody(req));
       if(d.action==="delete"){
@@ -13910,7 +13924,7 @@ function _cancelarPedidoInterno(pd,opts){
 
 // ── Cleanup ───────────────────────────────────────────────
 setInterval(()=>{const n=Date.now();let c=0;Object.keys(sessions).forEach(k=>{const s=sessions[k],a=n-(s.ts||s.created_at||0),
-  // 🚨 v177-FIX (auditoria 14/09/2026): isAdminEmail(s.user_email) checava
+  // 🚨 v177-FIX (auditoria 14/09/2026): isAdminEmail(_sessAdminEmail(s)) checava
   // só o e-mail — pra uma conta admin nascida por /api/cadastro (username
   // reservado, v175/v176), sessions[sid].user_email é o USERNAME ("andrio"),
   // nunca bate em isAdminEmail, e a sessão caía no SESS_TTL de 7 dias em vez
@@ -14853,6 +14867,9 @@ const { healthSentinelRun, pendingOrderAlert, queueSanitizerRun, getPedAlertSent
   refreshTokenForUser, buildMime, httpsReq, getSheet,
   cooldownMaps: { notifSentAt: ()=>_notifSentAt, authErrNotifiedAt: getAuthErrNotifiedAt },
   pedAlertSentInit: _DB_NOTIF_COOLDOWN.pedAlertSent, // V951: sobrevive a deploy
+  // v183 LOTE 1: a saúde do canal de e-mail do sistema é a CONTA DE
+  // NOTIFICAÇÕES (v175), não mais o Gmail pessoal do ADMIN_EMAIL.
+  notifConectada: ()=>NOTIF.conectada(),
   botLog, // 📜 log unificado — pedido do dono (07/07/2026)
   pushToUser, // v18-FIX: fallback de notificação enquanto o e-mail está desligado pelo dono
 });
@@ -14861,6 +14878,7 @@ const { healthSentinelRun, pendingOrderAlert, queueSanitizerRun, getPedAlertSent
 const { createAdminHealthRouter } = require("./mod-admin-health.js");
 const handleAdminHealthRoutes = createAdminHealthRouter({
   getSess, getUser, isAdminVip, isAdminEmail, json, readBody,
+  sessAdminEmail:_sessAdminEmail, // v183 LOTE 1: sessão do painel por username
   DB_USERS: ()=>DB_USERS, DB_AUTO: ()=>DB_AUTO, DB_PEDIDOS: ()=>DB_PEDIDOS,
   getAutoJob, setAutoJob, sendNotifEmail, storageInfo,
   queueSanitizerRun, healthSentinelRun, pendingOrderAlert,

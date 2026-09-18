@@ -110,8 +110,24 @@ async function healthSentinelRun(){
   S.pausedNoVip = Object.entries(ctx.DB_AUTO()||{})
     .filter(([,j])=>j?.status==="paused_no_vip")
     .map(([e,j])=>({ email:e, desde: j.finishedAt?new Date(j.finishedAt).toISOString().slice(0,10):"?", fila:(j.queue||[]).length }));
-  // 8) 🔑 ALARME DO TOKEN DO ADMIN — se falhar, TODAS as notificações do
-  //    sistema morrem em silêncio (risco nº 2 da análise mestra).
+  // 8) 🔑 CANAL DE E-MAIL DO SISTEMA.
+  //    v183 LOTE 1: até aqui o vigia media a saúde das notificações pelo
+  //    GMAIL PESSOAL do ADMIN_EMAIL — canal que deixou de ser o principal no
+  //    v175: quem manda código de cadastro, código de senha e aviso de pedido
+  //    é a CONTA DE NOTIFICAÇÕES (mod-notif). Pior: desde o v172c/v177-FIX a
+  //    conta do admin vive sob o USERNAME reservado, então getUser(ADMIN_EMAIL)
+  //    é null e o bloco gritava a cada 6h que o token do admin estava
+  //    quebrado e as notificações "mudas", pintando de vermelho a linha
+  //    de "Últimas ações dos
+  //    robôs" — treinando o dono a ignorar justamente o log onde o alarme de
+  //    verdade aparece. Agora o ALARME é sobre a conta de notificações; o
+  //    Gmail pessoal do admin continua medido, mas como RESERVA (é o que o
+  //    pendingOrderAlert abaixo usa), em nível informativo.
+  S.notif = { ok:false };
+  try{ S.notif={ ok: typeof ctx.notifConectada==="function" ? !!ctx.notifConectada() : false }; }
+  catch(e){ S.notif={ ok:false, error:e.message }; }
+  if(!S.notif.ok) console.error("[health-sentinel] 🚨 Conta de NOTIFICAÇÕES desconectada — códigos de cadastro, recuperação de senha e aviso de pedido novo NÃO saem. Conecte em Admin → Notificações.");
+
   S.adminToken = { ok:false, via:null, error:null };
   try{
     const adminSess = Object.entries(ctx.sessions()).find(([,x])=>x.user_email===ctx.ADMIN_EMAIL&&x.access_token);
@@ -122,7 +138,7 @@ async function healthSentinelRun(){
       else S.adminToken={ok:false,via:null,error:"Admin sem sessão e sem refresh_token"};
     }
   }catch(e){ S.adminToken={ok:false,via:null,error:e.message}; }
-  if(!S.adminToken.ok) console.error(`[health-sentinel] 🚨 TOKEN DO ADMIN QUEBRADO — notificações do sistema estão MUDAS: ${S.adminToken.error}`);
+  if(!S.adminToken.ok) console.warn(`[health-sentinel] ℹ️ Gmail pessoal do admin não conectado — a RESERVA do aviso de pedido e o alerta de pedido pendente deste vigia não saem por esse canal; o canal principal é a conta de notificações (${S.notif.ok?"conectada":"TAMBÉM desconectada"}).`);
 
   // 9) 📋 MONITOR DE PLANILHAS — "parado porque terminou" ≠ "dados envelhecendo"
   S.planilhas = [];
@@ -168,8 +184,11 @@ async function healthSentinelRun(){
         `Rodou: ${S.vipDesync.length} VIP c/ robô parado, ${S.vipExpiring.length} expirando em breve, `+
         `${(S.vipsSemPerfil||[]).length} sem perfil, ${S.finishedIdle.length} p/ reengajar, `+
         `${alertasPlanilha} planilha(s) com alerta, ${notified.length} notificação(ões) enviada(s), `+
-        `token do admin: ${S.adminToken?.ok?'ok':'🚨 QUEBRADO'}`,
-        S.adminToken?.ok?'info':'error');
+        `conta de notificações: ${S.notif?.ok?'ok':'🚨 DESCONECTADA'}`+
+        `${S.adminToken?.ok?'':' · Gmail pessoal do admin: não conectado (reserva)'}`,
+        // v183 LOTE 1: o que torna a linha VERMELHA é o canal que realmente
+        // manda e-mail hoje (mod-notif), não o Gmail pessoal do admin.
+        S.notif?.ok?'info':'error');
     }
   }catch(e){}
 
