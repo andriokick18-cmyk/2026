@@ -44,14 +44,12 @@ document.body.appendChild(topBtn);
 const scrollWatch=()=>{const a=$("#app");const y=(a?a.scrollTop:0)+window.scrollY;topBtn.style.display=y>600?"flex":"none";};
 setInterval(scrollWatch,700);
 
-/* ═══ MELHORIA 4: Autosave de rascunhos em textareas ═══ */
-document.addEventListener("input",e=>{
-  const el=e.target;
-  if(el.tagName==="TEXTAREA" && el.id){ LS("draft_"+el.id, el.value); }
-},true);
-window.addEventListener("load",()=>{ setTimeout(()=>{
-  $$("textarea[id]").forEach(el=>{ const d=LS("draft_"+el.id); if(d && !el.value){ el.value=d; } });
-},1500); });
+/* v198 LOTE 16: a MELHORIA 4 (autosave de QUALQUER textarea em
+   localStorage "draft_<id>") foi REMOVIDA — a chave não tinha escopo de
+   usuário: em aparelho compartilhado, a Conta B abria o editor e encontrava
+   o texto da Conta A (mesma classe de vazamento que o v177-FIX6 fechou no
+   sessionStorage). O rascunho que interessa (editor de perfil) já existe no
+   app.js com escopo por perfil: _peSaveDraftNow/_peLoadDraft. */
 
 /* ═══ MELHORIA 5: Atalhos de teclado ═══ */
 document.addEventListener("keydown",e=>{
@@ -62,13 +60,19 @@ document.addEventListener("keydown",e=>{
   if(e.key==="/"){e.preventDefault();const s=$$("input[type='search'],input[placeholder*='uscar'],input[placeholder*='earch']").find(i=>i.offsetParent);if(s)s.focus();}
   if(e.key.toLowerCase()==="t"){toggleTheme();}
 });
+/* v198 LOTE 16: o tema tinha DUAS verdades — o botão oficial grava
+   localStorage "h2b_theme" e este módulo gravava "hx_theme" (o helper LS
+   prefixa tudo com hx_): trocar o tema pelo atalho "t" e recarregar
+   devolvia o tema antigo. Agora é a MESMA chave, fora do helper. E a
+   aplicação no load saiu: o index.html já aplica o tema no <head>, ANTES
+   do primeiro paint — reaplicar aqui só podia causar piscada. */
 function toggleTheme(){
   const cur=document.documentElement.getAttribute("data-theme");
   const next=cur==="dark"?"light":"dark";
   document.documentElement.setAttribute("data-theme",next);
-  LS("theme",next); T(next==="dark"?"🌙 Modo escuro":"☀️ Modo claro");
+  try{ localStorage.setItem("h2b_theme", next); }catch(e){}
+  T(next==="dark"?"🌙 Modo escuro":"☀️ Modo claro");
 }
-const savedTheme=LS("theme"); if(savedTheme){document.documentElement.setAttribute("data-theme",savedTheme);}
 
 /* ═══ MELHORIA 6: Duplo clique em input de busca limpa o campo ═══ */
 document.addEventListener("dblclick",e=>{
@@ -76,67 +80,26 @@ document.addEventListener("dblclick",e=>{
   if(el.tagName==="INPUT"&&(el.type==="search"||/uscar|earch|iltr/i.test(el.placeholder||""))){el.value="";el.dispatchEvent(new Event("input",{bubbles:true}));T("Busca limpa");}
 });
 
-/* ═══ MELHORIA 7: Persistência da última aba visitada ═══ */
-const _sv = window.sv;
-if(typeof _sv==="function"){ window.sv=function(v,...a){ LS("lastView",v); return _sv(v,...a); }; }
-
-/* ═══ MELHORIA 8: Segurança em links externos ═══ */
-setInterval(()=>{ $$("a[target='_blank']:not([rel])").forEach(a=>a.rel="noopener noreferrer"); },4000);
+/* v198 LOTE 16: MELHORIA 7 ("lastView") e MELHORIA 8 (vigia de
+   target=_blank sem rel) REMOVIDAS. A 7 embrulhava window.sv num wrapper só
+   pra gravar uma chave que NINGUÉM lia. A 8 varria o DOM inteiro a cada 4s,
+   pra sempre, e hoje há ZERO casos: todo link externo do site já nasce com
+   rel="noopener noreferrer" no markup. */
 
 
 /* ═══════════════════════════════════════════════════════════════
-   🛡️ BLINDAGEM VISUAL — ícones e fotos nunca mais quebram
-   Problema real (03/07): CDN de ícones falhou → todos os glifos sumiram;
-   fotos do Google (lh3.googleusercontent) davam 403 sem referrerpolicy.
-   Camadas: 1) detecta fonte de ícones ausente e injeta CDN reserva;
-   2) se ainda falhar, mapeia ícones essenciais para emojis (nunca fica vazio);
-   3) toda <img> ganha no-referrer + retry + avatar de iniciais gerado local.
+   🛡️ BLINDAGEM VISUAL — as fotos nunca mais quebram
+   Problema real (03/07): fotos externas (Google/unavatar) davam 403 sem
+   referrerpolicy e deixavam buraco na tela. Toda <img> ganha no-referrer +
+   1 retry + avatar de iniciais gerado local — o site ainda usa unavatar.io
+   de verdade (logos de empresa na landing).
+   v198 LOTE 16: as CAMADAS 1+2 (detectar fonte de ícones ausente, injetar um
+   CDN reserva e mapear ~60 ícones pra emoji) foram REMOVIDAS — o index.html
+   já faz exatamente isso, melhor e ANTES do primeiro paint, com `html.no-ti`
+   (checa document.fonts e revalida quando a fonte chega). Eram duas verdades
+   sobre a mesma falha, e a daqui ainda ia buscar CSS num 3º domínio.
    ═══════════════════════════════════════════════════════════════ */
 (function(){
-  /* ── CAMADA 1+2: ÍCONES ── */
-  function iconFontLoaded(){
-    try{ return document.fonts && document.fonts.check('1em "tabler-icons"'); }catch(e){ return true; }
-  }
-  const EMOJI_MAP = {
-    "search":"🔍","send":"📤","mail":"✉️","mail-opened":"📬","user":"👤","users":"👥",
-    "settings":"⚙️","home":"🏠","file-cv":"📄","file-text":"📄","file-type-pdf":"📄",
-    "rocket":"🚀","trophy":"🏆","bell":"🔔","gift":"🎁","diamond":"💎","crown":"👑",
-    "check":"✔️","x":"✖️","trash":"🗑️","refresh":"🔄","chevron-right":"›","chevron-left":"‹",
-    "chevron-down":"⌄","chevron-up":"⌃","plus":"＋","minus":"−","alert-circle":"⚠️",
-    "info-circle":"ℹ️","brand-google":"🔵","brand-whatsapp":"💬","calendar":"📅",
-    "clock":"🕐","map-pin":"📍","building":"🏢","currency-dollar":"💲","briefcase":"💼",
-    "star":"⭐","heart":"❤️","eye":"👁️","download":"⬇️","upload":"⬆️","link":"🔗",
-    "lock":"🔒","lock-open":"🔓","logout":"🚪","login":"🔑","language":"🌐",
-    "robot":"🤖","chart-bar":"📊","list":"📋","edit":"✏️","pencil":"✏️","copy":"📋",
-    "share":"📲","phone":"📞","world":"🌍","flag":"🚩","filter":"🧮","menu-2":"☰",
-    "dots":"⋯","arrow-right":"→","arrow-left":"←","circle-check":"✅","player-play":"▶️",
-  };
-  let fallbackCssInjected=false, emojiMode=false;
-  function injectFallbackCdn(){
-    if(fallbackCssInjected)return; fallbackCssInjected=true;
-    const l=document.createElement("link"); l.rel="stylesheet";
-    l.href="https://unpkg.com/@tabler/icons-webfont@3.29.0/dist/tabler-icons.min.css";
-    document.head.appendChild(l);
-    console.warn("[visual] CDN primário de ícones falhou — carregando reserva (unpkg)");
-    setTimeout(()=>{ if(!iconFontLoaded()) enableEmojiIcons(); }, 4000);
-  }
-  function enableEmojiIcons(){
-    if(emojiMode)return; emojiMode=true;
-    console.warn("[visual] Fonte de ícones indisponível — ativando modo emoji (nunca fica vazio)");
-    const rules=Object.entries(EMOJI_MAP).map(([k,v])=>`.ti-${k}::before{content:"${v}" !important;font-family:inherit !important}`).join("\n");
-    const st=document.createElement("style");
-    st.textContent=`.ti::before{font-family:inherit}\n${rules}\n.ti:not([class*="ti-"])::before{content:"•"}`;
-    document.head.appendChild(st);
-  }
-  function checkIcons(){
-    if(iconFontLoaded())return;
-    injectFallbackCdn();
-  }
-  if(document.readyState==="complete") setTimeout(checkIcons,2500);
-  else window.addEventListener("load",()=>setTimeout(checkIcons,2500));
-  // Re-checa quando volta online (CDN pode ter falhado por rede)
-  window.addEventListener("online",()=>setTimeout(checkIcons,1500));
-
   /* ── CAMADA 3: FOTOS/AVATARES ── */
   function initialsAvatar(seed){
     const ch=(String(seed||"?").trim()[0]||"?").toUpperCase();
@@ -181,7 +144,7 @@ setInterval(()=>{ $$("a[target='_blank']:not([rel])").forEach(a=>a.rel="noopener
     img.style.objectFit="cover";
   },true); // capture: pega erros de qualquer img, mesmo criadas depois
   window.hxInitialsAvatar=initialsAvatar;
-  console.log("[visual] 🛡️ Blindagem visual ativa (ícones 3 camadas + avatares com fallback)");
+  console.log("[visual] 🛡️ Blindagem de fotos ativa (no-referrer + retry + avatar de iniciais)");
 })();
 
 console.log("[H2B Extras] Camada de melhorias do usuário carregada ✅");

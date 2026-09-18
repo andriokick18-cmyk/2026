@@ -12204,10 +12204,10 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
     return json(res,200,{ok:true,sent:[...sentSet],queued});
   }
 
-  // ── TEMPLATES ─────────────────────────────────────────
-  if(pathname==="/api/templates"&&req.method==="GET"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});const p=getUser(s.user_email)||{};return json(res,200,{templates:p.templates||[]});}
-  if(pathname==="/api/templates/save"&&req.method==="POST"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});try{const d=JSON.parse(await readBody(req));if(!d.name||!d.body)return json(res,400,{error:"name e body obrigatórios"});const p=getUser(s.user_email)||{};let tpls=p.templates||[];const idx=tpls.findIndex(t=>t.id===d.id);const tpl={id:d.id||crypto.randomUUID(),name:String(d.name).slice(0,80),subject:String(d.subject||"").slice(0,200),body:String(d.body).slice(0,5000),category:String(d.category||"general").slice(0,40),updatedAt:new Date().toISOString(),createdAt:d.createdAt||new Date().toISOString()};if(idx>=0)tpls[idx]=tpl;else{if(tpls.length>=50)return json(res,429,{error:"Limite de 50 templates atingido"});tpls.unshift(tpl);}setUser(s.user_email,{templates:tpls});return json(res,200,{ok:true,template:tpl});}catch(e){return json(res,500,{error:e.message});}}
-  if(pathname==="/api/templates/delete"&&req.method==="POST"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});try{const d=JSON.parse(await readBody(req));if(!d.id)return json(res,400,{error:"id obrigatório"});const p=getUser(s.user_email)||{};setUser(s.user_email,{templates:(p.templates||[]).filter(t=>t.id!==d.id)});return json(res,200,{ok:true});}catch(e){return json(res,500,{error:e.message});}}
+  // v198 LOTE 16: as 3 rotas /api/templates* foram REMOVIDAS junto com o
+  // subsistema de "Modelos de e-mail" do front (morto desde o v22 — "nada de
+  // texto padrão"): guardavam até 50 modelos por usuário dentro do DB_USERS,
+  // sem nenhuma tela que os criasse, lesse ou apagasse.
 
   // ── PROFILES ──────────────────────────────────────────
   if(pathname==="/api/profiles"&&req.method==="GET"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});const p=getUser(s.user_email)||{};return json(res,200,{profiles:p.profiles||[]});}

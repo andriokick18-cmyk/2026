@@ -83,7 +83,7 @@ let sJobs=[],sTotal=0,sTrueTotal=0,sSkip=0,sDone=false,sLoading=false;
 let sCache={};
 let fQ="",fSort="random"; // v173: todo o resto dos filtros vive em VF.st (bloco "FILTROS DE VAGAS")
 let autoSelectedProfileId=null; // perfil/currículo escolhido no Passo 3
-let curView="jobs",histTab="all";
+let curView="jobs"; // (v198 LOTE 16: o global `histTab` era escrito e nunca lido — quem manda é _histTab)
 let autoInterval=null;
 let _autoCountdown=null;
 let autoResIdx=null,autoCovIdx=null;
@@ -320,10 +320,6 @@ function openAuthGate(step,intent){
   document.documentElement.classList.add("ag-lock"); // trava a rolagem da página atrás
   if(intent){_agIntent=intent;gaEvent(intent==="signup"?"sign_up_intent":"login_intent",{method:"password"});}
   agRender(step||"choice");
-}
-function closeAuthGate(){
-  const ov=g("#auth-gate"); if(ov)ov.classList.remove("open");
-  document.documentElement.classList.remove("ag-lock");
 }
 function agBack(){ agRender("choice"); }
 function agRender(step,data){
@@ -629,7 +625,6 @@ function agSubmitSignup(){
   };
   showTerms(doSubmit);
 }
-function renderOnboardChecklist(){/* removido */}
 
 // Chamada a cada vez que perfis ou docs mudarem — garante que o checklist some imediatamente
 function refreshOnboardChecklist(){/* removido */}
@@ -705,11 +700,33 @@ function dismissAdminMsg(){g("#admin-msg-bar")?.classList.add("gone");}
 // ═══════════════════════════════════════════
 //  HEADER / SIDEBAR
 // ═══════════════════════════════════════════
-function getPlanLabel(p){return{free:"Free",vip:"⭐ VIP",pro:"🤖 Pro",vipro:"⭐🤖 VIPro",doublepro:"💎 DoublePro"}[p]||"Free";}
-function getPlanClass(p){return{free:"tgr",vip:"tb",pro:"tp",vipro:"tb",doublepro:"tb"}[p]||"tgr";}
 
 // ── Dias restantes a partir de um timestamp ──────
 function daysLeft(ts){if(!ts)return-1;const d=Math.ceil((ts-Date.now())/86400000);return Math.max(0,d);}
+
+// 🏷️ v198 LOTE 16 — NOME DE PLANO: UMA CONSTANTE SÓ.
+// Havia 8 grafias divergentes espalhadas ("⭐ VIP"/"⭐VIP"/"VIP Manual",
+// "🤖 VIPro"/"⭐Pro"/"VIPro"...). PLAN_NAMES só vale onde o rótulo se refere
+// a um PEDIDO/plano COMPRADO (o que a pessoa escolheu pagar) — nunca pra
+// dizer o que a conta pode fazer HOJE: isso é planLabelAtivo/planBadgeHTML.
+const PLAN_NAMES={vip:"⭐ VIP",vipro:"🤖 VIPro",doublepro:"💎 DoublePro"};
+const planNomePedido=k=>PLAN_NAMES[k]||String(k||"").toUpperCase()||"?";
+
+// 🏷️ v198 LOTE 16 — rótulo do que está ATIVO AGORA, derivado dos DOIS
+// relógios (vip.manualExpires/autoExpires), nunca de um mapa por nome de
+// plano. É a mesma armadilha do v177-FIX8: getPlan() devolve "vipro" pra quem
+// só tem o automático, então o header mostrava "🤖 VIPro" pra uma conta com
+// 0 manuais/dia. Aqui, quem só tem o manual é "⭐ VIP", quem só tem o robô é
+// "🤖 Pro", quem tem os dois é "⭐🤖 VIPro" (ou 💎 DoublePro, se for o caso) e
+// quem não tem nada é "Grátis".
+function planLabelAtivo(){
+  const v=U.vip,now=Date.now();
+  const m=!!(v?.manualExpires&&v.manualExpires>now);
+  const a=!!(v?.autoExpires&&v.autoExpires>now);
+  if(!m&&!a)return"Grátis";
+  if(m&&a)return String(U.plan||"")==="doublepro"?PLAN_NAMES.doublepro:"⭐🤖 VIPro";
+  return m?"⭐ VIP":"🤖 Pro";
+}
 
 // ── Gera HTML do badge com dias restantes ────────
 function planBadgeHTML(){
@@ -818,28 +835,23 @@ function renderHdr(){
   const plansBtn=g("#hdr-plans-btn");
   if(plansBtn){
     plansBtn.style.display="flex";
-    if(U.plan&&U.plan!=="free"){
-      const planNames={vip:"⭐ VIP",vipro:"🤖 VIPro",doublepro:"💎 DoublePro"};
-      const label=planNames[U.plan]||U.plan.toUpperCase();
-      g("#hdr-plans-label").textContent=label;
+    // v198 LOTE 16: o botão do header dizia o NOME do plano (mesma armadilha
+    // do v177-FIX8) — agora diz o que está ATIVO de verdade nos 2 relógios.
+    const _lblAtivo=planLabelAtivo();
+    if(_lblAtivo!=="Grátis"){
+      g("#hdr-plans-label").textContent=_lblAtivo;
       plansBtn.style.background="linear-gradient(135deg,#059669,#10b981)";
     } else {
       g("#hdr-plans-label").textContent="💎 Planos";
       plansBtn.style.background="linear-gradient(135deg,#4f46e5,#7c3aed)";
     }
   }
-  updateLimChip();
 }
-function updateLimChip(){
-  const c=g("#hdr-lim");if(!c)return;
-  if(U.autoJob?.active){c.className="lchip lc-a";c.innerHTML="🤖 Auto <strong>ON</strong>";}
-  else if(U.manualRemaining===0){c.className="lchip lc-x";c.innerHTML="🔒 Limite atingido";}
-  else if(U.manualRemaining<=3){c.className="lchip lc-w";c.innerHTML=`⚠️ ${U.manualRemaining} restantes`;}
-  else{
-    const planLabel={free:"Free",vip:"⭐VIP",pro:"🤖Pro",vipro:"⭐Pro",doublepro:"💎DoublePro"}[U.plan]||"Free";
-    c.className="lchip lc-ok";c.innerHTML=`${planLabel} · ${U.manualRemaining} envios`;
-  }
-}
+// v198 LOTE 16: updateLimChip() REMOVIDA (e as 10 chamadas junto). Ela
+// pintava um chip #hdr-lim que não existe no HTML há tempos — g() é null-safe,
+// então nunca dava erro: só rodava 10x por sessão pra nada. De quebra, tinha
+// o 8º mapa divergente de nome de plano ("⭐Pro" pro vipro), e rotulava pelo
+// NOME do plano, a mesma armadilha que o v177-FIX8 corrigiu no Perfil.
 function updateAutoDot(on){
   // v171: os alvos de #bnd-auto/#bn-auto/#sb-auto-dot (botão central
   // "Automático" elevado no bottom nav antigo + um dot decorativo na
@@ -918,7 +930,7 @@ function sv(v,...args){
   // NUNCA podia ficar "active" — forçar isso agora apagaria o destaque do
   // item certo assim que o loop abaixo o marcasse ativo).
   VIEWS.forEach(id=>{const ve=g("#v-"+id);if(ve)ve.classList.toggle("gone",id!==v);const si=g("#si-"+id);if(si)si.classList.toggle("active",id===v);const bn=g("#bn-"+id);if(bn)bn.classList.toggle("active",id===v);});const bnMore=g("#bn-more");if(bnMore)bnMore.classList.toggle("active",BN_MORE_VIEWS.includes(v));
-  if(v==="jobs"){setTimeout(loadLugares,400);updateManualSendGate();}if(v==="plans"){try{loadPlanos();}catch(e){}}if(v==="profile"){loadProfile();loadTplView();setTimeout(()=>{_loadSoundPref();renderSoundSelector();},100);}
+  if(v==="jobs"){setTimeout(loadLugares,400);updateManualSendGate();}if(v==="plans"){try{loadPlanos();}catch(e){}}if(v==="profile"){loadProfile();loadProfilesView();setTimeout(()=>{_loadSoundPref();renderSoundSelector();},100);}
 
   if(v==="auto"){loadAutoView();if(U.autoJob?.active)startAutoPolling();}
   if(v==="logs"){logSkip=0;logTotal=0;logDone=false;loadLogs();}
@@ -1781,7 +1793,7 @@ function renderAutoProfileCards(){
     const pdf=p.pdfName?esc(p.pdfName):(p.resumeIdx!=null?"currículo vinculado":`<span style="color:var(--red)">sem currículo!</span>`);
     return `<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:2px solid ${sel?"var(--purple)":"var(--border2)"};border-radius:10px;cursor:${_mismatch?"not-allowed":"pointer"};background:${sel?"var(--purplel)":"var(--sf2)"};transition:all .15s;${_mismatch?"opacity:.45":""}" ${_mismatch?`title="Essas vagas são ${srcVt==="h2a"?"H-2A":"H-2B"} — o sistema usa o perfil ${srcVt==="h2a"?"H-2A":"H-2B"} automaticamente"`:`onclick="selectAutoProfile('${p.id}')"`}>
       <input type="radio" name="auto-prf" value="${p.id}" ${sel?"checked":""} ${_mismatch?"disabled":""} style="accent-color:var(--purple);pointer-events:none">
-      <span style="font-size:20px">${p.icon||"🎯"}</span>
+      <span style="font-size:20px">${esc(p.icon||"🎯")}</span>
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}${vtTag}${p.isFavorite?" ⭐":""}</div>
         <div style="font-size:10.5px;color:var(--t3);margin-top:1px">📄 ${pdf} · ${nSubj} assunto(s) · ${nBody} corpo(s)${!hasPdf?"":""}</div>
@@ -2579,7 +2591,7 @@ function buildModalProfileSlots(j){
     ?`<div style="font-size:11px;color:var(--amber);background:var(--amberl);border:1px solid var(--amberb);border-radius:8px;padding:7px 10px;margin-bottom:6px">⚠️ Esta vaga é <strong>${jvt==="h2a"?"H-2A":"H-2B"}</strong> e você ainda não tem um perfil ${jvt==="h2a"?"H-2A":"H-2B"}. Vai usar o perfil existente — ou <span style="color:var(--blue);cursor:pointer;font-weight:700" onclick="closeModal();sv('profile');setTimeout(()=>{switchProfileTab('profiles');setTimeout(()=>openProfileEditor(null,'${jvt}'),200)},100)">crie o perfil ${jvt==="h2a"?"H-2A":"H-2B"} agora →</span></div>`:"";
   el.innerHTML=_missingTypeWarn+profiles.map(p=>{
     const sel=p.id===(auto&&auto.id);
-    const badge=p.icon||"📄";
+    const badge=esc(p.icon||"📄");
     const vtTag=(p.visaType||"h2b")==="h2a"?'<span style="font-size:9px;font-weight:800;padding:1px 6px;border-radius:5px;background:rgba(16,185,129,.15);color:#059669;margin-left:4px">H-2A</span>':'<span style="font-size:9px;font-weight:800;padding:1px 6px;border-radius:5px;background:rgba(37,99,235,.12);color:#2563eb;margin-left:4px">H-2B</span>';
     const cats=(p.categories||[]).slice(0,2).join(", ")||"Todas as vagas";
     const nSubj=(p.subjects||[p.subject]).filter(Boolean).length;
@@ -2798,7 +2810,7 @@ async function doSend(){
     }
     g("#suc-sub").textContent=`Enviado para ${to}`;g("#suc-rem").textContent=`Restam ${U.manualRemaining} envios manuais hoje`;g("#success-overlay").style.display="flex";
     HIST.unshift({appId:d.appId,jobId:j?.id,job:j?.title||subj,company:j?.company||"",to,date:new Date().toLocaleString("pt-BR"),type:"manual",sheetSource:(tab!=="seasonal"?tab:undefined),caseNum:j?.caseNum||j?.id||"",threadId:d.threadId,msgId:d.messageId,jobSnapshot:{title:j?.title,company:j?.company,city:j?.city,state:j?.state,wage:j?.wage,visa:j?.visa||j?.visaType,start:j?.start,end:j?.end,desc:j?.desc,sourceEmail:to}});
-    updHistBadge();updateLimChip();
+    updHistBadge();
     if(curView==="home")renderHome(); // FIX: atualiza stats da home após envio
   }catch(e){g("#m-sending").style.display="none";g("#m-send").disabled=false;warn(e.message);}
 }
@@ -3128,14 +3140,12 @@ async function saveProfile(){
 // prontos, o assunto/corpo "de fábrica" e as sugestões de assunto foram
 // removidos — candidatura é escrita pelo próprio usuário, sempre. As
 // constantes ficam vazias pra não quebrar quem as referencia.
-const DEFAULT_SUBJECT="";
-const DEFAULT_BODY="";
-const SUBJ_SUGGESTIONS=[];
-const BUILTIN_TEMPLATES=[];
-
-let UTPL=[],UPROFILES=[],tplCurId=null,tplCurBuiltin=false,
-    tplCatFilter="all",pickerCatFilter="all",
-    tplPickerTarget="manual",editingProfileId=null;
+// v198 LOTE 16: DEFAULT_SUBJECT/DEFAULT_BODY/SUBJ_SUGGESTIONS/BUILTIN_TEMPLATES
+// eram os restos VAZIOS do v22 ("NENHUM texto padrão") e o estado do editor de
+// modelos. Nada disso tinha tela: o subsistema inteiro de "Modelos de e-mail"
+// foi REMOVIDO neste lote — zero elementos #tpl-* no HTML, zero chamadores.
+// fill() (logo abaixo) FICA: é o motor de variáveis do envio manual.
+let UPROFILES=[],editingProfileId=null;
 
 // v167 (bug real, auditoria 08/09/2026): {categoria} era oferecida como botão
 // clicável no editor de perfil (index.html, "① Assuntos"/"④ Corpos") mas
@@ -3161,238 +3171,17 @@ const fill=(tpl,j)=>(tpl||"")
   .replace(/{inicio}/g,  j?.start||j?.beginDate||"")
   .replace(/{start}/g,   j?.start||j?.beginDate||"");
 
-async function loadTplView(){
+// v198 LOTE 16: o nome antigo dizia "view de templates" e enganava — ela é a
+// ÚNICA coisa que renderiza a lista de perfis ao abrir o Perfil. O fetch de
+// /api/templates (subsistema inteiro morto: BUILTIN_TEMPLATES=[], nenhum
+// elemento #tpl-* no HTML) custava uma requisição a CADA abertura do Perfil,
+// pra encher uma lista que ninguém via.
+async function loadProfilesView(){
   try{
-    const [tr,pr]=await Promise.all([
-      fetch("/api/templates",{credentials:"include"}).then(r=>r.json()),
-      fetch("/api/profiles",{credentials:"include"}).then(r=>r.json()),
-    ]);
-    UTPL=tr.templates||[];
+    const pr=await fetch("/api/profiles",{credentials:"include"}).then(r=>r.json());
     UPROFILES=pr.profiles||[];
   }catch{}
-  renderTplList();
   renderProfiles();
-  _buildSubjSugg();
-}
-function loadTpl(){loadTplView();}
-
-function switchTplTab(tab){
-  // Legacy function - tpl view removed, perfis now in profile tab
-  if(tab==="perfis")sv("profile");
-  const m=g("#tpl-tab-modelos"),p=g("#tpl-tab-perfis");
-  if(m)m.classList.toggle("gone",tab!=="modelos");
-  if(p)p.classList.toggle("gone",tab!=="perfis");
-  g("#tab-modelos").classList.toggle("on",tab==="modelos");
-  g("#tab-perfis").classList.toggle("on",tab==="perfis");
-}
-
-function tplNewAction(){
-  tplCurId=null;tplCurBuiltin=false;
-  g("#tpl-editor-title").textContent="Novo Modelo";
-  g("#tpl-name").value="";g("#tpl-subj").value=DEFAULT_SUBJECT;g("#tpl-body").value=DEFAULT_BODY;
-  g("#tpl-cat").value="general";
-  g("#tpl-del-btn").classList.add("gone");
-  g("#tpl-editor").classList.remove("gone");
-  g("#tpl-editor").scrollIntoView({behavior:"smooth",block:"start"});
-}
-
-function setTplCat(cat){
-  tplCatFilter=cat;
-  document.querySelectorAll("[data-tcat]").forEach(b=>b.classList.toggle("on",b.dataset.tcat===cat));
-  renderTplList();
-}
-
-function renderTplList(){
-  const q=(g("#tpl-search")?.value||"").toLowerCase();
-  const all=[...BUILTIN_TEMPLATES.map(t=>({...t,_builtin:true})),...UTPL.map(t=>({...t,_builtin:false}))];
-  const filtered=all.filter(t=>{
-    if(tplCatFilter!=="all"&&t.category!==tplCatFilter)return false;
-    if(q&&!t.name.toLowerCase().includes(q)&&!t.body.toLowerCase().includes(q))return false;
-    return true;
-  });
-  const list=g("#tpl-list");if(!list)return;
-  if(!filtered.length){list.innerHTML='<div class="empty-state"><i class="ti ti-template"></i><p>Nenhum modelo encontrado</p></div>';return;}
-  const catIcons={general:"✉️",hospitality:"🏨",construction:"🔨",landscape:"🌿",cleaning:"🧹",restaurant:"🍽️",warehouse:"📦",farm:"🌾",other:"📝"};
-  list.innerHTML=filtered.map(t=>`
-    <div class="tpl-card${t.id===tplCurId?" sel":""}${t._builtin?" builtin":""}" onclick="selectTpl('${t.id}',${t._builtin})">
-      <div class="tpl-card-icon">${catIcons[t.category]||"✉️"}</div>
-      <div style="flex:1;min-width:0">
-        <div class="tpl-card-name">${esc(t.name)}</div>
-        <div class="tpl-card-sub">${esc((t.body||"").slice(0,60))}…</div>
-      </div>
-      ${t._builtin?'<span class="tpl-tag">built-in</span>':t.id===CFG._defaultTplId?'<span class="tpl-tag default">padrão</span>':''}
-    </div>`).join("");
-}
-
-function selectTpl(id,isBuiltin){
-  const t=isBuiltin?BUILTIN_TEMPLATES.find(x=>x.id===id):UTPL.find(x=>x.id===id);
-  if(!t)return;
-  tplCurId=id;tplCurBuiltin=isBuiltin;
-  g("#tpl-editor-title").textContent=isBuiltin?"Modelo Built-in (somente leitura)":"Editar Modelo";
-  g("#tpl-name").value=t.name;
-  g("#tpl-subj").value=t.subject||"";
-  g("#tpl-body").value=t.body||"";
-  g("#tpl-cat").value=t.category||"general";
-  g("#tpl-del-btn").classList.toggle("gone",isBuiltin);
-  g("#tpl-name").readOnly=isBuiltin;
-  g("#tpl-body").readOnly=isBuiltin;
-  g("#tpl-subj").readOnly=isBuiltin;
-  g("#tpl-editor").classList.remove("gone");
-  renderTplList();
-  updateTplPreview();
-  g("#tpl-editor").scrollIntoView({behavior:"smooth",block:"start"});
-}
-
-function closeTplEditor(){g("#tpl-editor").classList.add("gone");tplCurId=null;tplCurBuiltin=false;renderTplList();}
-
-function insertTplVar(v){
-  const f=g("#tpl-body");if(!f)return;
-  const s=f.selectionStart,e=f.selectionEnd;
-  f.value=f.value.slice(0,s)+v+f.value.slice(e);
-  f.selectionStart=f.selectionEnd=s+v.length;f.focus();
-  updateTplPreview();
-}
-function insertVar(v){insertTplVar(v);}
-
-function toggleTplPreview(){
-  const box=g("#tpl-preview-box");if(!box)return;
-  const open=box.classList.toggle("gone");
-  g("#tpl-prev-btn").textContent=open?"Preview ▾":"Preview ▴";
-  if(!open)updateTplPreview();
-}
-
-function updateTplPreview(){
-  const box=g("#tpl-preview-box");if(!box||box.classList.contains("gone"))return;
-  const body=g("#tpl-body")?.value||"";
-  box.textContent=fill(body,{title:"{vaga}",company:"{empresa}"});
-}
-
-function _buildSubjSugg(){
-  const box=g("#tpl-subj-sugg");if(!box)return;
-  box.innerHTML=SUBJ_SUGGESTIONS.map(s=>`<span class="tpl-var" style="cursor:pointer" onclick="g('#tpl-subj').value='${s.replace(/'/g,"\\'")}'">${esc(s)}</span>`).join("");
-}
-
-function toggleSubjSugg(){
-  const box=g("#tpl-subj-sugg");if(!box)return;
-  box.classList.toggle("gone");
-  box.style.display=box.classList.contains("gone")?"none":"flex";
-}
-
-async function saveEditedTpl(){
-  if(tplCurBuiltin){dupEditedTpl();return;}
-  const name=g("#tpl-name")?.value?.trim();
-  const body=g("#tpl-body")?.value?.trim();
-  if(!name||!body){toast("Nome e mensagem obrigatórios","r");return;}
-  const tpl={id:tplCurId||undefined,name,subject:g("#tpl-subj")?.value||"",body,category:g("#tpl-cat")?.value||"general"};
-  try{
-    const r=await fetch("/api/templates/save",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(tpl)});
-    const d=await r.json();if(!d.ok)throw new Error(d.error);
-    tplCurId=d.template.id;tplCurBuiltin=false;
-    const idx=UTPL.findIndex(t=>t.id===d.template.id);
-    if(idx>=0)UTPL[idx]=d.template;else UTPL.unshift(d.template);
-    renderTplList();toast("Modelo salvo ✓","g");
-  }catch(e){toast("Erro: "+e.message,"r");}
-}
-
-// v18-SEC: setTplAsDefault() removida — não tinha nenhum botão chamando-a
-// (código morto/órfão), mas gravava direto em /api/settings SEM passar pela
-// validação de mínimo-3 do /api/profiles/save, um caminho não vigiado pra
-// definir um assunto/corpo padrão genérico pra conta inteira.
-
-async function dupEditedTpl(){
-  const name=(g("#tpl-name")?.value||"Cópia")+" (cópia)";
-  const body=g("#tpl-body")?.value||"";
-  const subj=g("#tpl-subj")?.value||"";
-  const cat=g("#tpl-cat")?.value||"general";
-  try{
-    const r=await fetch("/api/templates/save",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,subject:subj,body,category:cat})});
-    const d=await r.json();if(!d.ok)throw new Error(d.error);
-    UTPL.unshift(d.template);tplCurId=d.template.id;tplCurBuiltin=false;
-    renderTplList();toast("Duplicado ✓","g");
-  }catch(e){toast("Erro: "+e.message,"r");}
-}
-
-async function delEditedTpl(){
-  if(!tplCurId||tplCurBuiltin)return;
-  if(!confirm("Excluir este modelo?"))return;
-  try{
-    await fetch("/api/templates/delete",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:tplCurId})});
-    UTPL=UTPL.filter(t=>t.id!==tplCurId);
-    closeTplEditor();toast("Excluído","g");
-  }catch(e){toast("Erro: "+e.message,"r");}
-}
-
-function applyTplTo(target,tpl){
-  const t=tpl||(tplCurBuiltin?BUILTIN_TEMPLATES.find(x=>x.id===tplCurId):UTPL.find(x=>x.id===tplCurId));
-  if(!t){toast("Selecione um modelo primeiro","r");return;}
-  if(target==="manual"){
-    const subj=g("#m-subj"),body=g("#m-body");
-    if(subj)subj.value=fill(t.subject||DEFAULT_SUBJECT,_currentModalJob);
-    if(body)body.value=fill(t.body,_currentModalJob);
-    closeModal();
-  }else if(target==="auto"){
-    const body=g("#af-body");
-    if(body)body.value=fill(t.body,null);
-    toast("Modelo aplicado ✓","g");
-  }
-}
-
-// ── TEMPLATE PICKER ─────────────────────────────────
-function openTplPickerFor(target){
-  tplPickerTarget=target;
-  pickerCatFilter="all";
-  document.querySelectorAll("[data-pcat]").forEach(b=>b.classList.toggle("on",b.dataset.pcat==="all"));
-  if(g("#picker-search"))g("#picker-search").value="";
-  renderPickerList();
-  g("#tpl-picker-overlay").classList.remove("gone");
-}
-function closeTplPicker(){g("#tpl-picker-overlay").classList.add("gone");}
-
-function setPickerCat(cat){
-  pickerCatFilter=cat;
-  document.querySelectorAll("[data-pcat]").forEach(b=>b.classList.toggle("on",b.dataset.pcat===cat));
-  renderPickerList();
-}
-
-function renderPickerList(){
-  const q=(g("#picker-search")?.value||"").toLowerCase();
-  const all=[...BUILTIN_TEMPLATES.map(t=>({...t,_builtin:true})),...UTPL.map(t=>({...t,_builtin:false}))];
-  const filtered=all.filter(t=>{
-    if(pickerCatFilter!=="all"&&t.category!==pickerCatFilter)return false;
-    if(q&&!t.name.toLowerCase().includes(q))return false;
-    return true;
-  });
-  const list=g("#picker-list");if(!list)return;
-  if(!filtered.length){list.innerHTML='<div class="empty-state" style="padding:24px"><i class="ti ti-template"></i><p>Nenhum modelo</p></div>';return;}
-  list.innerHTML=filtered.map(t=>`
-    <div class="tpl-card${t._builtin?" builtin":""}" onclick="pickTemplate('${t.id}',${t._builtin})" style="cursor:pointer">
-      <div style="flex:1;min-width:0">
-        <div class="tpl-card-name">${esc(t.name)}</div>
-        <div class="tpl-card-sub">${esc((t.subject||"").slice(0,60))}</div>
-      </div>
-      ${t._builtin?'<span class="tpl-tag">built-in</span>':''}
-    </div>`).join("");
-}
-
-function pickTemplate(id,isBuiltin){
-  const t=isBuiltin?BUILTIN_TEMPLATES.find(x=>x.id===id):UTPL.find(x=>x.id===id);
-  if(!t)return;
-  closeTplPicker();
-  if(tplPickerTarget==="manual"){
-    const subj=g("#m-subj"),body=g("#m-body");
-    if(subj)subj.value=fill(t.subject||DEFAULT_SUBJECT,_currentModalJob);
-    if(body)body.value=fill(t.body,_currentModalJob);
-  }else if(tplPickerTarget==="auto"){
-    const body=g("#af-body");
-    if(body)body.value=fill(t.body,null);
-    toast("Modelo aplicado ✓","g");
-  }else if(tplPickerTarget==="profile"){
-    // Adiciona ao editor de perfil (peBodies/peSubjects)
-    if(peBodies.length>=10){toast("Máximo de 10 corpos","r");return;}
-    peBodies.push(t.body||"");peRenderBodies();
-    if(peSubjects.length===0&&t.subject){peSubjects.push(t.subject);peRenderSubjects();}
-    toast("Modelo adicionado ao perfil ✓","g");
-  }
 }
 
 // v18-FIX: openProfilePickerFor()/applyProfileQuick() removidas — eram um
@@ -3533,8 +3322,6 @@ async function readProfileCoverFile(f){
 
 
 
-// Tipos de perfil foram REMOVIDOS — todo perfil é normal. Stub mantido por segurança.
-function peOnTypeChange(){}
 
 // U4 (11/07): quando o servidor está reiniciando (deploy do Render), a resposta
 // vem como página HTML (502) e o JSON.parse explodia na cara do usuário com
@@ -3641,7 +3428,7 @@ function _profileCardHTML(p){
   const vtTag=vt==="h2a"?'<span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:6px;background:rgba(16,185,129,.15);color:#059669;margin-left:6px">🌾 H-2A</span>':'<span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:6px;background:rgba(37,99,235,.12);color:#2563eb;margin-left:6px">🏨 H-2B</span>';
   return `<div class="profile-card">
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">
-        <div style="width:38px;height:38px;border-radius:10px;background:var(--sf2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${p.icon||"🎯"}</div>
+        <div style="width:38px;height:38px;border-radius:10px;background:var(--sf2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${esc(p.icon||"🎯")}</div>
         <div style="flex:1;min-width:0">
           <span style="font-size:14px;font-weight:800">${esc(p.name)}</span>${vtTag}
           ${p.desc?`<div style="font-size:11px;color:var(--t2);margin-top:2px">${esc(p.desc)}</div>`:""}
@@ -4163,21 +3950,12 @@ async function deleteProfile(id){
 // existente, então "duplicar" só renomeava o próprio perfil da pessoa e
 // mostrava um falso "Perfil duplicado ✓". Não existe mais esse conceito.
 
-async function toggleProfileStatus(id){
-  const p=UPROFILES.find(x=>x.id===id);if(!p)return;
-  try{
-    // v21: endpoint dedicado — o save exigia mínimo de 3 assuntos/corpos e
-    // impedia até DESATIVAR um perfil legado incompleto
-    const r=await fetch("/api/profiles/toggle",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,active:p.active===false})});
-    const d=await jsonSafe(r);if(!d.ok)throw new Error(d.error);
-    const idx=UPROFILES.findIndex(x=>x.id===d.profile.id);
-    if(idx>=0)UPROFILES[idx]=d.profile;U.profiles=UPROFILES;
-    renderProfiles();toast(d.profile.active?"Perfil ativado ✓":"Perfil desativado","g");
-  }catch(e){toast("Erro: "+e.message,"r");}
-}
+// v198 LOTE 16: toggleProfileStatus() removida — nenhum botão a chamava
+// (o editor de perfil salva o `active` junto com o resto). A ROTA
+// /api/profiles/toggle FICA: continua válida por API e é coberta pelo smoke.
 
-// Intercepta quando o picker de templates seleciona para usar no perfil
-const _origPickTemplate=typeof pickTemplate==="function"?pickTemplate:null;
+// v198 LOTE 16: _origPickTemplate guardava o picker de templates pra
+// "interceptar" — ele nunca era lido de volta, e o picker inteiro morreu.
 // v18-FIX: pickTemplateForProfile() removida — era outro caminho (órfão, sem
 // botão chamando) que despejava um corpo de e-mail ENLATADO direto no perfil,
 // o oposto do que foi pedido: perfil só com texto escrito pela própria pessoa.
@@ -4777,7 +4555,7 @@ function openPreflightModal(){
       const nBody=(selP.emailBodies||[selP.body]).filter(Boolean).length;
       const pdf=selP.pdfName?esc(selP.pdfName):(selP.resumeIdx!=null?"currículo vinculado":`<span style="color:var(--red)">⚠️ sem currículo</span>`);
       profilesList.innerHTML=`<div style="display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid #bfdbfe;border-radius:10px;padding:10px 12px">
-        <span style="font-size:22px">${selP.icon||"🎯"}</span>
+        <span style="font-size:22px">${esc(selP.icon||"🎯")}</span>
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:800;color:#1e3a8a">${esc(selP.name)}${selP.isFavorite?" ⭐":""}</div>
           <div style="font-size:11px;color:#374151;margin-top:1px">📄 ${pdf} · ${nSubj} assunto(s) · ${nBody} corpo(s)</div>
@@ -4984,7 +4762,7 @@ async function startAuto(overrideStartH, overrideEndH, _mode="now"){
       _autoQueueIds=new Set();
       try{const _as=await fetch("/api/auto/status",{credentials:"include"}).then(r=>r.json());_autoQueueIds=new Set(_as.autoQueueIds||[]);}catch{}
       _syncAutoQueueVisibility();
-      updateLimChip();updateAutoDot(true);updateAutoUI();startAutoPolling();
+      updateAutoDot(true);updateAutoUI();startAutoPolling();
       setTimeout(()=>{const lv=g("#auto-live-section");const wz=g("#auto-wizard");if(lv)lv.style.display="block";if(wz)wz.style.display="none";if(typeof loadAutoLogs==="function")loadAutoLogs();},100);
       toast(`🔧 Seu robô estava travado (parado sem avisar) — reiniciei ele agora. ${data.queueSize} vaga(s) na fila.`,"g");
       btn.disabled=false;
@@ -5003,7 +4781,7 @@ async function startAuto(overrideStartH, overrideEndH, _mode="now"){
     loadEmpregadoresBloqueados(); // v27: fila nova entra no bloqueio de todas as telas
     _syncAutoQueueVisibility(); // FIX: oculta vagas do manual imediatamente
     U.autoJob={...U.autoJob,mode:_mode};
-    updateLimChip();updateAutoDot(true);updateAutoUI();startAutoPolling();
+    updateAutoDot(true);updateAutoUI();startAutoPolling();
     // Fecha o wizard e abre direto o painel de monitoramento
     setTimeout(()=>{const lv=g("#auto-live-section");const wz=g("#auto-wizard");if(lv)lv.style.display="block";if(wz)wz.style.display="none";if(typeof loadAutoLogs==="function")loadAutoLogs();},100);
     const msg=_mode==="now"
@@ -5021,11 +4799,11 @@ async function startAuto(overrideStartH, overrideEndH, _mode="now"){
   btn.innerHTML='<i class="ti ti-rocket" style="font-size:22px"></i><span>🤖 Começar Envio Automático</span>';
 }
 
-async function pauseAuto(){try{await fetch("/api/auto/pause",{method:"POST",credentials:"include"});U.autoJob={...U.autoJob,active:false,status:"paused"};updateAutoUI();updateLimChip();toast("Pausado","au");}catch(e){toast("Erro","r");}}
-async function resumeAuto(){try{await fetch("/api/auto/resume",{method:"POST",credentials:"include"});U.autoJob={...U.autoJob,active:true,status:"resuming"};updateAutoUI();updateLimChip();startAutoPolling();toast("Retomado ✓","g");}catch(e){toast("Erro","r");}}
+async function pauseAuto(){try{await fetch("/api/auto/pause",{method:"POST",credentials:"include"});U.autoJob={...U.autoJob,active:false,status:"paused"};updateAutoUI();toast("Pausado","au");}catch(e){toast("Erro","r");}}
+async function resumeAuto(){try{await fetch("/api/auto/resume",{method:"POST",credentials:"include"});U.autoJob={...U.autoJob,active:true,status:"resuming"};updateAutoUI();startAutoPolling();toast("Retomado ✓","g");}catch(e){toast("Erro","r");}}
 async function stopAuto(){
   setTimeout(async function(){await _loadSentIds();if(tab!=="seasonal")loadSheetMeta(true);},600);
-if(!confirm("Parar o envio completamente?"))return;try{await fetch("/api/auto/stop",{method:"POST",credentials:"include"});U.autoJob=null;_autoQueueIds=new Set();_syncAutoQueueVisibility();clearInterval(autoInterval);autoInterval=null;if(_autoCountdown){clearInterval(_autoCountdown);_autoCountdown=null;}updateAutoUI();updateAutoDot(false);updateLimChip();toast("Parado","r");// Recarrega perfis do servidor para garantir que não sumiram
+if(!confirm("Parar o envio completamente?"))return;try{await fetch("/api/auto/stop",{method:"POST",credentials:"include"});U.autoJob=null;_autoQueueIds=new Set();_syncAutoQueueVisibility();clearInterval(autoInterval);autoInterval=null;if(_autoCountdown){clearInterval(_autoCountdown);_autoCountdown=null;}updateAutoUI();updateAutoDot(false);toast("Parado","r");// Recarrega perfis do servidor para garantir que não sumiram
 try{const pr=await fetch("/api/profiles",{credentials:"include"}).then(r=>r.json());UPROFILES=pr.profiles||[];if(U)U.profiles=UPROFILES;}catch{}
 }catch(e){toast("Erro","r");}}
 
@@ -5098,7 +4876,7 @@ async function pollAutoStatus(){
     const _autoVisible=curView==="auto"||_isAutoModalOpen();
     if(_autoVisible){updateAutoUI();_updateAutoFreeBanner();}
     if(curView==="home")renderHome(); // FIX: atualiza stats auto na home
-    updateAutoDot(d.job?.active||false);updateLimChip();renderSidebar();
+    updateAutoDot(d.job?.active||false);renderSidebar();
     // v67: prévia da fila + intervalo (pro card de próximas e a ETA)
     window._autoQueuePreview=d.queuePreview||[];
     window._autoIntervalSecs=d.intervalSecs||(AUTO_INT_AVG*60);
@@ -5450,7 +5228,7 @@ async function syncData(){
     // v185 LOTE 3: applyStatus() no lugar da lista parcial de campos — o
     // plano, o vip e o needsPlan também precisam chegar aqui (era o que
     // fazia a ativação provisória ficar invisível até um F5).
-    if(stR&&stR.ok){try{const sd=await stR.json();if(sd.connected){applyStatus(sd);updateLimChip();}}catch{}}
+    if(stR&&stR.ok){try{const sd=await stR.json();if(sd.connected){applyStatus(sd);}}catch{}}
   }catch{}
 }
 // 🔒 v172 (ORDEM DO DONO, 11/09/2026): pedido SEPARADO do login — só existe
@@ -5683,70 +5461,15 @@ if("serviceWorker" in navigator){
 }
 
 // ══════════════════════════════════════════
-//  PWA INSTALL — FAB fixo (sempre visível)
+//  PWA INSTALL — aba "Baixar App" (v110)
 // ══════════════════════════════════════════
+// v198 LOTE 16: o FAB flutuante (e o CSS #pwa-fab* que o vestia) foi removido
+// junto com _createInstallFab/showInstallFab/hideInstallFab/showInstallBanner/
+// hideInstallBanner — o botão saiu da tela no v110 ("não pode ficar sempre
+// incomodando") e sobrou uma cadeia de 5 funções que só chamavam a si mesmas,
+// 2 delas já no-op. O caminho real é installAppClick(), na aba "Baixar App".
 let _deferredPrompt=null;
 
-(function(){
-  const s=document.createElement("style");
-  s.textContent=`
-  #pwa-fab{position:fixed;bottom:calc(72px + env(safe-area-inset-bottom));right:16px;z-index:9990;display:none;flex-direction:column;align-items:center;gap:4px;animation:pwaFabIn .35s cubic-bezier(.34,1.56,.64,1) both}
-  #pwa-fab.visible{display:flex}
-  @keyframes pwaFabIn{from{opacity:0;transform:scale(.4) translateY(24px)}to{opacity:1;transform:none}}
-  #pwa-fab-btn{width:54px;height:54px;border-radius:50%;border:none;cursor:pointer;background:linear-gradient(135deg,#1e3a8a,#1a56db);box-shadow:0 4px 22px rgba(26,86,219,.5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:23px;transition:transform .18s,box-shadow .18s;position:relative}
-  #pwa-fab-btn:hover{transform:scale(1.09);box-shadow:0 8px 32px rgba(26,86,219,.6)}
-  #pwa-fab-btn:active{transform:scale(.94)}
-  #pwa-fab-pulse{position:absolute;inset:-5px;border-radius:50%;border:2.5px solid rgba(26,86,219,.45);animation:pwaFabPulse 2.2s ease-out infinite}
-  @keyframes pwaFabPulse{0%{transform:scale(1);opacity:1}100%{transform:scale(1.65);opacity:0}}
-  #pwa-fab-label{font-size:10px;font-weight:700;color:#1a56db;background:#fff;padding:2px 8px;border-radius:20px;box-shadow:0 2px 8px rgba(0,0,0,.15);white-space:nowrap;font-family:'DM Sans',sans-serif}
-  #pwa-fab-tooltip{position:absolute;right:62px;bottom:50%;transform:translateY(50%);background:#0f172a;color:#fff;font-family:'DM Sans',sans-serif;border-radius:14px;padding:12px 16px;white-space:nowrap;box-shadow:0 6px 24px rgba(0,0,0,.4);pointer-events:none;opacity:0;transition:opacity .2s;font-size:13px;min-width:190px;display:flex;flex-direction:column;gap:3px}
-  #pwa-fab-tooltip.show{opacity:1;pointer-events:auto}
-  #pwa-fab-tooltip strong{font-size:13px;font-weight:800}
-  #pwa-fab-tooltip small{font-size:11px;color:#94a3b8;line-height:1.5}
-  #pwa-fab-tip-btn{margin-top:10px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;border:none;border-radius:9px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;width:100%;font-family:'DM Sans',sans-serif;transition:opacity .15s}
-  #pwa-fab-tip-btn:hover{opacity:.9}
-  `;
-  document.head.appendChild(s);
-})();
-
-function _createInstallFab(){
-  if(document.getElementById("pwa-fab"))return;
-  const fab=document.createElement("div");
-  fab.id="pwa-fab";
-  fab.innerHTML=`
-    <div id="pwa-fab-tooltip">
-      <strong>📲 Instalar H2BApply</strong>
-      <small>Adicione à tela inicial<br>Funciona mesmo sem internet</small>
-      <button id="pwa-fab-tip-btn">Instalar agora</button>
-    </div>
-    <button id="pwa-fab-btn" title="Instalar H2BApply">
-      <span id="pwa-fab-pulse"></span>
-      <i class="ti ti-download"></i>
-    </button>
-    <span id="pwa-fab-label">Instalar</span>
-  `;
-  document.body.appendChild(fab);
-  const btn=document.getElementById("pwa-fab-btn");
-  const tip=document.getElementById("pwa-fab-tooltip");
-  btn.addEventListener("click",e=>{e.stopPropagation();tip.classList.toggle("show");});
-  document.addEventListener("click",()=>tip.classList.remove("show"));
-  document.getElementById("pwa-fab-tip-btn").addEventListener("click",async e=>{
-    e.stopPropagation();
-    tip.classList.remove("show");
-    if(!_deferredPrompt){toast("Menu do navegador → 'Adicionar à tela inicial'","");return;}
-    _deferredPrompt.prompt();
-    const{outcome}=await _deferredPrompt.userChoice;
-    _deferredPrompt=null;
-    if(outcome==="accepted"){hideInstallFab();toast("Instalando... 🚀","g");}
-  });
-}
-/* v110 (dono, 02/08): botão flutuante de instalar REMOVIDO ("não pode ficar
-   sempre incomodando") — o caminho agora é a aba "Baixar App" na sidebar e
-   no MENU ☰ (installAppClick). showInstallFab virou no-op de propósito:
-   os listeners de beforeinstallprompt/appinstalled continuam capturando o
-   _deferredPrompt, só não pintam mais nada flutuando. */
-function showInstallFab(){}
-function hideInstallFab(){}
 async function installAppClick(){
   try{
     if(_deferredPrompt){
@@ -5761,26 +5484,14 @@ async function installAppClick(){
   if(standalone||window.navigator.standalone){toast("✅ O app já está instalado neste aparelho!","g");return;}
   toast(isIos?'📲 No iPhone: botão Compartilhar → "Adicionar à Tela de Início"':'📲 No Chrome: menu ⋮ → "Instalar aplicativo" (ou "Adicionar à tela inicial")',"g");
 }
-function showInstallBanner(){showInstallFab();}
-function hideInstallBanner(){hideInstallFab();}
-
 window.addEventListener("beforeinstallprompt",e=>{
   e.preventDefault();
   _deferredPrompt=e;
-  showInstallFab();
 });
 window.addEventListener("appinstalled",()=>{
   _deferredPrompt=null;
-  hideInstallFab();
   toast("App instalado com sucesso! 🎉","g");
 });
-// iOS (não dispara beforeinstallprompt)
-setTimeout(()=>{
-  try{
-    const isIos=/iphone|ipad|ipod/i.test(navigator.userAgent);
-    if(isIos&&!window.navigator.standalone)showInstallFab();
-  }catch{}
-},2500);
 
 // ── Estado de leitura persistido localmente E no servidor ──
 // (v-2026: a lista/detalhe de inbox foi removida junto com a aba Respostas —
@@ -6068,7 +5779,7 @@ async function renderPendingOrderCard(){
   if(!_pendingOrderCache){box.style.display="none";return;}
   const p=_pendingOrderCache;
   if(p.status==="cancelado"&&_pedidoCanceladoDispensado===p.id){box.style.display="none";return;}
-  const planLbl={vip:"VIP Manual",vipro:"VIPro",doublepro:"DoublePro"}[p.plano]||p.plano||"seu pedido";
+  const planLbl=p.plano?planNomePedido(p.plano):"seu pedido";
   const dt=p.createdAt?new Date(p.createdAt).toLocaleDateString("pt-BR",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}):"";
   const cancelado=p.status==="cancelado";
   const motivo=cancelado?String(p.motivoCancelamento||"").slice(0,220):"";
@@ -6318,19 +6029,9 @@ if ("serviceWorker" in navigator) {
 //  Após completar perfil + CV, /api/onboard é chamado
 //  e onboarded=true nunca mais exibe a mensagem.
 // ══════════════════════════════════════════════════════════
-function _showFirstLoginWelcome() {
-  // Mostra modal de boas-vindas em vez de apenas banner
-  setTimeout(() => {
-    // Verifica novamente (pode ter sido onboarded na mesma sessão)
-    if (U.onboarded) return;
-    // Mostra o banner informativo persistente
-    showBanner(
-      "blue",
-      "👋 Bem-vindo ao <strong>H2BApply</strong>! Configure seu <strong>Perfil</strong> e envie seu <strong>Currículo (PDF)</strong> para começar.",
-      "sv('profile')"
-    );
-  }, 900);
-}
+// v198 LOTE 16: _showFirstLoginWelcome() removida — zero chamadores desde
+// que o wizard de onboarding saiu (v175). Quem não tem perfil é convidado
+// pelo #cv-prompt-overlay, que é o caminho que existe.
 
 // ── Inicialização ─────────────────────────────────────────
 _loadReadState();
@@ -6761,55 +6462,9 @@ function termsDecline(){
 }
 /* ═══ bloco extraído ═══ */
 
-var _tip=null;
-function showTip(el,html){
-  if(_tip){_tip.remove();_tip=null;}
-  var t=document.createElement("div");
-  t.className="tip-box";t.innerHTML=html;
-  document.body.appendChild(t);_tip=t;
-  var r=el.getBoundingClientRect(),tw=260;
-  var top=r.top>150?r.top-8-120:r.bottom+8;
-  var left=Math.min(Math.max(r.left-tw/2+r.width/2,8),window.innerWidth-tw-8);
-  t.style.cssText+="top:"+top+"px;left:"+left+"px;width:"+tw+"px;position:fixed";
-  setTimeout(function(){document.addEventListener("click",function _hd(){if(_tip){_tip.remove();_tip=null;}document.removeEventListener("click",_hd);},{once:true});},50);
-}
+// v198 LOTE 16: showTip()/_tip removidos — nenhum elemento chamava (a única
+// menção era a própria declaração).
 
-// Banner boas-vindas (1ª vez)
-function _showWelcome(){
-  try{if(localStorage.getItem("h2b_ok"))return;}catch(e){}
-  // v88 (reestruturação parte 1 — Home): o checklist de "primeiros passos"
-  // só faz sentido pra quem AINDA não começou. Usuário ESTABELECIDO (já tem
-  // perfil ativo E já enviou pelo menos 1 candidatura) tem a Home limpa —
-  // sem esse card repetindo o que o Tour e o guia "Como usar" já explicam.
-  // Quem ainda não enviou (mesmo com perfil) continua vendo o guia rápido.
-  try{
-    var _profs=((typeof UPROFILES!=="undefined"&&UPROFILES.length)?UPROFILES:((U&&U.profiles)||[])).filter(function(p){return p&&p.active!==false;});
-    var _estabelecido=_profs.length>0 && (U&&(U.totalSent||0)>0);
-    if(_estabelecido){try{localStorage.setItem("h2b_ok","1");}catch(e){} return;}
-  }catch(e){}
-  var hdr=document.querySelector(".home-header");
-  if(!hdr||document.getElementById("h2b-welcome"))return;
-  var b=document.createElement("div");
-  b.id="h2b-welcome";
-  b.style.cssText="margin:12px 14px 0;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border-radius:14px;padding:16px;position:relative";
-  var close=document.createElement("button");
-  close.style.cssText="position:absolute;top:8px;right:10px;background:none;border:none;color:rgba(255,255,255,.8);font-size:20px;cursor:pointer;padding:0;line-height:1";
-  close.textContent="×";
-  close.onclick=function(){b.remove();try{localStorage.setItem("h2b_ok","1");}catch(e){}};
-  b.appendChild(close);
-  // 🌐 v137: checklist com data-i18n — se a língua trocar DEPOIS do banner
-  // nascer (boot pode renderizar antes da preferência do servidor chegar),
-  // o applyLang() retraduz sozinho em vez de deixar PT preso na tela.
-  var steps=[["hs1",t('hs1')],["hs2",t('hs2')],["hs3",t('hs3')],["hs4",t('hs4')]];
-  var inner=document.createElement("div");
-  inner.innerHTML="<div style='font-size:15px;font-weight:800;margin-bottom:10px'>🚀 <span data-i18n='hs_t'>"+t('hs_t')+"</span></div><div style='display:flex;flex-direction:column;gap:8px;font-size:12px;line-height:1.55'>"+
-    steps.map(function(s,i){return "<div style='display:flex;gap:8px'><span style='background:rgba(255,255,255,.25);border-radius:50%;width:20px;height:20px;min-width:20px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800'>"+(i+1)+"</span><span data-i18n='"+s[0]+"'>"+s[1]+"</span></div>";}).join("")+
-    "</div>";
-  b.appendChild(inner);
-  hdr.insertAdjacentElement("afterend",b);
-}
-
-;
 /* ═══ bloco extraído ═══ */
 
 let _tourIdx=0,_tourN=0;
@@ -7136,33 +6791,8 @@ async function deleteDocFile(idx, name, type){
     } else throw new Error(d.error);
   }catch(e){toast("Erro: "+e.message,"r");}
 }
-async function uploadCvFromDocs(input, cvType){
-  const file=input.files[0]; if(!file)return;
-  if(file.size>10*1024*1024){toast("Arquivo muito grande (máx 10MB)","r");input.value="";return;}
-  toast("Enviando "+file.name+"...","");
-  const b64=await new Promise((res,rej)=>{
-    const r=new FileReader();
-    r.onload=()=>res(r.result.split(",")[1]);
-    r.onerror=rej;
-    r.readAsDataURL(file);
-  });
-  try{
-    const r=await fetch("/api/cv/upload",{method:"POST",credentials:"include",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({base64:b64,name:file.name,cvType})});
-    const d=await jsonSafe(r);
-    if(d.ok){
-      // Adiciona ao DOCS global (deduplica por idx)
-      DOCS=DOCS.filter(c=>c.idx!==d.cv.idx);
-      DOCS.push(d.cv);
-      // Atualiza activeResIdx se for resume
-      if(cvType==="resume"&&activeResIdx===null) activeResIdx=d.cv.idx;
-      renderDocsTab();
-      toast(cvType==="resume"?"Currículo enviado ✓":"Cover letter enviada ✓","g");
-    } else throw new Error(d.error);
-  }catch(e){toast("Erro: "+e.message,"r");}
-  input.value="";
-}
+// v198 LOTE 16: uploadCvFromDocs() removida — nenhum <input onchange> a
+// chamava; o upload de currículo do app passa por outro caminho.
 
 
 // v168: renderStatsTab()/shareStats() REMOVIDAS junto com a aba "Números"
@@ -7176,15 +6806,10 @@ async function uploadCvFromDocs(input, cvType){
 
 // Patch syncData to run follow-up check — consolidado: chamada adicionada diretamente em syncData
 
-// ── Blacklist de empresas ──
-let BLACKLIST_EMAILS=new Set(JSON.parse(localStorage.getItem("h2b_blacklist")||"[]"));
-function blacklistCompany(emailAddr, companyName){
-  if(!confirm("Nunca mais enviar para "+companyName+"?"))return;
-  BLACKLIST_EMAILS.add(emailAddr.toLowerCase());
-  try{localStorage.setItem("h2b_blacklist",JSON.stringify([...BLACKLIST_EMAILS]));}catch{}
-  toast("Empresa bloqueada: "+companyName,"r");
-}
-function isBlacklisted(email){return BLACKLIST_EMAILS.has((email||"").toLowerCase());}
+// v198 LOTE 16: a blacklist LOCAL (BLACKLIST_EMAILS/blacklistCompany/
+// isBlacklisted, em localStorage) foi removida — nenhum botão a alimentava
+// nem a consultava. Quem decide "não mandar pra este endereço" é o servidor
+// (DB_INVALID_EMAILS + a regra 8 de empregador já contatado).
 
 // ── Navegação de profile: lógica consolidada na função sv() original ──
 
@@ -7256,31 +6881,8 @@ function cvPromptPular(){
 }
 
 // ── Score de email ────────────────────────────────────
-function scoreEmailBody(body){
-  if(!body)return 0;
-  let score=0;
-  if(body.length>100)score+=20;
-  if(body.includes("{nome}"))score+=15;
-  if(body.includes("{vaga}"))score+=15;
-  if(body.includes("{empresa}"))score+=10;
-  if(body.includes("Dear"))score+=10;
-  if(body.includes("Best regards"))score+=10;
-  if(body.length>200)score+=10;
-  if(/[A-Z]/.test(body[0]))score+=5;
-  if(body.split("\n").length>3)score+=5;
-  return Math.min(100,score);
-}
-
-function renderEmailScore(body,containerId){
-  const el=g("#"+containerId);if(!el)return;
-  const score=scoreEmailBody(body);
-  const color=score>=80?"var(--green)":score>=50?"var(--amber)":"var(--red)";
-  const label=score>=80?"Excelente":score>=50?"Bom":"Fraco";
-  el.innerHTML=`<div style="display:flex;align-items:center;gap:6px;font-size:11px;margin-top:4px">
-    <div style="flex:1;height:4px;background:var(--sf3);border-radius:2px"><div style="width:${score}%;height:100%;background:${color};border-radius:2px;transition:width .3s"></div></div>
-    <span style="color:${color};font-weight:700;font-size:10px">${label} (${score})</span>
-  </div>`;
-}
+// v198 LOTE 16: scoreEmailBody()/renderEmailScore() removidos — o medidor
+// de "qualidade do e-mail" nunca teve container na tela (zero chamadores).
 
 console.debug("[v14+] Onboarding, FAQ, Preview Auto, Follow-up, Score carregados");
 
@@ -8313,19 +7915,14 @@ function applyLang(){
 
 // ── Helper functions ──
 function _st(id,txt){const el=document.getElementById(id);if(el)el.textContent=txt;}
-function _setTxt(id,txt){_st(id,txt);}
 function _si(id,sel,txt){const el=document.getElementById(id);if(!el)return;const t=sel?el.querySelector(sel):el;if(t)t.textContent=txt;}
 function _sbItem(id,txt){const el=document.getElementById(id);if(!el)return;const ic=el.querySelector('i'),b=el.querySelector('.sb-badge');el.textContent='';if(ic)el.appendChild(ic);el.appendChild(document.createTextNode(txt));if(b)el.appendChild(b);}
 function _sTabBtn(id,txt,icon){const el=document.getElementById(id);if(!el)return;const badge=el.querySelector('.inbox-tab-badge');const ic=el.querySelector('i');el.textContent=' '+txt;if(ic)el.prepend(ic);if(badge)el.appendChild(badge);}
 function _sBtnText(id,txt){const el=document.getElementById(id);if(!el)return;const ic=el.querySelector('i');if(ic){el.textContent=' '+txt;el.prepend(ic);}else el.textContent=txt;}
 function _sBtnTextKeepEmoji(id,txt){const el=document.getElementById(id);if(el)el.textContent=txt;}
 function _sPlaceholder(id,txt){const el=document.getElementById(id);if(el)el.placeholder=txt;}
-function _sSection(sel,pt,en,es,txt){document.querySelectorAll(sel).forEach(el=>{if(el.textContent.trim()===pt||el.textContent.trim()===en||el.textContent.trim()===es)el.textContent=txt;});}
-function _sTextNode(sel,pt,en,es,txt){document.querySelectorAll(sel).forEach(el=>{const d=el.querySelector('div:nth-child(2)>div:first-child');if(d&&(d.textContent===pt||d.textContent===en||d.textContent===es))d.textContent=txt;});}
-function _sTextNodeSub(sel,pt,en,es,txt){document.querySelectorAll(sel).forEach(el=>{const d=el.querySelector('[style*="font-size:11px"]');if(d&&(d.textContent===pt||d.textContent===en||d.textContent===es))d.textContent=txt;});}
 function _sInnerHTML(id,html){const el=document.getElementById(id);if(el&&html)el.innerHTML=html;}
 function _sFirstSpan(sel,txt){const el=document.querySelector(sel);if(el)el.textContent=txt;} // FIX: função usada em L16778 (troca de idioma) nunca tinha sido definida — quebrava a atualização de i18n em cascata
-function _sText(id,tag,idx,txt){const el=document.getElementById(id);if(!el)return;const items=el.querySelectorAll(tag);if(items[idx])items[idx].textContent=txt;}
 function _sPipeCol(id,txt){const el=document.getElementById(id);if(!el)return;const hdr=el.querySelector('.pipeline-col-hdr');if(hdr){const cnt=hdr.querySelector('.pipeline-cnt');hdr.textContent=txt+' ';if(cnt)hdr.appendChild(cnt);}}
 
 // Apply language on load
@@ -8637,7 +8234,6 @@ function _vigiarAtivacaoProvisoria(planoLabel){
         const d=await r.json();
         if(d&&d.connected){
           applyStatus(d);
-          try{updateLimChip();}catch(e){}
           if(!d.needsPlan){
             const dTitle=g('#plan-done-title'), dMsg=g('#plan-done-msg');
             if(dTitle)dTitle.textContent='⚡ Plano liberado na hora!';
@@ -8780,7 +8376,7 @@ async function loadMeusPagamentos(){
       const ehLegadoDoacao=p.tipo==="doacao"||p.plano==="doacao"; // legado pré-v170, sem conversão pra 💎
       const planLbl=ehLegadoDoacao
         ?"🧾 Pedido (legado)"
-        :((({vip:"⭐ VIP Manual",vipro:"🤖 VIPro",doublepro:"💎 DoublePro"})[p.plano]||esc(p.plano||"?"))+" · "+(parseInt(p.dias,10)||"?")+"d");
+        :(esc(planNomePedido(p.plano))+" · "+(parseInt(p.dias,10)||"?")+"d");
       const dt=p.createdAt?new Date(p.createdAt).toLocaleDateString("pt-BR"):"–";
       const compLinha=(()=>{
         if(p.status!=="pendente")return "";

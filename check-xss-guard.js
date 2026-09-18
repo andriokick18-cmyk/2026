@@ -16,9 +16,12 @@
 
    Falso positivo esperado: innerHTML que só interpola número/ícone/
    texto fixo (nada vindo de fora) não precisa de esc(). Pra esses casos
-   confirmados manualmente como seguros, adicione a linha (não o
-   conteúdo) a ALLOWLIST_LINHAS abaixo, com um comentário dizendo por
-   quê — nunca desative a guarda inteira pra silenciar 1 caso.
+   confirmados manualmente como seguros, adicione a ASSINATURA da
+   instrução ("arquivo:hash", exatamente como a mensagem de erro imprime)
+   à ALLOWLIST abaixo, com um comentário dizendo por quê. A chave é a
+   ASSINATURA de propósito — "arquivo:linha" envelheceria a cada edição
+   do arquivo, virando entrada morta e reabrindo o buraco em silêncio.
+   Nunca desative a guarda inteira pra silenciar 1 caso.
    ═══════════════════════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -171,8 +174,10 @@ for (const [nome, src] of ALVOS) {
 
 if (falhas) {
   console.error(`\n${falhas} innerHTML sem nenhum esc() na instrução. Ou (a) envolva o dado dinâmico com esc(...), ou`);
-  console.error(`(b) se for confirmado que só interpola número/ícone/texto fixo, adicione "arquivo:linha" na`);
-  console.error(`ALLOWLIST de check-xss-guard.js com o motivo — nunca desative a guarda inteira.`);
+  console.error(`(b) se for confirmado que só interpola número/ícone/texto fixo, adicione a ASSINATURA`);
+  console.error(`da instrução (o trecho impresso acima entre aspas) na ALLOWLIST de check-xss-guard.js`);
+  console.error(`com o motivo — a allowlist é indexada por ASSINATURA, nunca por "arquivo:linha"`);
+  console.error(`(uma entrada "arquivo:linha" nasce morta e envelhece a cada edição). Nunca desative a guarda inteira.`);
   process.exit(1);
 }
 console.log("✅ check-xss-guard: todo innerHTML= com interpolação dinâmica passa por esc() em algum ponto da instrução.");

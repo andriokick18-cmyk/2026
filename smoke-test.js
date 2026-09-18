@@ -1303,6 +1303,110 @@ async function drillRestauracaoBackup() {
     check("GET /api/admin/users sem sessão → bloqueado (401/403)",
       adm.status === 401 || adm.status === 403, `status=${adm.status}`);
 
+    // ══════════════════════════════════════════════════════════════════════
+    // 🧹 v198 — LOTE 16: CÓDIGO MORTO, XSS RESIDUAL E UM RÓTULO DE PLANO SÓ
+    // O front carregava ~470 linhas que ninguém chamava (o subsistema de
+    // "Modelos de e-mail" inteiro, morto desde o v22) e 8 grafias divergentes
+    // pro mesmo conceito. Guardas NEGATIVAS: as coisas não podem voltar.
+    // ══════════════════════════════════════════════════════════════════════
+    {
+      const _app16 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _idx16 = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+      const _srv16 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      const _ext16 = fs.readFileSync(path.join(__dirname, "h2b-extras-user.js"), "utf8");
+      const _dup16 = fs.readFileSync(path.join(__dirname, "check-duplicates.js"), "utf8");
+
+      // (1) COMPORTAMENTAL: abrir o Perfil continua renderizando a lista de
+      // perfis (a função que fazia isso se chamava loadTplView — o nome
+      // enganava) e NÃO existe mais rota de templates.
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
+      const _tplGet = await get("/api/templates");
+      const _tplSave = await req2("POST", "/api/templates/save", { name: "x", body: "y" });
+      const _tplDel = await req2("POST", "/api/templates/delete", { id: "x" });
+      const _prf16 = await get("/api/profiles");
+      check("🧹 v198-L16: as 3 rotas /api/templates* responderam 404 — o subsistema de Modelos de e-mail (morto desde o v22, sem NENHUMA tela) parou de guardar até 50 modelos por usuário dentro do DB_USERS",
+        _tplGet.status === 404 && _tplSave.status === 404 && _tplDel.status === 404 &&
+        !/pathname==="\/api\/templates/.test(_srv16),
+        JSON.stringify([_tplGet.status, _tplSave.status, _tplDel.status]));
+      check("🧹 v198-L16 (regressão do renomeio): abrir o Perfil continua carregando os perfis — loadProfilesView() é a ÚNICA coisa que renderiza a lista, e agora faz 1 requisição em vez de 2",
+        _prf16.status === 200 && Array.isArray(_prf16.json?.profiles) && _prf16.json.profiles.length >= 2 &&
+        /function loadProfilesView\(\)/.test(_app16) &&
+        /if\(v==="profile"\)\{loadProfile\(\);loadProfilesView\(\);/.test(_app16) &&
+        !/loadTplView|fetch\("\/api\/templates"/.test(_app16),
+        `perfis=${_prf16.json?.profiles?.length}`);
+
+      // (2) ESTRUTURAL: nenhuma das peças apagadas pode reaparecer
+      const _mortos = ["BUILTIN_TEMPLATES", "UTPL", "tplCurId", "renderTplList", "openTplPickerFor", "renderPickerList", "pickTemplate",
+        "closeAuthGate", "renderOnboardChecklist", "getPlanLabel", "getPlanClass", "peOnTypeChange", "toggleProfileStatus",
+        "_createInstallFab", "showInstallFab", "hideInstallFab", "showInstallBanner", "hideInstallBanner",
+        "_showFirstLoginWelcome", "uploadCvFromDocs", "BLACKLIST_EMAILS", "blacklistCompany", "isBlacklisted",
+        "renderEmailScore", "scoreEmailBody", "_setTxt", "_sSection", "_sTextNode", "_sTextNodeSub", "_sText", "updateLimChip"];
+      const _semCom16 = (t2) => t2.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ");
+      const _htmlSemCom16 = (t2) => _semCom16(t2.replace(/<!--[\s\S]*?-->/g, " "));
+      const _vivos = _mortos.filter((n) => new RegExp("\\b" + n + "\\b").test(_semCom16(_app16)) || new RegExp("\\b" + n + "\\b").test(_htmlSemCom16(_idx16)));
+      check("🧹 v198-L16 (guarda negativa): nenhuma das 31 funções/constantes órfãs do front voltou — cada uma foi conferida por grep antes de sair (zero chamadores em app.js, index.html, h2b-extras-user.js, admin.html, tutorial e smoke)",
+        _vivos.length === 0, `ressuscitaram: ${_vivos.join(", ")}`);
+      check("🧹 v198-L16: o overlay 'Escolher Modelo' e o CSS órfão .tpl-card/.tpl-tag/.tpl-picker-* saíram do index.html — e o .tpl-var (em USO no editor de perfil) e o .profile-card continuam vivos",
+        !/tpl-picker|tpl-card|tpl-tag|tpl-tab-btn/.test(_htmlSemCom16(_idx16)) &&
+        _idx16.includes(".tpl-var{") && _idx16.includes(".profile-card{"),
+        "sobrou CSS/markup do picker, ou o .tpl-var em uso foi levado junto");
+
+      // (3) a guarda de função duplicada passou a cobrir o app.js e os mod-*
+      check("🧹 v198-L16: check-duplicates.js varre o app.js e os mod-*.js — a guarda nasceu porque 'a segunda declaração sobrescreve a primeira em silêncio' no front, e o MAIOR arquivo do front estava de fora",
+        _dup16.includes('["app.js", fs.readFileSync("app.js", "utf8")]') && /mod-\[a-z0-9-\]\+\\\.js/.test(_dup16) &&
+        require("child_process").spawnSync(process.execPath, [path.join(__dirname, "check-duplicates.js")], { cwd: __dirname }).status === 0,
+        "check-duplicates não inclui app.js/mod-*.js ou acusou duplicata");
+
+      // (4) COMPORTAMENTAL: o rótulo de plano sai dos DOIS relógios, nunca do
+      // nome do plano (a armadilha do v177-FIX8, que só o Perfil tinha
+      // corrigido — o header continuava mostrando "🤖 VIPro" pra conta com 0
+      // manuais/dia).
+      const _regexLbl = /function planLabelAtivo\(\)\{[\s\S]*?\n\}/.exec(_app16);
+      const _planLabelAtivo = (vip, plan) => {
+        const U = { vip, plan }, PLAN_NAMES = { vip: "⭐ VIP", vipro: "🤖 VIPro", doublepro: "💎 DoublePro" };
+        return eval("(" + _regexLbl[0].replace("function planLabelAtivo()", "function()") + ")")();
+      };
+      const _fut = Date.now() + 30 * 86400_000, _pas = Date.now() - 86400_000;
+      const _soManual = _planLabelAtivo({ manualExpires: _fut, autoExpires: _pas }, "vipro");
+      const _soAuto = _planLabelAtivo({ manualExpires: _pas, autoExpires: _fut }, "vipro");
+      const _osDois = _planLabelAtivo({ manualExpires: _fut, autoExpires: _fut }, "vipro");
+      const _nada = _planLabelAtivo(null, "vipro");
+      check("🏷️ v198-L16: o rótulo de plano do header vem dos DOIS relógios — quem só tem o manual é '⭐ VIP' e quem só tem o automático NUNCA aparece como VIPro (getPlan() devolve 'vipro' pros dois: era assim que uma conta com 0 manuais/dia se anunciava como VIPro)",
+        _soManual === "⭐ VIP" && _soAuto === "🤖 Pro" && _osDois === "⭐🤖 VIPro" && _nada === "Grátis" &&
+        _app16.includes("g(\"#hdr-plans-label\").textContent=_lblAtivo;"),
+        JSON.stringify({ soManual: _soManual, soAuto: _soAuto, osDois: _osDois, nada: _nada }));
+      check("🏷️ v198-L16: o NOME do plano virou constante única (PLAN_NAMES) e só aparece onde o rótulo se refere a um PEDIDO — sobrou 1 declaração, nenhum mapa solto",
+        (_app16.match(/vipro:"/g) || []).length === 1 && _app16.includes("const PLAN_NAMES={vip:") &&
+        (_app16.match(/planNomePedido\(/g) || []).length === 2,
+        `mapas de plano restantes: ${(_app16.match(/vipro:"/g) || []).length}`);
+
+      // (5) XSS: p.icon é campo LIVRE do perfil — mesma classe do ${icon}
+      // corrigido no v177-FIX2, que sobrevivia em 4 pontos.
+      check("🔒 v198-L16: os 4 pontos que imprimem o ícone do perfil passam por esc() — p.icon é campo livre (até 8 chars, sem allowlist) e ia CRU pra dentro de innerHTML",
+        !/\$\{p\.icon\|\|"/.test(_app16) && !/\$\{selP\.icon\|\|"/.test(_app16) &&
+        (_app16.match(/esc\((?:p|selP)\.icon\|\|"/g) || []).length === 4 && _app16.includes('const badge=esc(p.icon||"📄");'),
+        "algum ícone de perfil voltou a ser interpolado cru");
+      const _xssGuard = fs.readFileSync(path.join(__dirname, "check-xss-guard.js"), "utf8");
+      check("🔒 v198-L16: a mensagem de erro do check-xss-guard ensina a ASSINATURA (como a ALLOWLIST é indexada de verdade) — ensinar 'arquivo:linha' fazia quem seguisse a instrução criar uma entrada morta, que envelhece a cada edição",
+        !/adicione "arquivo:linha" na/.test(_xssGuard) &&
+        _xssGuard.includes("a allowlist é indexada por ASSINATURA") &&
+        /envelheceria|envelhece a cada edição/.test(_xssGuard),
+        "a mensagem da guarda ainda manda usar arquivo:linha");
+
+      // (6) h2b-extras-user.js: o tema tinha 2 verdades e o rascunho de
+      // textarea era compartilhado entre contas no mesmo aparelho.
+      check("🧹 v198-L16: o módulo de extras usa a MESMA chave de tema do botão oficial (h2b_theme, fora do helper que prefixa hx_) e não reaplica o tema no load — o index.html já faz isso antes do primeiro paint",
+        _ext16.includes('localStorage.setItem("h2b_theme", next)') && !/LS\("theme"/.test(_ext16) &&
+        !/const savedTheme/.test(_ext16),
+        "o tema do módulo continua com chave/verdade própria");
+      check("🧹 v198-L16: o rascunho de textarea SEM escopo de usuário (draft_<id> no localStorage — em aparelho compartilhado a Conta B recebia o texto da Conta A) e os 2 setInterval perpétuos (lastView, vigia de target=_blank) saíram do módulo",
+        !/LS\("draft_/.test(_ext16) && !/lastView/.test(_semCom16(_ext16)) && !/a\[target='_blank'\]/.test(_semCom16(_ext16)) &&
+        _ext16.includes("no-referrer") && _ext16.includes("initialsAvatar"),
+        "sobrou rascunho compartilhado / vigia perpétuo, ou o retry de imagem foi levado junto");
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    }
+
+
     // Migrações de cura (v20/v21)
     const raw = fs.readFileSync(path.join(DATA, "users.json"), "utf8");
     const u = JSON.parse(raw)["cliente@test.com"];
