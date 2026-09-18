@@ -1116,3 +1116,127 @@ aberta.
   (sem cookie, sem rate-limit, chamada a cada 30s por aba aberta) responde de
   um cache de 60s. Vale pra qualquer rota de vitrine nova: número de vitrine
   pode ter 1 minuto de atraso; dinheiro e limite de envio, NUNCA.
+
+## v191–v194 — Varredura total, lotes 9-12
+
+Continuação direta do v183–v186 e do v187–v190 (mesma ordem do dono,
+18/09/2026: **"O que ainda pode melhorar? O que não faz sentido existir? Ou
+funciona errado? Pensa sobre tudo e resolva!"** + autorização total). Estes 4
+lotes são recuperação de desastre · comprovantes fora da RAM · a rota do
+dinheiro com régua por item · duas rotas que contrariavam regra escrita do
+dono. 23 checks novos (596 → 619) e 6 asserções antigas atualizadas porque
+codificavam o comportamento errado. **Nenhum arquivo servido ao cliente mudou
+— sw.js segue em v58** (os 4 lotes são 100% servidor, testes e documentação).
+
+**v191 — Lote 9: restaurar backup parou de se desfazer sozinho**
+(`server.js`, `mod-admin-v2.js`, `storage.js`, `RESTAURACAO_BACKUP.md`). O
+roteiro de emergência era "ensaiado" só até a metade: ninguém nunca tinha
+restaurado com o SERVIDOR VIVO e reiniciado depois — e era aí que ele se
+desfazia. A rota devolvia os `.json` e apagava o `.db`, mas o processo seguia
+com TUDO em memória no estado PRÉ-restore: em segundos um `setUser` debounced
+regravava `users.json`, e o "reinicie o servidor" mandava SIGTERM, cujo
+`flushAll` grava a memória inteira por cima. Pedidos e financeiro (fora do
+flushAll) voltavam; usuários, histórico e robôs não — restauração MISTA e
+silenciosa, no procedimento que se executa em pânico. Junto: `flushAll`
+cancelava todo debounce pendente e regravava só uma LISTA FIXA (journey.json
+se perdia em todo deploy) e podia serializar `users.json`/`history.json` duas
+vezes no mesmo sinal; backup 2min após TODO boot com retenção de 3 e deploy a
+cada commit (3 commits numa tarde = zero backup de ontem); a cópia da pasta
+`cvs/` era `fs.cpSync` — event loop travado pra todo mundo justamente quando
+todos reconectam pós-deploy; e o `backup.json` de 10 em 10min reserializava
+todos os usuários gravando `refresh_token` e hash de senha em TEXTO PURO (por
+fora do `DATA_ENC_KEY`) num arquivo que ninguém jamais leu.
+
+**v192 — Lote 10: comprovante de pedido saiu da RAM** (`server.js`,
+`mod-admin-v2.js`, `RESTAURACAO_BACKUP.md`). Cada pedido segurava o
+comprovante inteiro em base64 (até ~8MB) dentro de `DB_PEDIDOS`, carregado no
+boot e mantido pra sempre — inclusive de pedido aprovado/cancelado meses
+atrás — e QUALQUER mudança de status chamava `persistPedidos()`, que
+serializa TODOS eles: o servidor engasgava a cada clique do admin e a RAM só
+subia num processo que já deu OOM de 2GB. O próprio raio-X de memória (v163)
+apontava isto como "candidato nº1 a migrar pra disco com leitura sob
+demanda". Mesmo movimento do v21 com os PDFs de currículo.
+
+**v193 — Lote 11: /api/pedido blindado** (`server.js`). `pagoEm` vinha CRU do
+cliente e só virava data na APROVAÇÃO, depois de creditar os dias:
+`new Date("xyz").toISOString()` estoura RangeError → 500, `persistPedidos`
+nunca roda, dias concedidos, ZERO caixa, e a 2ª tentativa bate no 409 "já foi
+ativado" — o "pedido ativo sem caixa" que a contabilidade existe pra evitar
+(com data válida mas absurda, o cliente escolhia o mês do DRE). Junto: campos
+livres sem tipo nem teto (megabytes por pedido em `DB_PEDIDOS`, tudo inteiro
+na lista do admin), `desconto` vindo do cliente e impresso no aviso aos
+sócios, e o GET por id devolvendo o pedido CRU pro próprio usuário — furando
+a whitelist que a LISTA aplica de propósito desde o MC5-P2.
+
+**v194 — Lote 12: rotas que contrariavam regra escrita do dono**
+(`server.js`). (1) A ordem v178 fechou a pergunta — pedido com valor errado é
+CANCELADO e refeito, nunca corrigido — mas `/api/admin/pedido-set-valor` e o
+branch `corrigirValor` do PATCH continuavam vivos, sem nenhum botão no
+painel: por curl qualquer admin reescrevia o valor de um pedido (a rota nem
+olhava o status — reescrevia pago e cancelado, sincronizando o caixa junto) e
+ativava. (2) O ramo `isReply` do `/api/send` não tinha NENHUM chamador (a aba
+Respostas não existe e o app é só-envio) e era um bypass de verdade: com
+`isReply:true` + um `threadId` que o próprio `/api/send` devolveu, o envio
+pulava limite diário, cooldown, freio de rajada, "já enviei pra esse
+empregador" (regra 8) e a fila do automático — até 50 e-mails/dia extras pra
+empregador JÁ contatado, com `countedAsManual:false`.
+
+### Regras novas (não quebrar)
+
+- **RESTAURAR BACKUP CONGELA AS GRAVAÇÕES ATÉ O REINÍCIO**:
+  `congelarGravacoes()` liga um portão ÚNICO dentro de `persist()` (todo banco
+  passa por ele) + `_persistNotifCooldowns`, cancela os debounces pendentes e
+  o timer de sessões, e o `flushAll` do SIGTERM RESPEITA o congelamento. A
+  rota responde `congelado:true` e o site segue no ar servindo o estado antigo
+  da memória até o restart. PROIBIDO um caminho de escrita novo que não passe
+  por `persist()` sem checar a flag — sem isso o roteiro do
+  `RESTAURACAO_BACKUP.md` volta a mentir.
+- **O DESLIGAMENTO GRAVA TODO DEBOUNCE PENDENTE, E CADA BANCO UMA VEZ SÓ**: o
+  mapa `_persistDebounceTimers` guarda `{tid,data}` e o `flushAll` percorre
+  TUDO que está pendente antes da lista fixa, deduplicando por arquivo.
+  Persistência nova com `persistDebounced` já nasce coberta — não precisa (e
+  não deve) virar mais uma linha na lista fixa. A linha
+  `[shutdown] ✅ Dados salvos (...): a,b,c` é a prova, e o smoke lê ela.
+- **BACKUP DE BOOT SÓ SE O MAIS RECENTE JÁ TIVER ≥12h**: com deploy a cada
+  commit e retenção de 3, backup de boot sem freio apaga os dias anteriores.
+  A pasta continua nascendo com o prefixo de data (`/^\d{4}-/`) — é por ele
+  que a poda e a faxina de emergência enxergam; prefixo novo criaria
+  diretório invisível pras duas (o incidente do ENOSPC).
+- **ARQUIVO DE USUÁRIO NÃO MORA DENTRO DE JSON DE BANCO**: PDFs em `cvs/`
+  (v21), comprovantes de pedido em `comprovantes/` (v192), sempre com escrita
+  atômica (tmp+rename) e leitura SOB DEMANDA. Pasta nova de arquivo entra no
+  `criarBackupCompleto` **e** no backup/restore do painel NO MESMO COMMIT —
+  backup sem ela devolve conta sem currículo ou pedido sem prova de pagamento.
+  Migração de boot idempotente, de QUALQUER status, e nada sai da memória
+  antes de o arquivo existir em disco.
+- **"TEM COMPROVANTE?" É UMA PERGUNTA SÓ**: `temComprovante(pd)` (arquivo em
+  disco OU legado inline) e `loadComprovante(pd)` pros bytes. Proibido voltar
+  a espalhar `!!pd.comprovante` — era assim que cada tela decidia sozinha.
+  O contrato das rotas não mudou: `GET /api/pedido/:id` (admin) devolve o
+  base64 como sempre, só que lido do disco, numa CÓPIA.
+- **DATA QUE VIRA DINHEIRO É VALIDADA NA PORTA**: `pagoEm` aceita número ou
+  string parseável dentro de uma faixa sã (≥2024, ≤ hoje+36h) — fora disso,
+  400 na cara, nunca "corrige depois" (v178). Todo ponto que converte data de
+  pagamento em `Date` DEPOIS de mexer em plano/dias tem cinto e suspensório
+  (`Number.isFinite` → hoje) — exceção em conversão de data nunca pode
+  acontecer depois de creditar dias.
+- **CAMPO LIVRE DE ROTA PÚBLICA TEM TIPO E TETO**: `String(x||"").slice(n)`
+  com os mesmos tetos do cadastro. Campo que nenhuma tela manda (`desconto`)
+  é forçado ao valor neutro, não "aceito por via das dúvidas".
+- **O QUE O DONO DO PEDIDO VÊ É UMA FUNÇÃO SÓ**: `_pedidoVisaoUsuario(pd)`
+  serve a LISTA e o DETALHE. Nunca `{...pd}` pro usuário comum: junto vão
+  `preCheck` (com e-mail de OUTRO usuário no `dupAlerta`), `notaAdmin` e
+  `avisoFalhas`. `motivoCancelamento` faz parte da projeção — é o que o card
+  da Home (v185) mostra.
+- **VALOR DE PEDIDO NÃO SE CORRIGE**: cancela e refaz (v178). Não existe rota
+  nem branch de correção; a guarda do smoke é NEGATIVA pra regra não voltar
+  sozinha. Os campos `valorOriginal`/`valorCorrigidoPor`/`valorCorrigidoEm`
+  continuam nas respostas como LEITURA — apagá-los destruiria a trilha de
+  pedido antigo já carimbado.
+- **O APP SÓ ENVIA**: `/api/send` recusa `isReply:true` com 400 e IGNORA
+  `threadId`/`messageId` (cliente antigo em cache não perde a candidatura).
+  Toda candidatura passa pelo limite diário, cooldown, freio de rajada, regra
+  8 e fila do automático — não existe caminho "de resposta" que pule isso.
+  Na seleção de remetente, escolher explicitamente o e-mail PRINCIPAL é um
+  caso legítimo com ramo próprio (`if(requestedSender && requestedSender!==
+  s.user_email){…} else if(!requestedSender){round-robin} else {principal}`).
