@@ -51,6 +51,9 @@ const _mkVagaH2A = (i) => ({
 // meses de experiência, unidade de salário); qualquer outro devolve lista
 // vazia — é o que deixa o frescor varrer jan2026 sem inventar dado nenhum.
 const DOL_HITS = [];
+// 🕊️ v195 LOTE 14: o $filter CRU que chegou à API falsa — é o que prova que a
+// injeção OData nunca sai daqui e que 2 buscas iguais viram 1 pergunta só.
+const DOL_FILTERS = [];
 const DOL_DETALHE = {
   // exp já existe na linha (6 meses) e o DOL só diz Sim/Não → o número TEM que sobreviver
   "H-400-L8-0001": {
@@ -90,6 +93,7 @@ const feedSrv = http.createServer((rq, rs) => {
     const filtro = new URLSearchParams(url.split("?")[1] || "").get("$filter") || "";
     const m = filtro.match(/case_number eq '([^']+)'/);
     const cn = m ? m[1].toUpperCase() : "";
+    DOL_FILTERS.push(filtro + "|" + (new URLSearchParams(url.split("?")[1] || "").get("$search") || ""));
     DOL_HITS.push(cn);
     const det = DOL_DETALHE[cn];
     rs.writeHead(200, { "Content-Type": "application/json" });
@@ -3441,8 +3445,12 @@ async function drillRestauracaoBackup() {
     check("💸 v140: httpsReq descomprime gzip/deflate/br sozinho (fail-open pro corpo cru se falhar)",
       _gmailSrcV140.includes("content-encoding") && _gmailSrcV140.includes("gunzipSync") && _gmailSrcV140.includes("brotliDecompressSync"),
       "descompressão não encontrada no mod-gmail.js");
-    check("💸 v140: chamadas ao DOL pedem gzip e o streaming cru segue identity",
-      (_srvSrc.match(/"Accept-Encoding":"gzip"/g) || []).length >= 2 && (_srvSrc.match(/"Accept-Encoding":"identity"/g) || []).length >= 1,
+    // v195 LOTE 14: a exigência de UM "Accept-Encoding":"identity" saiu daqui —
+    // a única requisição de streaming cru do servidor era o /proxy aberto pro
+    // site do DOL, removido naquele lote. Exigir identity agora obrigaria a
+    // manter (ou recriar) justamente o que foi apagado de propósito.
+    check("💸 v140: toda conversa com o DOL pede gzip (o httpsReq descomprime sozinho) — o único identity que existia era o do /proxy aberto, removido no v195 LOTE 14",
+      (_srvSrc.match(/"Accept-Encoding":"gzip"/g) || []).length >= 2 && !_srvSrc.includes('"Accept-Encoding":"identity"'),
       `gzip=${(_srvSrc.match(/"Accept-Encoding":"gzip"/g) || []).length} identity=${(_srvSrc.match(/"Accept-Encoding":"identity"/g) || []).length}`);
 
     // ═══ 🎯 v139: VAGAS PRA VOCÊ — prateleira do match na Home (regra 13m) ═══
@@ -4829,6 +4837,115 @@ async function drillRestauracaoBackup() {
         _admL8.includes("function _plFilaHtml(") && _admL8.includes("sem descrição") && _admL8.includes("_plFilaHtml(d.enrichFila)"),
         "o painel voltou a esconder o que falta em cada planilha");
       await req2("DELETE", "/api/admin/sheet/enrich-l8");
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // 🕊️ v195 — LOTE 14: EDUCADO COM O DOL
+    // O IP do servidor no DOL é recurso COMPARTILHADO: se ele levar 403/429,
+    // os 5 robôs de planilha e as "Vagas ao Vivo" morrem pra todo mundo.
+    // ══════════════════════════════════════════════════════════════════════
+    {
+      // (1) o proxy aberto morreu — qualquer método/corpo ia pro DOL com o
+      // nosso IP, sem sessão, sem limite e com CORS *, e ninguém chamava.
+      const _px = await get("/proxy/jobs");
+      const _px2 = await getSemCookie("/proxy/");
+      check("🕊️ v195-L14: o proxy aberto pro DOL (/proxy) NÃO existe mais — era um repasse sem sessão, sem rate-limit e com CORS *, usando o IP que os 5 robôs de planilha compartilham, e nenhuma tela do site chamava",
+        _px.status === 404 && _px2.status === 404,
+        `status=${_px.status}/${_px2.status}`);
+
+      // (2) 2 buscas iguais = 1 pergunta ao DOL (o cache é o que de fato corta
+      // a amplificação — 429 sozinho só castigaria o visitante).
+      const _f0 = DOL_FILTERS.length;
+      const _j1 = await get("/api/jobs?state=ZZTESTECACHE&top=5");
+      const _j2 = await get("/api/jobs?state=ZZTESTECACHE&top=5");
+      const _fsCache = DOL_FILTERS.slice(_f0).filter((f) => f.includes("ZZTESTECACHE"));
+      check("🕊️ v195-L14: 2 chamadas seguidas a /api/jobs com os MESMOS filtros fazem 1 pergunta só ao DOL (cache de minutos por combinação de filtros) — a 2ª volta marcada from_cache",
+        _j1.status === 200 && _j2.status === 200 && _fsCache.length === 1 &&
+        _j1.json?.from_cache === false && _j2.json?.from_cache === true,
+        `perguntas=${_fsCache.length} from_cache=${_j1.json?.from_cache}/${_j2.json?.from_cache}`);
+
+      // (3) sanitizar PRESERVANDO: a aspa do estado é ESCAPADA no padrão OData
+      // (um /^[A-Z]{2}$/ cego quebraria a chamada legada com o nome por
+      // extenso, que este endpoint aceita desde sempre).
+      const _f1 = DOL_FILTERS.length;
+      await get("/api/jobs?state=" + encodeURIComponent("NORTH CAROLINA'--") + "&top=5");
+      const _fEsc = DOL_FILTERS.slice(_f1).find((f) => f.includes("NORTH CAROLINA"));
+      check("🕊️ v195-L14: o estado vai pro $filter do DOL com a aspa ESCAPADA (dobrada), preservando o valor legado por extenso — nunca interpolado cru nem recusado por um regex de 2 letras",
+        !!_fEsc && _fEsc.includes("employer_state eq 'NORTH CAROLINA''--'") && !/eq 'NORTH CAROLINA'-/.test(_fEsc),
+        String(_fEsc).slice(0, 140));
+
+      // (4) case number do cliente: o que NÃO é case number é descartado, o
+      // legítimo continua passando (e a query enviada não muda de forma).
+      const _f2 = DOL_FILTERS.length, _h2 = DOL_HITS.length;
+      const _bat = await req2("POST", "/api/sheet-batch", { cases: ["H-400-L14-9999", "H-400-L14-9999' or case_number ne '"] });
+      const _fBat = DOL_FILTERS.slice(_f2).map((f) => f.split("|")[0]).filter(Boolean);
+      const _hBat = DOL_HITS.slice(_h2);
+      check("🕊️ v195-L14: /api/sheet-batch com injeção OData no case number DESCARTA o valor inválido e manda ao DOL só o caso legítimo — a query continua com UM `case_number eq` e nenhum `ne`",
+        _bat.status === 200 && _hBat.includes("H-400-L14-9999") &&
+        _fBat.some((f) => f === "case_number eq 'H-400-L14-9999'") &&
+        _fBat.every((f) => !/case_number ne /.test(f) && (f.match(/case_number eq /g) || []).length <= 1),
+        JSON.stringify(_fBat).slice(0, 200));
+
+      // (5) parar de reconsultar o vazio: linha que o DOL já respondeu sem ter
+      // o que dar sai da fila por 60h — antes o vigia de 30min reperguntava a
+      // planilha inteira pro governo, pra sempre, sem NENHUMA linha mudar.
+      await req2("POST", "/api/admin/sheet/upload", {
+        name: "Educado Quatorze", key: "eq-l14", data: [
+          // o DOL não conhece: responde 200 vazio → carimba e sai da fila
+          { c: "H-400-L14-0001", n: "Um LLC", s: "TEXAS", e: "rh@um-l14.com", t: "Cook" },
+          // carimbo VENCIDO (100h) → volta pra fila normalmente
+          { c: "H-400-L14-0002", n: "Dois LLC", s: "TEXAS", e: "rh@dois-l14.com", t: "Cook", eq: Date.now() - 100 * 3600_000 },
+          // carimbo FRESCO → nem na 1ª volta o DOL é perguntado
+          { c: "H-400-L14-0003", n: "Tres LLC", s: "TEXAS", e: "rh@tres-l14.com", t: "Cook", eq: Date.now() },
+        ],
+      });
+      const _esperaEnrich = async () => { for (let i = 0; i < 100; i++) { await new Promise((r) => setTimeout(r, 150)); const st = (await get("/api/admin/enrich/status")).json; if (st && st.running === false) return st; } return null; };
+      await _esperaEnrich();
+      const _hA = DOL_HITS.length;
+      await req2("POST", "/api/admin/enrich/start", { sheetKey: "eq-l14", resume: true });
+      await _esperaEnrich();
+      const _volta1 = DOL_HITS.slice(_hA).filter((c) => c.startsWith("H-400-L14-000"));
+      const _hB = DOL_HITS.length;
+      await req2("POST", "/api/admin/enrich/start", { sheetKey: "eq-l14", resume: true });
+      await _esperaEnrich();
+      const _volta2 = DOL_HITS.slice(_hB).filter((c) => c.startsWith("H-400-L14-000"));
+      check("🕊️ v195-L14: a linha perguntada ao DOL há pouco sai da fila (carimbo `eq`) — a 1ª volta consulta a nova e a de carimbo VENCIDO, nunca a de carimbo fresco; a 2ª volta, logo em seguida, não pergunta NADA",
+        _volta1.includes("H-400-L14-0001") && _volta1.includes("H-400-L14-0002") && !_volta1.includes("H-400-L14-0003") &&
+        _volta2.length === 0,
+        `1ª=${JSON.stringify(_volta1)} 2ª=${JSON.stringify(_volta2)}`);
+      const _eqRows = (await get("/api/admin/sheet/download/eq-l14")).json || [];
+      const _eq1 = _eqRows.find((r) => r.c === "H-400-L14-0001") || {};
+      const { progressoPlanilha: _progL14 } = require(path.join(__dirname, "mod-planilhas.js"));
+      const _pgL14 = _progL14(_eqRows);
+      check("🕊️ v195-L14: o painel continua contando a linha como PENDENTE (ela é), só sabendo que está AGUARDANDO a janela do DOL — o robô é que fica com 0 a fazer agora; esconder a pendência seria mentir sobre o que falta na planilha",
+        Number(_eq1.eq) > Date.now() - 10 * 60_000 &&
+        _pgL14.pendentes === 3 && _pgL14.aguardandoDol === 3 && _pgL14.pendentesAgora === 0,
+        JSON.stringify({ eq: _eq1.eq, prog: _pgL14 }).slice(0, 200));
+      await req2("DELETE", "/api/admin/sheet/eq-l14");
+
+      // (6) estrutural: as 3 rotas públicas continuam SEM exigir login (a busca
+      // de SEO e o app dependem disso) mas passam pelo limite generoso, o
+      // I(12h) redundante do enriquecimento saiu e o "SEM EMAIL" virou resumo.
+      const _srvL14 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      const _modL14 = fs.readFileSync(path.join(__dirname, "mod-planilhas.js"), "utf8");
+      const _swL14 = fs.readFileSync(path.join(__dirname, "sw.js"), "utf8");
+      check("🕊️ v195-L14 (estrutural): /api/jobs, /api/sheet-detail e /api/sheet-batch passam pelo limite por IP (preferindo o e-mail da sessão) e continuam PÚBLICAS — exigir login aí quebraria a busca de SEO e o carregamento em background do app",
+        _srvL14.includes('_dolRateLimited(req,res,"dol_jobs",120)') &&
+        _srvL14.includes('_dolRateLimited(req,res,"dol_detail",60)') &&
+        _srvL14.includes('_dolRateLimited(req,res,"dol_batch",60)') &&
+        _srvL14.includes('s?.user_email ? ("u:"+s.user_email) : ("ip:"+_clientIp(req))') &&
+        !/if\(pathname==="\/api\/jobs"\)\{\s*const s=getSess\(req\);if\(!s\?\.user_email\)/.test(_srvL14),
+        "faltou o limite em alguma rota, ou alguma delas passou a exigir sessão");
+      check("🕊️ v195-L14 (estrutural): o /proxy sumiu do servidor E do service worker, e o enriquecimento perdeu o I(12h) redundante (o vigia de 30min já cobre) — o 'SEM EMAIL' agora é resumo por ciclo, não uma linha de log por vaga",
+        !_srvL14.includes('pathname.startsWith("/proxy")') && !_swL14.includes('url.pathname.startsWith("/proxy")') &&
+        !_modL14.includes('I(12 * 3600_000, autoEnrichCycle, "auto-enrich")') &&
+        _modL14.includes("vaga(s) continuam SEM E-MAIL no DOL nesta rodada") &&
+        !_modL14.includes("SEM EMAIL | ${(row.t"),
+        "algum resquício do /proxy, do I(12h) ou do log por vaga continua vivo");
+      check("🕊️ v195-L14 (estrutural): em produção o host do DOL não mudou — DOL_API_BASE é o mesmo padrão do mod-planilhas (v182) e nenhuma rota pública interpola mais o hostname fixo",
+        _srvL14.includes('process.env.DOL_API_BASE || "https://api.seasonaljobs.dol.gov/datahub/"') &&
+        !_srvL14.includes('hostname:"api.seasonaljobs.dol.gov"'),
+        "o host do DOL saiu do padrão ou voltou a ser interpolado direto na rota");
     }
 
     // ══════════════════════════════════════════════════════════════════════

@@ -2936,6 +2936,7 @@ const _enrichBot = {
   done: 0,
   ok: 0,
   noEmail: 0,
+  aguardando: 0, // v195 LOTE 14: linhas puladas por já terem sido perguntadas ao DOL há pouco
   errors: 0,
   startedAt: null,
   log: [],         // últimas 100 linhas de log
@@ -4161,6 +4162,28 @@ function _cityMatchNorm(filtro){
 // até o próximo boot e o e-mail/cidade/data descobertos não valiam em filtro
 // nenhum. Todo save passa por _saveEnrichedSheet, que incrementa aqui.
 const _VF_CACHE = new Map(); // cache curto da contagem ao vivo (5s) — v179
+// ── 🕊️ v195 LOTE 14: ser educado com o DOL é proteger TODO MUNDO ────────────
+// /api/jobs, /api/sheet-detail e /api/sheet-batch são públicas de propósito (a
+// busca de SEO usa /api/jobs e o app chama as outras em background — exigir
+// login quebraria tela pública), mas cada chamada podia virar uma ida ao DOL
+// com o IP do servidor, e o batch podia virar 11 requisições de uma vez.
+// Duas travas, nesta ordem de importância:
+//  (1) CACHE por combinação de filtros — é ele que de fato corta a
+//      amplificação: 100 visitantes na mesma busca = 1 pergunta ao DOL.
+//  (2) Rate-limit GENEROSO por IP, preferindo o e-mail da sessão quando
+//      existir: boa parte do público brasileiro está atrás de CGNAT, e um 429
+//      no meio de um fluxo humano é pior que o problema que resolve.
+const _JOBS_CACHE = new Map();          // /api/jobs: resposta CRUA do DOL por filtro
+const _JOBS_CACHE_TTL = 5 * 60_000;     // minutos, não segundos — vitrine pode atrasar
+function _dolRlKey(req){
+  const s=getSess(req);
+  return s?.user_email ? ("u:"+s.user_email) : ("ip:"+_clientIp(req));
+}
+function _dolRateLimited(req,res,nome,max){
+  if(!rateLimit(nome+"_"+_dolRlKey(req),max,60_000))return false;
+  json(res,429,{error:"Muitas buscas em pouco tempo. Espere alguns segundos e tente de novo.",rateLimited:true});
+  return true;
+}
 const _sheetVerMap = new WeakMap();
 function _bumpSheetVersion(arr){ if(Array.isArray(arr)) _sheetVerMap.set(arr,(_sheetVerMap.get(arr)||0)+1); }
 function _sheetVersionOf(arr){ return (Array.isArray(arr) && _sheetVerMap.get(arr)) || 0; }
@@ -4452,25 +4475,60 @@ function normJob(j,i) {
   return{id:String(j.case_number||j.case_id||("j"+i)),caseNum:String(j.case_number||j.case_id||""),title,company:j.employer_business_name||j.employer_trade_name||"–",city:j.employer_city||j.worksite_city||"–",state:j.employer_state||j.worksite_state||"–",wage:wg,workers:parseInt(j.total_positions||1),start:(j.begin_date||"–").slice(0,10),end:(j.end_date||"–").slice(0,10),email:em,phone:ph,url:ur,active:j.active===true,visa:j.visa_class||"H-2B",jobType:j.visa_class==="H-2A"?"agricultural":"non-agricultural",soc:j.soc_title||"",desc:(j.job_duties||"").replace(/\*\*[^*]+\*\*\n?/g,"").trim(),hasEmail:!!em,category:detectCategory(`${title} ${j.soc_title||""}`.trim(),j.employer_business_name||j.employer_trade_name||"")};
 }
 
+// 🌐 v195 LOTE 14: a base da API do DOL numa constante só — MESMA régua que o
+// mod-planilhas já usa desde o v182 ("DOL_API_BASE/DOL_FEED_BASE são só de
+// teste: o padrão é o host real"). Antes as rotas públicas batiam no hostname
+// fixo, o que as deixava inexercitáveis no npm test — e é justamente a
+// amplificação delas contra o IP do servidor que o cache desta leva precisa
+// provar. Em produção nada muda: mesmo caminho, mesmos headers, mesmo ritmo.
+const DOL_API_BASE_SRV = String(process.env.DOL_API_BASE || "https://api.seasonaljobs.dol.gov/datahub/");
+function _dolApiGet(params, headers){
+  let uo; try{ uo = new URL(DOL_API_BASE_SRV); }catch{ uo = new URL("https://api.seasonaljobs.dol.gov/datahub/"); }
+  const caminho = (uo.pathname || "/") + "?" + params.toString();
+  // Base http:// (só local/teste) usa o http nativo — httpsReq é https puro.
+  if(uo.protocol === "http:"){
+    return new Promise((resolve,reject)=>{
+      const r = http.request({hostname:uo.hostname,port:uo.port||80,path:caminho,method:"GET",headers},(resp)=>{
+        let b=""; resp.on("data",c=>b+=c);
+        resp.on("end",()=>{ let body=b; try{ body=JSON.parse(b); }catch{} resolve({status:resp.statusCode,body}); });
+      });
+      r.on("error",reject);
+      r.setTimeout(15000,()=>{ r.destroy(); reject(new Error("Timeout")); });
+      r.end();
+    });
+  }
+  return httpsReq({hostname:uo.hostname,path:caminho,method:"GET",headers});
+}
 async function fetchDOL(skip,top,opts={}) {
   const{query="",state="",jobType="all",jobStatus="all",beginDate="",sort="desc"}=opts;
   const p=new URLSearchParams({"api-version":"2020-06-30"});
-  if(query)p.append("$search",'"'+query.replace(/"/g,"")+'"');
+  // 🧼 v195 LOTE 14: sanitizar PRESERVANDO — o texto do usuário continua
+  // valendo, só perde o que quebraria a query OData (aspas) e ganha teto.
+  if(query)p.append("$search",'"'+String(query).slice(0,120).replace(/"/g,"")+'"');
   const f=[];
   if(jobStatus==="active")f.push("active eq true");if(jobStatus==="inactive")f.push("active eq false");
   if(jobType==="agricultural")f.push("visa_class eq 'H-2A'");if(jobType==="non-agricultural")f.push("visa_class eq 'H-2B'");
-  if(state)f.push(`(employer_state eq '${state}' or worksite_state eq '${state}')`);
+  // Aspa simples é ESCAPADA no padrão do OData (dobrada), nunca recusada: um
+  // /^[A-Z]{2}$/ cego quebraria a chamada legada com o nome do estado por
+  // extenso ("NORTH CAROLINA"), que este endpoint aceita desde sempre.
+  if(state){const _st=String(state).slice(0,40).replace(/'/g,"''");f.push(`(employer_state eq '${_st}' or worksite_state eq '${_st}')`);}
   if(beginDate)f.push(`begin_date ge ${beginDate}T00:00:00Z`);
   if(f.length)p.append("$filter",f.join(" and "));
   p.append("$orderby","dhTimestamp "+(sort==="asc"?"asc":"desc"));
   p.append("$top",String(top));p.append("$skip",String(skip));
-  const{status,body}=await httpsReq({hostname:"api.seasonaljobs.dol.gov",path:"/datahub/?"+p,method:"GET",headers:{"Accept":"application/json","Accept-Encoding":"gzip","User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36","Cache-Control":"no-cache","Referer":"https://seasonaljobs.dol.gov/"}});
+  const{status,body}=await _dolApiGet(p,{"Accept":"application/json","Accept-Encoding":"gzip","User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36","Cache-Control":"no-cache","Referer":"https://seasonaljobs.dol.gov/"});
   if(status!==200)throw new Error("DOL "+status);
   const raw=body.value||body.results||body.data||(Array.isArray(body)?body:[]);
   return{jobs:raw.map((j,i)=>normJob(j,skip+i)),total:body["@odata.count"]||body.count||raw.length};
 }
 
+// Formato do ETA case number (H-400-25123-456789 e variantes históricas).
+// 🧼 v195 LOTE 14: o valor vinha do cliente e era interpolado CRU no $filter
+// do OData. Aqui a régua é aceitar o que É um case number e descartar o resto
+// — nunca "escapar e mandar mesmo assim" um valor que não é identificador.
+const _CASE_NUM_RE = /^[A-Z0-9-]{5,24}$/;
 async function fetchByCase(cases) {
+  cases=(Array.isArray(cases)?cases:[]).filter(c=>_CASE_NUM_RE.test(String(c||"")));
   if(!cases.length)return{};
   const results={};
 
@@ -4520,13 +4578,13 @@ async function fetchByCase(cases) {
         const p=new URLSearchParams({"api-version":"2020-06-30"});
         p.append("$filter",batch.map(c=>`case_number eq '${c}'`).join(" or "));
         p.append("$top",String(batch.length));
-        const{status,body}=await httpsReq({hostname:"api.seasonaljobs.dol.gov",path:"/datahub/?"+p,method:"GET",headers:HDR});
+        const{status,body}=await _dolApiGet(p,HDR);
         if(status===200){const raw=body.value||body.results||body.data||(Array.isArray(body)?body:[]);for(const r of raw){const job=normJob(r,0);const cn=(r.case_number||r.case_id||"").toUpperCase();if(cn){results[cn]=job;sheetCache.set(cn,{job,ts:Date.now()});}}}
       }catch(e){console.warn("[fetchByCase/DOL offline]",e.message);}
       // Fallback individual (só tenta se DOL responder)
       const miss2=batch.filter(c=>!results[c]);
       for(const c of miss2){
-        try{const p2=new URLSearchParams({"api-version":"2020-06-30"});p2.append("$search",`"${c}"`);p2.append("$top","1");const{status,body}=await httpsReq({hostname:"api.seasonaljobs.dol.gov",path:"/datahub/?"+p2,method:"GET",headers:HDR});if(status===200){const raw=body.value||body.results||body.data||(Array.isArray(body)?body:[]);if(raw.length>0){const job=normJob(raw[0],0);results[c]=job;sheetCache.set(c,{job,ts:Date.now()});}}}catch{}
+        try{const p2=new URLSearchParams({"api-version":"2020-06-30"});p2.append("$search",`"${c}"`);p2.append("$top","1");const{status,body}=await _dolApiGet(p2,HDR);if(status===200){const raw=body.value||body.results||body.data||(Array.isArray(body)?body:[]);if(raw.length>0){const job=normJob(raw[0],0);results[c]=job;sheetCache.set(c,{job,ts:Date.now()});}}}catch{}
       }
     }
   }
@@ -8321,12 +8379,26 @@ filtrar();
 
   // ── /api/jobs ─────────────────────────────────────────
   if(pathname==="/api/jobs"){
+    if(_dolRateLimited(req,res,"dol_jobs",120))return;
     const opts={query:(u.searchParams.get("q")||"").trim(),state:(u.searchParams.get("state")||"").trim(),jobType:(u.searchParams.get("jobType")||"all"),jobStatus:(u.searchParams.get("jobStatus")||"all"),beginDate:(u.searchParams.get("beginDate")||""),sort:(u.searchParams.get("sort")||"desc")};
     const _minWageJobs=parseFloat(u.searchParams.get("minWage")||"0")||0;
     const skip=Math.max(0,parseInt(u.searchParams.get("skip")||"0",10));const top=Math.min(50,Math.max(1,parseInt(u.searchParams.get("top")||"25",10)));
     if(Date.now()-lastFetch>CACHE_TTL)refreshCache().catch(()=>{});
-    try{const{jobs,total}=await fetchDOL(skip,top,opts);const _verDol=podeVerEmailVaga(req);
-      return json(res,200,{jobs:(jobs||[]).map(j2=>jobComEmailVisivel(j2,_verDol)),total,skip,from_cache:false});}
+    // 🕊️ v195 LOTE 14: o cache guarda a resposta CRUA do DOL (nunca a já
+    // mascarada) — a máscara de e-mail do v182 LOTE 10 depende do PLANO de
+    // quem perguntou e continua sendo aplicada por requisição, sempre.
+    const _jKey=[opts.query,opts.state,opts.jobType,opts.jobStatus,opts.beginDate,opts.sort,skip,top].join("\u0000");
+    try{
+      const _jHit=_JOBS_CACHE.get(_jKey);
+      const _doCache=!!(_jHit&&Date.now()-_jHit.t<_JOBS_CACHE_TTL);
+      let _dolRes=_doCache?_jHit.v:null;
+      if(!_dolRes){
+        _dolRes=await fetchDOL(skip,top,opts);
+        if(_JOBS_CACHE.size>300)_JOBS_CACHE.clear();
+        _JOBS_CACHE.set(_jKey,{t:Date.now(),v:_dolRes});
+      }
+      const{jobs,total}=_dolRes;const _verDol=podeVerEmailVaga(req);
+      return json(res,200,{jobs:(jobs||[]).map(j2=>jobComEmailVisivel(j2,_verDol)),total,skip,from_cache:_doCache});}
     catch(e){
       // DOL offline → planilha local como fallback principal
       const _shRows=getAllSheets().filter(r=>r.e&&r.e.includes("@"));
@@ -8500,7 +8572,7 @@ filtrar();
     _VF_CACHE.set(_cKey,{t:Date.now(),body:_body});
     return json(res,200,_body);
   }
-  if(pathname==="/api/sheet-detail"){const c=(u.searchParams.get("case")||"").trim().toUpperCase();if(!c)return json(res,400,{error:"case obrigatório"});try{const r=await fetchByCase([c]);
+  if(pathname==="/api/sheet-detail"){if(_dolRateLimited(req,res,"dol_detail",60))return;const c=(u.searchParams.get("case")||"").trim().toUpperCase();if(!c)return json(res,400,{error:"case obrigatório"});try{const r=await fetchByCase([c]);
     // v38 (dono, 22/07): e-mail descoberto AQUI é persistido na planilha — a
     // vaga sem e-mail passava pelo corte hideSent (sem e-mail não há como
     // casar com os enviados) e vazava pra lista; agora CADA clique que
@@ -8518,7 +8590,7 @@ filtrar();
       }
     }catch(eP){ console.warn("[sheet-detail] persist:",eP.message); }
     return json(res,200,{job:jobComEmailVisivel(r[c],podeVerEmailVaga(req))||null,notFound:!r[c]});}catch(e){return json(res,500,{error:e.message});}}
-  if(pathname==="/api/sheet-batch"&&req.method==="POST"){try{const d=JSON.parse(await readBody(req));const cases=(d.cases||[]).slice(0,10).map(c=>String(c).trim().toUpperCase());const jobs=await fetchByCase(cases);const _ver=podeVerEmailVaga(req);const _out={};for(const k of Object.keys(jobs||{}))_out[k]=jobComEmailVisivel(jobs[k],_ver);return json(res,200,{jobs:_out});}catch(e){return json(res,500,{error:e.message});}}
+  if(pathname==="/api/sheet-batch"&&req.method==="POST"){if(_dolRateLimited(req,res,"dol_batch",60))return;try{const d=JSON.parse(await readBody(req));const cases=(d.cases||[]).slice(0,10).map(c=>String(c).trim().toUpperCase());const jobs=await fetchByCase(cases);const _ver=podeVerEmailVaga(req);const _out={};for(const k of Object.keys(jobs||{}))_out[k]=jobComEmailVisivel(jobs[k],_ver);return json(res,200,{jobs:_out});}catch(e){return json(res,500,{error:e.message});}}
 
   // ── Generate cover ────────────────────────────────────
   // v22 (ORDEM DO DONO): /api/generate-cover removido — o "IA gera" era um
@@ -14169,18 +14241,13 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}if(DB_APP_INDEX[te]){delete DB
 
   if(pathname==="/api/my-message"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});const p=getUser(s.user_email)||{};if(p.adminMessage){const m=p.adminMessage;setUser(s.user_email,{adminMessage:null});return json(res,200,{message:m});}return json(res,200,{message:null});}
 
-  // ── Proxy ─────────────────────────────────────────────
-  if(pathname.startsWith("/proxy")){
-    const tp=pathname.replace(/^\/proxy/,"")||"/";const ft=tp+(u.search||"");
-    return new Promise(resolve=>{
-      const pr=https.request({hostname:"seasonaljobs.dol.gov",path:ft,method:req.method,headers:{"User-Agent":"Mozilla/5.0","Accept":req.headers["accept"]||"*/*","Accept-Language":"en-US,en;q=0.9","Accept-Encoding":"identity","Referer":"https://seasonaljobs.dol.gov/","Cache-Control":"no-cache"}},pRes=>{
-        const ch=[];pRes.on("data",c=>ch.push(c));pRes.on("end",()=>{const raw=Buffer.concat(ch);const ct=pRes.headers["content-type"]||"";const hd={...pRes.headers};delete hd["x-frame-options"];delete hd["content-security-policy"];delete hd["transfer-encoding"];hd["access-control-allow-origin"]="*";let body=raw;if(ct.includes("text/html")){let t=raw.toString("utf8").replace(/(href|src|action)="(https?:\/\/seasonaljobs\.dol\.gov)/g,'$1="/proxy').replace(/(href|src|action)="\//g,'$1="/proxy/');t=t.replace("</body",`<script>(function(){document.addEventListener('click',function(e){var a=e.target.closest('a');if(!a)return;var h=a.getAttribute('href');if(!h||h.startsWith('#')||h.startsWith('mailto:')||h.startsWith('tel:'))return;if(h.startsWith('http')&&!h.includes('seasonaljobs.dol.gov'))return;e.preventDefault();window.location.href=(h.startsWith('/proxy')?h:'/proxy'+(h.startsWith('/')?h:'/'+h));},true);}());<\/script></body`);body=Buffer.from(t,"utf8");}hd["content-length"]=String(body.length);if((pRes.statusCode===301||pRes.statusCode===302)&&pRes.headers.location){const loc=pRes.headers.location;const np=loc.startsWith("https://seasonaljobs.dol.gov")?loc.replace("https://seasonaljobs.dol.gov","/proxy"):loc.startsWith("/")?"/proxy"+loc:loc;res.writeHead(302,{Location:np});res.end();return resolve();}res.writeHead(pRes.statusCode||200,hd);res.end(body);resolve();});});
-      pr.on("error",e=>{res.writeHead(502,{"Content-Type":"text/html"});res.end(`<html><body style="padding:40px;text-align:center"><h2>Erro</h2><button onclick="location.reload()">Tentar novamente</button></body></html>`);resolve();});
-      pr.setTimeout(20000,()=>{pr.destroy();res.writeHead(504);res.end("<html><body>Timeout</body></html>");resolve();});
-      req.pipe(pr);
-    });
-  }
-
+  // 🚫 v195 LOTE 14: o /proxy foi REMOVIDO. Era um proxy ABERTO pra
+  // seasonaljobs.dol.gov — qualquer método, qualquer corpo, sem sessão, sem
+  // rate-limit e com access-control-allow-origin:* —, usando o IP do NOSSO
+  // servidor. Nenhuma tela do site chamava. Se aquele IP levar 403/429 do DOL,
+  // os 5 robôs de planilha e as "Vagas ao Vivo" morrem pra TODO MUNDO.
+  // Não recriar: o que o site precisa do DOL passa pelas rotas próprias
+  // (/api/jobs, /api/sheet-detail, /api/sheet-batch), com cache e limite.
 
   // ── AVALIAÇÕES REAIS DE USUÁRIOS (landing page) ─────────────────────────
   // Substitui os depoimentos fixos/fictícios da landing por avaliações reais,

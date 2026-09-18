@@ -48,18 +48,35 @@ const CAMPOS_ESSENCIAIS = [
 ];
 const linhaCompleta = (r) => { const x = r || {}; for (const c of CAMPOS_ESSENCIAIS) if (!c.ok(x)) return false; return true; };
 const temEmailLinha = (r) => !!(r && r.e && String(r.e).includes("@"));
+// ── 🕊️ v195 LOTE 14: parar de reconsultar o vazio ──────────────────────────
+// O vigia de 30min recolocava na fila, PRA SEMPRE, toda linha que o DOL já
+// tinha respondido (200) sem ter o que dar — a jul2026 inteira (2.625 linhas,
+// zero e-mail) era reperguntada ao governo a cada meia hora, de graça, com o
+// IP que os 5 robôs e as "Vagas ao Vivo" compartilham.
+// `row.eq` = quando o DOL foi perguntado e não acrescentou o que falta. A
+// janela é curta DE PROPÓSITO (60h, dentro das 48-72h): e-mail que aparece no
+// DOL é vaga candidatável, e uma semana de cegueira custaria candidatura real.
+const EQ_JANELA_MS = 60 * 3600_000;
+const consultadaRecente = (r) => { const t = Number(r && r.eq); return Number.isFinite(t) && t > 0 && (Date.now() - t) < EQ_JANELA_MS; };
+// "Pendente AGORA" = falta campo essencial E não foi perguntada há pouco. É o
+// que decide o que o ROBÔ faz; o PAINEL continua contando a linha como
+// pendente de verdade (ela é), só sabendo que está aguardando o DOL.
+const linhaPendenteAgora = (r) => !linhaCompleta(r) && !consultadaRecente(r);
 // Progresso REAL de uma planilha (o painel mostra isto, não "100%").
 function progressoPlanilha(rows) {
   const arr = Array.isArray(rows) ? rows : [];
   const faltando = {}; for (const c of CAMPOS_ESSENCIAIS) faltando[c.campo] = 0;
-  let completas = 0, semEmail = 0;
+  let completas = 0, semEmail = 0, aguardandoDol = 0, semEmailAgora = 0;
   for (const r of arr) {
     let ok = true;
     for (const c of CAMPOS_ESSENCIAIS) if (!c.ok(r || {})) { faltando[c.campo]++; ok = false; }
     if (ok) completas++;
-    if (!temEmailLinha(r)) semEmail++;
+    else if (consultadaRecente(r)) aguardandoDol++;   // perguntado há pouco: fora da fila, nunca escondido
+    if (!temEmailLinha(r)) { semEmail++; if (!consultadaRecente(r)) semEmailAgora++; }
   }
-  return { total: arr.length, completas, pendentes: arr.length - completas, semEmail, faltando };
+  const pendentes = arr.length - completas;
+  return { total: arr.length, completas, pendentes, semEmail, faltando,
+    aguardandoDol, pendentesAgora: pendentes - aguardandoDol, semEmailAgora };
 }
 // "6.930 sem cidade · 6.930 sem descrição" — frase humana do que falta.
 const faltasTexto = (prog) => CAMPOS_ESSENCIAIS
@@ -235,10 +252,13 @@ function createPlanilhas(deps) {
     // não tinha o que fazer. Linha completa é pulada no laço de qualquer jeito
     // — nunca gasta chamada ao DOL à toa.
     const alreadyDone = sheet.filter(linhaCompleta).length;
-    const primeiraPendente = sheet.findIndex(r => !linhaCompleta(r));
+    // v195 LOTE 14: retomar na primeira linha que o robô REALMENTE vai tratar
+    // — linha perguntada ao DOL há pouco é pulada de qualquer jeito.
+    const primeiraPendente = sheet.findIndex(linhaPendenteAgora);
     const startIdx = resume && primeiraPendente > 0 ? primeiraPendente : 0;
     enrichBot.running = true; enrichBot.sheetKey = sheetKey; enrichBot.total = sheet.length; enrichBot.done = startIdx;
     enrichBot.ok = resume ? alreadyDone : 0; enrichBot.noEmail = resume ? (enrichBot.noEmail || 0) : 0; enrichBot.errors = resume ? (enrichBot.errors || 0) : 0;
+    enrichBot.aguardando = resume ? (enrichBot.aguardando || 0) : 0;
     enrichBot.startedAt = (resume && enrichBot.startedAt) ? enrichBot.startedAt : Date.now();
     enrichBot.log = resume ? enrichBot.log : []; enrichBot.savedAt = null;
     enrichLog(`📌 Ponto de retomada: ${startIdx}/${sheet.length} (${alreadyDone} vagas já completas no disco — e-mail, cidade, datas e descrição)`, "info");
@@ -252,6 +272,10 @@ function createPlanilhas(deps) {
       const row = sheet[i]; const cn = String(row.c || "").toUpperCase(); enrichBot.done = i + 1;
       // pula quem JÁ está completo (todos os CAMPOS_ESSENCIAIS) — nunca gasta DOL à toa
       if (linhaCompleta(row)) { enrichBot.ok++; continue; }
+      // v195 LOTE 14: e pula quem o DOL já respondeu sem ter o que dar, até a
+      // janela de 60h passar — era isto que fazia o vigia de 30min reperguntar
+      // a planilha inteira pro governo, pra sempre, sem NENHUMA linha mudar.
+      if (consultadaRecente(row)) { enrichBot.aguardando++; continue; }
       let attempt = 0, processed = false;
       while (attempt < 6 && !processed && enrichBot.running) {
         if (attempt > 0) {
@@ -272,9 +296,16 @@ function createPlanilhas(deps) {
               aplicarDolNaLinha(row, dol);
               if (!tinhaEmail && row.e) enrichLog(`📧 [${i + 1}/${sheet.length}] ${cn}: email → ${row.e}`, "ok");
               enrichBot.ok++;
-              if (!row.e || !String(row.e).includes("@")) { enrichBot.noEmail++; enrichLog(`⚠️ [${i + 1}/${sheet.length}] ${cn} SEM EMAIL | ${(row.t || "?").slice(0, 40)} | ${row.ci || row.s || "?"}`, "warn"); }
+              // O DOL respondeu: se AINDA falta campo essencial, é porque ele
+              // não tem — carimba a linha e só volta a perguntar depois da
+              // janela. Sem o carimbo, o vigia de 30min reperguntava sempre.
+              if (!linhaCompleta(row)) row.eq = Date.now();
+              // ⚠️ v195 LOTE 14: "SEM EMAIL" vira RESUMO no fim do ciclo — uma
+              // linha de log por vaga engolia o ring de 1500 do botLog inteiro
+              // (frescor, mensal e sentinela sumiam por baixo).
+              if (!row.e || !String(row.e).includes("@")) enrichBot.noEmail++;
               else enrichLog(`✅ [${i + 1}/${sheet.length}] ${cn} | ${(row.t || "?").slice(0, 35)} | ${row.ci || "?"}, ${row.s || "?"} | $${row.w || "?"}/h | ${row.e}`, "info");
-            } else { enrichBot.errors++; enrichLog(`❌ [${i + 1}/${sheet.length}] ${cn} — não encontrado no DOL`, "warn"); }
+            } else { enrichBot.errors++; row.eq = Date.now(); enrichLog(`❌ [${i + 1}/${sheet.length}] ${cn} — não encontrado no DOL`, "warn"); }
           } else if (status === 403 || status === 429) {
             consecutive403++; interDelay = Math.min(3000 + consecutive403 * 500, 8000);
             enrichLog(`🚫 [${i + 1}/${sheet.length}] ${cn} — HTTP ${status} (bloqueio DOL, tentativa ${attempt}/5, delay→${interDelay}ms)`, "warn");
@@ -298,6 +329,11 @@ function createPlanilhas(deps) {
     meta[sheetKey].completas = prog.completas; meta[sheetKey].pendentes = prog.pendentes;
     saveMeta();
     enrichLog(`🏁 CONCLUÍDO! ${prog.completas}/${prog.total} completas | ${prog.pendentes} pendente(s)${prog.pendentes ? ` (${faltasTexto(prog)})` : ""} | erros:${enrichBot.errors}`, "ok");
+    // Resumo do que o DOL não tem (1 linha por CICLO, nunca por vaga) e do que
+    // ficou de molho até a janela de reconsulta abrir.
+    if (enrichBot.noEmail || prog.aguardandoDol) {
+      enrichLog(`⚠️ ${enrichBot.noEmail} vaga(s) continuam SEM E-MAIL no DOL nesta rodada · ${prog.aguardandoDol} linha(s) aguardando a janela de ${Math.round(EQ_JANELA_MS / 3600_000)}h pra serem reperguntadas${enrichBot.aguardando ? ` (${enrichBot.aguardando} pulada(s) neste ciclo por isso)` : ""}`, "warn");
+    }
   }
 
   // 📋 v182 LOTE 8 — FILA DO ENRIQUECIMENTO POR IMPACTO, com o progresso REAL
@@ -313,7 +349,10 @@ function createPlanilhas(deps) {
       .filter((k, i, a) => a.indexOf(k) === i)
       .map(k => ({ k, ...progressoPlanilha(getSheet(k) || []) }))
       .filter(x => x.total > 0)
-      .sort((a, b) => (b.semEmail - a.semEmail) || (b.pendentes - a.pendentes));
+      // v195 LOTE 14: a ordem é pelo que o robô PODE fazer agora — linha
+      // carimbada (DOL já respondeu sem ter o que dar) não empurra planilha
+      // nenhuma pra frente da fila enquanto a janela não abre.
+      .sort((a, b) => (b.semEmailAgora - a.semEmailAgora) || (b.pendentesAgora - a.pendentesAgora) || (b.pendentes - a.pendentes));
   }
 
   // Ciclo autônomo: toda planilha com linha PENDENTE entra na fila do bot.
@@ -328,14 +367,17 @@ function createPlanilhas(deps) {
       const meta = getMeta();
       if (!meta[sheetKey]) meta[sheetKey] = { name: sheetKey };
       meta[sheetKey].completas = item.completas; meta[sheetKey].pendentes = item.pendentes;
-      if (item.pendentes === 0) {
+      // v195 LOTE 14: nada a fazer = nada PENDENTE AGORA. Planilha cujas
+      // pendências estão todas carimbadas (o DOL já disse que não tem) sai do
+      // ciclo em vez de ser varrida de novo a cada 30min.
+      if (item.pendentesAgora <= 0) {
         meta[sheetKey].enrichedAt = Date.now(); meta[sheetKey].enriched = item.completas; meta[sheetKey].enrichedTotal = item.total;
         saveMeta();
-        console.log(`[auto-enrich] ${sheetKey}: ✅ ${item.completas}/${item.total} completas (e-mail, cidade, datas e descrição) — nada a fazer`);
+        console.log(`[auto-enrich] ${sheetKey}: ✅ ${item.completas}/${item.total} completas${item.aguardandoDol ? ` · ${item.aguardandoDol} aguardando a janela de reconsulta do DOL` : ""} — nada a fazer`);
         continue;
       }
       saveMeta();
-      console.log(`[auto-enrich] 🚀 ${sheetKey}: ${item.pendentes} pendente(s) de ${item.total} — ${faltasTexto(item)}`);
+      console.log(`[auto-enrich] 🚀 ${sheetKey}: ${item.pendentesAgora} pendente(s) de ${item.total} — ${faltasTexto(item)}`);
       await runEnrichBot(sheetKey, item.completas > 0).catch(e => console.error(`[auto-enrich] ${sheetKey}:`, e.message));
       if (fila.indexOf(item) < fila.length - 1) await new Promise(r => setTimeout(r, 60000)); // pausa entre planilhas
     }
@@ -629,19 +671,21 @@ function createPlanilhas(deps) {
     if (isTest) { console.log("[planilhas] 🧪 modo teste — agendadores dos robôs de planilha desligados (disparo só por rota)"); return false; }
     const T = (ms, fn, nome) => timers.push(setTimeout(() => fn().catch(e => console.error(`[${nome}] boot erro:`, e.message)), ms));
     const I = (ms, fn, nome) => timers.push(setInterval(() => fn().catch(e => console.error(`[${nome}] ciclo erro:`, e.message)), ms));
-    T(15_000, autoEnrichCycle, "auto-enrich"); I(12 * 3600_000, autoEnrichCycle, "auto-enrich"); I(30 * 60_000, autoEnrichCycle, "auto-enrich-watchdog");
+    // v195 LOTE 14: o I(12h) era redundante — o vigia de 30min já reenfileira
+    // sozinho tudo que ficou pendente (e agora sem reperguntar o vazio).
+    T(15_000, autoEnrichCycle, "auto-enrich"); I(30 * 60_000, autoEnrichCycle, "auto-enrich-watchdog");
     T(5 * 60_000, runFreshCycle, "planilha-fresca"); I(6 * 3600_000, runFreshCycle, "planilha-fresca");
     T(2 * 60_000, () => runH2aNovasCycle("boot"), "h2a-novas"); I(12 * 3600_000, () => runH2aNovasCycle("agendado"), "h2a-novas");
     T(8 * 60_000, () => runH2aMensal("boot"), "h2a-mensal"); I(12 * 3600_000, () => runH2aMensal("agendado"), "h2a-mensal");
     T(20 * 60_000, () => runH2bMensal("boot"), "h2b-mensal"); timers.push(setTimeout(() => I(12 * 3600_000, () => runH2bMensal("agendado"), "h2b-mensal"), 20 * 60_000));
-    console.log("[planilhas] ⏰ robôs agendados: enriquecimento (15s, 12h, vigia 30min) · frescor (5min, 6h) · vagas novas H-2A (2min, 12h) · H-2A do mês (8min, 12h) · H-2B do mês (20min, 12h)");
+    console.log("[planilhas] ⏰ robôs agendados: enriquecimento (15s, vigia 30min) · frescor (5min, 6h) · vagas novas H-2A (2min, 12h) · H-2A do mês (8min, 12h) · H-2B do mês (20min, 12h)");
     return true;
   }
 
   // Painel: TUDO numa chamada (estado de cada robô + últimas rodadas)
   function statusPainel() {
     return {
-      enrich: { running: enrichBot.running, sheetKey: enrichBot.sheetKey, done: enrichBot.done, total: enrichBot.total, ok: enrichBot.ok, noEmail: enrichBot.noEmail, errors: enrichBot.errors, savedAt: enrichBot.savedAt, startedAt: enrichBot.startedAt },
+      enrich: { running: enrichBot.running, sheetKey: enrichBot.sheetKey, done: enrichBot.done, total: enrichBot.total, ok: enrichBot.ok, noEmail: enrichBot.noEmail, aguardando: enrichBot.aguardando || 0, errors: enrichBot.errors, savedAt: enrichBot.savedAt, startedAt: enrichBot.startedAt },
       // 📋 v182 LOTE 8: o progresso REAL de cada planilha, na MESMA ordem em que
       // o robô vai atacá-las (e pela MESMA função que ele usa) — o painel
       // mostrava "100%" pra planilha que não tem cidade nem descrição nenhuma.
