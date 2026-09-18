@@ -715,3 +715,85 @@ rota (grupo preservado, linha pobre não apaga e-mail, vaga ausente do arquivo
 preservada), a migração do seed pelo gancho `/api/test/seed-merge`
 (esqueleto→mesclado, idempotência, bundled esqueleto não mexe em nada), o
 caminho built-in e a presença do botão no painel.
+
+## v181 — Filtros: tela, dimensões novas e cargo por família (lotes 5-7)
+
+Continuação direta do v179 (a auditoria de 41 achados em 10 lotes). O dono
+autorizou por escrito tudo que a auditoria apontou ("corrija tudo isso que
+você disse que tá errado, deixe como explicado") e decidiu os 3 itens que
+dependiam dele: **"Recentes" vira ordenação real**, **esconder por padrão a
+vaga com temporada encerrada** e **dimensão com 1 valor só não é oferecida**.
+Lotes 5, 6 e 7 implementados (8-10 seguem pendentes). 34 checks novos no
+smoke (486 → 520). sw v48 → v51.
+
+**Lote 5 — a tela conta a mesma história que o servidor** (`app.js`,
+`server.js`, sw v48). O sintoma que o dono viu: o painel anunciava "TEXAS
+821" enquanto a lista, com a MESMA busca, tinha 21 — `vfParams` só mandava
+`q` no contexto "auto", então o rodapé "Ver N vagas", a contagem de CADA
+opção e os chips ignoravam o que a pessoa digitou. A busca virou o filtro
+`q` do motor (`VF.st.manual.q`; barra `#q` e painel são o mesmo estado) e vai
+nos dois contextos — painel e lista devolvem o MESMO total em 6 combinações
+medidas. Mais: `sTrueTotal` passou a ser atribuído ANTES do ramo vazio (a
+tela imprimia "0 vagas" numa planilha de 2.625) e a lista vazia explica a
+CAUSA — planilha em preparação (com botão pra recomendada) ou os filtros
+ativos com "tirando {filtro}, aparecem N vagas" (número EXATO tirado da
+faceta que o painel já buscou, nunca estimado); o badge "🔍 N filtros" passou
+a espelhar o `ativos()` do motor (conta e-mail e busca, não conta tipo/ativa
+fora da aba ao vivo) e o "só com e-mail" DESLIGADO virou chip visível;
+"🗓️ Começa logo" ordena em 3 faixas (vai começar → já começou → sem data) e
+"Recentes" deixou de ser `list.reverse()`; os dois botões somem quando a
+planilha não tem data (11.446 vagas); status do DOL com rótulo PT (o VALOR
+enviado continua o literal); painel com erro clicável e timeout de 8s em vez
+de spinner eterno.
+
+**Lote 6 — filtros novos que os dados sustentam** (`mod-filtros.js`,
+`server.js`, `app.js`, sw v49): `exp` (meses de experiência — 5.923 vagas de
+jan2026 e 1.037 de jul2025 exigem ZERO), `temporada` (derivada de `d`/`de`,
+sem campo novo) e `visa` (campo `visa` com fallback pelo prefixo do case).
+
+**Lote 7 — cargo por FAMÍLIA** (`mod-filtros.js`, `app.js`, sw v50): o
+título vem cru do DOL e a mesma ocupação se partia em vários chips
+("landscape laborer" 2.120 + "landscape laborers" 231 + "laborer, landscape"
+9). jan2026 1.806 → 1.492 famílias (top-40: 55,8% → 61,5%), jul2025 751 →
+666, H-2A 723 → 38 (top-40 100%).
+
+### Regras novas (não quebrar)
+
+- **A BUSCA É UM FILTRO COMO OUTRO QUALQUER**: mora em `VF.st.manual.q`,
+  viaja em `vfParams` nos 2 contextos e conta no badge. Proibido voltar a ter
+  uma busca que a contagem não enxerga.
+- **`exp` = MESES DE EXPERIÊNCIA, opções por TETO** (0 · ≤3 · ≤6 · ≤12). OU
+  dentro da dimensão é o MAIOR teto marcado. Linha sem o dado publicado nunca
+  entra num filtro de experiência.
+- **TEMPORADA ENCERRADA FICA ESCONDIDA POR PADRÃO** (`ocultarEncerradas`,
+  decisão do dono): só esconde o que TEM data de fim no passado — planilha
+  sem data fica intocada. Não conta no `ativos()` (é padrão do app, não
+  escolha do usuário) e é declarada por um chip permanente com o número REAL
+  vindo da faceta ("⏳ Escondendo N vagas com temporada encerrada —
+  mostrar"). Proibido esconder vaga sem declarar quantas e sem o clique que
+  mostra tudo. Seleção explícita de temporada vence o padrão.
+- **VAGA MORTA TEM UMA RÉGUA SÓ**: `_motivoVagaMorta(row)` (server.js) —
+  status do DOL + data de fim no passado — serve o envio (`isQueueJobDead`)
+  E o refill (`tryAutoRefill`). Proibido a 2ª régua que devolvia pra fila a
+  vaga que o envio acabara de pular.
+- **DIMENSÃO COM MENOS DE 2 VALORES DISTINTOS NÃO É OFERECIDA**:
+  `disponibilidade` expõe `<dim>Distintos` pra TODA dimensão de opções e a
+  regra é única no front — com uma linha honesta ("todas as vagas desta
+  planilha têm o mesmo valor aqui: X"), nunca sumindo calada. Pra dimensão de
+  plano pago vale também "não abrir vazia": sem opção de verdade (com os
+  outros filtros aplicados), a seção não aparece.
+- **MÊS DE INÍCIO TEM ANO**: o índice guarda AAAAMM (`ix.am`) e a faceta
+  devolve `{v:"2026-03", ano, mes, n, passado}`; o rótulo humano ("Mar/26") é
+  montado na TELA pelo dicionário, nunca no servidor. O formato antigo (1–12)
+  continua casando com aquele mês de qualquer ano — `job.filters` de robô
+  rodando não pode quebrar.
+- **CARGO CASA POR FAMÍLIA**: a chave é o SOC quando existe, senão o título
+  normalizado (sem acento, SEM PONTUAÇÃO — nunca vírgula, senão volta o bug
+  do `_csv` do v179 —, sem "and/&", plural simples removido, palavras
+  ordenadas), e `_famKey` é idempotente. Todo valor antigo (título literal,
+  outra grafia, caixa diferente) continua casando pelo mapa título→família do
+  índice: quebrar isso quebra o refill de todo robô que já está rodando. O
+  rótulo mostrado é a grafia mais frequente da planilha, nunca a chave crua.
+- **UMA RÉGUA DE VISTO**: `FILTROS.visaDaLinha` (campo `visa` → prefixo do
+  case). A rota `/api/sheet-meta` tinha a sua própria e marcava H-2B a linha
+  sem o campo.
