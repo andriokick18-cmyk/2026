@@ -1007,3 +1007,112 @@ conta") que NUNCA existiu.
   senha desde o v172c; o Google só aparece DEPOIS do plano ativo, pra conectar
   o Gmail de ENVIO (permissão só de enviar, endereço PERMANENTE). Guarda por
   frase no smoke, cobrindo as 4 páginas + server.js.
+
+## v187–v190 — Varredura total, lotes 5-8
+
+Continuação direta do v183–v186 (mesma ordem do dono, 18/09/2026: **"O que
+ainda pode melhorar? O que não faz sentido existir? Ou funciona errado? Pensa
+sobre tudo e resolva!"** + autorização total). Estes 4 lotes são plano de
+plano, limites e mensagem de quem pagou · painel admin (task #111) · promessas
+de notificação · velocidade do servidor. 21 checks novos (575 → 596), 3
+asserções antigas atualizadas porque codificavam comportamento errado. sw v55
+→ v58 (o lote 8 é 100% server-side).
+
+**v187 — Lote 5: quem acabou de pagar** (`server.js`, `app.js`, sw v56). Dois
+furos que só atingiam cliente PAGANTE. (1) A ativação provisória gravava o vip
+SEM `vip.limits`, então `getManualLimit`/`getAutoLimit` caíam na tabela LEGADA
+(`PLAN_LIMITS`): VIPro provisório dava 200+200/dia em vez dos 100+100 vendidos
+— e quando o admin confirmava o pedido (que carimba `limitesDoPlanoNovo`) o
+limite CAÍA PELA METADE, parecendo punição por pagar. As concessões manuais
+(`vip/activate`, `vip/set-expiry`) tinham a mesma lacuna. (2) Se a conferência
+humana passasse dos 3 dias do provisório, TODOS os gates diziam "Seu plano
+venceu em DD/MM — assine um plano" pra quem já tinha pago e cujo pedido estava
+na mesa: o site induzia um SEGUNDO pagamento.
+
+**v188 — Lote 6: painel admin** (`admin.html`, `server.js`, sw v57). As duas
+tarefas nominais do backlog do dono (task #111) e o maior buraco de receita da
+auditoria tinham a MESMA raiz: o servidor já sabia a resposta e a tela não
+perguntava. (A) `/api/pedidos` sempre filtrou por status e sempre devolveu o
+pedido inteiro — o painel pedia só "pendente" e descartava o resto; agora tem
+histórico com filtro, busca, trilha de quem aprovou/cancelou e por quê,
+Detalhes (usando o retrato de VIP que `GET /api/pedido/:id` já devolvia) e
+confirm de aprovação que diz QUEM, QUAL PLANO e QUANTO. (B) As 4 rotas de VIP
+estavam prontas, auditadas e reversíveis — sem nenhum botão. (C) O sentinela
+detectava pagante com robô morto a cada 6h e avisava por `sendNotifEmail` e
+`pushToUser`, os dois no-op: o achado não chegava a ninguém.
+
+**v189 — Lote 7: o site parou de prometer notificação** (`app.js`,
+`index.html`, `tutorial-conteudo.html`, `server.js`, `mod-planilhas.js`, sw
+v58). Não existe canal: `pushToUser` é função vazia, `PUSH_ENABLED=false`, sem
+VAPID e sem rota `/api/push/*`; o único `new Notification` era o de TESTE, na
+hora em que a permissão era concedida. Mesmo assim o app pedia a permissão
+sozinho no 1º login, prometia "avisamos NA HORA" na tela logo depois do Pix,
+repetia ao ligar o robô, vendia o Radar como "aviso no celular" com um
+contador "🔔 N avisos já enviados" que subia sem nada sair, e ensinava tudo
+isso no tutorial. Removido o plumbing morto inteiro; o Radar virou o que
+sempre foi de verdade (filtro salvo com contagem REAL de vagas novas).
+
+**v190 — Lote 8: velocidade** (`server.js`, `storage.js`, sem tocar em arquivo
+servido ao cliente). `addLog` gravava o `auto_logs.json` INTEIRO (de todos os
+usuários) de forma síncrona a cada candidatura; `storagePersist` serializava
+cada banco DUAS vezes por gravação (a 2ª indentada: ~2,2x o tempo, +37% de
+bytes, num servidor que já deu ENOSPC); `/api/public-stats` varria todos os
+usuários e todo o histórico, sem cache, chamada a cada 30s por CADA aba
+aberta.
+
+### Regras novas (não quebrar)
+
+- **TODA ATIVAÇÃO CARIMBA O CONTRATO, E CARIMBO NÃO ATROPELA LEGADO**:
+  `limitsParaAtivacaoAdmin(target,planName)` é a régua ÚNICA das concessões
+  manuais (vip/activate e vip/set-expiry) — recarimba quando o tier muda
+  dentro do contrato novo, NUNCA carimba por cima de contrato LEGADO ainda
+  ativo ("nenhum pagante perde nada") e carimba a tabela de hoje em toda
+  ativação nova. A ativação provisória e a aprovação de pedido carimbam
+  direto (ali o plano vendido é sempre o da tabela nova). Mudar limite de
+  plano continua sendo mexer na TABELA (`PLAN_LIMITS_NEW`), nunca num `if`.
+- **QUEM PAGOU NUNCA É MANDADO PAGAR DE NOVO**: com a janela provisória
+  vencida e o pedido ainda `pendente`, `planGateMsg` (servidor) e
+  `_planGateSubTxt` (tela — fonte única dos 2 gates e do toast do robô
+  pausado) dizem que o pedido está com a equipe. O BLOQUEIO não muda (402,
+  "ZERO envio grátis" intacto) e o plano que venceu DE VERDADE continua
+  citando a data exata (v172h). `/api/status` expõe `provisorioPendente`.
+- **REVOGAR PLANO NÃO APAGA A HISTÓRIA**: `/api/admin/vip/revoke` é a ÚNICA
+  rota de revogação (a duplicata `/api/admin/revoke-vip` foi removida: sem
+  chamador, sem `logAdminAction`, sem `delAutoJob`, e criava registro pra
+  e-mail inexistente). Ela zera os dois relógios e para o robô, mas PRESERVA
+  `vip.creditos` — é o extrato que a régua do ⚠️ e a auditoria financeira
+  leem. Toda rota de VIP atribui pelo `_sessAdminEmail(s)` (v183 LOTE 1).
+- **O PAINEL MOSTRA SE O CLIENTE CONSEGUE ENVIAR**: `/api/admin/contabilidade`
+  leva, por usuário, `gmailConectado` (BOOLEANO — token nunca viaja) e o
+  estado cru do robô; o card "Robôs parados de quem paga" lê o relatório do
+  `mod-sentinel` (régua ÚNICA de "robô quebrado" — proibida uma 2ª no
+  navegador) e roda a varredura sob demanda. "Dias de cortesia" é coluna
+  ADITIVA ao lado de "dias pagos": a régua do ⚠️ (só `tipo:"pago"`) não muda.
+- **NENHUMA TELA PROMETE AVISO ENQUANTO NÃO EXISTIR CANAL**: com
+  `PUSH_ENABLED=false`, é PROIBIDO em qualquer arquivo servido ao cliente
+  qualquer promessa de notificação/push/"aviso no celular", e proibido pedir
+  a permissão do navegador (pedir uma permissão que nunca vai ser usada
+  queima o pedido pro dia em que houver push de verdade). Guarda permanente
+  no smoke, que desconta comentários — ela mede o que EXECUTA, não o texto
+  que explica a remoção (mesmo cuidado vale pra qualquer guarda por frase).
+- **O RADAR É UM FILTRO SALVO**: `registrarVagasNovasNoRadar` (antiga
+  `notificarRadares`) CONTA as vagas novas que combinam (`radar.novas` +
+  `ultimaEm`, pela mesma `FILTROS.filtrar`) e o usuário vê quando abre o
+  site. Proibido reintroduzir contador de "avisos enviados" — o antigo
+  `totalAvisos` subia sem que nada jamais tivesse saído.
+- **VIA QUENTE NÃO GRAVA BANCO INTEIRO DE FORMA SÍNCRONA — E NEM CONFIA EM
+  DEBOUNCE PURO**: `addLog` usa `persistLogsThrottled` (`persistThrottled`:
+  agrupa como o debounce, mas o teto de 30s garante uma gravação real mesmo
+  com tráfego contínuo — debounce puro faz `clearTimeout` a cada chamada e
+  pode nunca disparar, e aí um OOM leva todo o log desde o boot).
+  `persistLogsImmediate` continua SÓ nas compactações de boot. `markSent`
+  continua síncrono e `setAutoJob` continua debounced (v184).
+- **UM BANCO SE SERIALIZA UMA VEZ POR GRAVAÇÃO**: dentro de `storagePersist`
+  é proibido um 2º `JSON.stringify` do mesmo dado (o espelho JSON reusa o
+  `payload`). O payload continua sendo calculado no topo da função de
+  propósito: pro `users.json` o `persist()` do server.js já trocou `data`
+  pela cópia CIFRADA antes de chamar o storage.
+- **ROTA PÚBLICA QUE VARRE O BANCO INTEIRO TEM CACHE**: `/api/public-stats`
+  (sem cookie, sem rate-limit, chamada a cada 30s por aba aberta) responde de
+  um cache de 60s. Vale pra qualquer rota de vitrine nova: número de vitrine
+  pode ter 1 minuto de atraso; dinheiro e limite de envio, NUNCA.
