@@ -166,7 +166,11 @@ function applyStatus(d){
   // Gmail conectado (/oauth/connect-send), nunca antes disso.
   // 🐛 v172c: gmailEmail é o Gmail REAL de envio (null se ainda não conectou)
   // — email é só a identidade de login (username sem @ pra conta nova).
-  gmailConnected:!!d.gmailConnected,gmailEmail:d.gmailEmail||null,needsPlan:!!d.needsPlan};
+  gmailConnected:!!d.gmailConnected,gmailEmail:d.gmailEmail||null,needsPlan:!!d.needsPlan,
+  // 💳 v187: {pedidoId,ref} quando a janela provisória de 3 dias venceu e o
+  // pedido AINDA está com o admin — é o que impede a tela de mandar quem já
+  // pagou "assinar de novo" (ver _planGateSubTxt).
+  provisorioPendente:d.provisorioPendente||null};
   UPROFILES=d.profiles||[];U.profiles=UPROFILES;
   // Pedido pendente na Home: se o plano/gate mudou, o card em cache virou
   // mentira — força uma releitura na próxima renderização.
@@ -5000,9 +5004,10 @@ async function pollAutoStatus(){
     // Toast para status importantes que mudaram
     if(U.autoJob?.status!==_prevStatus){
       if(U.autoJob?.status==="paused_no_vip"){
-        const _venceu=U.vip?Math.max(U.vip.autoExpires||0,U.vip.manualExpires||0,U.vip.expiresAt||0):0;
-        const _dataTxt=_venceu>0?new Date(_venceu).toLocaleDateString("pt-BR"):null;
-        toast(_dataTxt?`⛔ Automático pausado — seu plano venceu em ${_dataTxt}. Assine um plano em Planos pra continuar.`:"⛔ Automático pausado — você precisa de um plano ativo. Assine um plano em Planos.","r",8000);
+        // 💳 v187: mesma fonte única dos 2 gates — nunca mandar "assinar de
+        // novo" quem está esperando a confirmação de um pedido já pago.
+        const _sub=_planGateSubTxt("assine um plano em Planos pra continuar.");
+        toast(_sub?`⛔ Automático pausado — ${_sub}`:"⛔ Automático pausado — você precisa de um plano ativo. Assine um plano em Planos.","r",8000);
       }
       if(U.autoJob?.status==="paused_auth_error")toast("🔑 Automático pausado — erro de autenticação. Faça login novamente.","r");
       if(U.autoJob?.status==="finished"&&_prevStatus!=="finished"){const _frases=["🎉 "+t('fq1'),"🏆 "+t('fq2'),"✅ "+t('fq3')+" 🇺🇸","🚀 "+t('fq4')];toast(_frases[Math.floor(Math.random()*_frases.length)],"g");}
@@ -5107,6 +5112,18 @@ function _planVenceuTxt(){
   const v=U.vip?Math.max(U.vip.autoExpires||0,U.vip.manualExpires||0,U.vip.expiresAt||0):0;
   return v>0?new Date(v).toLocaleDateString("pt-BR"):null;
 }
+// 💳 v187 (varredura, lote 5): o subtítulo de TODO gate de plano bloqueado.
+// Quem já pagou e está esperando a confirmação do admin (janela provisória de
+// 3 dias vencida, pedido ainda pendente) nunca pode ler "assine de novo" —
+// seria empurrar um SEGUNDO pagamento pra quem já tem o pedido na mesa. Mesma
+// régua do servidor (planGateMsg), fonte única na tela: os 2 gates (manual e
+// automático) e o toast do automático pausado chamam esta função.
+function _planGateSubTxt(semPlanoTxt){
+  const pp=U.provisorioPendente;
+  if(pp&&pp.ref)return `Seu período provisório terminou, mas o seu pedido #${pp.ref} já está com a nossa equipe — não precisa pagar de novo. Assim que confirmarmos, o período completo é liberado.`;
+  const venceu=_planVenceuTxt();
+  return venceu?`Seu plano venceu em ${venceu} — ${semPlanoTxt}`:null;
+}
 
 // Atualiza o banner de limite na tela auto conforme o plano do usuário
 // 🔒 v172 (ORDEM DO DONO, 11/09/2026): mesmo gate do automático, só que pra
@@ -5125,8 +5142,7 @@ function updateManualSendGate(){
   if((!U.isAdmin&&!U.needsPlan&&U.gmailConnected)||(U.isAdmin&&U.gmailConnected)){el.style.display="none";return;}
   el.style.display="flex";
   if(!U.isAdmin&&U.needsPlan){
-    const _venceu=_planVenceuTxt();
-    const _sub=_venceu?`Seu plano venceu em ${_venceu} — assine de novo pra continuar enviando.`:"Assine um plano pra liberar o envio de candidaturas.";
+    const _sub=_planGateSubTxt("assine de novo pra continuar enviando.")||"Assine um plano pra liberar o envio de candidaturas.";
     el.innerHTML=`<div style="display:flex;align-items:center;gap:12px;width:100%">
       <div style="width:42px;height:42px;border-radius:12px;background:rgba(239,68,68,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ti ti-lock" style="font-size:21px;color:#dc2626"></i></div>
       <div style="flex:1;min-width:150px">
@@ -5184,8 +5200,7 @@ function _updateAutoFreeBanner(){
     lbl.style.background="rgba(245,158,11,.15)";lbl.style.borderColor="rgba(245,158,11,.4)";lbl.style.color="#d97706";
     if(card)card.style.display="none";
   } else if((U.autoLimit||0)<=0){
-    const _venceu=_planVenceuTxt();
-    const _sub=_venceu?`Seu plano venceu em ${_venceu} — assine VIPro ou DoublePro pra continuar.`:"Assine VIPro ou DoublePro pra usar o automático.";
+    const _sub=_planGateSubTxt("assine VIPro ou DoublePro pra continuar.")||"Assine VIPro ou DoublePro pra usar o automático.";
     lbl.innerHTML='<i class="ti ti-lock"></i> <strong>Plano necessário</strong>';
     lbl.style.background="rgba(239,68,68,.1)";lbl.style.borderColor="rgba(239,68,68,.35)";lbl.style.color="#dc2626";
     if(card){card.style.display="flex";card.style.background="rgba(239,68,68,.1)";card.style.border="1.5px solid rgba(239,68,68,.35)";

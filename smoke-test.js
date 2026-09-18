@@ -4627,6 +4627,84 @@ async function testAuthWatchdogPush() {
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     }
 
+    // ═══ 💳 v187 LOTE 5: LIMITES DO PLANO E A MENSAGEM DE QUEM JÁ PAGOU ════
+    {
+      // As duas tabelas vêm da FONTE ÚNICA (mod-config), nunca de números
+      // repetidos aqui — mudar a tabela não pode passar por este teste.
+      const { PLAN_LIMITS_NEW, PLAN_LIMITS } = require(path.join(__dirname, "mod-config.js"));
+      // (1) A ativação PROVISÓRIA gravava o vip SEM `vip.limits`, então
+      // getManualLimit/getAutoLimit caíam na tabela LEGADA (PLAN_LIMITS):
+      // VIPro provisório dava 200+200/dia em vez dos 100+100 vendidos — e na
+      // hora em que o admin confirmava o pedido (que carimba a tabela nova) o
+      // limite CAÍA PELA METADE na cara de quem acabou de pagar.
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "lim187@test.com", name: "Limites 187" });
+      await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, consentimento: true, userName: "Limites 187", userWhatsapp: "53 98145 3496", userCity: "Pelotas", userState: "RS", nota: "TESTE_COMPROVANTE:150", comprovante: Buffer.from("comp-187-limites").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+      await new Promise((r) => setTimeout(r, 600));
+      const _stProv187 = (await get("/api/status")).json;
+      check("💳 v187-L5: o plano PROVISÓRIO vale exatamente o que foi vendido — VIPro provisório devolve 100 manuais + 100 automáticos (PLAN_LIMITS_NEW), não os 200+200 da tabela legada que a confirmação do admin depois cortaria pela metade",
+        _stProv187?.manualLimit === PLAN_LIMITS_NEW.vipro.manual && _stProv187?.autoLimit === PLAN_LIMITS_NEW.vipro.auto &&
+        _stProv187?.vip?.source === "auto-provisorio",
+        JSON.stringify({ manual: _stProv187?.manualLimit, auto: _stProv187?.autoLimit, source: _stProv187?.vip?.source }));
+
+      // (2) Concessão manual do admin numa conta NOVA também carimba o
+      // contrato (antes ela nascia sem limits e herdava a tabela legada).
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "novo187@test.com", name: "Novo 187" });
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      await req2("POST", "/api/admin/vip/activate", { email: "novo187@test.com", days: 30, autoDays: 30, plan: "vipro" });
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "novo187@test.com" });
+      const _stNovo187 = (await get("/api/status")).json;
+      check("💳 v187-L5: /api/admin/vip/activate numa conta SEM plano ativo carimba vip.limits da tabela vigente — 100/100 no VIPro (antes só o plano era gravado e o usuário caía na tabela legada, com o dobro do vendido)",
+        _stNovo187?.manualLimit === PLAN_LIMITS_NEW.vipro.manual && _stNovo187?.autoLimit === PLAN_LIMITS_NEW.vipro.auto,
+        JSON.stringify({ manual: _stNovo187?.manualLimit, auto: _stNovo187?.autoLimit }));
+
+      // (3) ...mas carimbo CEGO cortaria pela metade um cliente LEGADO ativo
+      // numa simples renovação — "nenhum pagante perde nada" (mod-config).
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "legado187@test.com", name: "Legado 187", plan: "vip", vip: { active: true, plan: "vip", source: "payment", manualExpires: Date.now() + 10 * 86400000, autoExpires: 0 } });
+      const _legAntes = (await get("/api/status")).json;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      await req2("POST", "/api/admin/vip/activate", { email: "legado187@test.com", days: 30, plan: "vip" });
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "legado187@test.com" });
+      const _legDepois = (await get("/api/status")).json;
+      check("💳 v187-L5: renovar um contrato LEGADO ativo (sem vip.limits, tabela antiga 200/dia) NÃO carimba nada — o limite continua 200 depois do +30d; carimbo cego aqui cortaria pela metade quem pagou antes da tabela nova",
+        _legAntes?.manualLimit === PLAN_LIMITS.vip.manual && _legDepois?.manualLimit === PLAN_LIMITS.vip.manual,
+        JSON.stringify({ antes: _legAntes?.manualLimit, depois: _legDepois?.manualLimit }));
+
+      // (4) Provisório VENCIDO com o pedido ainda na mesa do admin: o gate
+      // continua bloqueando (ZERO envio grátis), mas a mensagem não pode
+      // mandar pagar de novo quem já pagou.
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "espera187@test.com", name: "Espera 187" });
+      const _pedEsp = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Espera 187", userWhatsapp: "53 98145 3496", userCity: "Pelotas", userState: "RS" });
+      const _pidEsp = _pedEsp.json?.pedidoId;
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "espera187@test.com", plan: "vip", vip: { active: true, plan: "vip", source: "auto-provisorio", pedidoId: _pidEsp, manualExpires: Date.now() - 3600000, autoExpires: 0 } });
+      const _stEsp = (await get("/api/status")).json;
+      const _sendEsp = await req2("POST", "/api/send", { to: "empregador187@example.com", subject: "Application", message: "Olá" });
+      check("💳 v187-L5: provisório vencido + pedido AINDA pendente → /api/send continua 402 (ZERO envio grátis intacto), mas a mensagem cita o pedido na mesa do admin e NUNCA manda assinar/pagar de novo — era assim que o site induzia um 2º pagamento de quem já tinha pago",
+        _sendEsp.status === 402 && /não precisa pagar de novo/.test(_sendEsp.json?.error || "") &&
+        !/assine|venceu em/i.test(_sendEsp.json?.error || "") &&
+        _stEsp?.provisorioPendente?.ref === String(_pidEsp).slice(-8).toUpperCase(),
+        JSON.stringify({ status: _sendEsp.status, erro: (_sendEsp.json?.error || "").slice(0, 150), prov: _stEsp?.provisorioPendente }));
+
+      // (5) ...e o plano que venceu DE VERDADE (sem pedido esperando) continua
+      // com a mensagem de sempre, citando a data — regra v172h intacta.
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "venc187@test.com", name: "Vencido 187", plan: "vip", vip: { active: true, plan: "vip", source: "payment", manualExpires: Date.now() - 2 * 86400000, autoExpires: 0 } });
+      const _sendVenc = await req2("POST", "/api/send", { to: "empregador187@example.com", subject: "Application", message: "Olá" });
+      const _stVenc = (await get("/api/status")).json;
+      check("💳 v187-L5: plano vencido SEM pedido esperando continua dizendo a data exata do vencimento (v172h) e provisorioPendente vem null — a mensagem nova é exceção pra quem pagou, nunca o novo padrão",
+        _sendVenc.status === 402 && /venceu em \d{2}\/\d{2}\/\d{4}/.test(_sendVenc.json?.error || "") &&
+        _stVenc?.provisorioPendente === null,
+        JSON.stringify({ status: _sendVenc.status, erro: (_sendVenc.json?.error || "").slice(0, 120), prov: _stVenc?.provisorioPendente }));
+
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      const _srvL5 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      const _appL5 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      check("💳 v187-L5 (estrutural): o carimbo de limites numa concessão manual é régua ÚNICA (limitsParaAtivacaoAdmin, usada por vip/activate e vip/set-expiry) e a tela tem uma fonte só pro subtítulo do gate (_planGateSubTxt, usada pelos 2 gates e pelo toast do automático pausado)",
+        _srvL5.includes("function limitsParaAtivacaoAdmin(") &&
+        (_srvL5.match(/limitsParaAtivacaoAdmin\(target,planName\)/g) || []).length === 2 &&
+        _srvL5.includes("function _provisorioPendente(") && _srvL5.includes("provisorioPendente:_provPend?") &&
+        _appL5.includes("function _planGateSubTxt(") && (_appL5.match(/_planGateSubTxt\(/g) || []).length === 4,
+        "o carimbo de limites ou o subtítulo do gate voltaram a ter 2 réguas");
+    }
+
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
 
     const disk = fs.readdirSync(path.join(DATA, "cvs"));

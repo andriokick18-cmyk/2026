@@ -2473,11 +2473,34 @@ function isVipActive(u) { return isManualVipActive(u) || isAutoVipActive(u); }
 // mesma já passou. Se a dimensão pedida nunca esteve ativa mas OUTRA está
 // (o caso real: VIP só-manual pedindo automático), a mensagem é sobre o
 // que falta, nunca sobre uma data que ainda não chegou.
+// 💳 v187: "o provisório venceu mas o pedido ainda está na mesa do admin".
+// Só devolve algo quando as DUAS coisas são verdade (vip veio do robô do
+// comprovante E o pedido que o originou continua `pendente`) — try/catch
+// porque nenhum gate de envio pode quebrar por causa de uma consulta de
+// texto.
+function _provisorioPendente(p){
+  try{
+    if(String(p?.vip?.source||"")!=="auto-provisorio")return null;
+    const id=p?.vip?.pedidoId; if(!id)return null;
+    const pd=(DB_PEDIDOS||[]).find(x=>x&&x.id===id);
+    if(!pd||pd.status!=="pendente")return null;
+    return {pedidoId:id,ref:String(id).slice(-8).toUpperCase()};
+  }catch(e){ return null; }
+}
 function planGateMsg(p, semPlanoMsg, dimensao) {
   const now = Date.now();
   const manualExp = p?.vip?.manualExpires || 0;
   const autoExp = p?.vip?.autoExpires || 0;
   const relevante = dimensao === "auto" ? autoExp : dimensao === "manual" ? manualExp : Math.max(manualExp, autoExp, p?.vip?.expiresAt || 0);
+  // 💳 v187: quem JÁ PAGOU e está só esperando a confirmação humana nunca pode
+  // ler "seu plano venceu — assine de novo". A janela provisória de 3 dias
+  // existe pra pessoa usar o site enquanto o admin não confere; se a conferência
+  // demora mais que isso, a mensagem de sempre empurrava pra um SEGUNDO
+  // pagamento alguém cujo pedido está na mesa. Ordem "ZERO envio grátis"
+  // intacta: continua 402, continua bloqueado — muda só o que o cliente lê.
+  const _prov = _provisorioPendente(p);
+  if (_prov && relevante > 0 && relevante <= now)
+    return `Seu período provisório de ${AUTO_ATIVA_DIAS} dias terminou, mas o seu pedido #${_prov.ref} já está com a nossa equipe para confirmação — não precisa pagar de novo. Assim que confirmarmos, o período completo do seu plano é liberado.`;
   if (relevante > 0 && relevante <= now) return `Seu plano venceu em ${new Date(relevante).toLocaleDateString("pt-BR")}. ${semPlanoMsg}`;
   if (dimensao === "auto" && manualExp > now) return `Seu plano VIP é só manual — ${semPlanoMsg}`;
   return semPlanoMsg;
@@ -2507,6 +2530,26 @@ function getPlan(u) {
 function limitesDoPlanoNovo(planKey){
   const t=PLAN_LIMITS_NEW[planKey]||PLAN_LIMITS_NEW.vip;
   return { manual:t.manual, auto:t.auto };
+}
+// 💳 v187 — QUEM CARIMBA `vip.limits` NUMA CONCESSÃO MANUAL DO ADMIN.
+// Régua única (usada por /api/admin/vip/activate e /api/admin/vip/set-expiry;
+// a aprovação de pedido e o set-plan já carimbavam direto porque ali o plano
+// vendido é sempre o da tabela nova). Três casos, nesta ordem:
+//  (a) conta que JÁ tem contrato novo (vip.limits) e está trocando de tier:
+//      recarimba com a tabela nova DO TIER NOVO — senão um VIP(100/0) virando
+//      DoublePro ficaria com 100/0, recebendo menos do que o tier concedido;
+//      mesmo tier = mantém o carimbo (contrato congelado, v118).
+//  (b) conta LEGADA com plano ATIVO (sem vip.limits): NÃO carimba. Carimbo
+//      cego aqui cortaria pela metade o limite de quem pagou antes da tabela
+//      nova só por renovar — "nenhum pagante perde nada" (mod-config.js).
+//  (c) conta sem plano ativo (nova, expirada ou legada já vencida): carimba a
+//      tabela nova — ativação nova vale o contrato de hoje.
+function limitsParaAtivacaoAdmin(target, planName){
+  const atuais=target?.vip?.limits;
+  if(atuais&&typeof atuais.manual==="number"){
+    return String(target?.vip?.plan||"")===String(planName)?{}:{limits:limitesDoPlanoNovo(planName)};
+  }
+  return isVipActive(target)?{}:{limits:limitesDoPlanoNovo(planName)};
 }
 // ⚠️ v172 (auditoria 11/09/2026): os `|| 20`/`|| 10` daqui escondiam ZERO
 // como se fosse "sem valor" (0 é falsy em JS) — com o plano free virando
@@ -10938,7 +10981,13 @@ filtrar();
     // esconder esse throttling). Agora conta pela chave resolvida, mantendo o
     // username como fallback (conta legada, cujo histórico usa o próprio e-mail).
     const gmailEmail = resolveSendGmail(p);
-    return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,planRulesNotice:_prNotice,manualCdOff:p.manualCdOff===true,gmailConnected,gmailEmail,emailContato:p.emailContato||null,emailVerificado:!!p.emailVerificadoEm,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",estado:p.estado||p.state||"",language:p.language||"pt-BR",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===(gmailEmail||s.user_email)||x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||300),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
+    // 💳 v187: "paguei, o robô liberou 3 dias, venceu e ninguém confirmou" —
+    // sem este campo a TELA repetia "seu plano venceu, assine de novo" pra
+    // quem já tem o pedido na mesa do admin (o servidor já não repete: ver
+    // planGateMsg). null quando não há provisório vencendo com pedido pendente.
+    const _provPend = _provisorioPendente(p);
+    return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,planRulesNotice:_prNotice,
+      provisorioPendente:_provPend?{pedidoId:_provPend.pedidoId,ref:_provPend.ref}:null,manualCdOff:p.manualCdOff===true,gmailConnected,gmailEmail,emailContato:p.emailContato||null,emailVerificado:!!p.emailVerificadoEm,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",estado:p.estado||p.state||"",language:p.language||"pt-BR",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===(gmailEmail||s.user_email)||x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||300),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
   }
 
   if(pathname==="/api/onboard"&&req.method==="POST"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});setUser(s.user_email,{onboarded:true});return json(res,200,{ok:true});}
@@ -12485,7 +12534,11 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
 
       const vip={...(target.vip||{}),active:true,manualExpires,autoExpires,
         activatedAt:now,activatedBy:s.user_email,
-        note:d.note||"",days,autoDays,plan:planName,source:'admin'};
+        note:d.note||"",days,autoDays,plan:planName,source:'admin',
+        // 💳 v187: concessão manual carimbava o plano mas NUNCA os limites —
+        // a conta caía na tabela LEGADA (o dobro do vendido) até alguém
+        // aprovar um pedido por cima. Régua única (nunca corta legado ativo).
+        ...limitsParaAtivacaoAdmin(target,planName)};
       const _audBefore=_vipSnapshot(target); // v19: snapshot pra reversão
       setUser(d.email,{plan:planName,vip});
       logAdminAction(s.user_email,"vip_activate",d.email,_audBefore,_vipSnapshot(getUser(d.email)),`+${days}d manual, +${autoDays}d auto, plano ${planName}${d.note?` — ${d.note}`:""}`);
@@ -12584,7 +12637,10 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
         adjustedAt:now,adjustedBy:s.user_email,adjustedCreditado:true,
         note:d.note||(target.vip?.note||""),
         plan:planName,source:target.vip?.source||"admin",
-        usedCode:target.vip?.usedCode||null};
+        usedCode:target.vip?.usedCode||null,
+        // 💳 v187: mesma régua única do vip/activate — "definir vencimento
+        // exato" também é ativação e precisa dizer QUAIS limites valem.
+        ...limitsParaAtivacaoAdmin(target,planName)};
       const _audBefore=_vipSnapshot(target); // v19: snapshot pra reversão
       setUser(d.email,{plan:planName,vip});
       logAdminAction(s.user_email,"set_expiry",d.email,_audBefore,_vipSnapshot(getUser(d.email)),`Validade → manual:${manualDays}d auto:${autoDays}d plano:${planName}`);
@@ -14562,6 +14618,14 @@ function autoAtivarProvisorio(pedidoId){
     const fim=now+AUTO_ATIVA_DIAS*DAY;
     setUser(pd.userEmail,{plan:planoKey,vip:{...(u.vip||{}),active:true,plan:planoKey,
       source:"auto-provisorio",manualExpires:fim,autoExpires:isAuto?fim:0,
+      // 💳 v187: o provisório é o plano que a pessoa ACABOU de comprar — tem
+      // que valer exatamente o que foi vendido. Sem este carimbo o vip nascia
+      // sem `limits` e getManualLimit/getAutoLimit caíam na tabela LEGADA
+      // (PLAN_LIMITS): VIPro provisório dava 200+200/dia em vez dos 100+100
+      // da tabela vigente, DoublePro 400/400 em vez de 200/200 — e quando o
+      // admin confirmava o pedido (que carimba limitesDoPlanoNovo) o limite
+      // CAÍA PELA METADE na cara do cliente, parecendo punição por pagar.
+      limits:limitesDoPlanoNovo(planoKey),
       activatedAt:now,activatedBy:"Robô (comprovante conferido)",pedidoId:pd.id,
       note:`⚡ Ativação PROVISÓRIA automática (${AUTO_ATIVA_DIAS}d) — pedido #${pd.id.slice(-8).toUpperCase()} aguarda confirmação do admin`,
       days:AUTO_ATIVA_DIAS,autoDays:isAuto?AUTO_ATIVA_DIAS:0}});
