@@ -2103,7 +2103,7 @@ async function testAuthWatchdogPush() {
       check("🔍 v173: as 5 rotas do sistema de filtros antigo foram REMOVIDAS (404) — count-jobs, sheet-facets, sheet-titles, sheet-categories, my-availability", mortas.length === 0, mortas.join(","));
       // motor offline: formato legado do job.filters (robô que já rodava antes do deploy) e invariantes
       const { createFiltros } = require(path.join(__dirname, "mod-filtros.js"));
-      const F = createFiltros({ normalizeStateName: s => String(s || "").toUpperCase().trim(), cityMatchFn: () => null, regioes: {}, grupoDe: r => r.g || "", searchSheet: (arr) => ({ total: arr.length, items: arr }), categoriaLabel: k => k });
+      const F = createFiltros({ normalizeStateName: s => String(s || "").toUpperCase().trim(), normBusca: s => String(s || "").toLowerCase().trim(), cityMatchNormFn: () => null, regioes: {}, grupoDe: r => r.g || "", searchSheet: (arr) => ({ total: arr.length, items: arr }), categoriaLabel: k => k });
       const leg = F.parse({ state: "FLORIDA,TEXAS", category: "landscape", minWage: "18", titles: ["Cook"], beginMonths: [6, 7], grupos: "A,B", city: "Key West", minWorkers: "5", keyword: "hotel", dolStatus: "Certified" });
       check("🔍 v173: FILTROS.parse aceita o formato LEGADO do job.filters (state/category/minWage/titles/beginMonths/grupos/city/minWorkers/keyword/dolStatus) — robô que já rodava não perde o refill",
         leg.estado.join() === "FLORIDA,TEXAS" && leg.categoria[0] === "landscape" && leg.salarioMin === 18 && leg.cargo[0] === "cook" && leg.inicio.join() === "6,7" && leg.grupo.join() === "A,B" && leg.cidade[0] === "Key West" && leg.vagasMin === 5 && leg.q === "hotel" && leg.status[0] === "Certified",
@@ -2132,6 +2132,128 @@ async function testAuthWatchdogPush() {
         "chave vf_* faltando em alguma língua");
       check("🔍 v173: (estrutural) sort=wage usa a MESMA régua de $/hora do filtro (FILTROS.wageHora) com decorate-sort — nunca regex dentro do comparador",
         /FILTROS\.wageHora\(r\)\}\)\)\.sort\(\(a,b\)=>b\.w-a\.w\)/.test(_srv173) && !/const pw=r=>\{\s*if\(!r\.w\)return -1;/.test(_srv173), "sort=wage divergiu do motor");
+    }
+
+    // ═══ 🎯 v179 — LOTE 1: A CONTAGEM VOLTA A SER A VERDADE DA LISTA ═══
+    // Ordem do dono (17/09/2026): "os filtros não podem falhar, não podem ser
+    // mal feitos, precisam estar funcionando e ter um sentido — o usuário tem
+    // que desfrutar 100%". Auditoria mediu, contra as planilhas empacotadas,
+    // chip anunciando 217 e lista devolvendo 108; a mesma cidade em 3 chips;
+    // vaga de $9,59/h virando $0,06/h. Todos os números abaixo foram MEDIDOS
+    // no servidor real deste repositório (não copiados de relatório).
+    {
+      const vfH = (await get("/api/vagas/filtros?sheet=h2a-jun2026")).json;
+      // (1) valor de faceta é OPACO — cargo COM vírgula tem que bater
+      const comVirg = (vfH.facetas.cargo || []).filter((x) => x.v.includes(",")).slice(0, 2);
+      const paresVirg = [];
+      for (const c of comVirg) {
+        const sm = (await get(`/api/sheet-meta?sheet=h2a-jun2026&cargo=${encodeURIComponent(c.v)}&top=1`)).json;
+        paresVirg.push({ v: c.v.slice(0, 30), faceta: c.n, lista: sm.total });
+      }
+      check("🎯 v179-L1: cargo com VÍRGULA no nome — o chip anunciava 217 e a lista devolvia 108 (o servidor re-quebrava o próprio valor por vírgula); agora faceta === lista",
+        comVirg.length >= 2 && paresVirg.every((p) => p.faceta === p.lista), JSON.stringify(paresVirg));
+      const semVirg = (vfH.facetas.cargo || []).find((x) => !x.v.includes(",") && x.n > 100);
+      const smSV = (await get(`/api/sheet-meta?sheet=h2a-jun2026&cargo=${encodeURIComponent(semVirg.v)}&top=1`)).json;
+      check("🎯 v179-L1: cargo SEM vírgula não regrediu (guarda do conserto acima)", smSV.total === semVirg.n, `${semVirg.v}: ${semVirg.n} vs ${smSV.total}`);
+      // (2) parse(URL) e parse(objeto) — fila inicial do robô × refill
+      const { createFiltros: _cfL1 } = require(path.join(__dirname, "mod-filtros.js"));
+      const FL1 = _cfL1({ normalizeStateName: (s) => String(s || "").toUpperCase().trim(), normBusca: (s) => String(s || "").toLowerCase().trim(), cityMatchNormFn: (t) => { const q = String(t || "").toLowerCase().trim(); return q ? ((c) => c.includes(q)) : null; }, regioes: {}, grupoDe: (r) => r.g || "", searchSheet: (arr) => ({ total: arr.length, items: arr }), categoriaLabel: (k) => k });
+      const divergem = [];
+      for (const [dim, v] of [["cargo", "Cooks, Restaurant"], ["cidade", "Jenison, MI"], ["status", "Certified, Partially"]]) {
+        const a = JSON.stringify(FL1.parse(new URLSearchParams([[dim, v]]))[dim]);
+        const b = JSON.stringify(FL1.parse({ [dim]: [v] })[dim]);
+        if (a !== b || JSON.parse(a).length !== 1) divergem.push(`${dim}: ${a} vs ${b}`);
+      }
+      check("🎯 v179-L1: parse(URL) e parse(objeto) produzem o MESMO filtro — a fila inicial do robô (URL) e o refill (job.filters) filtravam conjuntos diferentes e ninguém via, porque o robô roda sozinho",
+        divergem.length === 0, divergem.join(" | "));
+      check("🎯 v179-L1: formato legado CSV preservado onde o valor nunca tem vírgula (estado=TEXAS,FLORIDA → 2 itens) e repetição de parâmetro também",
+        FL1.parse(new URLSearchParams([["estado", "TEXAS,FLORIDA"]])).estado.length === 2 && FL1.parse(new URLSearchParams([["estado", "TEXAS"], ["estado", "FLORIDA"]])).estado.length === 2,
+        JSON.stringify(FL1.parse(new URLSearchParams([["estado", "TEXAS,FLORIDA"]])).estado));
+      // (3) cidade: chave canônica cidade|ESTADO
+      const vfLb = (await get("/api/vagas/filtros?sheet=h2a-jun2026&cidadeBusca=labelle")).json;
+      const lbFl = (vfLb.facetas.cidade || []).find((c) => c.v === "labelle|FLORIDA");
+      const smLb = (await get(`/api/sheet-meta?sheet=h2a-jun2026&cidade=${encodeURIComponent("labelle|FLORIDA")}&top=2000`)).json;
+      // MEDIDO: 65 na Flórida (+1 Labelle/GEORGIA). O relatório da auditoria
+      // dizia "1 chip de 66" — os 66 incluíam a vaga da GEÓRGIA, que é outra
+      // cidade; a verdade é 65 + 1, e é isso que a tela passa a mostrar.
+      check("🎯 v179-L1: cidade é LUGAR, não texto — 'LaBelle'/'Labelle'/'LABELLE' viravam 3 chips (32/23/11) e clicar qualquer um trazia 66 (com 1 da GEÓRGIA junto); agora 1 opção por cidade+estado, com rótulo na grafia mais comum",
+        (vfLb.facetas.cidade || []).length === 2 && lbFl && lbFl.n === 65 && lbFl.label === "LaBelle" && lbFl.estado === "FLORIDA" &&
+        smLb.total === 65 && smLb.jobs.every((j) => j.state === "FLORIDA"),
+        JSON.stringify(vfLb.facetas.cidade) + " lista=" + smLb.total);
+      const vfAmes = (await get("/api/vagas/filtros?sheet=h2a-jun2026&cidadeBusca=ames")).json;
+      const ames = (vfAmes.facetas.cidade || []).find((c) => c.v === "ames|IOWA");
+      const smAmes = (await get(`/api/sheet-meta?sheet=h2a-jun2026&cidade=${encodeURIComponent("ames|IOWA")}&top=2000`)).json;
+      check("🎯 v179-L1: marcar uma cidade não traz mais cidade de outro estado — 'Ames' casava por pedaço de texto e devolvia 24 (St James/LA, Lamesa/TX, Jamestown/ND, Amesbury/MA…); agora 12, todas Ames/IOWA",
+        ames && ames.n === 12 && smAmes.total === 12 && smAmes.jobs.every((j) => j.state === "IOWA" && /^ames$/i.test(j.city || "")),
+        `faceta ${ames && ames.n} lista ${smAmes.total} estados ${[...new Set(smAmes.jobs.map((j) => j.state))].join("/")}`);
+      const divCid = [];
+      for (const c of (vfH.facetas.cidade || []).slice(0, 30)) {
+        const sm = (await get(`/api/sheet-meta?sheet=h2a-jun2026&cidade=${encodeURIComponent(c.v)}&top=1`)).json;
+        if (sm.total !== c.n) divCid.push(`${c.v}: ${c.n}≠${sm.total}`);
+      }
+      check("🎯 v179-L1: varredura — nas 30 cidades mais comuns da H-2A, a contagem do chip é EXATAMENTE o que a lista devolve (antes ~500 das 2.569 opções mentiam)",
+        divCid.length === 0 && (vfH.facetas.cidade || []).length >= 30, divCid.slice(0, 5).join(" | "));
+      const regs = {};
+      for (const nome of ["cape cod", "adirondacks", "vail", "outer banks"]) {
+        const sm = (await get(`/api/sheet-meta?sheet=h2a-jun2026&cidade=${encodeURIComponent(nome)}&top=1`)).json;
+        regs[nome] = { faceta: (vfH.facetas.regiao || []).find((r) => r.v === nome)?.n, lista: sm.total };
+      }
+      check("🎯 v179-L1: região turística continua funcionando (texto livre, casamento amplo) e faceta === lista — cape cod 10, adirondacks 30, vail 12, outer banks 11",
+        regs["cape cod"].lista === 10 && regs["adirondacks"].lista === 30 && regs["vail"].lista === 12 && regs["outer banks"].lista === 11 &&
+        Object.values(regs).every((r) => r.faceta === r.lista), JSON.stringify(regs));
+      // (4) salário mal rotulado na fonte
+      const { wageHora: _wh } = require(path.join(__dirname, "mod-filtros.js"));
+      check("🎯 v179-L1: salário mensal mal rotulado é tratado como HORA (41 linhas reais da H-2A: '9.59 mo' virava $0,06/h e sumia de todo filtro) — e o mensal LEGÍTIMO continua dividido por 173",
+        Math.abs(_wh({ w: "16.28", wunit: "mo" }) - 16.28) < 0.01 && Math.abs(_wh({ w: "2458", wunit: "mo" }) - 14.21) < 0.02 && Math.abs(_wh({ w: "9.59", wunit: "mo" }) - 9.59) < 0.01,
+        `${_wh({ w: "16.28", wunit: "mo" })} / ${_wh({ w: "2458", wunit: "mo" })}`);
+      const l12 = vfH.facetas.salario.limiares.find((l) => l.v === 12);
+      const l15 = vfH.facetas.salario.limiares.find((l) => l.v === 15);
+      check("🎯 v179-L1: a faixa exibida deixa de ser o lixo da fonte (min era $0,06 e a tela imprimia 'de $0.06 a $75/h'): min/max por percentil, extremos em minAbs/maxAbs, e as 41 vagas voltam pro limiar de $12 (4.364 → 4.395)",
+        vfH.facetas.salario.min >= 7 && vfH.facetas.salario.maxAbs >= vfH.facetas.salario.max && l12.n === 4395 && l15.n > 0,
+        JSON.stringify(vfH.facetas.salario).slice(0, 200));
+      // (5) busca textual não pode ser calculada 2x por requisição
+      let _chamou = 0;
+      const FL2 = _cfL1({ normalizeStateName: (s) => String(s || "").toUpperCase(), normBusca: (s) => String(s || "").toLowerCase(), cityMatchNormFn: () => null, regioes: {}, grupoDe: () => "", searchSheet: (rows) => { _chamou++; return { total: rows.length, items: rows }; }, categoriaLabel: (k) => k });
+      const _rowsL2 = [{ c: "1", t: "cook" }, { c: "2", t: "x" }];
+      FL2.filtrar(_rowsL2, FL2.parse({ q: "cook" }), { except: ["q"] });
+      const _semExcept = _chamou;
+      FL2.filtrar(_rowsL2, FL2.parse({ q: "cook" }), {});
+      check("🎯 v179-L1: com except:['q'] (lista e refill do robô) a busca textual NÃO é calculada e jogada fora — a planilha inteira era varrida 2x por requisição (70,6ms vs 1,4ms medidos)",
+        _semExcept === 0 && _chamou === 1, `com except=${_semExcept}, sem except=${_chamou}`);
+      // (6) desempenho da rota que o painel chama a cada tecla
+      const _med = async (p, n) => { const t = []; for (let i = 0; i < n; i++) { const t0 = Date.now(); await get(p + "&_cb=" + i + "_" + Date.now()); t.push(Date.now() - t0); } t.shift(); t.sort((a, b) => a - b); return t[Math.floor(t.length / 2)]; };
+      const medFil = await _med("/api/vagas/filtros?sheet=h2a-jun2026", 6);
+      const medBusca = await _med("/api/sheet-meta?sheet=jan2026&top=25&q=cook", 6);
+      // Medido neste repo depois da correção: ~39ms e ~37ms (antes 107ms e
+      // 71ms). O teto é folgado de propósito pra não ficar instável no CI —
+      // o que ele trava é a REGRESSÃO de ordem de grandeza.
+      check("🎯 v179-L1: desempenho — a contagem ao vivo renormalizava a cidade 114 mil vezes por requisição (23 regiões × 4.964 linhas) e travava o processo inteiro; agora usa o índice",
+        medFil < 75 && medBusca < 75, `filtros=${medFil}ms busca=${medBusca}ms`);
+      const vfCache1 = await get("/api/vagas/filtros?sheet=h2a-jun2026&estado=TEXAS");
+      const _t0c = Date.now(); const vfCache2 = await get("/api/vagas/filtros?sheet=h2a-jun2026&estado=TEXAS"); const _msc = Date.now() - _t0c;
+      check("🎯 v179-L1: cache curto (5s) da contagem ao vivo — a mesma pergunta repetida (cada tecla digitada no painel) não refaz o cálculo inteiro",
+        vfCache1.json.total === vfCache2.json.total && _msc < 20, `${_msc}ms`);
+      // (7) o índice enxerga o que o robô acabou de enriquecer
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      const upEnr = await req2("POST", "/api/admin/sheet/upload", { name: "Enriquecer Teste", key: "enrich-teste", data: [{ c: "H-400-ENR-0001", e: "chefe@enrichteste.com", n: "Enriquecer Teste LLC", t: "Housekeeper", s: "MAINE" }] });
+      const vfE0 = (await get("/api/vagas/filtros?sheet=enrich-teste")).json;
+      const rEnr = await req2("POST", "/api/test/enriquecer-linha", {
+        token: TEST_TOKEN, sheet: "enrich-teste", case: "H-400-ENR-0001",
+        dol: { worksite_city: "Bar Harbor", worksite_state: "MAINE", begin_date: "2027-05-01", case_status: "Certified" },
+      });
+      const vfE1 = (await get("/api/vagas/filtros?sheet=enrich-teste")).json;
+      const smE1 = (await get(`/api/sheet-meta?sheet=enrich-teste&cidade=${encodeURIComponent("bar harbor|MAINE")}&top=10`)).json;
+      check("🎯 v179-L1: o que o robô de planilha acaba de enriquecer JÁ VALE nos filtros — as linhas são mutadas no lugar e o comprimento nunca muda, então o índice ficava congelado até o próximo boot (cidade/data/salário descobertos não filtravam nada)",
+        upEnr.json?.ok === true && rEnr.json?.ok === true && vfE0.disponibilidade.cidade === 0 && vfE0.disponibilidade.inicio === 0 &&
+        vfE1.disponibilidade.cidade === 1 && vfE1.disponibilidade.inicio === 1 && smE1.total === 1,
+        `upload=${upEnr.status} enriq=${rEnr.status} · antes cidade=${vfE0.disponibilidade.cidade}/inicio=${vfE0.disponibilidade.inicio} · depois cidade=${vfE1.disponibilidade.cidade}/inicio=${vfE1.disponibilidade.inicio} · lista=${smE1.total}`);
+      // estrutural: as regras novas não podem ser desfeitas sem o teste avisar
+      const _modL1 = fs.readFileSync(path.join(__dirname, "mod-filtros.js"), "utf8");
+      check("🎯 v179-L1: (estrutural) as regras novas estão no motor ÚNICO — valor de faceta opaco (_lista com csv=false em cargo/cidade/status), chave canônica de cidade (ciKey), except:['q'] respeitado e índice invalidado por versão da planilha",
+        /cargo: _lista\(first\("cargo", "titles"\)[\s\S]*?, false\)/.test(_modL1) && /ciKey/.test(_modL1) &&
+        /!\(opts\.except \|\| \[\]\)\.includes\("q"\)/.test(_modL1) && /ix\.ver === ver/.test(_modL1) &&
+        !/cityMatchFn\(/.test(_modL1),
+        "regra do lote 1 desfeita no mod-filtros.js");
     }
 
     // ═══ 📧 ORDEM DO DONO (13/09/2026): e-mails de envio por plano — grátis 0

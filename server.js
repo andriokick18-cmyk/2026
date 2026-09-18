@@ -3577,15 +3577,29 @@ const REGIOES_EUA={
 // (apóstrofo/acento/caixa) + expansão de região, reutilizáveis pelo filtro
 // de CIDADE do modal (sheet-meta e jobs). Fonte única, nunca duplicar.
 function _normBusca(s){return String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/["'‘’`´]/g,"").replace(/\s+/g," ").trim();}
-function _cityMatchFn(filtro){
+// v179: a régua de casamento de lugar passou a existir em UMA versão só, que
+// recebe o texto JÁ NORMALIZADO — o motor de filtros normaliza a cidade de
+// cada linha uma única vez no índice (ix.ciN) em vez de re-normalizar 114 mil
+// vezes por requisição. Fonte única: nunca duplicar a expansão de região.
+function _cityMatchNorm(filtro){
   const ql=_normBusca(filtro);
   if(!ql)return null;
   let cities=null;
   for(const[reg,cs] of Object.entries(REGIOES_EUA)){
     if(ql===reg||ql.includes(reg)||(ql.length>=4&&reg.startsWith(ql))){cities=cs;break;}
   }
-  return ci=>{const c=_normBusca(ci);if(!c)return false;return c.includes(ql)||(cities&&cities.some(x=>c.includes(x)));};
+  return c=>{if(!c)return false;return c.includes(ql)||(cities&&cities.some(x=>c.includes(x)));};
 }
+// 🤖 v179: VERSÃO DA PLANILHA EM MEMÓRIA. Os robôs de planilha (enriquecimento,
+// frescor, vagas novas) MUTAM as linhas no lugar — o array é o mesmo e o
+// comprimento não muda, então o índice do motor de filtros ficava congelado
+// até o próximo boot e o e-mail/cidade/data descobertos não valiam em filtro
+// nenhum. Todo save passa por _saveEnrichedSheet, que incrementa aqui.
+const _VF_CACHE = new Map(); // cache curto da contagem ao vivo (5s) — v179
+const _sheetVerMap = new WeakMap();
+function _bumpSheetVersion(arr){ if(Array.isArray(arr)) _sheetVerMap.set(arr,(_sheetVerMap.get(arr)||0)+1); }
+function _sheetVersionOf(arr){ return (Array.isArray(arr) && _sheetVerMap.get(arr)) || 0; }
+
 // ═══ 🔍 v173 (ordem do dono, 13/09/2026 — reset TOTAL dos filtros): MOTOR
 // ÚNICO de filtros de vagas (mod-filtros.js). Lista do manual (/api/sheet-
 // meta), contagem ao vivo por opção (/api/vagas/filtros), fila do automático
@@ -3594,11 +3608,13 @@ function _cityMatchFn(filtro){
 const { createFiltros: _createFiltros } = require("./mod-filtros.js");
 const FILTROS = _createFiltros({
   normalizeStateName,
-  cityMatchFn: _cityMatchFn,
+  normBusca: _normBusca,
+  cityMatchNormFn: _cityMatchNorm,
   regioes: REGIOES_EUA,
   grupoDe: r => { const cn = String(r.c || "").toUpperCase(); return (r.g && /^[A-H]$/.test(r.g)) ? r.g : (DB_GRUPOS_J26.mapa[cn]?.grupo || ""); },
   searchSheet: (...a) => searchSheet(...a),
   categoriaLabel: k => CATEGORY_LABELS[k]?.label || k,
+  sheetVersion: _sheetVersionOf,
 });
 // Corte por usuário (regra 8: empregador já contatado OU na fila do
 // automático NUNCA reaparece). Devolve null quando não há nada a cortar.
@@ -5910,6 +5926,9 @@ function getAllAdminEmails(){
 
 
 function _saveEnrichedSheet(sheetKey, sheet){
+  // v179: as linhas em memória JÁ mudaram — o índice dos filtros precisa
+  // saber disso mesmo que a gravação em disco falhe depois.
+  _bumpSheetVersion(sheet);
   try{
     // 🔒 Checagem leve de integridade (não bloqueia salvamento — o bot de
     // enriquecimento só EDITA campos das linhas já existentes, não deveria
@@ -7608,13 +7627,27 @@ filtrar();
     const hideSent=(u.searchParams.get("hideSent")||"").trim()==="1";
     const _sF=getSess(req);
     const _uF=_sF?.user_email?getUser(_sF.user_email):null;
+    const _isDPF=_isDoublePro(_uF);
+    // ⚡ v179: cache CURTO (5s) por (planilha + versão da planilha + query +
+    // plano + usuário). O painel dispara esta rota a cada opção marcada e a
+    // cada tecla das buscas de cidade/cargo — sem isso, o mesmo cálculo
+    // completo era refeito várias vezes por segundo no processo single-thread.
+    // A versão da planilha entra na chave, então o que o robô acabou de
+    // enriquecer aparece na contagem seguinte, nunca 5s de dado velho por
+    // outro motivo que não o próprio relógio.
+    const _cKey=sheet+"\u0000"+_sheetVersionOf(arr)+"\u0000"+arr.length+"\u0000"+u.search+"\u0000"+(_isDPF?1:0)+"\u0000"+(hideSent?(_sF?.user_email||""):"");
+    const _hit=_VF_CACHE.get(_cKey);
+    if(_hit&&Date.now()-_hit.t<5000)return json(res,200,_hit.body);
     const r=FILTROS.facetas(arr,f,{
       excluir:hideSent?_excluirEnviadosFn(_sF?.user_email):null,
-      isDP:_isDoublePro(_uF),
+      isDP:_isDPF,
       cargoBusca:(u.searchParams.get("cargoBusca")||"").slice(0,60),
       cidadeBusca:(u.searchParams.get("cidadeBusca")||"").slice(0,60),
     });
-    return json(res,200,{ok:true,sheet,totalPlanilha:arr.length,...r,filtros:f});
+    const _body={ok:true,sheet,totalPlanilha:arr.length,...r,filtros:f};
+    if(_VF_CACHE.size>200)_VF_CACHE.clear();
+    _VF_CACHE.set(_cKey,{t:Date.now(),body:_body});
+    return json(res,200,_body);
   }
   if(pathname==="/api/sheet-detail"){const c=(u.searchParams.get("case")||"").trim().toUpperCase();if(!c)return json(res,400,{error:"case obrigatório"});try{const r=await fetchByCase([c]);
     // v38 (dono, 22/07): e-mail descoberto AQUI é persistido na planilha — a
@@ -7851,6 +7884,20 @@ filtrar();
     try{const d=JSON.parse((await readBody(req))||"{}");if(d.token!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});
       NOTIF.conectar({email:String(d.email||"suporteh2bapply@gmail.com").toLowerCase(),refresh_token:"teste-rt-"+crypto.randomBytes(4).toString("hex"),connectedBy:"smoke-test"});
       return json(res,200,{ok:true,status:NOTIF.status()});}catch(e){return json(res,400,{error:e.message});}
+  }
+  // 🧪 v179: gancho de teste pro caminho REAL do robô de enriquecimento —
+  // o DOL não é alcançável do sandbox, então o smoke aplica a MESMA função
+  // que o robô usa (PLANILHAS.aplicarDolNaLinha) numa linha da planilha e
+  // salva pela MESMA função (_saveEnrichedSheet). Prova que o índice do
+  // motor de filtros enxerga a linha enriquecida SEM reiniciar o servidor
+  // (as linhas são mutadas no lugar e o comprimento nunca muda).
+  if(pathname==="/api/test/enriquecer-linha"&&req.method==="POST"&&process.env.TEST_LOGIN_TOKEN){
+    try{const d=JSON.parse((await readBody(req))||"{}");if(d.token!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});
+      const arr=getSheet(String(d.sheet||""));if(!Array.isArray(arr)||!arr.length)return json(res,404,{error:"planilha vazia"});
+      const row=arr.find(r=>String(r.c||"")===String(d.case||""))||arr[0];
+      PLANILHAS.aplicarDolNaLinha(row,d.dol||{});
+      _saveEnrichedSheet(String(d.sheet||""),arr);
+      return json(res,200,{ok:true,row});}catch(e){return json(res,400,{error:e.message});}
   }
   // 🤖 v177: gancho de teste pra exercitar a lógica PURA de montar a
   // pergunta pro Gemini e ler a resposta dele — sem nunca chamar a rede de

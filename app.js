@@ -1163,9 +1163,11 @@ function _vfRenderSecs(d){
       if(disp.salario===0&&!st.salarioMin){opts("salario",`<div class="vf-note vf-note-warn">⏳ ${esc(t('vf_no_salary'))}</div>`);}
       else{
         const lims=fac.salario.limiares.filter(l=>l.n>0||st.salarioMin===l.v);
-        const pref=[14,16,18,20,22,25,28,30];
+        // v179: $12 e $15 entram na régua preferida — na H-2A são 4.405 e
+        // 2.604 vagas e nenhuma delas era marcável (a lista cortava os dois).
+        const pref=[12,14,15,16,18,20,22,25,28,30];
         let chosen=lims.filter(l=>pref.includes(l.v));if(chosen.length<3)chosen=lims;
-        chosen=chosen.slice(0,7);
+        chosen=chosen.slice(0,8);
         const faixa=fac.salario.comSalario?`<div class="vf-note">${esc(t('vf_faixa').replace("{min}",fac.salario.min).replace("{max}",fac.salario.max).replace("{med}",fac.salario.mediana))}</div>`:"";
         opts("salario",chosen.map(l=>_vfOpt("salarioMin",l.v,t('vf_wage_more').replace("{v}",l.v),l.n,st.salarioMin===l.v)).join("")+faixa);
       }
@@ -1194,7 +1196,7 @@ function _vfRenderSecs(d){
         const vis=VF.busca.cidade?ordered:lim("cidade",ordered,8);
         let html="";
         if(regs.length&&!VF.busca.cidade)html+=`<div class="vf-sub">${esc(t('vf_regions'))}</div>`+regs.slice(0,8).map(r=>_vfOpt("cidade",r.v,r.v.replace(/\b\w/g,c=>c.toUpperCase()),r.n,sel.includes(r.v))).join("");
-        html+=(regs.length&&!VF.busca.cidade?`<div class="vf-sub">${esc(t('vf_cities'))}</div>`:"")+vis.map(x=>_vfOpt("cidade",x.v,x.v+(x.estado?" · "+_vfEstadoNome(x.estado):""),x.n,sel.includes(x.v))).join("")+(VF.busca.cidade?"":maisBtn("cidade",ordered.length-vis.length));
+        html+=(regs.length&&!VF.busca.cidade?`<div class="vf-sub">${esc(t('vf_cities'))}</div>`:"")+vis.map(x=>_vfOpt("cidade",x.v,_vfCidadeLabel(x.v,x.label,x.estado),x.n,sel.includes(x.v))).join("")+(VF.busca.cidade?"":maisBtn("cidade",ordered.length-vis.length));
         if(!vis.length&&!regs.length)html+=`<div class="vf-note">${esc(t('vf_nothing'))}</div>`;
         opts("cidade",html);
       }
@@ -1274,7 +1276,7 @@ function _vfChipList(ctx){
   st.estado.forEach(v=>push("estado",v,"📍 "+_vfEstadoNome(v),"var(--blue)"));
   if(st.salarioMin>0)push("salarioMin","","💰 "+t('vf_wage_more').replace("{v}",st.salarioMin),"var(--green)");
   if(st.inicio.length)push("inicio","","📅 "+st.inicio.map(m=>M[m-1]).join(", "),"var(--blue)");
-  st.cidade.forEach(v=>push("cidade",v,"🏙️ "+v.replace(/\b\w/g,ch=>ch.toUpperCase()),"var(--blue)"));
+  st.cidade.forEach(v=>push("cidade",v,"🏙️ "+_vfCidadeLabel(v),"var(--blue)"));
   if(st.cargo.length)push("cargo","","🏷️ "+(st.cargo.length===1?_vfTitleCase(st.cargo[0]):t('vf_n_cargos').replace("{n}",st.cargo.length)),"var(--purple)");
   if(st.vagasMin>0)push("vagasMin","","👥 "+t('vf_workers_more').replace("{v}",st.vagasMin),"var(--green)");
   if(st.status.length)push("status","","📶 "+st.status.map(s=>s.slice(0,18)).join(", "),"#d97706");
@@ -1284,6 +1286,17 @@ function _vfChipList(ctx){
   return c;
 }
 function _vfTitleCase(s){return String(s||"").replace(/\b\w/g,c=>c.toUpperCase());}
+// v179: a opção de cidade que o servidor emite é a CHAVE canônica
+// ("labelle|FLORIDA") — o rótulo humano vem do `label` da faceta (a grafia
+// mais frequente da planilha) + o estado. Valor sem "|" (região turística ou
+// cidade salva no aparelho antes do v179) continua sendo mostrado como antes.
+function _vfCidadeLabel(v,label,estado){
+  const s=String(v||"");const i=s.lastIndexOf("|");
+  let nome=label||"",est=estado||"";
+  if(i>=0){if(!nome)nome=_vfTitleCase(s.slice(0,i));if(!est)est=s.slice(i+1);}
+  else if(!nome)nome=_vfTitleCase(s);
+  return nome+(est?" · "+_vfEstadoNome(est):"");
+}
 function _vfCatLabel(k){const l=window._catLabels&&window._catLabels[k]&&window._catLabels[k].label;return l||k;}
 function vfRenderChips(ctx){
   const box=g(ctx==="auto"?"#vf-chips-auto":"#vf-chips-manual");if(!box)return;
