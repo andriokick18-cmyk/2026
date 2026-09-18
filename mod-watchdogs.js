@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════════════
    🐕 src/watchdogs.js — Fase 1 · Módulo 4 (extraído do server.js)
-   tokenGuardianRun + vipExpiryWatchdog (no-op intencional, KB-860) +
-   authErrorWatchdog. Injeção de dependências no molde do sentinel.js:
+   tokenGuardianRun + authErrorWatchdog. Injeção de dependências no molde
+   do sentinel.js:
    getters para estado reatribuível (DB_AUTO, autoTimers).
    startIntervals=false permite testar sem timers pendurados.
    ═══════════════════════════════════════════════════════════════════════ */
@@ -87,19 +87,11 @@ async function tokenGuardianRun() {
 }
 
 
-// ── Watchdog de VIP expirado — para automático de quem não pagou ────────────
-// Roda a cada hora. Para qualquer job ativo de usuário sem plano auto válido.
-// Essa é a rede de segurança contra trial que continua rodando após expirar.
-// Rede de segurança: NÃO para mais por falta de plano (regra: 10 auto/dia
-// grátis para todos). O limite diário (getAutoLimit=10 p/ free) já regula no
-// agendador via "waiting_limit". Mantido só como no-op/observação para não
-// re-pausar jobs de quem não tem VIP a cada 15 min (o que desfazia o fix).
-async function vipExpiryWatchdog(){
-  // Intencionalmente vazio quanto a parar por VIP: todos têm 10 automáticos/dia.
-  // (Se um dia precisar de outra rede de segurança, adicionar aqui SEM parar
-  // por ausência de plano.)
-  return;
-}
+// (v199 LOTE 18: `vipExpiryWatchdog` foi removido — era um `return` vazio
+// agendado a cada 15 minutos, e o comentário dele ainda prometia "10
+// automáticos/dia grátis para todos", o oposto da regra em vigor desde o v172
+// ("ZERO envio grátis"). Quem PARA o robô de quem não tem plano ativo é o
+// próprio `scheduleAuto` — `paused_no_vip`, v172h —, não um vigia.)
 
 
 // ── Watchdog de paused_auth_error — notifica usuário após 12h parado ─────────
@@ -150,9 +142,8 @@ async function authErrorWatchdog(){
 
   if (startIntervals) {
     setInterval(tokenGuardianRun, 10 * 60 * 1000); // a cada 10 minutos (era 15)
-    setInterval(()=>vipExpiryWatchdog().catch(e=>console.error("[vip-watchdog]",e.message)), 15*60*1000);
     setInterval(()=>authErrorWatchdog().catch(e=>console.error("[auth-watchdog]",e.message)), 3*60*60*1000); // a cada 3h
   }
-  return { tokenGuardianRun, vipExpiryWatchdog, authErrorWatchdog, getAuthErrNotifiedAt: ()=>_authErrNotifiedAt };
+  return { tokenGuardianRun, authErrorWatchdog, getAuthErrNotifiedAt: ()=>_authErrNotifiedAt };
 }
 module.exports = { initWatchdogs };

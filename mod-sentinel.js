@@ -141,19 +141,40 @@ async function healthSentinelRun(){
   if(!S.adminToken.ok) console.warn(`[health-sentinel] ℹ️ Gmail pessoal do admin não conectado — a RESERVA do aviso de pedido e o alerta de pedido pendente deste vigia não saem por esse canal; o canal principal é a conta de notificações (${S.notif.ok?"conectada":"TAMBÉM desconectada"}).`);
 
   // 9) 📋 MONITOR DE PLANILHAS — "parado porque terminou" ≠ "dados envelhecendo"
+  //    🚨 v199 LOTE 18: este bloco NUNCA rodou. `typeof getSheet==="function"`
+  //    testava uma global `getSheet` que não existe dentro do módulo (a função
+  //    chega por injeção, em `ctx.getSheet`), então TODA planilha caía no
+  //    `null` do ternário e `S.planilhas` era SEMPRE [] — o resumo do vigia
+  //    dizia "0 planilha(s) com alerta" mesmo com uma planilha envelhecida ou
+  //    sem e-mail nenhum. Junto vinham 2 verdades paralelas: a lista de
+  //    planilhas era montada aqui à mão (sem a H-2A built-in, sem tirar
+  //    rascunho) e "enriquecida" era medida só por e-mail, enquanto desde o
+  //    v182 LOTE 8 "completa" é a lista única CAMPOS_ESSENCIAIS
+  //    (e-mail + cidade + datas + descrição). Agora a lista vem da MESMA
+  //    função que o robô de frescor usa (planilhas publicadas) e o progresso
+  //    da MESMA `progressoPlanilha` do painel.
   S.planilhas = [];
   try{
-    const keys=["jan2026","jul2025",...Object.keys(ctx.SHEET_EXTRAS()||{})];
-    for(const k of keys){
-      const sheet=(typeof getSheet==="function")?ctx.getSheet(k):null;
-      if(!sheet||!sheet.length) continue;
+    const keys = typeof ctx.planilhasPublicadas==="function"
+      ? (ctx.planilhasPublicadas()||[])
+      : ["jan2026","jul2025","h2a-jun2026",...Object.keys(ctx.SHEET_EXTRAS()||{})];
+    for(const k of [...new Set(keys)]){
+      const sheet=(typeof ctx.getSheet==="function")?ctx.getSheet(k):null;
+      if(!Array.isArray(sheet)||!sheet.length) continue;
+      const prog=(typeof ctx.progressoPlanilha==="function")?ctx.progressoPlanilha(sheet):null;
       const withEmail=sheet.filter(r=>r.e&&String(r.e).includes("@")).length;
       const pct=Math.round(withEmail/sheet.length*100);
-      const meta=(typeof ctx.DB_SHEETS_META()!=="undefined"&&ctx.DB_SHEETS_META()[k])||{};
+      const pctCompletas=prog?Math.round(prog.completas/sheet.length*100):null;
+      const meta=(ctx.DB_SHEETS_META()||{})[k]||{};
       const idadeDias=meta.enrichedAt?Math.round((now-meta.enrichedAt)/86400000):null;
-      S.planilhas.push({ planilha:k, vagas:sheet.length, comEmail:withEmail, pct,
+      S.planilhas.push({ planilha:k, vagas:sheet.length, comEmail:withEmail, pct, pctCompletas,
+        pendentes: prog?prog.pendentes:null,
         ultimoEnriquecimento: meta.enrichedAt?new Date(meta.enrichedAt).toISOString().slice(0,10):"nunca",
-        alerta: pct<90 ? "⚠️ <90% enriquecida" : (idadeDias!==null&&idadeDias>30 ? "🕰️ enriquecimento >30 dias" : null) });
+        // Sem e-mail é o alarme nº1 (sem contato não existe candidatura); só
+        // depois vem "o robô ainda não completou" e o envelhecimento.
+        alerta: pct<90 ? "⚠️ <90% com e-mail"
+          : (pctCompletas!==null&&pctCompletas<50 ? "🧩 <50% completas (robô ainda alimentando)"
+          : (idadeDias!==null&&idadeDias>30 ? "🕰️ enriquecimento >30 dias" : null)) });
     }
   }catch(e){ console.warn("[health-sentinel] planilhas:",e.message); }
 

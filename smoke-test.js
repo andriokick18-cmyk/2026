@@ -1809,21 +1809,23 @@ async function drillRestauracaoBackup() {
       _bodyPersist.includes("fs.writeFileSync(t, payload,"),
       "addLog voltou a gravar síncrono ou storagePersist voltou a serializar 2x");
 
-    // v47: GUARDA ESTRUTURAL das vias quentes de persistência — indexApp e os
-    // callbacks de header do Gmail rodam a CADA e-mail enviado (manual e
-    // automático); não dá pra disparar envio real de Gmail no smoke, então a
-    // guarda confere direto no código-fonte que essas vias usam
-    // persistDebounced (nunca persist síncrono, que grava o banco inteiro
-    // travando o servidor pra todo mundo — bug real "site lento", 23/07).
+    // v47: GUARDA ESTRUTURAL das vias quentes de persistência — o que roda a
+    // CADA e-mail enviado (manual e automático) nunca pode gravar um banco
+    // inteiro de forma síncrona (bug real "site lento", 23/07).
+    // 🧹 v199 LOTE 18: as 2 asserções que viviam aqui (indexApp debounced e os
+    // 2 callbacks de header do Gmail) codificavam código que NÃO EXISTE MAIS —
+    // o índice de candidaturas e a busca de headers Message-ID só serviam pra
+    // casar RESPOSTA→candidatura, e este app não lê caixa de entrada (escopo
+    // único gmail.send). No lugar delas, a via quente que sobrou: `addHist`
+    // (a gravação por candidatura) continua debounced, e `markSent` continua
+    // SÍNCRONO de propósito (v184 — a regra 8 não pode voltar atrás num crash).
     const _srvSrc = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
-    const _idxAppBody = (_srvSrc.match(/function indexApp\([\s\S]*?\n\}/) || [""])[0];
-    check("⚡ indexApp (roda a cada e-mail enviado) grava DEBOUNCED, nunca síncrono",
-      _idxAppBody.includes("persistDebounced(APPIDX_FILE") && !/(?<!Debounced)\(?persist\(APPIDX_FILE/.test(_idxAppBody),
-      _idxAppBody ? "" : "função indexApp não encontrada no server.js");
-    const _gmailCbs = [...(_srvSrc.matchAll(/gmailHeaderMsgId = h\.messageId; (persist\w*)\(/g))].map((m) => m[1]);
-    check("⚡ callbacks de header do Gmail (por e-mail) gravam o histórico DEBOUNCED",
-      _gmailCbs.length === 2 && _gmailCbs.every((f) => f === "persistDebounced"),
-      `encontrados: ${_gmailCbs.join(", ") || "nenhum"}`);
+    const _addHistBody = (_srvSrc.match(/const addHist\s*=[\s\S]*?\n/) || [""])[0];
+    const _markSentBody = (_srvSrc.match(/const markSent = \(u, d\) => \{[\s\S]*?\n\};/) || [""])[0];
+    check("⚡ v199-L18: a via quente do envio grava certo — addHist (1x por candidatura) é DEBOUNCED e markSent continua SÍNCRONO de propósito (v184: fila pode voltar atrasada num crash, 'já enviei pra esse empregador' NUNCA)",
+      _addHistBody.includes("persistDebounced(HIST_FILE") && !/(?<!Debounced)persist\(HIST_FILE/.test(_addHistBody) &&
+      _markSentBody.includes("persistSent()"),
+      JSON.stringify({ addHist: !!_addHistBody, markSent: !!_markSentBody }));
 
     // v72: SÓ-ENVIO PERMANENTE E UNIVERSAL nos 3 servidores (ordem do dono,
     // 26/07/2026 — "não precisa mais pedir autenticação pro Google pra ler
@@ -5688,6 +5690,84 @@ async function drillRestauracaoBackup() {
       !/is not defined|is not a function|Cannot read propert/i.test(String(_l12Principal.json?.errorRaw || _l12Principal.json?.error || "")),
       `status=${_l12Principal.status} raw=${String(_l12Principal.json?.errorRaw || "").slice(0, 90)}`);
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+
+    // ═══ 🧹 v199 LOTE 18: faxina do servidor (o que não tinha como rodar) ═══
+    // O app é SÓ-ENVIO: o escopo pedido ao Google é gmail.send e nada mais
+    // (guarda estrutural própria mais acima). Mesmo assim sobrevivia o stack
+    // INTEIRO de leitura de caixa de entrada — 3 rotas /api/inbox* (2 delas
+    // SEM nenhuma guarda: chamariam o Gmail com um escopo que não existe),
+    // o leitor/parser de mensagem, o casador resposta→candidatura e o índice
+    // `app_index.json`, ESCRITO a cada candidatura enviada pra alimentar um
+    // único leitor que também era inalcançável: RAM e disco gastos por envio
+    // pra ninguém. Junto iam 2 sinks sem front (/api/note/*, /api/alerts) e
+    // 3 bancos que só eram carregados no boot e regravados no shutdown.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "l18@test.com", name: "L18" });
+    const _l18Rotas = {
+      inbox: await get("/api/inbox"),
+      inboxMatch: await req2("POST", "/api/inbox/match", { threadId: "x" }),
+      inboxRead: await req2("POST", "/api/inbox/read", { ids: ["x"] }),
+      alerts: await req2("POST", "/api/alerts", { state: "TX" }),
+      note: await req2("POST", "/api/note/vaga-x", { note: "oi" }),
+    };
+    check("🧹 v199-L18: as 5 rotas sem dono respondem 404 — /api/inbox, /api/inbox/match, /api/inbox/read (leitura de caixa de entrada, que este app nunca faz), /api/alerts e /api/note/:id (dois sinks que gravavam dado ilimitado por usuário sem NENHUMA tela lendo)",
+      Object.values(_l18Rotas).every((r) => r.status === 404),
+      JSON.stringify(Object.fromEntries(Object.entries(_l18Rotas).map(([k, v]) => [k, v.status]))));
+    check("🧹 v199-L18: nenhum app_index.json é criado — o índice de candidaturas era escrito (debounced) a CADA envio e o único leitor dele vivia dentro da leitura de inbox",
+      !fs.existsSync(path.join(DATA, "app_index.json")),
+      "app_index.json ainda está sendo escrito no DATA_DIR");
+    const _l18Sinks = ["notes.json", "job_alerts.json", "push_subs.json", "notifications.json", "suggestions.json"]
+      .filter((f) => fs.existsSync(path.join(DATA, f)));
+    check("🧹 v199-L18: os bancos sem leitor (notes/job_alerts/push_subs/notifications/suggestions) não são mais criados nem regravados no desligamento",
+      _l18Sinks.length === 0, `ainda em disco: ${_l18Sinks.join(", ")}`);
+    // `settings` era merge de objeto ARBITRÁRIO do cliente dentro do users.json
+    // (teto de corpo: 50MB), sem nenhuma tela mandando o campo.
+    await req2("POST", "/api/settings", { settings: { lixo: "x".repeat(5000), outro: { a: 1 } } });
+    const _l18Disco = (() => { try { return JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8")); } catch { return {}; } })();
+    check("🧹 v199-L18: POST /api/settings com `settings:{…}` NÃO grava nada — o campo continua sendo LIDO (conta antiga com assunto/corpo salvo ali segue servida), mas o cliente não escreve mais objeto arbitrário dentro do users.json",
+      !_l18Disco["l18@test.com"]?.settings?.lixo,
+      JSON.stringify(Object.keys(_l18Disco["l18@test.com"]?.settings || {})).slice(0, 120));
+    // O vigia media planilha com um `typeof getSheet` de uma global que não
+    // existe no módulo: S.planilhas era SEMPRE [] e o resumo dizia "0
+    // planilha(s) com alerta" mesmo com planilha envelhecida.
+    // (a rota do vigia exige um e-mail que é admin DE VERDADE — isAdminEmail —,
+    // não só uma conta com a flag isAdmin; mesmo padrão do check do v183-L1.)
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "andrio.usa2026@gmail.com", name: "Admin", isAdmin: true });
+    const _l18Sent = await req2("POST", "/api/admin/health-sentinel/run", {});
+    const _l18Pl = _l18Sent.json?.report?.planilhas || [];
+    check("🧹 v199-L18: o monitor de planilhas do vigia FUNCIONA (antes era sempre lista vazia) — lê as planilhas publicadas pela mesma função do robô de frescor e mede 'completa' pela régua única CAMPOS_ESSENCIAIS",
+      _l18Sent.json?.ok === true && _l18Pl.length >= 2 &&
+      _l18Pl.every((x) => typeof x.vagas === "number" && x.vagas > 0 && typeof x.pctCompletas === "number"),
+      JSON.stringify(_l18Pl.slice(0, 3)));
+    check("🧹 v199-L18: o vigia enxerga a planilha que o robô ainda não completou (jan2026/jul2025 têm e-mail em 100% das linhas mas ZERO cidade/datas/descrição — era exatamente esse alarme que nunca acendia)",
+      _l18Pl.some((x) => x.alerta && /completas|e-mail/.test(String(x.alerta))),
+      JSON.stringify(_l18Pl.map((x) => [x.planilha, x.alerta])).slice(0, 300));
+    // Estrutural: nada do stack removido pode voltar por descuido.
+    const _l18Srv = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+    const _l18Wd = fs.readFileSync(path.join(__dirname, "mod-watchdogs.js"), "utf8");
+    // Só comentários de LINHA: um `/* … */` guloso aqui casaria com pares
+    // acidentais formados por literais de regex do próprio código e apagaria
+    // trechos inteiros do arquivo (a guarda passaria a medir o vazio).
+    const _l18SemCom = (t2) => t2.replace(/^[ \t]*\/\/.*$/gm, " ");
+    const _l18SrvCode = _l18SemCom(_l18Srv), _l18WdCode = _l18SemCom(_l18Wd);
+    const _l18Mortos = ["gmailFetchInbox", "gmailMarkRead", "matchAppToEmail", "indexApp", "rebuildAppIndex",
+      "DB_APP_INDEX", "APPIDX_FILE", "fetchGmailMessageHeaders", "DB_NOTES", "DB_ALERTS", "DB_PUSH",
+      "DB_NOTIF ", "DB_SUGGESTIONS", "hourBRT", "isOnlineUser", "_savePlaniha", "getAllAdminEmails", "setHealth"]
+      .filter((n) => _l18SrvCode.includes(n));
+    check("🧹 v199-L18 (estrutural): nenhuma das 18 peças do stack morto voltou ao server.js (leitura de inbox, índice de candidaturas, bancos sem leitor e funções órfãs)",
+      _l18Mortos.length === 0, `ainda presentes: ${_l18Mortos.join(", ")}`);
+    check("🧹 v199-L18 (estrutural): `vipExpiryWatchdog` não existe mais — era um `return` vazio agendado a cada 15min cujo comentário ainda prometia '10 automáticos/dia grátis', o oposto do 'ZERO envio grátis' em vigor desde o v172",
+      !_l18WdCode.includes("vipExpiryWatchdog") && !_l18SrvCode.includes("vipExpiryWatchdog") &&
+      !/10 autom[aá]ticos\/dia/.test(_l18Wd), "resquício de vipExpiryWatchdog encontrado");
+    check("🧹 v199-L18 (estrutural): o Resumo Diário do Dono parou de AFIRMAR uma entrega que nunca aconteceu — o laço de envio era `for(const ae of ADMIN_EMAILS){}` com corpo VAZIO e o log escrevia 'Enviado aos admins' todo dia",
+      !_l18SrvCode.includes("Enviado aos admins") && _l18SrvCode.includes("Resumo de ontem:") &&
+      !/for\(const ae of ADMIN_EMAILS\)\{\s*\}/.test(_l18SrvCode),
+      "o texto/laço do resumo diário ainda está lá");
+    // O contrato do JSON não muda (respostas:0) — cliente antigo do painel e a
+    // asserção histórica deste smoke dependem da FORMA da resposta.
+    const _l18Res = await req2("POST", "/api/admin/resumo-diario-run", {});
+    check("🧹 v199-L18: o resumo diário continua respondendo com a MESMA forma de sempre (incluindo `respostas`, agora sempre 0 — o app não lê caixa de entrada) e o log do robô diz a verdade",
+      _l18Res.json?.ok === true && _l18Res.json?.respostas === 0 && typeof _l18Res.json?.envios === "number",
+      JSON.stringify(_l18Res.json || {}).slice(0, 160));
 
     // ═══ 🇧🇷 v199 LOTE 17: português fixo — inclusive pra quem já ficou preso ═══
     // O README e o CLAUDE.md dizem "o app não tem seletor de idioma... é só em

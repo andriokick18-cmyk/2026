@@ -164,7 +164,7 @@ addEventListener("DOMContentLoaded",async()=>{
 function applyStatus(d){
   if(!d||!d.connected)return;
   const _antes=U&&U.connected?{needsPlan:!!U.needsPlan,plan:U.plan,gmail:!!U.gmailConnected}:null;
-  U={...U,connected:true,email:d.email,name:d.name||d.email,picture:d.picture||"",isAdmin:!!d.isAdmin,plan:d.plan||"free",vip:d.vip||null,todaySentManual:d.todaySentManual||0,manualLimit:d.manualLimit??0,manualRemaining:(d.manualRemaining??0),todaySentAuto:d.todaySentAuto||0,autoLimit:d.autoLimit??0,autoRemaining:(d.autoRemaining??0),autoEnabled:true,autoJob:d.autoJob||null,autoStats:d.autoStats||{sent:0,failed:0},onboarded:!!d.onboarded,profiles:d.profiles||[],senderEmails:d.senderEmails||[],senderMax:d.senderMax||1,primaryWarmup:d.primaryWarmup||null,adminSettings:d.adminSettings||null,totalSent:d.totalSent||0,totalManual:d.totalManual||0,totalAutoHist:d.totalAutoHist||0,totalReplies:d.totalReplies||0,
+  U={...U,connected:true,email:d.email,name:d.name||d.email,picture:d.picture||"",isAdmin:!!d.isAdmin,plan:d.plan||"free",vip:d.vip||null,todaySentManual:d.todaySentManual||0,manualLimit:d.manualLimit??0,manualRemaining:(d.manualRemaining??0),todaySentAuto:d.todaySentAuto||0,autoLimit:d.autoLimit??0,autoRemaining:(d.autoRemaining??0),autoEnabled:true,autoJob:d.autoJob||null,autoStats:d.autoStats||{sent:0,failed:0},onboarded:!!d.onboarded,profiles:d.profiles||[],senderEmails:d.senderEmails||[],senderMax:d.senderMax||1,primaryWarmup:d.primaryWarmup||null,adminSettings:d.adminSettings||null,totalSent:d.totalSent||0,totalManual:d.totalManual||0,totalAutoHist:d.totalAutoHist||0,
   // Novos campos
   emailContato:d.emailContato||"",whatsapp:d.whatsapp||"",rankName:d.rankName||"",appAvatarId:d.appAvatarId||"",h2bProfile:d.h2bProfile||{},phone:d.phone||"",serverId:d.serverId||1,publicProfile:d.publicProfile||{},
   // 🔒 v172 (ORDEM DO DONO, 11/09/2026): gate de envio — plano pago ativo E
@@ -211,7 +211,6 @@ async function checkStatus(){
       DOCS=d.cvs||[];
       // Só redefine activeResIdx se ainda não foi definido (evita sobrescrever seleção do usuário)
       if(activeResIdx===null) activeResIdx=DOCS.filter(c=>(c.cvType||"resume")==="resume").slice(-1)[0]?.idx||null;
-      if(d.readEmailIds?.length)_loadReadStateFromServer(d.readEmailIds);
       showApp();syncData();checkAdminMsg();_loadSentIds();
       // Verificar se veio do add-sender (admin) e ir para aba admin
       const _senderAdded=sessionStorage.getItem("senderAdded");
@@ -5483,23 +5482,12 @@ window.addEventListener("appinstalled",()=>{
   toast("App instalado com sucesso! 🎉","g");
 });
 
-// ── Estado de leitura persistido localmente E no servidor ──
-// (v-2026: a lista/detalhe de inbox foi removida junto com a aba Respostas —
-// GMAIL_SEND_ONLY no servidor nunca devolve e-mails reais — mas o servidor
-// ainda manda readEmailIds no /api/status e esse estado local é mesclado
-// nele no login; mantido só por isso.)
-let _READ_IDS = new Set();
-function _loadReadState(){
-  try{const r=JSON.parse(localStorage.getItem("h2b-inbox-read")||"[]");_READ_IDS=new Set(r);}catch{}
-}
-function _loadReadStateFromServer(serverIds){
-  // Chamado após login com os IDs do servidor — mescla com localStorage
-  if(Array.isArray(serverIds)&&serverIds.length){
-    serverIds.forEach(id=>_READ_IDS.add(id));
-    _saveReadState(); // persiste o merge no localStorage também
-  }
-}
-function _saveReadState(){try{localStorage.setItem("h2b-inbox-read",JSON.stringify([..._READ_IDS]));}catch{}}
+// (v199 LOTE 18: o "estado de leitura da inbox" — `_READ_IDS`,
+// `_loadReadState`, `_loadReadStateFromServer` e `_saveReadState` — saiu
+// inteiro. Era um laço fechado: escrevia no localStorage um conjunto de IDs de
+// e-mail que NENHUMA tela lia, alimentado por um `readEmailIds` que o servidor
+// só tinha porque a leitura de caixa de entrada existiu um dia. Este app só
+// envia — o escopo é gmail.send e não há aba de respostas.)
 
 // 🚫 v189 LOTE 7 (decisão do dono): O SITE NÃO PEDE MAIS PERMISSÃO DE
 // NOTIFICAÇÃO. Aqui viviam `renderPushAsk` (o convite "🔔 Quer saber NA HORA
@@ -6024,7 +6012,6 @@ if ("serviceWorker" in navigator) {
 // pelo #cv-prompt-overlay, que é o caminho que existe.
 
 // ── Inicialização ─────────────────────────────────────────
-_loadReadState();
 _loadSoundPref();
 
 // (Captura de ?ref= removida — programa de indicação encerrado, KB-059)

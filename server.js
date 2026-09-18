@@ -301,9 +301,6 @@ function toTimeBRT(ts) {
   return `${String(d.getUTCHours()).padStart(2,"0")}:${String(d.getUTCMinutes()).padStart(2,"0")}:${String(d.getUTCSeconds()).padStart(2,"0")}`;
 }
 
-function hourBRT() {
-  return nowBRT().getUTCHours();
-}
 
 
 
@@ -419,13 +416,7 @@ const AUTO_FILE   = path.join(DATA_DIR, "auto_jobs.json");
 const SENT_FILE   = path.join(DATA_DIR, "sent_emails.json");
 const LOGS_FILE   = path.join(DATA_DIR, "auto_logs.json");   // NEW: logs detalhados
 const JOURNEY_FILE = path.join(DATA_DIR, "journey.json");       // Jornada do usuário
-const NOTES_FILE  = path.join(DATA_DIR, "notes.json");
-const ALERTS_FILE = path.join(DATA_DIR, "job_alerts.json");
-const PUSH_FILE   = path.join(DATA_DIR, "push_subs.json");   // NEW: push subscriptions
-const APPIDX_FILE = path.join(DATA_DIR, "app_index.json");   // NEW v13: índice de candidaturas
 const ADMIN_SETTINGS_FILE = path.join(DATA_DIR, "admin_settings.json"); // Admin global settings
-const NOTIF_FILE     = path.join(DATA_DIR, "notifications.json");  // Global notifications from ADM
-const SUGGESTIONS_FILE = path.join(DATA_DIR, "suggestions.json");   // User suggestions to devs
 const REVIEWS_FILE     = path.join(DATA_DIR, "reviews.json");        // Avaliações reais de usuários p/ landing page (moderadas por admin)
 const PEDIDOS_FILE     = path.join(DATA_DIR, "pedidos.json");         // Pedidos de plano dos usuários
 const FINANCEIRO_FILE  = path.join(DATA_DIR, "financeiro.json");      // Dados financeiros (entradas + gastos)
@@ -470,11 +461,6 @@ let DB_AUTO   = {};
 let DB_SENT   = {};   // { userEmail → Set<destEmail> }
 let DB_LOGS   = {};   // { userEmail → LogEntry[] }
 let DB_JOURNEY = {}; // { userEmail → JourneyEvent[] }
-let DB_NOTES  = {};
-let DB_ALERTS = {};
-let DB_PUSH   = {};   // NEW: push subscriptions { userEmail → PushSubscription[] }
-// NEW v13: índice de candidaturas — { userEmail → { byThread:{tid:appId}, byMsgId:{mid:appId}, byTo:{email:[appId,...]} } }
-let DB_APP_INDEX = {};
 let DB_ADMIN_SETTINGS = { emailNotificationsEnabled: false,
   // v172 (ORDEM DO DONO, 11/09/2026): newUserTrialEnabled/newUserTrialDays/
   // newUserTrialAutoDays/newUserTrialPlan foram REMOVIDOS — trial grátis de
@@ -526,8 +512,6 @@ function _sessAdminNome(s){
   return em;
 }
 // Notifications: { notifications: [{id, title, body, createdAt, createdBy, readBy:[email,...]}] }
-let DB_NOTIF = { notifications: [] };
-let DB_SUGGESTIONS = []; // Array de sugestões dos usuários
 let DB_REVIEWS = []; // Array de avaliações reais de usuários {id,text,rating,displayName,location,email,plan,status,createdAt}
 let DB_PEDIDOS     = []; // Array de pedidos de plano
 let DB_FINANCEIRO  = {pagamentos:[],gastos:[]};  // Dados financeiros persistentes
@@ -1051,13 +1035,17 @@ const markOnline = email => {
   const p = getUser(email);
   if(p) setUser(email, { lastSeenAt: now });
 };
-const isOnlineUser = email => { const t = onlineMap.get(email); return !!(t && Date.now() - t < 5 * 60_000); };
 
 function load(f, def) { return storageLoad(f, def); } // Fase 4: SQLite + migração automática + fallback JSON
 
 // ══════════════════════════════════════════════════════════
 //  SISTEMA DE INTELIGÊNCIA DE EMAILS — Base Global
-//  Aprende com bounces de TODOS os usuários
+//  v199 LOTE 18: estes 3 bancos são HISTÓRICO + ajuste manual do admin, nunca
+//  mais descoberta automática. O leitor de bounce vivia dentro da leitura de
+//  caixa de entrada, que este app não faz (escopo único gmail.send) — era
+//  código que não tinha como rodar nem em teoria. Quem escreve hoje é o admin
+//  (/api/admin/email-intelligence/mark-invalid); quem lê é o envio (manual e
+//  robô pulam endereço com bounce conhecido) e o painel.
 // ══════════════════════════════════════════════════════════
 const INVALID_EMAILS_FILE   = path.join(DATA_DIR, "invalid_emails.json");
 const EMAIL_CORRECTIONS_FILE = path.join(DATA_DIR, "email_corrections.json");
@@ -1066,150 +1054,6 @@ const TEMP_FAILURES_FILE    = path.join(DATA_DIR, "temp_failures.json");
 let DB_INVALID_EMAILS   = {};  // { email: {email,domain,motivo,tipo,first,last,count,users,msg,status} }
 let DB_EMAIL_CORRECTIONS = {}; // { orig: {original,corrected,confidence,count,first,last} }
 let DB_TEMP_FAILURES    = {};  // { email: {email,errors:[],count} }
-
-// Padrões de erro permanente (o endereço não existe)
-const PERM_PATTERNS = [
-  /550[\s-]5\.1\.1/i, /user unknown/i, /no such user/i,
-  /address not found/i, /account does not exist/i, /recipient not found/i,
-  /does not exist/i, /invalid address/i, /user not found/i,
-  /mailbox not found/i, /bad destination/i, /550 unknown/i,
-  /5\.1\.1/i, /5\.1\.2/i, /5\.4\.1/i, /5\.7\.1.*unknown/i,
-  /email account.*does not exist/i, /no mailbox/i
-];
-
-// Padrões de erro temporário (não é lista negra)
-const TEMP_PATTERNS = [
-  /temporary/i, /retry/i, /will retry/i, /delivery incomplete/i,
-  /mailbox full/i, /server unavailable/i, /timeout/i, /4\.\d+\.\d+/i,
-  /try again/i, /busy/i, /too many/i, /rate limit/i, /temporarily/i
-];
-
-// Domínios comuns para correção de typo
-const COMMON_DOMAINS = [
-  'gmail.com','yahoo.com','hotmail.com','outlook.com','icloud.com',
-  'aol.com','protonmail.com','live.com','msn.com','me.com',
-  'yahoo.com.br','hotmail.com.br','bol.com.br','uol.com.br','terra.com.br'
-];
-
-function levenshtein(a,b){
-  const m=a.length,n=b.length;
-  const d=Array.from({length:m+1},(_,i)=>Array.from({length:n+1},(_,j)=>j===0?i:i===0?j:0));
-  for(let i=1;i<=m;i++) for(let j=1;j<=n;j++) d[i][j]=a[i-1]===b[j-1]?d[i-1][j-1]:1+Math.min(d[i-1][j],d[i][j-1],d[i-1][j-1]);
-  return d[m][n];
-}
-
-function suggestEmailCorrection(email){
-  if(!email||!email.includes('@')) return null;
-  const [local, domain] = email.split('@');
-  if(!domain) return null;
-  // Typo muito óbvio no domínio
-  let best=null, bestDist=99;
-  for(const cd of COMMON_DOMAINS){
-    const dist = levenshtein(domain.toLowerCase(), cd);
-    if(dist>0 && dist<=2 && dist<bestDist){ bestDist=dist; best=cd; }
-  }
-  if(best) return { original:email, corrected:`${local}@${best}`, confidence: bestDist===1?0.95:0.80 };
-  return null;
-}
-
-function classifyBounce(bodyText){
-  if(!bodyText) return null;
-  const text = bodyText.toLowerCase();
-  for(const p of PERM_PATTERNS){ if(p.test(text)) return 'permanent'; }
-  for(const p of TEMP_PATTERNS){ if(p.test(text)) return 'temporary'; }
-  return null;
-}
-
-function processBounce(toEmail, bodyText, fromUser){
-  const now = Date.now();
-  const tipo = classifyBounce(bodyText);
-  if(!tipo) return; // Não é bounce reconhecido
-  
-  if(tipo === 'permanent'){
-    if(!DB_INVALID_EMAILS[toEmail]){
-      DB_INVALID_EMAILS[toEmail] = {
-        email:toEmail, domain:toEmail.split('@')[1]||'',
-        motivo:'Endereço inexistente', tipo:'permanent',
-        first:now, last:now, count:1,
-        users:new Set([fromUser]), msg:bodyText.slice(0,300), status:'invalid'
-      };
-    } else {
-      const e = DB_INVALID_EMAILS[toEmail];
-      e.last=now; e.count++;
-      if(fromUser) e.users.add(fromUser);
-      e.msg = bodyText.slice(0,300);
-    }
-    // Salvar
-    const toSave = {};
-    for(const [k,v] of Object.entries(DB_INVALID_EMAILS)){
-      toSave[k] = {...v, users: [...(v.users instanceof Set ? v.users : new Set(v.users||[]))]};
-    }
-    try{ fs.writeFileSync(INVALID_EMAILS_FILE, JSON.stringify(toSave, null, 2)); }catch{}
-    
-    // Verificar correção possível
-    const correction = suggestEmailCorrection(toEmail);
-    if(correction && correction.confidence >= 0.80){
-      if(!DB_EMAIL_CORRECTIONS[toEmail]){
-        DB_EMAIL_CORRECTIONS[toEmail] = {...correction, count:1, first:now, last:now};
-      } else {
-        DB_EMAIL_CORRECTIONS[toEmail].count++;
-        DB_EMAIL_CORRECTIONS[toEmail].last=now;
-      }
-      try{ fs.writeFileSync(EMAIL_CORRECTIONS_FILE, JSON.stringify(DB_EMAIL_CORRECTIONS,null,2)); }catch{}
-    }
-    console.log(`[bounce] 🔴 PERMANENTE: ${toEmail} (de ${fromUser})`);
-    
-  } else if(tipo === 'temporary'){
-    if(!DB_TEMP_FAILURES[toEmail]) DB_TEMP_FAILURES[toEmail]={email:toEmail,errors:[],count:0};
-    DB_TEMP_FAILURES[toEmail].count++;
-    DB_TEMP_FAILURES[toEmail].errors.push({msg:bodyText.slice(0,200),ts:now,user:fromUser});
-    try{ fs.writeFileSync(TEMP_FAILURES_FILE, JSON.stringify(DB_TEMP_FAILURES,null,2)); }catch{}
-    console.log(`[bounce] 🟡 TEMPORÁRIO: ${toEmail}`);
-  }
-}
-
-function _savePlaniha(key, arr){ _saveEnrichedSheet(key, arr); } // alias unificado
-
-function removeFromSheets(email){
-  if(!email) return;
-  const emailLow = email.toLowerCase().trim();
-  let totalRemoved = 0;
-
-  // Remover do SKIP_SENT_IDS (lista de emails já enviados) para não reprocessar
-  // Os emails inválidos entram no DB_INVALID_EMAILS e são filtrados ANTES do envio
-
-  // Registrar remoção no DB de inválidos
-  if(DB_INVALID_EMAILS[emailLow]){
-    DB_INVALID_EMAILS[emailLow].removedFromSheets = true;
-    DB_INVALID_EMAILS[emailLow].removedAt = Date.now();
-  }
-
-  // Remover dos jobs em memória (se estiver na fila de algum usuário)
-  for(const [sid, sess] of Object.entries(sessions)){
-    if(!sess.autoJob) continue;
-    const queueBefore = (sess.autoJob.queue||[]).length;
-    sess.autoJob.queue = (sess.autoJob.queue||[]).filter(j =>
-      (j.to||'').toLowerCase() !== emailLow
-    );
-    const removed = queueBefore - (sess.autoJob.queue||[]).length;
-    if(removed > 0){
-      totalRemoved += removed;
-      console.log(`[bounce] Removidos ${removed} jobs de ${emailLow} da fila de ${sess.user_email}`);
-    }
-  }
-
-  // Salvar estado atualizado dos inválidos
-  try{
-    const toSave = {};
-    for(const [k,v] of Object.entries(DB_INVALID_EMAILS)){
-      toSave[k] = {...v, users: [...(v.users instanceof Set ? v.users : new Set(v.users||[]))]};
-    }
-    fs.writeFileSync(INVALID_EMAILS_FILE, JSON.stringify(toSave, null, 2));
-  }catch(e){ console.warn('[bounce] erro salvando:', e.message); }
-
-  if(totalRemoved > 0) console.log(`[bounce] Total removido das filas: ${totalRemoved} jobs de ${emailLow}`);
-  return totalRemoved;
-}
 
 function isEmailInvalid(email){
   const e = DB_INVALID_EMAILS[email?.toLowerCase()];
@@ -1312,18 +1156,11 @@ function boot() {
   _migrarIdiomaParaPt(DB_USERS);   // 🇧🇷 v199 LOTE 17: conta presa em EN/ES volta pro português (o site não tem seletor)
   DB_HIST   = mig(HIST_FILE,   path.join(DATA_DIR, "h2b_history.json"), {});
   DB_AUTO   = load(AUTO_FILE, {});
-  DB_NOTES  = load(NOTES_FILE, {});
-  DB_ALERTS = load(ALERTS_FILE, {});
   DB_LOGS   = load(LOGS_FILE, {});
   DB_JOURNEY = load(JOURNEY_FILE, {});
-  DB_PUSH   = load(PUSH_FILE, {});
-  DB_APP_INDEX = load(APPIDX_FILE, {});
   const savedAdminSettings = load(ADMIN_SETTINGS_FILE, null);
   if(savedAdminSettings) Object.assign(DB_ADMIN_SETTINGS, savedAdminSettings);
   DB_DIVERGENCIAS_OK = load(DIVERGENCIAS_OK_FILE, {});
-  DB_NOTIF    = load(NOTIF_FILE,    { notifications: [] });
-  DB_SUGGESTIONS = load(SUGGESTIONS_FILE, []);
-  if(!Array.isArray(DB_SUGGESTIONS)) DB_SUGGESTIONS = [];
   DB_REVIEWS = load(REVIEWS_FILE, []);
   if(!Array.isArray(DB_REVIEWS)) DB_REVIEWS = [];
   DB_PEDIDOS = load(PEDIDOS_FILE, []);
@@ -1405,11 +1242,6 @@ function boot() {
   }
   console.log(`[db] ✅ ${Object.keys(DB_USERS).length} usuários | ${Object.values(DB_HIST).reduce((n,a)=>n+a.length,0)} enviados`);
   console.log(`[db] Logs: ${Object.values(DB_LOGS).reduce((n,a)=>n+a.length,0)} entradas`);
-  // Rebuild do índice de candidaturas se estiver vazio (recupera HIST antigo)
-  if (!Object.keys(DB_APP_INDEX).length && Object.keys(DB_HIST).length) {
-    rebuildAppIndex();
-    console.log(`[db] 🔁 índice de candidaturas reconstruído (${Object.values(DB_APP_INDEX).reduce((n,x)=>n+Object.keys(x.byThread||{}).length+Object.keys(x.byMsgId||{}).length,0)} chaves)`);
-  }
   // NOTA v19: a reconciliação de jobs automáticos após restart já existe —
   // ver reactivateAutoJobs() (chamada 6s após o boot, mais abaixo no arquivo).
   // Ela é mais cuidadosa que um "scheduleAuto pra tudo que tá active" ingênuo:
@@ -1938,12 +1770,6 @@ function podeVerEmailVaga(req){
 // 🎯 v139: cache do ranking "pra você" (10min por usuário) — só o RANKING é
 // cacheado; o corte de enviados/fila (regra 8) roda fresco em toda resposta.
 const _praVoceCache=new Map();
-const getNote    = (u,j) => DB_NOTES[u]?.[j]||"";
-// v47: nota/alerta é ação corriqueira de usuário — nunca gravar o banco
-// inteiro síncrono por clique (mesma classe do setUser). flushAll cobre.
-const setNote    = (u,j,t) => { if(!DB_NOTES[u])DB_NOTES[u]={}; DB_NOTES[u][j]=t; persistDebounced(NOTES_FILE,DB_NOTES,3000); };
-const getAlerts  = u => DB_ALERTS[u]||[];
-const setAlerts  = (u,a) => { DB_ALERTS[u]=a; persistDebounced(ALERTS_FILE,DB_ALERTS,3000); };
 
 // ══════════════════════════════════════════════════════════
 //  v13 — SISTEMA DE IDs ÚNICOS POR CANDIDATURA
@@ -1953,26 +1779,6 @@ const setAlerts  = (u,a) => { DB_ALERTS[u]=a; persistDebounced(ALERTS_FILE,DB_AL
 // ══════════════════════════════════════════════════════════
 function newAppId(){
   return "app_" + Date.now().toString(36) + "_" + crypto.randomBytes(4).toString("hex");
-}
-
-// Normaliza Message-ID removendo <> e espaços (Gmail às vezes envia com, às vezes sem)
-function normMsgId(mid){
-  if(!mid) return "";
-  return String(mid).trim().replace(/^<|>$/g,"").toLowerCase();
-}
-
-// Extrai e normaliza uma lista de Message-IDs de um header "References"
-// (pode ter múltiplos IDs separados por espaço)
-function parseRefs(refs){
-  if(!refs) return [];
-  return String(refs).split(/\s+/).map(normMsgId).filter(Boolean);
-}
-
-// Extrai apenas o e-mail (sem nome) de uma string "Nome <email@x>"
-function extractEmail(s){
-  if(!s) return "";
-  const m = String(s).match(/<([^>]+)>/);
-  return ((m?m[1]:s)||"").trim().toLowerCase();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -2024,49 +1830,6 @@ function parseEmail(raw) {
   return { ok: true, email };
 }
 
-// Garante estrutura do índice para um usuário
-function ensureIdx(email){
-  if(!DB_APP_INDEX[email]) DB_APP_INDEX[email]={byThread:{},byMsgId:{},byTo:{}};
-  if(!DB_APP_INDEX[email].byThread) DB_APP_INDEX[email].byThread={};
-  if(!DB_APP_INDEX[email].byMsgId)  DB_APP_INDEX[email].byMsgId={};
-  if(!DB_APP_INDEX[email].byTo)     DB_APP_INDEX[email].byTo={};
-  return DB_APP_INDEX[email];
-}
-
-// Adiciona uma candidatura ao índice
-function indexApp(userEmail, app){
-  const ix = ensureIdx(userEmail);
-  if(app.threadId)         ix.byThread[app.threadId] = app.appId;
-  if(app.gmailHeaderMsgId) ix.byMsgId[normMsgId(app.gmailHeaderMsgId)] = app.appId;
-  if(app.gmailMsgId)       ix.byMsgId[String(app.gmailMsgId).toLowerCase()] = app.appId;
-  if(app.to){
-    const t = String(app.to).toLowerCase();
-    if(!ix.byTo[t]) ix.byTo[t]=[];
-    // mantém apenas os 10 últimos para esse destinatário
-    ix.byTo[t].unshift(app.appId);
-    if(ix.byTo[t].length>10) ix.byTo[t]=ix.byTo[t].slice(0,10);
-  }
-  // v47-FIX (mesma classe do setUser/setAutoJob): indexApp roda a CADA e-mail
-  // enviado (manual E automático — e 2x no fluxo com header do Gmail), e no
-  // boot rebuildAppIndex() chama num LOOP pra cada entrada de histórico de
-  // cada usuário — cada chamada gravava o índice INTEIRO em disco de forma
-  // síncrona, travando o Node pra todo mundo. Leitura é sempre da memória;
-  // flushAll() grava de verdade no SIGTERM/SIGINT (deploy do Render).
-  persistDebounced(APPIDX_FILE, DB_APP_INDEX, 5000);
-}
-
-// Reconstrói o índice a partir do DB_HIST (usado no boot se índice vazio)
-function rebuildAppIndex(){
-  DB_APP_INDEX = {};
-  for(const [userEmail, hist] of Object.entries(DB_HIST)){
-    if(!Array.isArray(hist)) continue;
-    for(const entry of hist){
-      if(!entry || !entry.appId) continue;
-      indexApp(userEmail, entry);
-    }
-  }
-}
-
 // Monta snapshot completo da vaga a partir de objetos vindos do client/auto-queue
 function buildJobSnapshot(j){
   if(!j || typeof j !== "object") return null;
@@ -2091,70 +1854,6 @@ function buildJobSnapshot(j){
   const { capturedAt, ...realFields } = snap;
   const hasAny = Object.values(realFields).some(v => v && v !== 0 && (typeof v!=="object"));
   return hasAny ? snap : null;
-}
-
-// Busca candidatura pelo appId em todo o histórico do usuário
-function findAppById(userEmail, appId){
-  const hist = getHist(userEmail);
-  return hist.find(h => h.appId === appId) || null;
-}
-
-// Tenta encontrar a candidatura vinculada a um email recebido
-// Retorna { app, matchType } ou null
-function matchAppToEmail(userEmail, emailMeta){
-  if(!userEmail || !emailMeta) return null;
-  ensureIdx(userEmail);
-  const ix = DB_APP_INDEX[userEmail];
-  const findById = id => id ? findAppById(userEmail, id) : null;
-
-  // 1. threadId → match exato (mesma conversa Gmail)
-  if(emailMeta.threadId && ix.byThread[emailMeta.threadId]){
-    const app = findById(ix.byThread[emailMeta.threadId]);
-    if(app) return { app, matchType: "thread" };
-  }
-  // 2. In-Reply-To → header Message-Id que apontamos no envio
-  if(emailMeta.inReplyTo){
-    const mid = normMsgId(emailMeta.inReplyTo);
-    if(ix.byMsgId[mid]){
-      const app = findById(ix.byMsgId[mid]);
-      if(app) return { app, matchType: "in-reply-to" };
-    }
-  }
-  // 3. References (varre todos)
-  for(const ref of parseRefs(emailMeta.references)){
-    if(ix.byMsgId[ref]){
-      const app = findById(ix.byMsgId[ref]);
-      if(app) return { app, matchType: "references" };
-    }
-  }
-  // 4. Fallback: from do email recebido bate com 'to' de um envio recente
-  const fromEmail = extractEmail(emailMeta.from);
-  if(fromEmail && ix.byTo[fromEmail]?.length){
-    const app = findById(ix.byTo[fromEmail][0]); // mais recente
-    if(app) return { app, matchType: "recipient" };
-  }
-  return null;
-}
-
-// Após enviar pelo Gmail, busca os headers Message-ID e References da mensagem
-// recém-criada (não-bloqueante: o caller faz fire-and-forget)
-async function fetchGmailMessageHeaders(token, gmailId){
-  try{
-    const { status, body } = await httpsReq({
-      hostname: "gmail.googleapis.com",
-      path: `/gmail/v1/users/me/messages/${gmailId}?format=metadata&metadataHeaders=Message-Id&metadataHeaders=References&metadataHeaders=In-Reply-To`,
-      method: "GET",
-      headers: { "Authorization": "Bearer " + token }
-    });
-    if(status !== 200 || !body?.payload?.headers) return null;
-    const get = name => (body.payload.headers.find(h => h.name?.toLowerCase()===name.toLowerCase())?.value) || "";
-    return {
-      messageId: get("Message-Id"),
-      references: get("References"),
-      inReplyTo: get("In-Reply-To"),
-      threadId: body.threadId || null
-    };
-  } catch { return null; }
 }
 
 // ── LOGS detalhados ───────────────────────────────────────
@@ -2549,7 +2248,6 @@ setInterval(()=>{
 //  Um usuário pode ter: vip.manualExpires e vip.autoExpires
 //  separados. O admin pode dar só manual, só auto ou ambos.
 // ══════════════════════════════════════════════════════════
-function persistPush() { persist(PUSH_FILE, DB_PUSH); }
 
 
 // v72: o polling de inbox (verificava novas respostas a cada 2 min pra
@@ -3658,10 +3356,16 @@ function computeWageStats(){
 // o mesmo sistema visual das outras páginas SEO (h2bapply-funciona.html etc).
 const MIN_JOBS_FOR_STATE_PAGE=20; // abaixo disso, conteúdo fraco demais pra indexar bem
 // ── 📊 RESUMO DIÁRIO DO DONO (v37) ──────────────────────────────────────────
-// Todo dia às 8h BRT, Andrio e Diego recebem PUSH com o dia de ontem:
-// vendas, pedidos na mesa (com alerta dos parados >24h), envios/respostas e
-// usuários novos. Decisão de dono chega no bolso — sem precisar abrir o
-// painel. Gatilho manual: POST /api/admin/resumo-diario-run.
+// Todo dia às 8h BRT os números de ontem (vendas, pedidos na mesa com alerta
+// dos parados >24h, envios e usuários novos) vão pro LOG DOS ROBÔS, que o
+// admin lê na aba "Planilhas & Robôs". Gatilho manual: POST
+// /api/admin/resumo-diario-run.
+// 🚨 v199 LOTE 18: até aqui o laço de entrega era `for(const ae of
+// ADMIN_EMAILS){}` — CORPO VAZIO —, e mesmo assim o botLog escrevia "Enviado
+// aos admins: ...": o painel afirmava TODO DIA uma entrega que nunca
+// aconteceu. O laço morreu e o texto passou a dizer o que de fato é (o resumo
+// de ontem, registrado aqui). Mandar por e-mail seria um 4º tipo de e-mail
+// além dos 3 sancionados no v175 — decisão do dono, não faxina minha.
 async function resumoDiarioDonoRun(){
   try{
     const DAY=86400_000;
@@ -3676,25 +3380,22 @@ async function resumoDiarioDonoRun(){
     }
     const pend=DB_PEDIDOS.filter(x=>x.status==="pendente").length;
     const criticos=DB_PEDIDOS.filter(x=>x.status==="pendente"&&(Date.now()-(x.createdAt||0))>24*3600_000).length;
-    let envios=0,respostas=0;
+    let envios=0;
     for(const arr of Object.values(DB_HIST)){
       if(!Array.isArray(arr))continue;
       for(const h of arr){
         if(h.dateStr!==ontemBR)continue;
         if(h.type==="manual"||h.type==="auto")envios++;
-        else if(h.type==="reply")respostas++;
       }
     }
     let novos=0;
     for(const u of Object.values(DB_USERS)){
       if(String(u?.created_at||"").slice(0,10)===ontemISO)novos++;
     }
-    const body=`💰 R$ ${vendas.toFixed(0)} em ${vendasQtd} venda(s) · 🛒 ${pend} pedido(s) na mesa${criticos?` (⚡ ${criticos} há +24h!)`:""} · 📨 ${envios} envio(s), ${respostas} resposta(s) · 👤 ${novos} usuário(s) novo(s)`;
-    for(const ae of ADMIN_EMAILS){
-    }
-    try{botLog('resumo-dono','Resumo Diário do Dono',`Enviado aos admins: ${body}`,'info');}catch{}
+    const body=`💰 R$ ${vendas.toFixed(0)} em ${vendasQtd} venda(s) · 🛒 ${pend} pedido(s) na mesa${criticos?` (⚡ ${criticos} há +24h!)`:""} · 📨 ${envios} envio(s) · 👤 ${novos} usuário(s) novo(s)`;
+    try{botLog('resumo-dono','Resumo Diário do Dono',`Resumo de ontem: ${body}`,'info');}catch{}
     console.log(`[resumo-dono] 📊 ${body}`);
-    return {ok:true,ontem:ontemISO,vendas,vendasQtd,pendentes:pend,criticos,envios,respostas,novosUsuarios:novos};
+    return {ok:true,ontem:ontemISO,vendas,vendasQtd,pendentes:pend,criticos,envios,respostas:0,novosUsuarios:novos};
   }catch(e){ console.warn("[resumo-dono]",e.message); return {ok:false,error:e.message}; }
 }
 function scheduleResumoDono(){
@@ -5680,24 +5381,7 @@ async function _doAutoSendInner(email) {
         profileUsed: selectedProfile?.name || null,
       };
       addHist(email, histEntry);
-      indexApp(email, histEntry);
       invalidateUserStatsCache(email);
-
-      if (gmBody?.id && accessToken && !GMAIL_SEND_ONLY) { // v55: ler headers exige gmail.readonly — pulado no modo só-envio
-        const mid = gmBody.id;
-        const capturedToken = String(accessToken);
-        (async () => {
-          try {
-            const h = await fetchGmailMessageHeaders(capturedToken, mid);
-            if (h?.messageId) {
-              indexApp(email, { appId, to:target.to, gmailHeaderMsgId:h.messageId, threadId:histEntry.threadId });
-              const arr = DB_HIST[email] || [];
-              const idx = arr.findIndex(x => x.appId === appId);
-              if (idx >= 0) { arr[idx].gmailHeaderMsgId = h.messageId; persistDebounced(HIST_FILE, DB_HIST, 1500); } // v47: roda por e-mail do robô — mesmo debounce do addHist, nunca síncrono
-            }
-          } catch {}
-        })();
-      }
 
       addLog(email, { ...logEntry, status:"enviado", appId, profileUsed:selectedProfile?.name||"", subjectUsed:subject.slice(0,120), subjectTpl:(chosenSubject||"").slice(0,120), attachCount:attachments.length, attempt:retryCount+1, senderEmail:_autoRealSendEmail, wage:target.wage||"", city:target.city||"", workers:target.workers||null, start:target.start||"", caseNum:target.caseNum||"" });
       updateAutoStats(email, { sent:(getAutoStats(email).sent||0)+1, startedAt:getAutoStats(email).startedAt||Date.now() });
@@ -6569,207 +6253,6 @@ async function gmailGetToken(sid){
   return s.access_token;
 }
 
-// Palavras-chave que indicam bounce/erro automático — filtrar fora
-const BOUNCE_SUBJECTS=[
-  /delivery.*fail/i,/failed.*deliver/i,/undeliverable/i,/mail.*delivery.*subsystem/i,
-  /out of office/i,/automatic.*reply/i,/fora do escritório/i,
-  /mailer.daemon/i,/returned mail/i,/unable to deliver/i,/non-?delivery/i,
-  /address not found/i,/user.*unknown/i,/does not exist/i,/invalid.*address/i,
-  /your message could not/i,/message blocked/i,
-  /quota exceeded/i,/mailbox full/i,
-];
-const BOUNCE_FROM=[
-  /mailer-daemon@/i,/postmaster@/i,/daemon@/i,
-  /noreply@.*google/i,/no-reply@.*google/i,
-  /^noreply@noreply\./i,/^no-reply@no-reply\./i,
-];
-
-function isBounceMail(msg){
-  const subj=(msg.subject||"").toLowerCase();
-  const from=(msg.from||"").toLowerCase();
-  if(BOUNCE_SUBJECTS.some(r=>r.test(subj)))return true;
-  if(BOUNCE_FROM.some(r=>r.test(from)))return true;
-  // Google SMTP errors têm corpo com códigos de erro
-  const body=(msg.snippet||"").toLowerCase();
-  if(/technical details of permanent failure/.test(body))return true;
-  if(/smtp error|error code [0-9]/.test(body))return true;
-  return false;
-}
-
-// Decodifica base64url para texto
-function b64url(str){
-  if(!str)return"";
-  try{return Buffer.from(str.replace(/-/g,"+").replace(/_/g,"/"),"base64").toString("utf8");}catch{return"";}
-}
-
-// Extrai campo do cabeçalho
-function getHeader(headers,name){
-  const h=(headers||[]).find(h=>h.name?.toLowerCase()===name.toLowerCase());
-  return h?.value||"";
-}
-
-// Extrai texto do payload (recursivo para partes multipart)
-function extractText(payload){
-  if(!payload)return"";
-  if(payload.parts){
-    for(const part of payload.parts){
-      const t=extractText(part);if(t)return t;
-    }
-  }
-  if(payload.mimeType==="text/plain"&&payload.body?.data)return b64url(payload.body.data);
-  if(payload.mimeType==="text/html"&&payload.body?.data){
-    // Remove tags HTML básico
-    return b64url(payload.body.data).replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim();
-  }
-  if(payload.body?.data)return b64url(payload.body.data);
-  return"";
-}
-
-async function gmailFetchInbox(sid,maxResults=50){
-  let token=await gmailGetToken(sid);
-  let headers={"Authorization":"Bearer "+token};
-
-  // Busca mensagens na INBOX que são respostas (tem In-Reply-To ou Reference)
-  // q: in:inbox -from:me — mensagens recebidas, não enviadas por mim
-  // FIX: removido "category:primary" — muitas respostas de empresas vão para Promoções/Updates
-  const q=encodeURIComponent("in:inbox -from:me");
-  const listPath=`/gmail/v1/users/me/messages?maxResults=${maxResults}&q=${q}`;
-
-  let{status:ls,body:lb}=await httpsReq({hostname:"gmail.googleapis.com",path:listPath,method:"GET",headers});
-
-  // FIX: 401 = token expirado → tentar refresh automático antes de falhar
-  if(ls===401){
-    try{
-      await refreshToken(sid);
-      const s2=sessions[sid];
-      if(s2?.access_token){
-        headers={"Authorization":"Bearer "+s2.access_token};
-        const retry=await httpsReq({hostname:"gmail.googleapis.com",path:listPath,method:"GET",headers});
-        ls=retry.status; lb=retry.body;
-      }
-    }catch(re){ throw new Error("TOKEN_EXPIRED"); }
-    if(ls===401)throw new Error("TOKEN_EXPIRED");
-  }
-
-  // FIX: 403 = problema de scope (falta gmail.readonly) — mensagem específica para orientar reconexão
-  if(ls===403)throw new Error("TOKEN_EXPIRED");
-
-  if(ls===429)throw new Error("Gmail: muitas requisições (429). Aguarde 1 minuto e tente novamente.");
-  if(ls!==200)throw new Error("Gmail list HTTP "+ls);
-
-  const messages=lb.messages||[];
-  if(!messages.length)return[];
-
-  // Busca detalhes de cada mensagem em paralelo (lote de 10)
-  const results=[];
-  for(let i=0;i<messages.length;i+=10){
-    const batch=messages.slice(i,i+10);
-    const details=await Promise.all(batch.map(async m=>{
-      try{
-        const{status,body}=await httpsReq({
-          hostname:"gmail.googleapis.com",
-          path:`/gmail/v1/users/me/messages/${m.id}?format=full`,
-          method:"GET",headers
-        });
-        if(status!==200)return null;
-        return body;
-      }catch{return null;}
-    }));
-    results.push(...details.filter(Boolean));
-  }
-
-  // Processa e filtra
-  const emails=results.map(msg=>{
-    const hdrs=msg.payload?.headers||[];
-    const subject=getHeader(hdrs,"Subject");
-    const from=getHeader(hdrs,"From");
-    const date=getHeader(hdrs,"Date");
-    const inReplyTo=getHeader(hdrs,"In-Reply-To");
-    const references=getHeader(hdrs,"References");
-    const messageId=getHeader(hdrs,"Message-ID");
-    const body=extractText(msg.payload);
-    const snippet=msg.snippet||"";
-    const threadId=msg.threadId||"";
-    const isRead=!msg.labelIds?.includes("UNREAD");
-
-    return{
-      id:msg.id,threadId,messageId,
-      subject:subject||"(sem assunto)",
-      from,date,
-      body:body.slice(0,3000), // Limita tamanho
-      snippet:snippet.slice(0,300),
-      isRead,
-      // FIX: isReply expandido — inclui emails com In-Reply-To/References OU que estão em threads
-      // onde o usuário enviou (threadId presente = parte de conversa iniciada por nós)
-      isReply:!!(inReplyTo||references),
-      inReplyTo: inReplyTo || "",      // v13: necessário para vincular candidatura
-      references: references || "",    // v13
-      timestamp:msg.internalDate?parseInt(msg.internalDate):Date.parse(date||0),
-    };
-  });
-
-  // Separar bounces para processamento e retornar só respostas reais
-  const bounceMsgs = emails.filter(e => isBounceMail(e));
-  const realReplies = emails.filter(e => !isBounceMail(e));
-
-  // Processar bounces: extrair email que falhou e registrar na base global
-  let _bouncesProcessed = 0;
-  const _ownerEmail = sessions[sid]?.user_email || 'sistema';
-
-  for(const bounce of bounceMsgs){
-    try{
-      const fullText = (bounce.subject||'') + ' ' + (bounce.body||bounce.snippet||'');
-
-      // Extração melhorada: padrões específicos de bounce primeiro
-      const specificMatches = [...fullText.matchAll(
-        /(?:to|for|address|recipient|deliver(?:ing|ed)?\s+to|failed.*to|message.*to)\s*:?\s*<?([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,6})>?/gi
-      )].map(m=>m[1].toLowerCase());
-
-      const allEmails = [...fullText.matchAll(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,6}/g)]
-        .map(m => m[0].toLowerCase())
-        .filter(e =>
-          !e.includes('mailer-daemon') && !e.includes('postmaster') &&
-          !e.includes('google') && !e.includes('noreply') && !e.endsWith('@gmail.com')
-        );
-
-      const bodyLower = fullText.toLowerCase();
-      const isPermanent = PERM_PATTERNS.some(p => p.test(bodyLower));
-      const isTemp = TEMP_PATTERNS.some(p => p.test(bodyLower));
-
-      // Email candidato: padrão específico tem prioridade sobre regex geral
-      const candidateEmail = specificMatches[0] || allEmails[0];
-
-      if(isPermanent && candidateEmail){
-        processBounce(candidateEmail, fullText, _ownerEmail);
-        removeFromSheets(candidateEmail);
-        _bouncesProcessed++;
-        console.log(`[bounce] 🔴 Permanente (${_ownerEmail}): ${candidateEmail}`);
-      } else if(isTemp && candidateEmail){
-        if(!DB_TEMP_FAILURES[candidateEmail]) DB_TEMP_FAILURES[candidateEmail]={email:candidateEmail,errors:[],count:0,user:_ownerEmail};
-        DB_TEMP_FAILURES[candidateEmail].count++;
-        DB_TEMP_FAILURES[candidateEmail].errors.push({msg:fullText.slice(0,200),ts:Date.now(),user:_ownerEmail});
-        try{fs.writeFileSync(TEMP_FAILURES_FILE,JSON.stringify(DB_TEMP_FAILURES,null,2));}catch{}
-        console.log(`[bounce] 🟡 Temporário (${_ownerEmail}): ${candidateEmail}`);
-      }
-    }catch(e){ console.warn('[bounce] erro processando bounce:', e.message); }
-  }
-
-  // Expõe contagem para o startup scan
-  realReplies._bouncesProcessed = _bouncesProcessed;
-  return realReplies;
-}
-
-// Marca e-mail como lido
-async function gmailMarkRead(sid,messageId){
-  const token=await gmailGetToken(sid);
-  await httpsReq({
-    hostname:"gmail.googleapis.com",
-    path:`/gmail/v1/users/me/messages/${messageId}/modify`,
-    method:"POST",
-    headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"}
-  },{removeLabelIds:["UNREAD"]});
-}
-
 // v22 (ORDEM DO DONO): genCover/"IA gera" removidos — era um template FIXO
 // disfarçado de IA escrevendo a candidatura pelo usuário. Texto é do usuário.
 
@@ -6779,15 +6262,6 @@ async function gmailMarkRead(sid,messageId){
 
 // ── Todo mundo que conta como "administrador" no sistema: o Set fixo
 // (ADMIN_EMAILS) + qualquer usuário com isAdmin:true no cadastro. ──────────
-function getAllAdminEmails(){
-  const set = new Set(ADMIN_EMAILS);
-  try{
-    for(const [email,u] of Object.entries(DB_USERS||{})){
-      if(u?.isAdmin) set.add(String(email).trim().toLowerCase());
-    }
-  }catch{}
-  return [...set].filter(Boolean);
-}
 
 
 
@@ -6858,7 +6332,7 @@ function _saveEnrichedSheet(sheetKey, sheet){
 // antigo"). Os 5 robôs moram em mod-planilhas.js (injeção por getters — as
 // planilhas em memória são REATRIBUÍDAS no loadSheets, então o módulo nunca
 // pode guardar referência direta). Aqui só a ligação e as rotas do painel.
-const { createPlanilhas: _createPlanilhas } = require("./mod-planilhas.js");
+const { createPlanilhas: _createPlanilhas, progressoPlanilha: _progressoPlanilha } = require("./mod-planilhas.js");
 const PLANILHAS = _createPlanilhas({
   fs, path, DATA_DIR, SHEETS_DIR, SHEETS_META_FILE,
   getSheet, getSheetH2A: () => SHEET_H2A, setSheetH2A: (arr) => { SHEET_H2A = arr; },
@@ -8622,10 +8096,6 @@ filtrar();
   // qualquer cliente antigo que ainda chame:
   if(pathname==="/api/generate-cover"&&req.method==="POST"){return json(res,410,{error:"Recurso removido: o texto da candidatura é escrito por você, no seu perfil."});}
 
-  // ── Notes & Alerts ────────────────────────────────────
-  if(pathname.startsWith("/api/note/")){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});const jobId=decodeURIComponent(pathname.split("/api/note/")[1]||"");if(req.method==="GET")return json(res,200,{note:getNote(s.user_email,jobId)});if(req.method==="POST"){try{const d=JSON.parse(await readBody(req));setNote(s.user_email,jobId,String(d.note||"").slice(0,2000));return json(res,200,{ok:true});}catch(e){return json(res,500,{error:e.message});}}}
-  if(pathname==="/api/alerts"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});if(req.method==="GET")return json(res,200,{alerts:getAlerts(s.user_email)});if(req.method==="POST"){try{const d=JSON.parse(await readBody(req));const alerts=getAlerts(s.user_email);alerts.push({id:"a"+Date.now(),state:d.state||"",jobType:d.jobType||"all",keyword:d.keyword||"",category:d.category||"all",active:true,createdAt:new Date().toISOString()});if(alerts.length>20)alerts.shift();setAlerts(s.user_email,alerts);return json(res,200,{ok:true});}catch(e){return json(res,500,{error:e.message});}}if(req.method==="DELETE"){try{const d=JSON.parse(await readBody(req));setAlerts(s.user_email,getAlerts(s.user_email).filter(a=>a.id!==d.id));return json(res,200,{ok:true});}catch(e){return json(res,500,{error:e.message});}}}
-
   // ── LOGS DO ENVIO AUTOMÁTICO (NEW) ───────────────────
   if(pathname==="/api/auto-logs"&&req.method==="GET"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
@@ -9319,48 +8789,7 @@ filtrar();
     const _rparams=u.search||"";
     res.writeHead(302,{Location:"/oauth/callback"+_rparams});return res.end();
   }
-  // Callback do OAuth do email extra (CÓDIGO LEGADO — mantido como fallback, nunca atingido)
-  if(false&&pathname==="/oauth/add-sender/callback-legacy"){
-    const code=u.searchParams.get("code"),error=u.searchParams.get("error"),st=u.searchParams.get("state")||"";
-    const fail=m=>{res.writeHead(302,{Location:"/?err="+encodeURIComponent(m)+"&tab=profile"});res.end();};
-    if(error)return fail(error==="access_denied"?"Adição de email cancelada.":"Erro OAuth: "+error);
-    if(!code||!st)return fail("Código ou state inválido.");
-    const pending=sessions["__sender__"+st];
-    if(!pending||Date.now()-pending.created>600_000){delete sessions["__sender__"+st];return fail("Sessão expirada. Tente novamente.");}
-    const ownerEmail=pending.ownerEmail;
-    delete sessions["__sender__"+st];
-    try{
-      const tb=new URLSearchParams({code,client_id:CLIENT_ID,client_secret:CLIENT_SECRET,redirect_uri:REDIRECT_URI,grant_type:"authorization_code"}).toString();
-      const{body:tk}=await httpsReq({hostname:"oauth2.googleapis.com",path:"/token",method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded","Content-Length":Buffer.byteLength(tb)}},tb);
-      if(tk.error)return fail(tk.error_description||tk.error);
-      if(!tk.access_token)return fail("Token não recebido.");
-      const{body:ui}=await httpsReq({hostname:"www.googleapis.com",path:"/oauth2/v2/userinfo",method:"GET",headers:{"Authorization":"Bearer "+tk.access_token}});
-      if(!ui.email)return fail("E-mail não obtido.");
-      const newEmail=ui.email.toLowerCase().trim();
-      // Bloquear: email extra igual ao principal
-      if(newEmail===ownerEmail)return fail("Este é seu email principal. Adicione um Gmail diferente.");
-      // Bloquear: email extra já é conta principal de outro usuário
-      if(getUser(newEmail))return fail("Este Gmail já tem conta no H2BApply. Use outro email.");
-      const owner=getUser(ownerEmail)||{};
-      const existing=owner.senderEmails||[];
-      // Bloquear: email já adicionado
-      if(existing.find(s=>s.email===newEmail))return fail("Este Gmail já está adicionado à sua conta.");
-      // Verificar limite
-      const maxSnd2=getMaxSenders(getUser(ownerEmail)||{});
-      if(1+existing.length>=maxSnd2)return fail(_msgLimiteSenders(maxSnd2));
-      const newSender={email:newEmail,label:ui.name||newEmail,access_token:tk.access_token,token_expiry:Date.now()+(tk.expires_in||3600)*1000,refresh_token:tk.refresh_token||null,addedAt:Date.now(),active:true,tokenExpired:false,blocked:false};
-      if(!newSender.refresh_token)console.warn(`[sender] ⚠️ refresh_token não recebido para ${newEmail} — pode expirar sem renovar`);
-      setUser(ownerEmail,{senderEmails:[...existing,newSender]});
-      console.log(`[sender] ✅ ${newEmail} adicionado como sender de ${ownerEmail}`);
-      trackJourney(ownerEmail,'sender_added',{detail:`Sender adicionado: ${newEmail}`});
-      // Redireciona de volta ao perfil com toast de sucesso
-      const _safeEmail=JSON.stringify(newEmail);
-      const page=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Gmail adicionado!</title></head><body><script>sessionStorage.setItem('senderAdded',${_safeEmail});window.location.href='/';<\/script></body></html>`;
-      res.writeHead(200,{"Content-Type":"text/html; charset=utf-8","Content-Length":Buffer.byteLength(page),"Cache-Control":"no-cache"});return res.end(page);
-    }catch(e){return fail("Erro ao adicionar email: "+e.message);}
-  }
-
-  // Remove email extra de envio
+  // Remove email extra de envio  // Remove email extra de envio
   if(/^\/api\/sender\/[^/]+$/.test(pathname)&&req.method==="DELETE"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
     const emailToRemove=decodeURIComponent(pathname.replace("/api/sender/","")).toLowerCase().trim();
@@ -10922,7 +10351,7 @@ filtrar();
         plan:tu.plan||"free",
         manualExpires:tu.vip?.manualExpires||0,
         autoExpires:tu.vip?.autoExpires||0,
-        source:tu.vip?.source||"trial",
+        source:tu.vip?.source||null,
         manualAtivo:!!(tu.vip?.manualExpires&&tu.vip.manualExpires>_now)&&tu.vip?.source!=="trial",
         diasRestantes:Math.max(0,Math.ceil(((Math.max(tu.vip?.manualExpires||0,tu.vip?.autoExpires||0))-_now)/86400000)),
         creditos:Array.isArray(tu.vip?.creditos)?tu.vip.creditos.slice(-30).reverse():[],
@@ -11336,7 +10765,7 @@ filtrar();
     const vipOk=isVipActive(p);
     const planKey=getPlan(p);const {todayManual:sentManual,todayAuto:sentAuto}=getUserStatsCached(s.user_email);
     const h=getHist(s.user_email);
-    const totalSent=h.length;const totalManual=h.filter(x=>x.type==="manual").length;const totalAutoHist=h.filter(x=>x.type==="auto").length;const totalReplies=h.filter(x=>x.type==="reply").length;
+    const totalSent=h.length;const totalManual=h.filter(x=>x.type==="manual").length;const totalAutoHist=h.filter(x=>x.type==="auto").length;
     const manualLimit=getManualLimit(p),autoLimit=getAutoLimit(p);
     const autoJob=getAutoJob(s.user_email);
     const stats=getAutoStats(s.user_email);
@@ -11379,7 +10808,7 @@ filtrar();
     // planGateMsg). null quando não há provisório vencendo com pedido pendente.
     const _provPend = _provisorioPendente(p);
     return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,planRulesNotice:_prNotice,
-      provisorioPendente:_provPend?{pedidoId:_provPend.pedidoId,ref:_provPend.ref}:null,manualCdOff:p.manualCdOff===true,gmailConnected,gmailEmail,emailContato:p.emailContato||null,emailVerificado:!!p.emailVerificadoEm,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",estado:p.estado||p.state||"",language:p.language||"pt",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,totalReplies,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||"trial"}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,readEmailIds:p.readEmailIds||[],profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.gmailConnectedAt||p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===(gmailEmail||s.user_email)||x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||300),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
+      provisorioPendente:_provPend?{pedidoId:_provPend.pedidoId,ref:_provPend.ref}:null,manualCdOff:p.manualCdOff===true,gmailConnected,gmailEmail,emailContato:p.emailContato||null,emailVerificado:!!p.emailVerificadoEm,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",estado:p.estado||p.state||"",language:p.language||"pt",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||null}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.gmailConnectedAt||p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===(gmailEmail||s.user_email)||x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||300),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
   }
 
   if(pathname==="/api/onboard"&&req.method==="POST"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});setUser(s.user_email,{onboarded:true});return json(res,200,{ok:true});}
@@ -11440,7 +10869,9 @@ filtrar();
         upd.manualCdOff=d.manualCdOff===true;
         if(upd.manualCdOff)upd.manualCdOffAt=Date.now();
       }
-      if(d.settings){const p=getUser(s.user_email)||{};upd.settings={...(p.settings||{}),...d.settings};}
+      // v199 LOTE 18: `settings` não é mais GRAVADO pelo cliente (nenhuma tela
+      // manda o campo; era um merge de objeto arbitrário dentro do users.json).
+      // A leitura segue viva no /api/status pra conta antiga que tem dado ali.
       setUser(s.user_email,upd);
       return json(res,200,{ok:true});
     }catch(e){return json(res,500,{error:e.message});}
@@ -11770,25 +11201,6 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
         // já reflete este envio a partir de agora, então countManualToday() já
         // conta com ele; manter a reserva depois disso contaria em dobro.
         if(_reservedManualSlot){_releaseManualSlot(s.user_email);_reservedManualSlot=false;}
-        indexApp(s.user_email, histEntry);
-        // Buscar o header Message-Id real em background para indexar (fire-and-forget)
-        if(r.id && !GMAIL_SEND_ONLY){ // v55: headers exigem gmail.readonly — pulado no modo só-envio
-          (async()=>{
-            try{
-              const tok = sessions[sid]?.access_token;
-              if(!tok) return;
-              const h = await fetchGmailMessageHeaders(tok, r.id);
-              if(h?.messageId){
-                histEntry.gmailHeaderMsgId = h.messageId;
-                indexApp(s.user_email, { appId, to: toEmail, gmailHeaderMsgId: h.messageId, threadId: histEntry.threadId });
-                // atualizar a entrada no HIST com o header
-                const arr = DB_HIST[s.user_email] || [];
-                const idx = arr.findIndex(x => x.appId === appId);
-                if(idx>=0){ arr[idx].gmailHeaderMsgId = h.messageId; persistDebounced(HIST_FILE, DB_HIST, 1500); } // v47: roda por e-mail manual — mesmo debounce do addHist, nunca síncrono
-              }
-            } catch {}
-          })();
-        }
         // ✅ Marca e-mail no DB_SENT para que o automático não reenvie para a mesma empresa
         markSent(s.user_email, toEmail);
         const newSent=sent+1;const newLim=getManualLimit(p);
@@ -11800,7 +11212,7 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
        }catch(eBook){
         // 🚨 v177-FIX2 (auditoria 14/09/2026): o e-mail JÁ FOI ENVIADO pelo
         // Gmail (r existe, veio de gmailSendWithThread lá em cima) ANTES
-        // deste try — uma exceção aqui dentro (indexApp/markSent/cálculo de
+        // deste try — uma exceção aqui dentro (markSent/cálculo de
         // limite) é só contabilidade LOCAL, nunca "falha no envio". Antes,
         // qualquer erro aqui caía no catch de fora, que roda
         // translateGmailErrorMsg e devolve 500 com cara de Gmail quebrado —
@@ -11948,11 +11360,6 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
       // Apaga sent (anti-duplicata) — para que as vagas voltem à lista
       delete DB_SENT[s.user_email];
       persistSent();
-      // Limpa índice de candidaturas
-      if(DB_APP_INDEX[s.user_email]){
-        delete DB_APP_INDEX[s.user_email];
-        persist(APPIDX_FILE,DB_APP_INDEX);
-      }
       invalidateUserStatsCache(s.user_email);
       console.log(`[history/clear] ${s.user_email} resetou histórico completo (${total} entradas)`);
       return json(res,200,{ok:true,removed:total});
@@ -12730,121 +12137,6 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
     }
     return json(res,200,{job:j?{active:j.active,status:j.status,queueSize:j.queue?.length||0,originalCount:j.originalCount,filteredCount:j.filteredCount,startedAt:j.startedAt,lastSentAt:j.lastSentAt,nextSendAt:j.nextSendAt,currentJob:j.currentJob,source:j.source,category:j.category,}:null,todayAuto:countAutoToday(h),autoLimit:getAutoLimit(p),stats,recentLogs:logs,logStats,todayStats,autoQueueIds:autoQueueIds,queuePreview,queueCategories,intervalSecs:_ivSecs});}
 
-  // ── INBOX: Respostas recebidas no Gmail ───────────────────
-  // (v-2026: /api/my-text-stats foi removida junto com a aba Respostas e o
-  // modal "Desempenho dos meus textos" — dependia de user.repliedFrom, que só
-  // era alimentado pela leitura de inbox abaixo, sempre desligada por
-  // GMAIL_SEND_ONLY; sem front chamando, a rota era pura estatística morta.)
-  if(pathname==="/api/inbox"&&req.method==="GET"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    // v55: modo só-envio — este servidor não lê caixa de entrada de ninguém.
-    if(GMAIL_SEND_ONLY)return json(res,200,{ok:true,disabled:true,sendOnly:true,emails:[],threads:[]});
-    const sid=getSessId(req);
-    // Server-side inbox cache — 30s TTL (reduzido para melhor responsividade)
-    if(!global._inboxCache) global._inboxCache={};
-    // FIX-CRASH: limpa entradas antigas do cache (>5min) para evitar memory leak
-    const _now2 = Date.now();
-    for (const k of Object.keys(global._inboxCache)) {
-      if (_now2 - global._inboxCache[k].ts > 5 * 60_000) delete global._inboxCache[k];
-    }
-    const cKey=s.user_email;
-    const cached=global._inboxCache[cKey];
-    const forceFresh=u.searchParams?.get?.("fresh")==="1";
-    if(cached&&!forceFresh&&(Date.now()-cached.ts)<30000){
-      return json(res,200,{ok:true,emails:cached.emails,total:cached.emails.length,unread:cached.emails.filter(e=>!e.isRead).length,fromCache:true});
-    }
-    try{
-      const limit=Math.min(200,parseInt(u.searchParams?.get?.("limit")||"50",10));
-      const emails=await gmailFetchInbox(sid,limit);
-      // FIX: carrega IDs lidos persistidos no banco (sobrevive reload/relogin)
-      const dbUser = getUser(s.user_email) || {};
-      const persistedReadSet = new Set(dbUser.readEmailIds || []);
-      // v13: enriquece cada email com linkedApp (vaga vinculada) sem chamada extra
-      const enriched = emails.map(em => {
-        // isRead = Gmail marcou como lido OU usuário já marcou pelo app (persiste entre sessões)
-        const isRead = em.isRead || persistedReadSet.has(em.id);
-        const match = matchAppToEmail(s.user_email, {
-          threadId: em.threadId,
-          inReplyTo: em.inReplyTo || "",
-          references: em.references || "",
-          from: em.from,
-          messageId: em.messageId
-        });
-        const base = { ...em, isRead };
-        return match ? { ...base, linkedApp: { appId: match.app.appId, jobSnapshot: match.app.jobSnapshot || null, job: match.app.job, company: match.app.company, to: match.app.to, sentAt: match.app.sentAt || match.app.date, type: match.app.type, matchType: match.matchType } } : base;
-      });
-      // Cache result
-      global._inboxCache[cKey]={emails:enriched,ts:Date.now()};
-      return json(res,200,{ok:true,emails:enriched,total:enriched.length,unread:enriched.filter(e=>!e.isRead).length});
-    }catch(e){
-      console.error("[inbox]",e.message);
-      // On 429 or token error, return cached data if available
-      if(cached&&cached.emails){
-        console.log("[inbox] returning cached data after error:",e.message);
-        return json(res,200,{ok:true,emails:cached.emails,total:cached.emails.length,unread:cached.emails.filter(em=>!em.isRead).length,fromCache:true,cacheError:e.message});
-      }
-      const isRateLimit=e.message.includes("429")||e.message.includes("muitas requisições");
-      const isTokenErr=e.message==="TOKEN_EXPIRED"||e.message.includes("TOKEN_EXPIRED")||e.message.includes("Sessão expirada");
-      if(isTokenErr)return json(res,401,{error:"TOKEN_EXPIRED",tokenExpired:true,message:"Sua conexão com o Gmail expirou. Reconecte para ver as respostas."});
-      return json(res,isRateLimit?429:500,{error:isRateLimit?"Gmail bloqueou temporariamente. Aguarde 1 minuto e tente novamente.":"Erro ao buscar inbox: "+e.message});
-    }
-  }
-
-  // v13: match explícito — pode ser chamado pelo client para resolver um email específico
-  if(pathname==="/api/inbox/match"&&req.method==="POST"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    try{
-      const d=JSON.parse(await readBody(req));
-      const result = matchAppToEmail(s.user_email, {
-        threadId: d.threadId || "",
-        inReplyTo: d.inReplyTo || "",
-        references: d.references || "",
-        from: d.from || "",
-        messageId: d.messageId || ""
-      });
-      if(!result) return json(res,200,{linked:false});
-      return json(res,200,{
-        linked: true,
-        matchType: result.matchType,
-        app: {
-          appId: result.app.appId,
-          job: result.app.job,
-          company: result.app.company,
-          to: result.app.to,
-          date: result.app.date,
-          sentAt: result.app.sentAt || result.app.date,
-          type: result.app.type,
-          jobSnapshot: result.app.jobSnapshot || null,
-          jobId: result.app.jobId,
-          threadId: result.app.threadId,
-          attachCount: result.app.attachCount
-        }
-      });
-    }catch(e){return json(res,500,{error:e.message});}
-  }
-
-
-  if(pathname==="/api/inbox/read"&&req.method==="POST"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    const sid=getSessId(req);
-    try{
-      const d=JSON.parse(await readBody(req));
-      // Suporte a bulk: {ids:[...]} ou single: {messageId:"..."}
-      const ids=d.ids||( d.messageId?[d.messageId]:[] );
-      if(!ids.length)return json(res,400,{error:"messageId ou ids obrigatório."});
-      // Persiste IDs lidos no banco do usuário (para recuperar após relog)
-      const u=getUser(s.user_email)||{};
-      const readSet=new Set(u.readEmailIds||[]);
-      ids.forEach(id=>readSet.add(id));
-      // Limita a 2000 IDs mais recentes para não crescer indefinidamente
-      const readArr=[...readSet].slice(-2000);
-      setUser(s.user_email,{readEmailIds:readArr});
-      // Marca no Gmail em background (fire-and-forget, não bloqueia resposta)
-      ids.forEach(id=>gmailMarkRead(sid,id).catch(()=>{}));
-      return json(res,200,{ok:true,count:ids.length});
-    }catch(e){return json(res,500,{error:e.message});}
-  }
-
   // ── ADMIN ─────────────────────────────────────────────
   if(pathname.startsWith("/api/admin")){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
@@ -13506,7 +12798,7 @@ if(pathname.startsWith("/api/admin/financeiro-usuario/")&&req.method==="GET"){tr
 }catch(e){return json(res,500,{error:e.message});}}
 
 if(pathname.startsWith("/api/admin/user/")&&req.method==="DELETE"){const te=decodeURIComponent(pathname.split("/").pop());if(te===s.user_email)return json(res,400,{error:"Não pode deletar a si mesmo."});const t=getUser(te);if(t)(t.cvs||[]).forEach(c=>deleteCv(te,c.idx));if(autoTimers.has(te)){clearTimeout(autoTimers.get(te));autoTimers.delete(te);}delUser(te);delHist(te);if(DB_AUTO[te]){delete DB_AUTO[te];persist(AUTO_FILE,DB_AUTO);}if(DB_SENT[te]){delete DB_SENT[te];persistSent();}// BUG-011 CORRIGIDO: limpa dados órfãos ao deletar usuário
-if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}if(DB_APP_INDEX[te]){delete DB_APP_INDEX[te];persist(APPIDX_FILE,DB_APP_INDEX);}if(DB_PUSH[te]){delete DB_PUSH[te];persistPush();}if(DB_NOTES[te]){delete DB_NOTES[te];persist(NOTES_FILE,DB_NOTES);}if(DB_ALERTS[te]){delete DB_ALERTS[te];persist(ALERTS_FILE,DB_ALERTS);}return json(res,200,{ok:true});}
+if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}return json(res,200,{ok:true});}
     if(pathname==="/api/admin/message"&&req.method==="POST"){try{const d=JSON.parse(await readBody(req));if(!d.email||!d.text)return json(res,400,{error:"email e text obrigatórios."});const target=getUser(d.email);if(!target)return json(res,404,{error:"Usuário não encontrado."});setUser(d.email,{adminMessage:{text:d.text,date:new Date().toISOString(),from:s.user_email}});return json(res,200,{ok:true});}catch(e){return json(res,500,{error:e.message});}}
 
     // ── ADMIN LIVE MONITOR ────────────────────────────────────
@@ -14557,7 +13849,6 @@ function getHealth(email) {
   if (!healthState.has(email)) healthState.set(email, { lastSent:0, lastCheck:0, restarts:0, errors:0, status:"ok", lastError:"", oauthOk:null, gmailOk:null, hasPdf:null, stalledAt:null });
   return healthState.get(email);
 }
-function setHealth(email, patch) { const h=getHealth(email); Object.assign(h,patch); }
 
 function pushGlobalEvent(type, email, msg, level="warn") {
   GLOBAL_EVENTS.unshift({ ts:Date.now(), date:toLocaleBRT(Date.now()), type, email, msg, level });
@@ -14789,8 +14080,8 @@ async function pushToUser(){}
 
 // ══════════════════════════════════════════════════════════
 //  🐕 WATCHDOGS — extraídos para src/watchdogs.js (Fase 1 · Módulo 4)
-//  tokenGuardian (renova tokens 10/10min) · vipExpiryWatchdog (no-op
-//  intencional, KB-860) · authErrorWatchdog (notifica parados >12h, 3/3h)
+//  tokenGuardian (renova tokens 10/10min) · authErrorWatchdog (notifica
+//  parados >12h, 3/3h)
 // ══════════════════════════════════════════════════════════
 const { initWatchdogs } = require("./mod-watchdogs.js");
 const { getAuthErrNotifiedAt } = initWatchdogs({
@@ -15275,13 +14566,7 @@ function flushAll() {
   try { persistSessions();              } catch(e) { console.warn("[shutdown] sessions:", e.message); }
   _grava(HIST_FILE,   DB_HIST,   "hist");
   _grava(AUTO_FILE,   DB_AUTO,   "auto");
-  _grava(NOTES_FILE,  DB_NOTES,  "notes");
-  _grava(ALERTS_FILE, DB_ALERTS, "alerts"); // v47: faltava — com setAlerts debounced, sem isso um alerta recém-salvo se perderia no deploy
   _grava(LOGS_FILE,   DB_LOGS,   "logs");
-  _grava(PUSH_FILE,   DB_PUSH,   "push");
-  _grava(APPIDX_FILE, DB_APP_INDEX, "appidx");
-  _grava(NOTIF_FILE,  DB_NOTIF,  "notif");
-  _grava(SUGGESTIONS_FILE, DB_SUGGESTIONS, "suggestions");
   _grava(REVIEWS_FILE, DB_REVIEWS, "reviews");
   try { _persistNotifCooldowns(); } catch(e) { console.warn("[shutdown] notif-cooldowns:", e.message); }
 
@@ -15315,7 +14600,6 @@ server.listen(PORT,"0.0.0.0",()=>{
   console.log(`\n✅  H2BApply v13.1 — ${APP_URL} (porta ${PORT})`);
   console.log(`    👤 Usuários: ${Object.keys(DB_USERS).length}`);
   console.log(`    📋 Jan/2026: ${SHEET_JAN.length} | Jul/2025: ${SHEET_JUL.length}`);
-  console.log(`    🔗 Índice candidaturas: ${Object.keys(DB_APP_INDEX).length} usuário(s)`);
   console.log(`    🍪 Cookie: SameSite=Lax | IS_PROD: ${IS_PROD}`);
   if(!CONFIGURED)console.log("\n⚠️  Configure GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET!\n");
   setTimeout(refreshCache,3000);
@@ -15456,6 +14740,12 @@ const { healthSentinelRun, pendingOrderAlert, queueSanitizerRun, getPedAlertSent
   ADMIN_EMAIL, ADMIN_EMAILS,
   getUser, getAutoJob, setAutoJob, isVipActive, sendNotifEmail,
   refreshTokenForUser, buildMime, httpsReq, getSheet,
+  // v199 LOTE 18: o monitor de planilhas do vigia usa as MESMAS fontes do
+  // robô — a lista de planilhas PUBLICADAS (a do frescor) e a régua única de
+  // "completa" (CAMPOS_ESSENCIAIS, via progressoPlanilha). Nada de uma 2ª
+  // lista montada à mão aqui dentro.
+  planilhasPublicadas: ()=>PLANILHAS.planilhasParaFrescor(),
+  progressoPlanilha: _progressoPlanilha,
   cooldownMaps: { notifSentAt: ()=>_notifSentAt, authErrNotifiedAt: getAuthErrNotifiedAt },
   pedAlertSentInit: _DB_NOTIF_COOLDOWN.pedAlertSent, // V951: sobrevive a deploy
   // v183 LOTE 1: a saúde do canal de e-mail do sistema é a CONTA DE
