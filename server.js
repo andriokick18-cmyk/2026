@@ -8350,6 +8350,23 @@ filtrar();
       // a ida-e-volta real ao Google, que o smoke nunca faz.
       let retomado=null;
       if(d.reconectar)retomado=retomarAutoAposReconexao(em);
+      // 📧 v202 LOTE 20: dispara UM ciclo do motor automático DE VERDADE (a
+      // mesma scheduleAuto que o timer de ~7min chama) e ESPERA ele terminar.
+      // Sem isto nenhum check jamais viu uma candidatura sair pelo robô: o
+      // ciclo é fire-and-forget (setTimeout de 100ms no /api/auto/start, timer
+      // de 7min depois), então a suíte não tinha como observar o resultado sem
+      // dormir por tempo. Espera o lock REAL do motor (autoSendLock) em vez de
+      // um sleep fixo, e limpa o timer do próximo ciclo — um gancho de teste
+      // não pode deixar setTimeout de 7min vivo no processo.
+      if(d.disparar){
+        const _esperarLock=async()=>{const _t0=Date.now();while(autoSendLock.has(em)&&Date.now()-_t0<25_000)await new Promise(r=>setTimeout(r,25));};
+        await _esperarLock();
+        if(autoTimers.has(em)){clearTimeout(autoTimers.get(em));autoTimers.delete(em);}
+        scheduleAuto(em);
+        await _esperarLock();
+        await new Promise(r=>setTimeout(r,60));
+        if(autoTimers.has(em)){clearTimeout(autoTimers.get(em));autoTimers.delete(em);}
+      }
       return json(res,200,{ok:true,reativado,retomado,temTimer:autoTimers.has(em),job:getAutoJob(em)});
     }catch(e){return json(res,400,{error:e.message});}
   }
@@ -11162,6 +11179,16 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
 
       const _tGmailMs = Date.now() - _sendT0;
       const now=new Date();
+      // ✅ v202 LOTE 20 (bug real, achado ao testar o motor de verdade): o
+      // markSent vivia LÁ EMBAIXO, depois do buildJobSnapshot/addHist —
+      // dentro do try de contabilidade cujo catch (v177-FIX3) devolve
+      // ok:true de propósito. Uma exceção ali (ex.: o cliente manda `desc`
+      // como número e `.slice` estoura) fazia o servidor dizer "enviada" sem
+      // NUNCA marcar o empregador como contatado: a mesma empresa voltava na
+      // busca e na fila do robô e podia receber 2 candidaturas. A regra 8
+      // grava SÍNCRONO (v184) e agora é a PRIMEIRA coisa depois do 200 do
+      // Gmail — a candidatura já saiu, isso não pode depender de mais nada.
+      markSent(s.user_email, toEmail);
       { // v194 LOTE 12: toda candidatura conta no histórico e no limite do dia
        try{
         // Só registra no histórico candidaturas originais
@@ -11201,8 +11228,7 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
         // já reflete este envio a partir de agora, então countManualToday() já
         // conta com ele; manter a reserva depois disso contaria em dobro.
         if(_reservedManualSlot){_releaseManualSlot(s.user_email);_reservedManualSlot=false;}
-        // ✅ Marca e-mail no DB_SENT para que o automático não reenvie para a mesma empresa
-        markSent(s.user_email, toEmail);
+        // (o markSent subiu pra logo depois do 200 do Gmail — v202 LOTE 20)
         const newSent=sent+1;const newLim=getManualLimit(p);
         _manualSendInFlight.delete(dedupKey);
         invalidateUserStatsCache(s.user_email);

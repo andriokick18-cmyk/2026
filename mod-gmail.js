@@ -17,10 +17,36 @@ const zlib = require("zlib");
 // relatada no Envio Manual (30s por clique).
 const _keepAliveAgent = new https.Agent({ keepAlive: true, keepAliveMsecs: 30000, maxSockets: 50, maxFreeSockets: 10 });
 
+// 🧪 v202 LOTE 20 — GOOGLE FALSO NO `npm test` (mesma régua do DOL_API_BASE/
+// DOL_FEED_BASE do v182). O motor de envio inteiro (manual, automático,
+// renovação de token, sentinela) fala com hosts FIXOS do Google, então
+// NENHUM envio jamais acontecia na suíte: as garantias mais caras do repo
+// — token vencido no meio da fila que renova e re-tenta a MESMA vaga (v165),
+// erro nos passos pós-envio que não pode virar "falha" (v177-FIX3), extra
+// com auth morta isolado enquanto o robô segue pelas outras contas — eram
+// provadas só por grep de string no server.js (renomear um log quebrava o
+// teste; quebrar a lógica mantendo o texto passava verde).
+// Este é o ÚNICO funil de rede do módulo. Ele aceita redirecionar SÓ os 2
+// hosts EXATOS do Google — NUNCA um wildcard `*.googleapis.com` (o DOL, o
+// userinfo e o Gemini continuam indo pro host real sempre) — e SÓ com DUPLA
+// TRAVA: `TEST_LOGIN_TOKEN` presente (proibido em produção, regra da casa) E
+// `GOOGLE_FAKE_BASE` apontando pra http://127.0.0.1|localhost. Qualquer
+// outra combinação (env faltando, host remoto, https, porta de fora) vai pro
+// Google de verdade, exatamente como sempre foi.
+const GOOGLE_REWRITABLE_HOSTS = new Set(["gmail.googleapis.com", "oauth2.googleapis.com"]);
+function _googleFakeTarget(hostname){
+  if (!process.env.TEST_LOGIN_TOKEN) return null;
+  if (!GOOGLE_REWRITABLE_HOSTS.has(String(hostname || "").toLowerCase())) return null;
+  let u; try { u = new URL(String(process.env.GOOGLE_FAKE_BASE || "")); } catch { return null; }
+  if (u.protocol !== "http:") return null;
+  if (u.hostname !== "127.0.0.1" && u.hostname !== "localhost") return null;
+  return { hostname: u.hostname, port: Number(u.port || 80) };
+}
+
 // 💸 v140 (conta do Render): agora entende resposta COMPRIMIDA (gzip/deflate/
 // br) — quem pedir "Accept-Encoding: gzip" recebe ~80% menos bytes do DOL e
 // dos servidores irmãos. Falha na descompressão cai no corpo cru (fail-open).
-function httpsReq(opts,body){return new Promise((res,rej)=>{const p=body?(typeof body==="string"?body:JSON.stringify(body)):null;const finalOpts=opts.agent?opts:{...opts,agent:_keepAliveAgent};const r=https.request(finalOpts,resp=>{const ch=[];resp.on("data",c=>ch.push(c));resp.on("end",()=>{let buf=Buffer.concat(ch);const enc=String(resp.headers["content-encoding"]||"").toLowerCase();try{if(enc.includes("gzip"))buf=zlib.gunzipSync(buf);else if(enc.includes("deflate"))buf=zlib.inflateSync(buf);else if(enc.includes("br"))buf=zlib.brotliDecompressSync(buf);}catch(e){}const raw=buf.toString();try{res({status:resp.statusCode,body:JSON.parse(raw)});}catch{res({status:resp.statusCode,body:raw});}});});r.on("error",rej);r.setTimeout(15000,()=>{r.destroy();rej(new Error("Timeout"));});if(p)r.write(p);r.end();});}
+function httpsReq(opts,body){return new Promise((res,rej)=>{const p=body?(typeof body==="string"?body:JSON.stringify(body)):null;const fake=_googleFakeTarget(opts&&opts.hostname);const mod=fake?require("http"):https;const finalOpts=fake?{...opts,agent:undefined,hostname:fake.hostname,port:fake.port,headers:{...(opts.headers||{}),"x-google-host":String(opts.hostname)}}:(opts.agent?opts:{...opts,agent:_keepAliveAgent});const r=mod.request(finalOpts,resp=>{const ch=[];resp.on("data",c=>ch.push(c));resp.on("end",()=>{let buf=Buffer.concat(ch);const enc=String(resp.headers["content-encoding"]||"").toLowerCase();try{if(enc.includes("gzip"))buf=zlib.gunzipSync(buf);else if(enc.includes("deflate"))buf=zlib.inflateSync(buf);else if(enc.includes("br"))buf=zlib.brotliDecompressSync(buf);}catch(e){}const raw=buf.toString();try{res({status:resp.statusCode,body:JSON.parse(raw)});}catch{res({status:resp.statusCode,body:raw});}});});r.on("error",rej);r.setTimeout(15000,()=>{r.destroy();rej(new Error("Timeout"));});if(p)r.write(p);r.end();});}
 
 function normalizeEmail(raw) {
   if (!raw) return "";
@@ -63,4 +89,8 @@ function buildMime({to,subject,text,fromName,fromEmail,attachments=[]}){ // v15-
   to = normalizeEmail(to) || to;
   const bnd="----H2B"+crypto.randomBytes(8).toString("hex");const b64=s=>Buffer.from(s).toString("base64");const L=[`From: =?UTF-8?B?${b64(fromName)}?= <${fromEmail}>`,`To: ${to}`];L.push(`Subject: =?UTF-8?B?${b64(subject)}?=`,"MIME-Version: 1.0");if(!attachments.length){L.push("Content-Type: text/plain; charset=UTF-8","Content-Transfer-Encoding: 7bit","",text);}else{L.push(`Content-Type: multipart/mixed; boundary="${bnd}"`,"",`--${bnd}`,"Content-Type: text/plain; charset=UTF-8","Content-Transfer-Encoding: 7bit","",text,"");for(const a of attachments){const aMime=a.mime||"application/octet-stream";const aName=sanitizeHeaderField(a.name);L.push(`--${bnd}`,`Content-Type: ${aMime}; name="${aName}"`,"Content-Transfer-Encoding: base64",`Content-Disposition: attachment; filename="${aName}"`,"", ...(a.data.match(/.{1,76}/g)||[a.data]),"");}L.push(`--${bnd}--`);}return Buffer.from(L.join("\r\n")).toString("base64").replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");}
 
-module.exports = { httpsReq, normalizeEmail, buildMime, sanitizeHeaderField, resolveSendGmail };
+// `_googleFakeTarget` é exportado SÓ pra guarda permanente do smoke: é a
+// regra que decide se uma credencial do Google pode ser mandada pra outro
+// lugar, e ela precisa ser provada combinação a combinação (sem env, host
+// remoto, https, outro hostname) sem tocar rede nenhuma.
+module.exports = { httpsReq, normalizeEmail, buildMime, sanitizeHeaderField, resolveSendGmail, _googleFakeTarget };

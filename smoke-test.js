@@ -112,6 +112,77 @@ const feedSrv = http.createServer((rq, rs) => {
 });
 feedSrv.listen(FEED_PORT);
 
+// ── 📧 v202 LOTE 20 — GMAIL/OAUTH FALSOS (o motor de envio testado de verdade)
+// Até aqui TODOS os POSTs em /api/send e /api/auto/start da suíte paravam nos
+// portões (402/429/400/lock): o Gmail e o endpoint de token do Google são
+// hosts fixos que o sandbox não alcança, então nenhum check jamais viu uma
+// candidatura SAIR. As garantias mais caras do repo (token vencido no meio da
+// fila → renova → re-tenta a MESMA vaga; erro pós-envio que devolve ok:true;
+// extra com auth morta isolado) eram provadas por grep de string no server.js
+// — renomear um log quebrava o teste e quebrar a lógica mantendo o texto
+// passava verde. Mesmo padrão do feed falso do DOL (v182): o servidor recebe
+// GOOGLE_FAKE_BASE apontando pra cá e o funil único (httpsReq, mod-gmail.js)
+// redireciona SÓ os 2 hosts exatos do Google.
+const GOOGLE_PORT = PORT + 2;
+const GOOGLE = {
+  envios: [],        // cada envio ACEITO: {para, de, auth, assunto}
+  refreshes: [],     // cada renovação pedida: {refresh_token, em}
+  revokes: [],
+  // fila de respostas FORÇADAS pro próximo envio (shift a cada requisição):
+  // {status, body} — vazia = 200 normal
+  falhasEnvio: [],
+  // refresh_tokens que o Google considera MORTOS (invalid_grant)
+  rtMortos: new Set(),
+  n: 0,
+  limpar() { this.envios = []; this.refreshes = []; this.revokes = []; this.falhasEnvio = []; this.rtMortos = new Set(); },
+};
+// Lê o cabeçalho To:/From: do MIME base64url que o app monta — é o que prova
+// que a MESMA vaga foi re-enviada depois da renovação de token.
+const _mimeHeader = (rawB64, nome) => {
+  try {
+    const txt = Buffer.from(String(rawB64 || "").replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    const m = txt.match(new RegExp("^" + nome + ":\\s*(.+)$", "mi"));
+    if (!m) return "";
+    // Assunto/nome viajam em RFC 2047 (=?UTF-8?B?...?=) — decodifica pra dar
+    // pra afirmar sobre o TEXTO que o empregador/admin recebe.
+    return m[1].trim().replace(/=\?UTF-8\?B\?([^?]*)\?=/gi, (_, b) => Buffer.from(b, "base64").toString("utf8"));
+  } catch { return ""; }
+};
+const googleSrv = http.createServer((rq, rs) => {
+  let b = "";
+  rq.on("data", (c) => (b += c));
+  rq.on("end", () => {
+    const url = (rq.url || "").split("?")[0];
+    const resp = (status, obj) => { rs.writeHead(status, { "Content-Type": "application/json" }); rs.end(JSON.stringify(obj)); };
+    // ── Gmail: enviar mensagem ──────────────────────────────────────────
+    if (url === "/gmail/v1/users/me/messages/send") {
+      const forcado = GOOGLE.falhasEnvio.shift();
+      if (forcado) return resp(forcado.status, forcado.body);
+      let payload = {}; try { payload = JSON.parse(b || "{}"); } catch {}
+      GOOGLE.n++;
+      GOOGLE.envios.push({
+        para: _mimeHeader(payload.raw, "To"),
+        de: _mimeHeader(payload.raw, "From"),
+        assunto: _mimeHeader(payload.raw, "Subject"),
+        auth: String(rq.headers.authorization || "").replace(/^Bearer /, ""),
+        n: GOOGLE.n,
+      });
+      return resp(200, { id: "msg-" + GOOGLE.n, threadId: "thr-" + GOOGLE.n, labelIds: ["SENT"] });
+    }
+    // ── OAuth: renovar access_token pelo refresh_token ──────────────────
+    if (url === "/token") {
+      const rt = new URLSearchParams(b || "").get("refresh_token") || "";
+      GOOGLE.refreshes.push({ refresh_token: rt, em: Date.now() });
+      if (GOOGLE.rtMortos.has(rt)) return resp(400, { error: "invalid_grant", error_description: "Token has been expired or revoked." });
+      GOOGLE.n++;
+      return resp(200, { access_token: "at-vivo-" + GOOGLE.n, expires_in: 3600, scope: "https://www.googleapis.com/auth/gmail.send", token_type: "Bearer" });
+    }
+    if (url === "/revoke") { GOOGLE.revokes.push(b); return resp(200, {}); }
+    return resp(404, { error: "rota falsa desconhecida: " + url });
+  });
+});
+googleSrv.listen(GOOGLE_PORT);
+
 // ── Fixture: o "caso Kley" real ─────────────────────────────────────────
 const b64 = Buffer.from(
   "%PDF-1.4 conteudo falso de teste ".repeat(8)
@@ -613,7 +684,7 @@ async function drillRestauracaoBackup() {
   // vazada, nem a nova) — o teste define a SUA PRÓPRIA senha via env,
   // exatamente como uma instalação real deveria fazer (a env sempre vence o
   // hash de fábrica embutido no código).
-  const ENV_SRV = { PORT: String(PORT), DATA_DIR: DATA, STORAGE: "json", TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890", DOL_FEED_BASE: `http://127.0.0.1:${FEED_PORT}/feed`, DOL_API_BASE: `http://127.0.0.1:${FEED_PORT}/dol/`, H2A_BIM_MIN_PUBLICAR: "10", ADMIN_PANEL_PASS_ANDRIO: "teste-smoke-andrio-2026", ADMIN_PANEL_PASS_DIEGO: "teste-smoke-diego-2026" };
+  const ENV_SRV = { PORT: String(PORT), DATA_DIR: DATA, STORAGE: "json", TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890", DOL_FEED_BASE: `http://127.0.0.1:${FEED_PORT}/feed`, DOL_API_BASE: `http://127.0.0.1:${FEED_PORT}/dol/`, H2A_BIM_MIN_PUBLICAR: "10", GOOGLE_FAKE_BASE: `http://127.0.0.1:${GOOGLE_PORT}`, ADMIN_PANEL_PASS_ANDRIO: "teste-smoke-andrio-2026", ADMIN_PANEL_PASS_DIEGO: "teste-smoke-diego-2026" };
   let log = "";
   let srv = spawnServidor(ENV_SRV, (t) => (log += t));
 
@@ -1555,18 +1626,28 @@ async function drillRestauracaoBackup() {
     // de TODOS os pedidos pendentes da rodada, pra sempre. Login como um
     // admin EXTRA (ADMIN_EMAILS_EXTRA) prova o fallback resolve um token
     // mesmo com o principal sem nenhum (nunca cai no aviso "NENHUM admin
-    // com token válido"). O sandbox de teste não alcança a Gmail API de
-    // verdade (sem rede pro Google) — o envio em si (status 200) não dá
-    // pra provar aqui; a garantia estrutural abaixo prova que o código
-    // não desiste no primeiro admin sem token nem usa `break`.
+    // com token válido").
+    // 📧 v202 LOTE 20: com o Gmail falso no ar, o ENVIO em si (200) passou a
+    // ser provado aqui — era a única parte que faltava ("o sandbox não
+    // alcança a Gmail API" deixou de ser verdade no npm test). De quebra, a
+    // rodada parou de gastar ~14s esperando o timeout de rede pro Google.
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "andrio.usa2026@gmail.com", name: "Admin Extra", isAdmin: true });
     const _logBefore = log.length;
+    const _gAlertaAntes = GOOGLE.envios.length;
     const hsRun = await req2("POST", "/api/admin/health-sentinel/run", {});
     const _logSince = log.slice(_logBefore);
+    const _alertas = GOOGLE.envios.slice(_gAlertaAntes);
     check("🐛 watchdog de pedido pendente: pedwatch1 (7h) aparece no relatório e o admin principal SEM token não trava a rodada (fallback resolve outro admin — nunca 'NENHUM admin com token válido')",
       hsRun.json?.ok === true && (hsRun.json?.report?.pedidosPendentes || []).some((p) => p.id === "pedwatch1") &&
       !/NENHUM admin com token válido/.test(_logSince),
       JSON.stringify({ pend: hsRun.json?.report?.pedidosPendentes, logTrecho: _logSince.slice(-300) }).slice(0, 400));
+    check("📧 v202-L20: o alerta de pedido pendente CHEGA de verdade no Gmail (200) — os sócios recebem o e-mail com o pedido e as horas; antes o único 'teste' era o código não usar `break`",
+      _alertas.length >= 2 &&
+      _alertas.some((e2) => e2.para === "andrio.usa2026@gmail.com") &&
+      _alertas.some((e2) => e2.para === "jesuscristh22@gmail.com") &&
+      _alertas.every((e2) => /Pedido pendente h[áa] \d+h/.test(e2.assunto || "")) &&
+      /Admin\(s\) alertado\(s\): pedido pedwatch1/.test(_logSince),
+      JSON.stringify({ n: _alertas.length, paraExemplo: _alertas[0]?.para, assunto: _alertas[0]?.assunto }).slice(0, 260));
     const _sentinelSrc = fs.readFileSync(path.join(__dirname, "mod-sentinel.js"), "utf8");
     const _pendFn = _sentinelSrc.slice(_sentinelSrc.indexOf("async function pendingOrderAlert"), _sentinelSrc.indexOf("setInterval(()=>pendingOrderAlert"));
     check("🐛 (estrutural) pendingOrderAlert nunca dá `break` no loop inteiro por falta de token — resolve o admin 1x fora do loop de pedidos, com fallback pra ADMIN_EMAILS além do principal",
@@ -5717,12 +5798,181 @@ async function drillRestauracaoBackup() {
     // quebraria esse caso legítimo.
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "l12send@test.com", name: "L12 Send", refreshToken: "rt-l12-send", plan: "doublepro", vip: { active: true, plan: "doublepro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 } });
     await req2("POST", "/api/cv/upload", { base64: Buffer.from("%PDF-1.4 " + "l12 ".repeat(400)).toString("base64"), name: "CV_L12.pdf", cvType: "resume" });
+    const _gL12Antes = GOOGLE.envios.length;
     const _l12Principal = await req2("POST", "/api/send", { to: "rh@empresa-l12send.com", subject: "Application", message: "Olá, gostaria de me candidatar.", senderEmail: "l12send@test.com" });
-    check("🔁 v194-L12 (regressão): escolher explicitamente o e-mail PRINCIPAL como remetente continua funcionando — o envio passa por todas as etapas e só para na chamada REAL ao Gmail (que recusa a credencial de teste), sem nenhum erro vindo do nosso código",
-      _l12Principal.json?.pdfMissing !== true &&
-      !/is not defined|is not a function|Cannot read propert/i.test(String(_l12Principal.json?.errorRaw || _l12Principal.json?.error || "")),
-      `status=${_l12Principal.status} raw=${String(_l12Principal.json?.errorRaw || "").slice(0, 90)}`);
+    // 📧 v202 LOTE 20: esta asserção era "não deu erro do NOSSO código" porque
+    // a chamada ao Gmail sempre morria na rede do sandbox. Com o Gmail falso
+    // ela vira a prova completa: o ramo do e-mail PRINCIPAL escolhido
+    // explicitamente ENVIA de verdade (ok:true) pelo endereço certo.
+    check("🔁 v194-L12 (regressão): escolher explicitamente o e-mail PRINCIPAL como remetente ENVIA de verdade (ok:true, mensagem saindo do endereço principal) — o `else` que servia ao reply removido no v194 continua cobrindo esse caso legítimo",
+      _l12Principal.status === 200 && _l12Principal.json?.ok === true &&
+      GOOGLE.envios.length === _gL12Antes + 1 &&
+      GOOGLE.envios[GOOGLE.envios.length - 1].para === "rh@empresa-l12send.com" &&
+      /l12send@test\.com/.test(GOOGLE.envios[GOOGLE.envios.length - 1].de || ""),
+      `status=${_l12Principal.status} raw=${String(_l12Principal.json?.errorRaw || "").slice(0, 90)} envio=${JSON.stringify(GOOGLE.envios[GOOGLE.envios.length - 1] || {}).slice(0, 160)}`);
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+
+    // ═══ 📧 v202 LOTE 20 — O MOTOR DE ENVIO TESTADO DE VERDADE ═════════════
+    // A prioridade nº1 do produto (a candidatura CHEGAR no empregador) tinha
+    // cobertura comportamental ZERO: todos os POSTs em /api/send e
+    // /api/auto/start paravam nos portões (402/429/400/lock) porque o Gmail e
+    // o endpoint de token do Google são hosts fixos que o sandbox não alcança.
+    // As garantias mais caras do repo eram provadas por GREP DE STRING no
+    // server.js — renomear um log quebrava o teste e quebrar a lógica
+    // mantendo o texto passava verde. Com o Google falso (GOOGLE_FAKE_BASE,
+    // mesma régua do DOL_API_BASE do v182) cada uma delas vira comportamento
+    // observável. Os estruturais continuam AO LADO: custam zero e pegam a
+    // remoção acidental do caminho de renovação.
+    // Fixtures com plano PAGO de verdade — nenhum portão é contornado.
+    {
+      const { _googleFakeTarget } = require("./mod-gmail.js");
+      const _envTokenOrig = process.env.TEST_LOGIN_TOKEN;
+      const _envBaseOrig = process.env.GOOGLE_FAKE_BASE;
+      const _alvo = (host, tok, base) => {
+        if (tok === null) delete process.env.TEST_LOGIN_TOKEN; else process.env.TEST_LOGIN_TOKEN = tok;
+        if (base === null) delete process.env.GOOGLE_FAKE_BASE; else process.env.GOOGLE_FAKE_BASE = base;
+        try { return _googleFakeTarget(host); } finally {
+          if (_envTokenOrig === undefined) delete process.env.TEST_LOGIN_TOKEN; else process.env.TEST_LOGIN_TOKEN = _envTokenOrig;
+          if (_envBaseOrig === undefined) delete process.env.GOOGLE_FAKE_BASE; else process.env.GOOGLE_FAKE_BASE = _envBaseOrig;
+        }
+      };
+      const _local = `http://127.0.0.1:${GOOGLE_PORT}`;
+      check("🔐 v202-L20 (guarda permanente): o rewrite de host do httpsReq só liga com TEST_LOGIN_TOKEN **E** GOOGLE_FAKE_BASE local, e SÓ pros 2 hosts EXATOS do Google — sem env, com https, com host remoto, com sufixo colado ou pra qualquer outro host (DOL, userinfo, Gemini) ele NUNCA redireciona credencial nenhuma",
+        // liga: os 2 hosts exatos, com as 2 travas
+        !!_alvo("gmail.googleapis.com", "t".repeat(30), _local) &&
+        !!_alvo("oauth2.googleapis.com", "t".repeat(30), "http://localhost:1234") &&
+        // não liga: falta uma das travas
+        _alvo("gmail.googleapis.com", null, _local) === null &&
+        _alvo("gmail.googleapis.com", "t".repeat(30), null) === null &&
+        // não liga: destino que não é local / não é http
+        _alvo("gmail.googleapis.com", "t".repeat(30), "https://127.0.0.1:1234") === null &&
+        _alvo("gmail.googleapis.com", "t".repeat(30), "http://evil.example.com:80") === null &&
+        // não liga: host que não está na lista de 2 (inclui wildcard e sufixo)
+        _alvo("www.googleapis.com", "t".repeat(30), _local) === null &&
+        _alvo("generativelanguage.googleapis.com", "t".repeat(30), _local) === null &&
+        _alvo("api.seasonaljobs.dol.gov", "t".repeat(30), _local) === null &&
+        _alvo("gmail.googleapis.com.evil.com", "t".repeat(30), _local) === null &&
+        // e a lista de hosts no CÓDIGO continua sendo exatamente esses 2
+        /GOOGLE_REWRITABLE_HOSTS = new Set\(\["gmail\.googleapis\.com", "oauth2\.googleapis\.com"\]\)/
+          .test(fs.readFileSync(path.join(__dirname, "mod-gmail.js"), "utf8")),
+        "a régua do rewrite de host aceitou uma combinação que NÃO podia — isso é redirecionamento de credencial do Google");
+
+      // ── 1) ENVIO MANUAL PONTA A PONTA ──────────────────────────────────
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "envio20@test.com", name: "Envio 20", refreshToken: "rt-envio20", plan: "vipro", vip: { active: true, plan: "vipro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 } });
+      await req2("POST", "/api/cv/upload", { base64: Buffer.from("%PDF-1.4 " + "envio20 ".repeat(300)).toString("base64"), name: "CV_Envio20.pdf", cvType: "resume" });
+      GOOGLE.limpar();
+      const _env20 = await req2("POST", "/api/send", { to: "rh@empresa-envio20.com", subject: "Candidatura — Cook", message: "Olá, gostaria de me candidatar à vaga.", jobTitle: "Cook", company: "Empresa Envio 20", caseNum: "H-400-ENVIO20" });
+      const _hist20 = ((await get("/api/history")).json?.history || []);
+      const _sent20 = (await get("/api/sent-emails")).json;
+      check("📧 v202-L20: envio MANUAL de quem tem plano pago e Gmail conectado CHEGA no Gmail (200) — a candidatura sai com o destinatário e o assunto do usuário, entra no histórico com o id devolvido pelo Google e o empregador vira 'já contatado' (regra 8). Nenhum check da suíte tinha visto uma candidatura sair.",
+        _env20.status === 200 && _env20.json?.ok === true && _env20.json?.countedAsManual === true &&
+        GOOGLE.envios.length === 1 && GOOGLE.envios[0].para === "rh@empresa-envio20.com" &&
+        GOOGLE.envios[0].assunto === "Candidatura — Cook" &&
+        _hist20.some((h) => h.to === "rh@empresa-envio20.com" && h.type === "manual" && h.msgId === _env20.json?.messageId) &&
+        (_sent20?.sent || []).includes("rh@empresa-envio20.com"),
+        JSON.stringify({ status: _env20.status, body: (_env20.body || "").slice(0, 120), envios: GOOGLE.envios }).slice(0, 320));
+
+      // ── 2) ERRO NOS PASSOS PÓS-ENVIO (v177-FIX3, agora comportamental) ──
+      // `desc` chegando como NÚMERO faz buildJobSnapshot estourar (.slice de
+      // number) DEPOIS que o Gmail já respondeu 200 — exatamente a classe que
+      // o try/catch próprio do v177-FIX3 existe pra cobrir. E é aqui que
+      // aparece o bug REAL que este lote corrigiu: o markSent vivia DENTRO
+      // desse try, então o servidor dizia "enviada" sem nunca registrar o
+      // empregador — a mesma empresa voltava na busca e na fila do robô.
+      await req2("POST", "/api/settings", { manualCdOff: true });
+      GOOGLE.limpar();
+      const _pos20 = await req2("POST", "/api/send", { to: "rh@empresa-posenvio20.com", subject: "Candidatura", message: "Olá, gostaria de me candidatar.", desc: 123456 });
+      const _sentPos = (await get("/api/sent-emails")).json;
+      check("📧 v202-L20: falha NOS PASSOS PÓS-ENVIO devolve ok:true com aviso (nunca 'falha' pra uma candidatura que JÁ SAIU) — e, correção deste lote, a regra 8 registra o empregador MESMO ASSIM: antes o markSent vivia dentro do try que estourava e a empresa podia receber 2 candidaturas",
+        _pos20.status === 200 && _pos20.json?.ok === true && typeof _pos20.json?.warning === "string" && /hist[oó]rico/i.test(_pos20.json.warning) &&
+        GOOGLE.envios.length === 1 && GOOGLE.envios[0].para === "rh@empresa-posenvio20.com" &&
+        (_sentPos?.sent || []).includes("rh@empresa-posenvio20.com"),
+        JSON.stringify({ status: _pos20.status, json: _pos20.json, marcados: (_sentPos?.sent || []).length }).slice(0, 300));
+
+      // ── 3) FILA AUTOMÁTICA DE 3 VAGAS: envia de verdade e a fila diminui ─
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "auto20@test.com", name: "Auto 20", refreshToken: "rt-auto20", plan: "doublepro", vip: { active: true, plan: "doublepro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 } });
+      const _cvAuto20 = await req2("POST", "/api/cv/upload", { base64: Buffer.from("%PDF-1.4 " + "auto20 ".repeat(300)).toString("base64"), name: "CV_Auto20.pdf", cvType: "resume" });
+      GOOGLE.limpar();
+      const _fila20 = [1, 2, 3].map((i) => ({ to: `rh${i}@auto20-test.com`, title: "Cook", company: `Empresa Auto ${i}`, category: "food", state: "FL" }));
+      const _start20 = await req2("POST", "/api/auto/start", { queue: _fila20, resumeIdx: _cvAuto20.json?.cv?.idx, subjects: ["Candidatura — Cook"], emailBodies: ["Olá, gostaria de me candidatar."] });
+      const _ate = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 < (ms || 15_000)) { if (fn()) return true; await new Promise((r) => setTimeout(r, 50)); } return false; };
+      const _c1 = await _ate(() => GOOGLE.envios.length >= 1);
+      const _j1 = (await get("/api/auto/status")).json?.job || {};
+      const _d2 = await req2("POST", "/api/test/auto-job", { token: TEST_TOKEN, email: "auto20@test.com", disparar: true });
+      const _d3 = await req2("POST", "/api/test/auto-job", { token: TEST_TOKEN, email: "auto20@test.com", disparar: true });
+      const _destinos20 = GOOGLE.envios.map((e2) => e2.para).sort();
+      check("🤖 v202-L20: a fila do AUTOMÁTICO envia de verdade e diminui a cada ciclo — 3 vagas viram 3 candidaturas no Gmail (uma por ciclo, fila 3→2→1→0), todas com o assunto e o corpo que o usuário escreveu e saindo do Gmail dele",
+        _start20.status === 200 && _c1 === true &&
+        _j1.queueSize === 2 && _d2.json?.job?.queue?.length === 1 && _d3.json?.job?.queue?.length === 0 &&
+        _d3.json?.job?.active === true && _d3.json?.job?.status === "waiting_interval" &&
+        GOOGLE.envios.length === 3 &&
+        JSON.stringify(_destinos20) === JSON.stringify(["rh1@auto20-test.com", "rh2@auto20-test.com", "rh3@auto20-test.com"]) &&
+        GOOGLE.envios.every((e2) => e2.assunto === "Candidatura — Cook" && /auto20@test\.com/.test(e2.de || "")),
+        JSON.stringify({ start: _start20.status, c1: _c1, filas: [_j1.queueSize, _d2.json?.job?.queue?.length, _d3.json?.job?.queue?.length], envios: _destinos20, status: _d3.json?.job?.status }).slice(0, 380));
+
+      // ── 4) TOKEN VENCIDO NO MEIO DA FILA (v165): renova e RE-TENTA a MESMA vaga
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "auth401@test.com", name: "Auth 401", refreshToken: "rt-auth401-vivo", plan: "doublepro", vip: { active: true, plan: "doublepro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 } });
+      const _cv401 = await req2("POST", "/api/cv/upload", { base64: Buffer.from("%PDF-1.4 " + "a401 ".repeat(300)).toString("base64"), name: "CV_401.pdf", cvType: "resume" });
+      GOOGLE.limpar();
+      GOOGLE.falhasEnvio.push({ status: 401, body: { error: { code: 401, message: "Invalid Credentials", status: "UNAUTHENTICATED" } } });
+      const _start401 = await req2("POST", "/api/auto/start", { queue: [{ to: "rh1@auth401-test.com", title: "Cook", company: "Empresa 401 A" }, { to: "rh2@auth401-test.com", title: "Cook", company: "Empresa 401 B" }], resumeIdx: _cv401.json?.cv?.idx, subjects: ["Candidatura"], emailBodies: ["Olá."] });
+      const _ok401 = await _ate(() => GOOGLE.envios.length >= 1);
+      const _j401 = (await get("/api/auto/status")).json?.job || {};
+      // A fila ESPERTA reordena as vagas na montagem (regra 13/score de
+      // encaixe) — o teste nunca assume QUAL das duas foi a 1ª; o que importa
+      // é que a MESMA vaga do 401 foi a que saiu, uma única vez.
+      const _alvo401 = GOOGLE.envios[0]?.para || "";
+      const _h401 = ((await get("/api/history")).json?.history || []).filter((h) => h.to === _alvo401);
+      check("🔐 v202-L20 (v165, comportamental): token vencido NO MEIO da fila ('Invalid Credentials') renova sozinho e RE-TENTA a MESMA vaga — a candidatura sai com o token NOVO, a vaga não é queimada (1 no histórico, não 2) e a fila só anda uma casa; antes isso era provado por grep de uma string de log",
+        _start401.status === 200 && _ok401 === true &&
+        GOOGLE.refreshes.length >= 1 && GOOGLE.refreshes[0].refresh_token === "rt-auth401-vivo" &&
+        GOOGLE.envios.length === 1 && /^rh[12]@auth401-test\.com$/.test(_alvo401) &&
+        /^at-vivo-/.test(GOOGLE.envios[0].auth || "") &&
+        _h401.length === 1 && _j401.queueSize === 1 && _j401.active === true,
+        JSON.stringify({ refreshes: GOOGLE.refreshes.length, envios: GOOGLE.envios, hist: _h401.length, fila: _j401.queueSize, status: _j401.status }).slice(0, 360));
+
+      // ── 5) invalid_grant CONFIRMADO pelo Google → PAUSA (13a2) ─────────
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "rtmorto20@test.com", name: "RT Morto", refreshToken: "rt-morto20", plan: "doublepro", vip: { active: true, plan: "doublepro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 } });
+      const _cvMorto = await req2("POST", "/api/cv/upload", { base64: Buffer.from("%PDF-1.4 " + "morto20 ".repeat(300)).toString("base64"), name: "CV_Morto.pdf", cvType: "resume" });
+      GOOGLE.limpar();
+      GOOGLE.rtMortos.add("rt-morto20");
+      GOOGLE.falhasEnvio.push({ status: 401, body: { error: { code: 401, message: "Invalid Credentials", status: "UNAUTHENTICATED" } } });
+      const _startMorto = await req2("POST", "/api/auto/start", { queue: [{ to: "rh1@rtmorto20-test.com", title: "Cook", company: "Morto A" }, { to: "rh2@rtmorto20-test.com", title: "Cook", company: "Morto B" }], resumeIdx: _cvMorto.json?.cv?.idx, subjects: ["Candidatura"], emailBodies: ["Olá."] });
+      const _pausou = await _ate(() => GOOGLE.refreshes.length >= 1);
+      await new Promise((r) => setTimeout(r, 400));
+      const _jMorto = (await get("/api/auto/status")).json?.job || {};
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      const _udMorto = (await get("/api/admin/financeiro-usuario/" + encodeURIComponent("rtmorto20@test.com"))).json;
+      check("🔐 v202-L20 (13a2, comportamental): a pausa por autenticação só acontece com a queda CONFIRMADA por um refresh REAL — o Google devolve invalid_grant, o robô para (paused_auth_error), a vaga VOLTA pra fila (nada é perdido) e o refresh_token é marcado como morto; nenhum e-mail saiu",
+        _startMorto.status === 200 && _pausou === true &&
+        GOOGLE.envios.length === 0 &&
+        _jMorto.active === false && _jMorto.status === "paused_auth_error" && _jMorto.queueSize === 2 &&
+        _udMorto?.auth?.rtInvalid === true &&
+        (_udMorto?.auth?.timeline || []).some((ev) => ev.tipo === "pausa_auth"),
+        JSON.stringify({ envios: GOOGLE.envios.length, job: { a: _jMorto.active, s: _jMorto.status, q: _jMorto.queueSize }, rtInvalid: _udMorto?.auth?.rtInvalid, tl: (_udMorto?.auth?.timeline || []).map((ev) => ev.tipo) }).slice(0, 320));
+
+      // ── 6) EXTRA COM AUTH MORTA: isolado, e o robô SEGUE pelas outras ───
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "extra20@test.com", name: "Extra 20", refreshToken: "rt-extra20-principal", plan: "doublepro", vip: { active: true, plan: "doublepro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 }, senderEmails: [{ email: "extraruim20@test.com", active: true, refresh_token: "rt-extra20-morto", addedAt: Date.now() - 60 * 86400_000 }] });
+      const _cvExtra = await req2("POST", "/api/cv/upload", { base64: Buffer.from("%PDF-1.4 " + "extra20 ".repeat(300)).toString("base64"), name: "CV_Extra20.pdf", cvType: "resume" });
+      GOOGLE.limpar();
+      GOOGLE.rtMortos.add("rt-extra20-morto");
+      // 1 envio manual pelo PRINCIPAL antes: o rodízio escolhe por menor
+      // contagem do dia, então com 1×0 o EXTRA é o próximo da vez — é o que
+      // leva o motor a tropeçar na conta doente de propósito.
+      await req2("POST", "/api/send", { to: "rh@empresa-extra20-manual.com", subject: "Candidatura", message: "Olá, gostaria de me candidatar." });
+      const _startExtra = await req2("POST", "/api/auto/start", { queue: [{ to: "rh1@extra20-test.com", title: "Cook", company: "Extra A" }, { to: "rh2@extra20-test.com", title: "Cook", company: "Extra B" }], resumeIdx: _cvExtra.json?.cv?.idx, subjects: ["Candidatura"], emailBodies: ["Olá."] });
+      const _okExtra = await _ate(() => GOOGLE.envios.length >= 2);
+      const _jExtra = (await get("/api/auto/status")).json?.job || {};
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      const _udExtra = (await get("/api/admin/financeiro-usuario/" + encodeURIComponent("extra20@test.com"))).json;
+      check("🛡️ v202-L20 (v73/v165, comportamental): conta Gmail EXTRA com autorização morta é ISOLADA (badge RECONECTAR) e o robô SEGUE pelas outras — a vaga sai pelo Gmail principal no mesmo ciclo, o job continua ativo e nada é apagado da conta doente",
+        _startExtra.status === 200 && _okExtra === true &&
+        (_udExtra?.auth?.senders || []).some((se) => se.email === "extraruim20@test.com" && se.tokenExpired === true && se.active === true) &&
+        GOOGLE.envios.some((e2) => e2.para === "rh1@extra20-test.com" && /extra20@test\.com/.test(e2.de || "")) &&
+        _jExtra.active === true && _jExtra.status !== "paused_auth_error",
+        JSON.stringify({ senders: _udExtra?.auth?.senders, envios: GOOGLE.envios.map((e2) => e2.para), job: { a: _jExtra.active, s: _jExtra.status } }).slice(0, 380));
+      GOOGLE.limpar();
+    }
 
     // ═══ 🧹 v199 LOTE 18: faxina do servidor (o que não tinha como rodar) ═══
     // O app é SÓ-ENVIO: o escopo pedido ao Google é gmail.send e nada mais
@@ -6015,6 +6265,7 @@ async function drillRestauracaoBackup() {
   } finally {
     srv.kill("SIGKILL");
     try { feedSrv.close(); } catch {}
+    try { googleSrv.close(); } catch {}
     try { fs.rmSync(DATA, { recursive: true, force: true }); } catch {}
   }
 
