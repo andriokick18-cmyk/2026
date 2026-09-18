@@ -278,7 +278,7 @@ const { createCalcSmartInterval, nowBRT: _nowBRTMod, todayStrBRT: _todayStrBRTMo
 // 🔒 Integridade de vagas — 1 vaga = 1 ETA Case Number único (KB-076).
 // Mesmo módulo usado pelo build-sheets.js standalone, pra nunca divergir a
 // regra de dedupe/merge entre o cron oficial e o bot de coleta do admin.
-const { dedupeVagas: _vagasDedupe, verifyIntegrity: _vagasVerify, buildManifest: _vagasManifest } = require("./mod-vagas-integrity.js");
+const { dedupeVagas: _vagasDedupe, verifyIntegrity: _vagasVerify, buildManifest: _vagasManifest, mergePreferindo: _vagaMergePreferindo } = require("./mod-vagas-integrity.js");
 let _calcSmartIntervalImpl = null;
 function calcSmartInterval(email){
   if(!_calcSmartIntervalImpl) _calcSmartIntervalImpl = createCalcSmartInterval({ getUser, isAdminVip }); // lazy: getUser/isAdminVip declarados adiante
@@ -2909,18 +2909,130 @@ function persistGruposJ26(){
     fs.renameSync(tmp, GRUPOS_J26_FILE);
   }catch(e){ console.warn("[grupos-j26] falha ao salvar:", e.message); }
 }
+// ═══ 📥 v180 — MESCLAGEM DE PLANILHA (fonte ÚNICA: importação do admin + seed) ═══
+// Diagnóstico (18/09/2026): o jul2026_compact.json versionado no git é um
+// ESQUELETO — 2.625 case numbers com empresa/estado/grupo e mais NADA (0
+// e-mail, 0 título, 0 salário, 0 cidade). O dado completo daquela planilha só
+// existe no disco de produção do site antigo, onde o robô de enriquecimento
+// passou meses preenchendo vaga a vaga. Existem então DOIS caminhos pra trazer
+// esse dado pra cá — o admin importa o JSON pelo painel, ou o arquivo bundled
+// enriquecido chega num deploy — e os dois precisam da MESMA regra de fusão,
+// nunca de duas.
+//
+// RÉGUA (ordem do dono): sobe a linha MAIS RICA, e NINGUÉM SOME.
+//   1. linha com e-mail vence linha sem e-mail (é o e-mail que permite a
+//      candidatura — perder um e-mail já descoberto é perder vaga de verdade);
+//   2. entre duas com (ou duas sem) e-mail, vence a que tem mais campos
+//      preenchidos entre t/w/ci/d/de/desc (título, salário, cidade, datas,
+//      descrição — o que o enriquecimento do DOL traz);
+//   3. empate → vence a linha NOVA (dado recém-importado é o mais fresco).
+// Escolhida a base, a UNIÃO campo a campo (mergePreferindo, mod-vagas-
+// integrity) preenche todo campo vazio da base com o da outra linha: o grupo
+// A-H, o `_sheet` e qualquer coisa que o arquivo novo não trouxe continuam
+// vivos. Case number que existia e NÃO veio no arquivo novo fica intocado.
+function _mesclarPlanilha(atual, novas, opts){
+  const o = opts || {};
+  const sheetKey = o.sheetKey || "";
+  const _cn = c => String(c==null?"":c).trim().toUpperCase();
+  const _cheio = v => v!==undefined && v!==null && v!=="" && v!=="-" && v!=="–";
+  const _temEmail = r => !!(r && r.e && String(r.e).includes("@"));
+  const _riqueza = r => ["t","w","ci","d","de","desc"].reduce((n,f)=>n+(_cheio(r&&r[f])?1:0),0);
+  // devolve a linha que vira BASE da união (regra 1→2→3 acima)
+  const _base = (nova, velha) => {
+    if(_temEmail(nova)!==_temEmail(velha)) return _temEmail(nova) ? nova : velha;
+    return _riqueza(nova) >= _riqueza(velha) ? nova : velha;
+  };
+  const mapa = new Map(), ordem = [];
+  for(const r of (atual||[])){
+    const cn = _cn(r && r.c); if(!cn) continue;
+    if(mapa.has(cn)){ mapa.set(cn, _vagaMergePreferindo(mapa.get(cn), r)); continue; } // nunca duplica
+    mapa.set(cn, r); ordem.push(cn);
+  }
+  let adicionadas=0, atualizadas=0;
+  for(const r of (novas||[])){
+    const cn = _cn(r && r.c); if(!cn) continue;
+    if(!mapa.has(cn)){ mapa.set(cn, {...r, c:cn}); ordem.push(cn); adicionadas++; continue; }
+    const velha = mapa.get(cn);
+    const base = _base(r, velha);
+    const mesclada = _vagaMergePreferindo(base, base===r ? velha : r);
+    mesclada.c = cn;
+    let mudou=false;
+    for(const k of Object.keys(mesclada)){ if(mesclada[k]!==velha[k]){ mudou=true; break; } }
+    if(mudou) atualizadas++;
+    mapa.set(cn, mesclada);
+  }
+  const rows = ordem.map(cn=>mapa.get(cn));
+  rows.forEach(r=>{ if(!r.k) r.k=detectCategory(r.t,r.n); if(sheetKey) r._sheet=sheetKey; });
+  const _comEmail = a => (a||[]).reduce((n,r)=>n+(_temEmail(r)?1:0),0);
+  return { rows, adicionadas, atualizadas,
+    preservadas: rows.length - adicionadas,
+    antes: (atual||[]).length, recebidas: (novas||[]).length,
+    emailAntes: _comEmail(atual), emailDepois: _comEmail(rows) };
+}
+
+// 🌱 v180 — SEED BUNDLED ENRIQUECIDO VENCE ESQUELETO EM /data.
+// A planilha extra em /data SEMPRE vencia a cópia bundled ("já existe dado
+// real"), o que é certo enquanto /data é o lado enriquecido. Só que o inverso
+// aconteceu de verdade: /data (produção) ficou com o ESQUELETO semeado no
+// primeiro deploy e o arquivo bundled é que passou a ser o lado completo.
+// Decisão SÓ por evidência: se o que está em /data não tem NENHUM e-mail e o
+// bundled tem, o bundled é mesclado por cima (mesma régua de `_mesclarPlanilha`
+// — ninguém some). Idempotente: no boot seguinte /data já tem e-mail e a
+// checagem sai de cara, sem nem abrir o arquivo bundled.
+function _seedVenceEsqueleto(key, atual, bundled){
+  const _comEmail = a => (a||[]).reduce((n,r)=>n+((r && r.e && String(r.e).includes("@"))?1:0),0);
+  if(!Array.isArray(atual) || !atual.length) return { aplicar:false, motivo:"sem dado carregado em /data" };
+  const emailAntes = _comEmail(atual);
+  if(emailAntes>0) return { aplicar:false, motivo:"/data já tem e-mail", emailAntes };
+  if(!Array.isArray(bundled) || !bundled.length) return { aplicar:false, motivo:"bundled vazio/ilegível", emailAntes };
+  const emailBundle = _comEmail(bundled);
+  if(emailBundle<1) return { aplicar:false, motivo:"bundled também é esqueleto (0 e-mail)", emailAntes, emailBundle };
+  return { aplicar:true, emailBundle, ..._mesclarPlanilha(atual, bundled, {sheetKey:key}) };
+}
+
+function _lerSeedBundled(arquivo){
+  try{
+    const seedPath = path.join(__dirname, arquivo);
+    if(!fs.existsSync(seedPath)) return null;
+    const d = JSON.parse(fs.readFileSync(seedPath,"utf8"));
+    return (Array.isArray(d) && d.length) ? d : null;
+  }catch(e){ console.warn(`[sheet] ⚠️ não consegui ler ${arquivo}: ${e.message}`); return null; }
+}
 function seedJul2026FromBundle(force){
   const hasRealJul2026 = Array.isArray(SHEET_EXTRAS["jul2026"]) && SHEET_EXTRAS["jul2026"].length>0;
-  if(hasRealJul2026 && !force) return { ok:true, skipped:true, reason:'já existe dado real', count:SHEET_EXTRAS["jul2026"].length };
+  if(hasRealJul2026 && !force){
+    // 🌱 v180: /data pode estar com o ESQUELETO (0 e-mail) enquanto o arquivo
+    // bundled deste deploy já é a planilha enriquecida — nesse caso o bundled
+    // vence e é MESCLADO por cima (ninguém some). Só lê o arquivo quando o que
+    // está em memória não tem e-mail nenhum: com e-mail em /data, sai na hora.
+    const atual = SHEET_EXTRAS["jul2026"];
+    const semEmail = !atual.some(r=>r && r.e && String(r.e).includes("@"));
+    if(semEmail){
+      const m = _seedVenceEsqueleto("jul2026", atual, _lerSeedBundled("jul2026_compact.json"));
+      if(m.aplicar){
+        SHEET_EXTRAS["jul2026"] = m.rows;
+        DB_SHEETS_META["jul2026"] = { ...(DB_SHEETS_META["jul2026"]||{}), count:m.rows.length, uniqueCaseCount:m.rows.length,
+          file: DB_SHEETS_META["jul2026"]?.file || "jul2026.json", published:true,
+          seedMergedAt: Date.now(), seedMergedRows: m.recebidas, source:"seed-bundled-enriquecido" };
+        try{
+          if(!fs.existsSync(SHEETS_DIR)) fs.mkdirSync(SHEETS_DIR,{recursive:true});
+          _writeFileAtomic(path.join(SHEETS_DIR, DB_SHEETS_META["jul2026"].file), JSON.stringify(m.rows));
+          _writeFileAtomic(SHEETS_META_FILE, JSON.stringify(DB_SHEETS_META,null,2));
+        }catch(e){ console.warn("[sheet] ⚠️ jul2026: mesclei o seed em memória mas falhei ao gravar em /data:", e.message); }
+        console.log(`[sheet] 🌱 jul2026: esqueleto em /data substituído pelo seed bundled enriquecido (${m.emailDepois} linhas com e-mail) — ${m.atualizadas} atualizada(s), ${m.adicionadas} nova(s), ${m.rows.length} no total.`);
+        return { ok:true, skipped:false, migrado:true, count:m.rows.length, atualizadas:m.atualizadas, adicionadas:m.adicionadas, comEmail:m.emailDepois };
+      }
+    }
+    return { ok:true, skipped:true, reason:'já existe dado real', count:atual.length };
+  }
   if(DB_SHEETS_META["jul2026"] && !hasRealJul2026) console.log(`[sheet] ⚠️ jul2026 tinha uma entrada em sheets_meta.json mas SEM vaga real carregada (provavelmente resquício de bot antigo) — semeando do zero mesmo assim.`);
   try{
     const seedPath = path.join(__dirname, "jul2026_compact.json");
-    if(!fs.existsSync(seedPath)){
-      console.warn(`[sheet] ⚠️ jul2026_compact.json não encontrado em ${seedPath} — nada pra semear.`);
-      return { ok:false, reason:'arquivo bundled não encontrado no deploy' };
+    let seed = _lerSeedBundled("jul2026_compact.json"); // v180: leitura única, usada também pela migração de esqueleto acima
+    if(!seed){
+      console.warn(`[sheet] ⚠️ jul2026_compact.json não encontrado/vazio em ${seedPath} — nada pra semear.`);
+      return { ok:false, reason:'arquivo bundled não encontrado ou vazio no deploy' };
     }
-    let seed = JSON.parse(fs.readFileSync(seedPath,"utf8"));
-    if(!Array.isArray(seed) || !seed.length) return { ok:false, reason:'arquivo bundled vazio ou inválido' };
     seed = _selfHealSheetIntegrity("jul2026", seed, seedPath);
     seed.forEach(r=>{ if(!r.k) r.k=detectCategory(r.t,r.n); r._sheet="jul2026"; });
     SHEET_EXTRAS["jul2026"] = seed;
@@ -3060,7 +3172,13 @@ function getSheet(n) { return n==="jan2026"?SHEET_JAN:n==="jul2025"?SHEET_JUL:(n
 // mais nova — sem mexer em código. A chave da planilha carrega mês+ano
 // (jan2026, jul2025, jul2026, jan2027...) e vira um placar ano*100+mês.
 // Rascunho (published:false) não conta — só o que o usuário já vê.
-function latestH2bKey(){
+// v180: `comEmail:true` só considera planilha que JÁ tem contato — o selo
+// "⭐ MAIS NOVA" da lista do usuário usa essa variante (vender como mais nova
+// uma planilha de onde não sai NENHUMA candidatura é propaganda enganosa).
+// O robô de frescor continua chamando sem opção: pra ele "mais nova" é mais
+// nova mesmo, com ou sem e-mail (é justamente ela que precisa ser conferida).
+function latestH2bKey(opts){
+  const exigirEmail = !!(opts && opts.comEmail);
   let best=null,bestScore=-1;
   const consider=(key)=>{
     // v174: a "H-2B <Mês> <Ano>" do robô mensal (chave h2b-AAAAMM) também
@@ -3073,6 +3191,7 @@ function latestH2bKey(){
     const meta=DB_SHEETS_META[key];
     if(meta&&meta.published===false)return; // rascunho não conta
     if(meta&&meta.historico===true)return;  // temporada histórica não disputa
+    if(exigirEmail&&!rows.some(r=>r&&r.e&&String(r.e).includes("@")))return; // v180: sem contato, não é "a mais nova" pro usuário
     const score=m?parseInt(m[2],10)*100+(m[1]==="jul"?7:1):parseInt(m2[1],10)*100+parseInt(m2[2],10);
     if(score>bestScore){bestScore=score;best=key;}
   };
@@ -7227,42 +7346,94 @@ ul li{margin-bottom:6px}
     try{ vagas = typeof data==="string"?JSON.parse(data):data; }
     catch(e){return json(res,400,{error:"JSON inválido: "+e.message});}
     if(!Array.isArray(vagas))return json(res,400,{error:"data deve ser um array de vagas"});
-    // Garantir campos obrigatórios
-    const validRaw = vagas.filter(v=>v.c&&v.e&&v.e.includes("@"));
-    if(validRaw.length<1)return json(res,400,{error:`Nenhuma vaga válida (com case_number e email). Encontradas: ${vagas.length}`});
+    // Garantir campos obrigatórios. Uma planilha de verdade PRECISA trazer
+    // e-mail em alguma linha (é o que permite candidatura) — arquivo sem
+    // nenhum e-mail é recusado na cara, nunca publicado em silêncio.
+    const comEmail = vagas.filter(v=>v&&v.c&&v.e&&String(v.e).includes("@"));
+    if(comEmail.length<1)return json(res,400,{error:`Nenhuma vaga válida (com case_number e e-mail). Recebidas: ${vagas.length}`});
+    // v180: linha com case number mas AINDA sem e-mail entra também — é
+    // exatamente ela que o robô de enriquecimento completa depois (e, numa
+    // substituição, é ela que traz cidade/título/status novos sem apagar o
+    // e-mail que a planilha atual já tinha).
+    const validRaw = vagas.filter(v=>v&&v.c);
     // 🔒 DEDUPE por ETA case number — mesma regra do resto do sistema (KB-076):
     // 1 vaga = 1 case number único. Se o admin subir um arquivo com o mesmo
     // case number 2x, mescla em vez de publicar linha duplicada.
-    const { rows: valid, duplicatesMerged } = _vagasDedupe(validRaw, {caseField:'c'});
-    // Enriquecer categorias
-    valid.forEach(r=>{if(!r.k)r.k=detectCategory(r.t,r.n);r._sheet=safeKey;});
-    // Salvar arquivo
-    const fname=`${safeKey}.json`;
-    const fpath=path.join(SHEETS_DIR,fname);
-    fs.writeFileSync(fpath,JSON.stringify(valid));
-    SHEET_EXTRAS[safeKey]=valid;
-    // v174: upload do admin É a publicação (antes o registro nascia sem
-    // `published` e /api/sheets-list — que exige published===true — escondia
-    // a planilha de todo usuário em silêncio).
-    DB_SHEETS_META[safeKey]={name,file:fname,uploaded:Date.now(),count:valid.length,uniqueCaseCount:valid.length,enriched:0,
-      published:true,publishedAt:Date.now(),publishedBy:s.user_email,source:"upload",visaType:String(valid[0]?.visa||"H-2B").toUpperCase().includes("H-2A")?"H-2A":"H-2B"};
-    fs.writeFileSync(SHEETS_META_FILE,JSON.stringify(DB_SHEETS_META,null,2));
-    console.log(`[sheet] ✅ Nova planilha carregada: ${safeKey} (${valid.length} vagas únicas de ${vagas.length} recebidas${duplicatesMerged?`, ${duplicatesMerged} duplicata(s) mesclada(s)`:''})`);
-    addLog(s.user_email,{status:"sistema",jobTitle:`📋 Nova planilha adicionada: ${name}`,company:`${valid.length} vagas únicas — Chave: ${safeKey}${duplicatesMerged?` (${duplicatesMerged} duplicata mesclada)`:''}`});
-    // Dispara enriquecimento automático imediato (não espera o watchdog de 30min)
-    setTimeout(()=>PLANILHAS.autoEnrichCycle().catch(e=>console.error("[auto-enrich] trigger upload erro:",e.message)), 3000);
-    console.log(`[auto-enrich] 🔔 Enriquecimento de "${safeKey}" agendado em 3s`);
-    // 🎯 Se essa é a planilha de Julho 2026 e já existem grupos oficiais
-    // importados, aplica na hora — não precisa esperar a próxima importação.
-    if(safeKey==="jul2026" && typeof j26ApplyGroupsToSheet==="function"){
-      const r = j26ApplyGroupsToSheet();
-      if(r.applied>0) console.log(`[grupos-j26] ✅ ${r.applied} grupo(s) já existente(s) aplicado(s) na planilha recém-publicada.`);
+    const { rows: recebidas, duplicatesMerged } = _vagasDedupe(validRaw, {caseField:'c'});
+    try{
+      // v180: a planilha pode ser uma das BUILT-IN (jan2026/jul2025/H-2A) — o
+      // botão de importar aparece em todas. Elas NÃO moram em SHEET_EXTRAS:
+      // gravar uma chave dessas lá criaria uma planilha fantasma (a H-2A
+      // apareceria 2x pro usuário). Built-in é atualizada no array certo e
+      // salva pelo funil único `_saveEnrichedSheet` (o mesmo caminho que o
+      // robô de enriquecimento já usa há meses).
+      const _builtin = {jan2026:"jan", jul2025:"jul", "h2a-jun2026":"h2a", h2a:"h2a"}[safeKey] || null;
+      const keyReal = _builtin==="h2a" ? "h2a-jun2026" : safeKey; // "h2a" é apelido da H-2A built-in
+      const antes = _builtin ? (getSheet(keyReal)||[]) : (SHEET_EXTRAS[keyReal]||[]);
+      const jaExistia = antes.length>0;
+      // 🤖 v177-FIX2 / v180: trocar as linhas debaixo do robô de enriquecimento
+      // é o mesmo problema de apagar a planilha com ele rodando — ele escreve
+      // no array VELHO e o progresso vai pro lixo. Mesma trava cooperativa do
+      // DELETE e do botão "Parar"; o autoEnrichCycle agendado logo abaixo
+      // recomeça na planilha nova.
+      if(_enrichBot.running && _enrichBot.sheetKey===keyReal){
+        _enrichBot.running=false;
+        _enrichLog(`⏹️ Bot parado automaticamente — planilha "${keyReal}" foi reimportada pelo admin.`,"warn");
+      }
+      // 📥 v180: chave que JÁ EXISTE é SUBSTITUIÇÃO MESCLADA, nunca troca cega
+      // — a régua de "linha mais rica vence" e "case number que não veio no
+      // arquivo fica" mora numa função só (_mesclarPlanilha), a MESMA do seed.
+      const m = _mesclarPlanilha(antes, recebidas, {sheetKey:keyReal});
+      const valid = m.rows;
+      if(_builtin){
+        if(_builtin==="jan") SHEET_JAN=valid; else if(_builtin==="jul") SHEET_JUL=valid; else SHEET_H2A=valid;
+        _saveEnrichedSheet(keyReal, valid); // grava no destino certo da built-in
+      } else {
+        const fname=DB_SHEETS_META[keyReal]?.file||`${keyReal}.json`;
+        if(!fs.existsSync(SHEETS_DIR)) fs.mkdirSync(SHEETS_DIR,{recursive:true});
+        _writeFileAtomic(path.join(SHEETS_DIR,fname),JSON.stringify(valid));
+        SHEET_EXTRAS[keyReal]=valid;
+        // v174: upload do admin É a publicação (antes o registro nascia sem
+        // `published` e /api/sheets-list — que exige published===true — escondia
+        // a planilha de todo usuário em silêncio).
+        const metaAntes=DB_SHEETS_META[keyReal]||{};
+        DB_SHEETS_META[keyReal]={...metaAntes,name,file:fname,uploaded:metaAntes.uploaded||Date.now(),
+          count:valid.length,uniqueCaseCount:valid.length,enriched:valid.filter(r=>r.ci).length,
+          published:true,publishedAt:metaAntes.publishedAt||Date.now(),publishedBy:s.user_email,
+          source:jaExistia?"import-admin":"upload",
+          importedAt:Date.now(),importedBy:s.user_email,importedRows:m.recebidas,mergedFrom:jaExistia?m.antes:0,
+          visaType:String(valid[0]?.visa||metaAntes.visaType||"H-2B").toUpperCase().includes("H-2A")?"H-2A":"H-2B"};
+        _writeFileAtomic(SHEETS_META_FILE,JSON.stringify(DB_SHEETS_META,null,2));
+      }
+      const resumo=jaExistia
+        ? `${m.atualizadas} linha(s) atualizada(s), ${m.adicionadas} nova(s), ${m.preservadas-m.atualizadas} intocada(s) — e-mail: ${m.emailAntes} → ${m.emailDepois}`
+        : `${valid.length} vagas únicas de ${vagas.length} recebidas${duplicatesMerged?`, ${duplicatesMerged} duplicata(s) mesclada(s)`:''}`;
+      console.log(`[sheet] ✅ ${jaExistia?`Planilha "${keyReal}" reimportada${_builtin?" (built-in)":""}`:`Nova planilha carregada: ${keyReal}`} (${resumo})`);
+      botLog('import','Importação de Planilha',`${jaExistia?'Reimportada':'Criada'} "${keyReal}" por ${s.user_email}: ${resumo}`,'ok');
+      addLog(s.user_email,{status:"sistema",jobTitle:`📋 ${jaExistia?'Planilha reimportada':'Nova planilha adicionada'}: ${name}`,company:`${valid.length} vagas — Chave: ${keyReal} (${resumo})`});
+      // Dispara enriquecimento automático imediato (não espera o watchdog de 30min)
+      setTimeout(()=>PLANILHAS.autoEnrichCycle().catch(e=>console.error("[auto-enrich] trigger upload erro:",e.message)), 3000);
+      console.log(`[auto-enrich] 🔔 Enriquecimento de "${keyReal}" agendado em 3s`);
+      // 🎯 Se essa é a planilha de Julho 2026 e já existem grupos oficiais
+      // importados, aplica na hora — não precisa esperar a próxima importação.
+      if(keyReal==="jul2026" && typeof j26ApplyGroupsToSheet==="function"){
+        const r = j26ApplyGroupsToSheet();
+        if(r.applied>0) console.log(`[grupos-j26] ✅ ${r.applied} grupo(s) já existente(s) aplicado(s) na planilha recém-publicada.`);
+      }
+      // 📡 v134: vaga nova entrando no sistema tem que avisar quem tem radar
+      // ligado casando com ela (v174: os robôs de coleta/publicação e o de
+      // vagas novas H-2A avisam do mesmo jeito — mod-planilhas.js). v180: numa
+      // reimportação só as vagas REALMENTE novas avisam — ninguém leva push de
+      // uma vaga que já estava no site desde ontem.
+      const _novasPraRadar=valid.slice(m.preservadas).filter(r=>r.e&&String(r.e).includes("@")); // planilha nova: preservadas=0, avisa de tudo
+      notificarRadares(_novasPraRadar,`upload:${keyReal}`).catch(e=>console.warn("[radar] notificar upload:",e.message));
+      return json(res,200,{ok:true,key:keyReal,builtin:!!_builtin,count:valid.length,total:vagas.length,duplicatesMerged,
+        substituiu:jaExistia,atualizadas:m.atualizadas,adicionadas:m.adicionadas,preservadas:m.preservadas,
+        importedRows:m.recebidas,comEmailAntes:m.emailAntes,comEmail:m.emailDepois});
+    }catch(e){
+      console.error(`[sheet] ❌ Falha ao importar "${safeKey}":`,e.message); // safeKey: o keyReal pode nem ter sido calculado ainda
+      return json(res,500,{error:"Falha ao gravar a planilha: "+e.message});
     }
-    // 📡 v134: vaga nova entrando no sistema tem que avisar quem tem radar
-    // ligado casando com ela (v174: os robôs de coleta/publicação e o de
-    // vagas novas H-2A avisam do mesmo jeito — mod-planilhas.js).
-    notificarRadares(valid,`upload:${safeKey}`).catch(e=>console.warn("[radar] notificar upload:",e.message));
-    return json(res,200,{ok:true,key:safeKey,count:valid.length,total:vagas.length,duplicatesMerged});
   }
 
   // DELETE /api/admin/sheet/:key — remove planilha extra
@@ -7521,10 +7692,19 @@ ul li{margin-bottom:6px}
     // v51 (dono, 25/07): a H-2B mais RECENTE vem PRIMEIRO (à esquerda,
     // destacada no front). Hoje é jul2026; quando a de janeiro sair e for
     // publicada, ela assume sozinha. Sort estável — o resto mantém a ordem.
-    const _latestKey=latestH2bKey();
+    // 📥 v180: o selo "MAIS NOVA" só vale pra planilha de onde dá pra se
+    // candidatar HOJE. A planilha recém-saída do DOL entra publicada mas com
+    // 0 e-mail (o governo publica a lista antes dos contatos, e o robô de
+    // enriquecimento completa vaga a vaga durante dias) — vendê-la como a
+    // melhor é mandar o usuário pra uma aba de onde não sai nenhum e-mail.
+    // Nesse estado ela viaja com `emEnriquecimento:true` (o front mostra "em
+    // preparação", nunca esconde a planilha — o dono quer ver que ela existe)
+    // e o selo fica com a H-2B mais nova QUE TEM contato.
+    for(const s2 of out)s2.emEnriquecimento=(s2.count>0&&(s2.withEmail||0)===0);
+    const _latestKey=latestH2bKey({comEmail:true});
     for(const s2 of out)s2.latest=(s2.key===_latestKey);
     out.sort((a,b)=>(b.latest?1:0)-(a.latest?1:0));
-    return json(res,200,{ok:true,sheets:out,latestH2b:_latestKey});
+    return json(res,200,{ok:true,sheets:out,latestH2b:_latestKey,latestH2bBruta:latestH2bKey()});
   }
 
   // ══════════════════ 📥 DOWNLOAD DE PLANILHAS (admin) — v87 ══════════════════
@@ -8074,6 +8254,17 @@ filtrar();
   if(pathname==="/api/test/vaga-morta"&&process.env.TEST_LOGIN_TOKEN){
     if(String(u.searchParams.get("token")||"")!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});
     return json(res,200,{ok:true,motivo:isQueueJobDead(u.searchParams.get("sheet")||"",u.searchParams.get("case")||"")});
+  }
+  // 🌱 v180: gancho de teste pra exercitar a DECISÃO do seed ("esqueleto em
+  // /data × bundled enriquecido") e a mesclagem, sem depender do arquivo
+  // bundled versionado no repo (que hoje é justamente um esqueleto) e sem
+  // escrever nada em disco — mesma filosofia dos outros /api/test/*.
+  if(pathname==="/api/test/seed-merge"&&req.method==="POST"&&process.env.TEST_LOGIN_TOKEN){
+    try{
+      const d=JSON.parse((await readBody(req))||"{}");
+      if(d.token!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});
+      return json(res,200,{ok:true,resultado:_seedVenceEsqueleto(String(d.key||"teste"),d.atual||[],d.bundled||[])});
+    }catch(e){return json(res,400,{error:e.message});}
   }
   // 🤖 v177: gancho de teste pra exercitar a lógica PURA de montar a
   // pergunta pro Gemini e ler a resposta dele — sem nunca chamar a rede de

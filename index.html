@@ -1477,7 +1477,11 @@ textarea.input,input.input,select.input{background:#f5f7ff;color:#1e1b4b}
 .sheet-latest{border-color:#f59e0b!important;box-shadow:0 0 0 2px rgba(245,158,11,.30);position:relative;overflow:visible!important}
 .sheet-latest::after{content:"⭐ MAIS NOVA";position:absolute;top:-9px;left:8px;font-size:8.5px;font-weight:900;letter-spacing:.4px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;padding:2px 7px;border-radius:6px;line-height:1.3;pointer-events:none;z-index:2}
 /* v94: planilha nova que AINDA não tem contatos (Pending Processing) não é
-   recomendada — selo honesto "EM BREVE" no lugar de "MAIS NOVA" */
+   recomendada — selo honesto "EM BREVE" no lugar de "MAIS NOVA".
+   v180: faltava o `position:relative` aqui — o selo é absoluto e, sem âncora
+   no próprio botão, ia parar em cima do primeiro ancestral posicionado (o
+   "EM BREVE" aparecia solto em outro canto do card). */
+.sheet-soon{position:relative;overflow:visible!important}
 .sheet-soon::after{content:"⏳ EM BREVE";position:absolute;top:-9px;left:8px;font-size:8.5px;font-weight:900;letter-spacing:.4px;background:linear-gradient(135deg,#64748b,#475569);color:#fff;padding:2px 7px;border-radius:6px;line-height:1.3;pointer-events:none;z-index:2}
 
 /* ══ FIX TRADUÇÃO RESPOSTAS ══ */

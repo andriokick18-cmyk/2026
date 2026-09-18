@@ -529,8 +529,10 @@ tbody tr:hover{background:var(--glass2)}
         <div class="panel">
           <div class="panel-head">
             <div class="panel-title"><i class="ti ti-files"></i>Planilhas</div>
+            <div class="panel-actions"><button class="btn btn-sm btn-primary" onclick="plImportarAbrir('','')"><i class="ti ti-file-upload"></i> Importar planilha (JSON)</button></div>
           </div>
           <div class="panel-body">
+            <p class="pl-help">Importar substitui/cria uma planilha a partir de um arquivo JSON baixado pelo botão "Baixar JSON" (deste site ou do antigo). Nada é apagado: vaga que já existe fica com a versão mais completa das duas, e case number que não vier no arquivo continua no ar.</p>
             <div id="pl-list"><div class="spin"></div></div>
           </div>
         </div>
@@ -545,6 +547,25 @@ tbody tr:hover{background:var(--glass2)}
     <div class="modal-head"><div class="modal-title" id="info-title">Detalhe</div><button class="modal-close" onclick="fecharModal('modal-info')"><i class="ti ti-x"></i></button></div>
     <div class="modal-body" id="info-body"></div>
     <div class="modal-foot"><button class="btn" onclick="fecharModal('modal-info')">Fechar</button></div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal-import-pl">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title"><i class="ti ti-file-upload"></i> Importar planilha (JSON)</div><button class="modal-close" onclick="fecharModal('modal-import-pl')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body">
+      <p class="pl-help">Arquivo no mesmo formato do "Baixar JSON": uma lista de vagas com <b>c</b> (case number) e <b>e</b> (e-mail). O arquivo é lido aqui no navegador e você vê o resumo antes de qualquer coisa ser enviada.</p>
+      <div class="field"><label>Arquivo .json</label><input type="file" id="ip-file" accept=".json,application/json" onchange="plImportarLer()"></div>
+      <div class="pl-form">
+        <div class="field"><label>Chave da planilha</label><input type="text" id="ip-key" placeholder="ex.: jul2026" maxlength="40"></div>
+        <div class="field"><label>Nome que o usuário vê</label><input type="text" id="ip-name" placeholder="ex.: Julho 2026 (H-2B)" maxlength="80"></div>
+      </div>
+      <div id="ip-resumo" class="pl-note"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="fecharModal('modal-import-pl')">Cancelar</button>
+      <button class="btn btn-primary" id="ip-btn" onclick="plImportarEnviar()" disabled><i class="ti ti-upload"></i> Importar</button>
+    </div>
   </div>
 </div>
 
@@ -1457,6 +1478,7 @@ function _plSheetCard(sh){
     +"<button class=\"btn btn-sm\" onclick='plStats("+k+")'><i class=\"ti ti-chart-bar\"></i> Estatísticas</button>"
     +"<button class=\"btn btn-sm\" onclick='plEnrichStart("+k+")'><i class=\"ti ti-world-download\"></i> "+(pct>0?"Re-enriquecer":"Enriquecer DOL")+"</button>"
     +"<button class=\"btn btn-sm\" onclick='plBaixar("+k+")'><i class=\"ti ti-download\"></i> Baixar JSON</button>"
+    +"<button class=\"btn btn-sm\" onclick='plImportarAbrir("+k+","+n+")'><i class=\"ti ti-file-upload\"></i> Importar JSON</button>"
     +(sh.builtin?"":"<button class=\"btn btn-sm btn-red\" onclick='plRemover("+k+","+n+")'><i class=\"ti ti-trash\"></i> Remover</button>")
     +"</div>";
   return'<div class="'+cls+'"><div class="pl-sheet-h"><div style="flex:1;min-width:200px"><div class="pl-sheet-n">'+esc(sh.name)+'</div><div class="pl-sheet-m">'+meta+'</div></div><div>'+tags+'</div></div>'+bar+acts+'</div>';
@@ -1596,6 +1618,79 @@ async function plEnrichStop(){
 }
 function plBaixar(key){
   var a=document.createElement("a");a.href="/api/admin/sheet/download/"+encodeURIComponent(key);a.download=key+".json";document.body.appendChild(a);a.click();a.remove();
+}
+
+/* 📥 v180 — IMPORTAR PLANILHA (JSON)
+   A rota /api/admin/sheet/upload existia desde sempre e não tinha botão
+   nenhum: pra trazer a planilha enriquecida do site antigo (baixada pelo
+   "Baixar JSON" de lá) era preciso chamar a API na mão. Aqui o arquivo é
+   lido NO NAVEGADOR, conferido e resumido ANTES de subir — o admin vê o que
+   vai acontecer ("2.610 com e-mail vão entrar numa planilha que hoje tem 0")
+   e confirma. Chave que já existe = substituição MESCLADA no servidor
+   (linha mais rica vence, nada some); chave nova = planilha nova. */
+var _ipVagas=null;
+function plImportarAbrir(key,name){
+  _ipVagas=null;
+  var f=_plG("ip-file");if(f)f.value="";
+  _plG("ip-key").value=key||"";
+  _plG("ip-name").value=name||"";
+  _plG("ip-resumo").innerHTML="";
+  _plG("ip-btn").disabled=true;
+  abrirModal("modal-import-pl");
+}
+function _ipCheios(arr,campo){var n=0;for(var i=0;i<arr.length;i++){var v=arr[i]?arr[i][campo]:null;if(v!==undefined&&v!==null&&v!==""&&v!=="-"&&v!=="–")n++;}return n;}
+function plImportarLer(){
+  var inp=_plG("ip-file"),box=_plG("ip-resumo"),btn=_plG("ip-btn");
+  _ipVagas=null;btn.disabled=true;box.innerHTML="";
+  var arq=inp&&inp.files&&inp.files[0];
+  if(!arq)return;
+  box.innerHTML='<span class="spin"></span> Lendo '+esc(arq.name)+' ('+_plNum(Math.round(arq.size/1024))+' KB)…';
+  var fr=new FileReader();
+  fr.onerror=function(){box.innerHTML='<span style="color:var(--red)">❌ Não consegui ler o arquivo.</span>';};
+  fr.onload=function(){
+    var dados;
+    try{dados=JSON.parse(String(fr.result||""));}
+    catch(e){box.innerHTML='<span style="color:var(--red)">❌ Isso não é um JSON válido: '+esc(e.message)+'</span>';return;}
+    if(!Array.isArray(dados)||!dados.length){box.innerHTML='<span style="color:var(--red)">❌ O arquivo precisa ser uma LISTA de vagas (array). Veio: '+esc(typeof dados)+'.</span>';return;}
+    var comCase=dados.filter(function(v){return v&&v.c;});
+    var comEmail=comCase.filter(function(v){return v.e&&String(v.e).indexOf("@")>=0;});
+    if(!comEmail.length){box.innerHTML='<span style="color:var(--red)">❌ Nenhuma linha tem case number (c) + e-mail (e). Esse arquivo não serve pra publicar planilha.</span>';return;}
+    _ipVagas=dados;
+    if(!_plG("ip-key").value&&comCase[0]&&comCase[0]._sheet)_plG("ip-key").value=String(comCase[0]._sheet);
+    box.innerHTML='<b>'+_plNum(dados.length)+'</b> linha(s) no arquivo · <b>'+_plNum(comCase.length)+'</b> com case number · <b>'+_plNum(comEmail.length)+'</b> com e-mail · '
+      +_plNum(_ipCheios(comCase,"t"))+' com título · '+_plNum(_ipCheios(comCase,"ci"))+' com cidade · '+_plNum(_ipCheios(comCase,"w"))+' com salário · '+_plNum(_ipCheios(comCase,"desc"))+' com descrição.';
+    btn.disabled=false;
+  };
+  fr.readAsText(arq);
+}
+async function plImportarEnviar(){
+  if(!_ipVagas)return toast("Escolha um arquivo .json primeiro.","err");
+  var key=(_plG("ip-key").value||"").trim().toLowerCase(),name=(_plG("ip-name").value||"").trim();
+  if(!key)return toast("Informe a chave da planilha.","err");
+  if(!name)return toast("Informe o nome que o usuário vê.","err");
+  var atual=null;
+  try{var d0=await api("/api/admin/sheets");atual=(d0.sheets||[]).filter(function(x){return x.key===key;})[0]||null;}catch(e){}
+  var comEmail=_ipVagas.filter(function(v){return v&&v.c&&v.e&&String(v.e).indexOf("@")>=0;}).length;
+  var msg=_plNum(_ipVagas.length)+" linha(s) · "+_plNum(comEmail)+" com e-mail\nChave: "+key+"\n\n";
+  msg+=atual?("Vai SUBSTITUIR a planilha atual \""+(atual.name||key)+"\" ("+_plNum(atual.count)+" vagas, "+_plNum(atual.withEmail)+" com e-mail).\nCada vaga fica com a versão mais completa das duas e nenhuma some.")
+            :("Chave nova — vai CRIAR a planilha e publicar pros usuários na hora.");
+  if(!confirm(msg+"\n\nConfirma?"))return;
+  var btn=_plG("ip-btn");btn.disabled=true;
+  _plG("ip-resumo").innerHTML='<span class="spin"></span> Enviando '+_plNum(_ipVagas.length)+' linha(s)…';
+  try{
+    var d=await api("/api/admin/sheet/upload",{method:"POST",body:{name:name,key:key,data:_ipVagas}});
+    var r=d.substituiu
+      ? ("✅ "+_plNum(d.count)+" vagas na planilha · "+_plNum(d.atualizadas)+" atualizada(s) · "+_plNum(d.adicionadas)+" nova(s) · e-mail "+_plNum(d.comEmailAntes)+" → "+_plNum(d.comEmail))
+      : ("✅ Planilha criada com "+_plNum(d.count)+" vagas ("+_plNum(d.comEmail)+" com e-mail)"+(d.duplicatesMerged?" · "+_plNum(d.duplicatesMerged)+" duplicata(s) mesclada(s)":""));
+    _plG("ip-resumo").innerHTML=esc(r);
+    toast(r,"ok");
+    fecharModal("modal-import-pl");
+    loadPlanilhas();
+  }catch(e){
+    _plG("ip-resumo").innerHTML='<span style="color:var(--red)">❌ '+esc(e.message)+'</span>';
+    toast(e.message,"err");
+    btn.disabled=false;
+  }
 }
 async function plRemover(key,name){
   if(!confirm("Remover a planilha \""+name+"\" ("+key+")?\n\nAs vagas dela somem do Manual e do Automático. Não dá pra desfazer."))return;

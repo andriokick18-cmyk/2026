@@ -1481,12 +1481,26 @@ async function testAuthWatchdogPush() {
     check("📥 v87: usuário comum NÃO consegue baixar a planilha (403) — export é admin-only", dlDenied.status === 403, `status=${dlDenied.status}`);
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
 
-    // v51 (dono): a H-2B mais NOVA (jul2026, semeada e publicada no boot) vem
-    // PRIMEIRO na lista (o front a põe à esquerda com o selo MAIS NOVA) —
-    // e quando a lista de janeiro sair, latestH2bKey() promove sozinha.
-    check("⭐ H-2B mais nova (jul2026) vem PRIMEIRO na lista e marcada como latest",
-      slH2a.json?.sheets?.[0]?.key === "jul2026" && slH2a.json.sheets[0].latest === true && slH2a.json?.latestH2b === "jul2026",
-      JSON.stringify({ first: slH2a.json?.sheets?.[0]?.key, latestH2b: slH2a.json?.latestH2b }));
+    // v51 (dono): a H-2B mais NOVA vem PRIMEIRO na lista (o front a põe à
+    // esquerda com o selo MAIS NOVA) e, quando a lista seguinte sair,
+    // latestH2bKey() promove sozinha.
+    // 📥 v180: o selo "⭐ MAIS NOVA" só vale pra planilha de onde dá pra se
+    // candidatar HOJE. A jul2026 nasce do seed bundled como ESQUELETO (2.625
+    // case numbers, ZERO e-mail — o DOL publica a lista antes dos contatos):
+    // apresentá-la como a melhor mandava o usuário pra uma aba de onde não sai
+    // nenhum e-mail. Agora ela vem marcada `emEnriquecimento` (o front mostra
+    // "em preparação", NUNCA esconde) e o selo fica com a H-2B mais nova COM
+    // contato. O frescor continua vendo a mais nova de verdade (latestH2bBruta).
+    const _shJul26 = (slH2a.json?.sheets || []).find((s2) => s2.key === "jul2026");
+    const _shLatest = (slH2a.json?.sheets || []).find((s2) => s2.latest);
+    check("📥 v180: planilha publicada com ZERO e-mail (jul2026, esqueleto do seed) NÃO leva o selo MAIS NOVA — vem com emEnriquecimento:true e o selo vai pra H-2B mais nova COM contato",
+      !!_shJul26 && _shJul26.withEmail === 0 && _shJul26.emEnriquecimento === true && _shJul26.latest === false &&
+      !!_shLatest && _shLatest.key === "jan2026" && _shLatest.withEmail > 0 && _shLatest.emEnriquecimento === false &&
+      slH2a.json?.latestH2b === "jan2026" && slH2a.json?.sheets?.[0]?.key === "jan2026",
+      JSON.stringify({ jul2026: _shJul26, latest: slH2a.json?.latestH2b, first: slH2a.json?.sheets?.[0]?.key }).slice(0, 220));
+    check("📥 v180: a planilha em preparação continua VISÍVEL na lista (o dono quer ver que ela existe) e o robô de frescor segue enxergando a mais nova de verdade (latestH2bBruta=jul2026)",
+      !!_shJul26 && _shJul26.count > 0 && slH2a.json?.latestH2bBruta === "jul2026",
+      JSON.stringify({ count: _shJul26?.count, bruta: slH2a.json?.latestH2bBruta }));
     // Planilhas antigas NÃO somem nunca — ficam publicadas pra sempre (regra
     // do dono); só o status delas deixa de ser conferido pelo robô Fresca.
     check("♾️ planilhas H-2B antigas continuam publicadas (ficam lá pra sempre)",
@@ -3676,6 +3690,120 @@ async function testAuthWatchdogPush() {
     const rcAsUser = await get("/api/admin/reply-triage/status");
     check("🎯 usuário comum recebe 403 em Respostas Certas (aba é admin-only de verdade, não só escondida no menu)",
       rcAsUser.status === 403, rcAsUser.body.slice(0, 120));
+
+    // ══════════════════════════════════════════════════════════════════════
+    // 📥 v180 — IMPORTAR PLANILHA (JSON) E SEED ENRIQUECIDO
+    // Diagnóstico: o jul2026_compact.json do git é um ESQUELETO (2.625 case
+    // numbers, 0 e-mail) e o dado completo daquela planilha só existe no disco
+    // de produção do site antigo. O dono baixa o JSON de lá e (a) importa aqui
+    // pelo painel ou (b) manda pra virar o seed bundled. Os dois caminhos usam
+    // a MESMA mesclagem: sobe a linha mais rica e NINGUÉM SOME.
+    // ══════════════════════════════════════════════════════════════════════
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
+    {
+      const _rows = async (k) => (await get("/api/admin/sheet/download/" + k)).json || [];
+      const _row = (arr, c) => arr.find((r) => r.c === c) || {};
+      // 1) planilha "esqueleto" do jeito que o DOL entrega: 3 vagas, só 1 com
+      //    e-mail. Antes do v180 a rota jogava fora TODA linha sem e-mail — e é
+      //    justamente ela que o robô de enriquecimento existe pra completar.
+      const impNova = await req2("POST", "/api/admin/sheet/upload", {
+        name: "Mescla Teste", key: "merge-teste", data: [
+          { c: "H-400-MRG-0001", n: "Alpha LLC", s: "FLORIDA", st: "Pending Processing", g: "A" },
+          { c: "H-400-MRG-0002", n: "Beta LLC", s: "TEXAS", st: "Pending Processing", g: "B", e: "rh@beta-mrg.com", t: "Cook", ci: "Austin" },
+          { c: "H-400-MRG-0003", n: "Gama LLC", s: "MAINE", st: "Pending Processing", g: "C" },
+        ],
+      });
+      const r0 = await _rows("merge-teste");
+      check("📥 v180: planilha nova aceita as linhas AINDA sem e-mail (é o que o robô de enriquecimento completa depois) — exige só que o arquivo tenha e-mail em alguma linha",
+        impNova.json?.ok === true && impNova.json.substituiu === false && impNova.json.count === 3 && impNova.json.comEmail === 1 && r0.length === 3,
+        JSON.stringify({ resp: impNova.json, linhas: r0.length }).slice(0, 200));
+      // 2) reimportação da MESMA chave: 1 linha enriquecida (ganha e-mail/
+      //    título/cidade e NÃO traz o grupo), 1 linha pobre por cima de uma que
+      //    já tem e-mail, 1 case novo. A 3ª linha nem vem no arquivo.
+      const impSub = await req2("POST", "/api/admin/sheet/upload", {
+        name: "Mescla Teste", key: "merge-teste", data: [
+          { c: "H-400-MRG-0001", n: "Alpha LLC", s: "FLORIDA", e: "chefe@alpha-mrg.com", t: "Landscape Laborer", ci: "Miami", w: "16.50" },
+          { c: "H-400-MRG-0002", n: "Beta LLC", s: "TEXAS", st: "Certified" },
+          { c: "H-400-MRG-0004", n: "Delta LLC", s: "MAINE", e: "rh@delta-mrg.com", t: "Housekeeper" },
+        ],
+      });
+      const r1 = await _rows("merge-teste");
+      const a1 = _row(r1, "H-400-MRG-0001"), a2 = _row(r1, "H-400-MRG-0002"), a3 = _row(r1, "H-400-MRG-0003"), a4 = _row(r1, "H-400-MRG-0004");
+      const admSheets = await get("/api/admin/sheets");
+      const _metaMrg = (admSheets.json?.sheets || []).find((x) => x.key === "merge-teste") || {};
+      check("📥 v180 (a): importar em chave que JÁ EXISTE é SUBSTITUIÇÃO MESCLADA — a linha esqueleto ganha e-mail/título/cidade SEM perder o grupo A-H, o case novo entra e a vaga que não veio no arquivo continua no ar",
+        impSub.json?.ok === true && impSub.json.substituiu === true && impSub.json.count === 4 &&
+        impSub.json.adicionadas === 1 && impSub.json.atualizadas === 1 && impSub.json.comEmailAntes === 1 && impSub.json.comEmail === 3 &&
+        r1.length === 4 && a1.e === "chefe@alpha-mrg.com" && a1.t === "Landscape Laborer" && a1.ci === "Miami" && a1.g === "A" &&
+        a4.e === "rh@delta-mrg.com" && a3.c === "H-400-MRG-0003" && a3.n === "Gama LLC" && _metaMrg.withEmail === 3,
+        JSON.stringify({ resp: impSub.json, a1, a3, a4 }).slice(0, 320));
+      check("📥 v180 (b): linha SEM e-mail importada por cima de uma que JÁ TINHA e-mail não apaga nada — e-mail, título e cidade continuam lá, e o campo em conflito (status) fica com a linha rica: quem tem contato vence, o resto só PREENCHE vazio, nunca zera",
+        a2.e === "rh@beta-mrg.com" && a2.t === "Cook" && a2.ci === "Austin" && a2.g === "B" && a2.st === "Pending Processing",
+        JSON.stringify(a2));
+      // a trilha da importação vive no sheets_meta.json do disco — confere lá
+      const _metaDisco = JSON.parse(fs.readFileSync(path.join(DATA, "sheets_meta.json"), "utf8"))["merge-teste"] || {};
+      check("📥 v180: sheets_meta.json registra importedRows=3, mergedFrom=3 e quem importou — auditoria de quem trocou a planilha de vagas do site",
+        _metaDisco.importedRows === 3 && _metaDisco.mergedFrom === 3 && _metaDisco.importedBy === "smoke@test.com" && _metaDisco.importedAt > 0 && _metaDisco.published === true,
+        JSON.stringify(_metaDisco).slice(0, 220));
+      // 3) arquivo sem NENHUM e-mail é recusado na cara (nunca publica em silêncio)
+      const impRuim = await req2("POST", "/api/admin/sheet/upload", { name: "Sem Email", key: "merge-teste", data: [{ c: "H-400-MRG-0009", n: "Zeta LLC" }] });
+      const r2 = await _rows("merge-teste");
+      check("📥 v180: arquivo sem NENHUMA linha com e-mail é recusado (400) e a planilha no ar fica intocada — nunca troca uma planilha boa por um arquivo errado",
+        impRuim.status === 400 && /e-mail/i.test(impRuim.json?.error || "") && r2.length === 4,
+        JSON.stringify({ status: impRuim.status, erro: impRuim.json?.error, linhas: r2.length }));
+      // 4) (c) MIGRAÇÃO DO SEED: esqueleto em /data + bundled com e-mail → mescla.
+      const _seed = async (atual, bundled) => (await req2("POST", "/api/test/seed-merge", { token: TEST_TOKEN, key: "jul2026", atual, bundled })).json?.resultado || {};
+      const _esqueleto = [{ c: "H-400-SEED-0001", n: "Alpha LLC", s: "FLORIDA", g: "A", e: "" }, { c: "H-400-SEED-0002", n: "Beta LLC", s: "TEXAS", g: "B", e: "" }];
+      const sd1 = await _seed(_esqueleto, [
+        { c: "H-400-SEED-0001", n: "Alpha LLC", s: "FLORIDA", e: "chefe@seed.com", t: "Cook", ci: "Miami" },
+        { c: "H-400-SEED-0003", n: "Gama LLC", s: "MAINE", e: "rh@seed3.com", t: "Welder" },
+      ]);
+      const _sdRow = (c) => (sd1.rows || []).find((r) => r.c === c) || {};
+      check("📥 v180 (c): esqueleto em /data (0 e-mail) + seed bundled COM e-mail → o bundled vence e é MESCLADO (linha ganha e-mail/título mantendo o grupo, case novo entra, case que só existe em /data fica)",
+        sd1.aplicar === true && (sd1.rows || []).length === 3 && sd1.adicionadas === 1 && sd1.atualizadas === 1 &&
+        sd1.emailAntes === 0 && sd1.emailDepois === 2 &&
+        _sdRow("H-400-SEED-0001").e === "chefe@seed.com" && _sdRow("H-400-SEED-0001").g === "A" && _sdRow("H-400-SEED-0002").n === "Beta LLC",
+        JSON.stringify({ aplicar: sd1.aplicar, add: sd1.adicionadas, upd: sd1.atualizadas, rows: (sd1.rows || []).length }));
+      const sd2 = await _seed(sd1.rows || [], [{ c: "H-400-SEED-0001", n: "Alpha LLC", e: "outro@seed.com" }]);
+      check("📥 v180 (c): IDEMPOTENTE — no boot seguinte /data já tem e-mail e a migração nem abre o arquivo bundled (nunca sobrescreve enriquecimento real com seed velho)",
+        sd2.aplicar === false && /já tem e-mail/.test(sd2.motivo || ""), JSON.stringify(sd2).slice(0, 160));
+      const sd3 = await _seed(_esqueleto, [{ c: "H-400-SEED-0001", n: "Alpha LLC", s: "FLORIDA" }]);
+      check("📥 v180 (c): bundled que TAMBÉM é esqueleto não mexe em nada (é o estado de hoje no git — a migração só dispara quando o arquivo novo traz contato de verdade)",
+        sd3.aplicar === false && /0 e-mail/.test(sd3.motivo || ""), JSON.stringify(sd3).slice(0, 160));
+      // 4b) built-in (jan2026/jul2025/H-2A) NÃO mora em SHEET_EXTRAS: importar
+      //     numa chave dessas tem que atualizar o array certo e salvar pelo
+      //     funil único — nunca criar uma planilha fantasma com a mesma chave.
+      const _slAntes = (await get("/api/sheets-list")).json?.sheets || [];
+      const _julAntes = _slAntes.find((x) => x.key === "jul2025") || {};
+      const impBi = await req2("POST", "/api/admin/sheet/upload", {
+        name: "Julho 2025 (H-2B)", key: "jul2025",
+        data: [{ c: "H-400-BUILTIN-0001", n: "Builtin Import LLC", s: "GEORGIA", e: "rh@builtin-import.com", t: "Welder" }],
+      });
+      const _slDepois = (await get("/api/sheets-list")).json?.sheets || [];
+      const _julDepois = _slDepois.filter((x) => x.key === "jul2025");
+      const _jobBi = (await get("/api/sheet-meta?sheet=jul2025&q=Builtin%20Import&top=5")).json;
+      check("📥 v180: importar numa planilha BUILT-IN (jul2025) atualiza a planilha de verdade e salva pelo funil único — sem criar planilha fantasma com a mesma chave em SHEET_EXTRAS",
+        impBi.json?.ok === true && impBi.json.builtin === true && impBi.json.substituiu === true && impBi.json.adicionadas === 1 &&
+        _julDepois.length === 1 && _julDepois[0].count === (_julAntes.count || 0) + 1 &&
+        (_jobBi.jobs || []).some((j) => j.company === "Builtin Import LLC"),
+        JSON.stringify({ resp: impBi.json, antes: _julAntes.count, depois: _julDepois.map((x) => x.count), achou: (_jobBi.jobs || []).length }).slice(0, 220));
+      // 5) estrutural: função ÚNICA de mesclagem (upload + seed) e o botão no painel
+      const _srv180 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      const _adm180 = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
+      check("📥 v180 (estrutural): a mesclagem é UMA função só — `_mesclarPlanilha` é chamada pelo upload do admin E pelo seed do boot (nunca duas réguas pro mesmo dado)",
+        (_srv180.match(/_mesclarPlanilha\(/g) || []).length >= 3 && _srv180.includes("function _mesclarPlanilha(") && _srv180.includes("function _seedVenceEsqueleto("),
+        "a régua de mesclagem voltou a ser duplicada");
+      check("📥 v180 (estrutural): reimportar uma planilha PARA o robô de enriquecimento que estiver rodando nela (senão ele segue escrevendo no array velho e o progresso vai pro lixo)",
+        _srv180.includes('_enrichLog(`⏹️ Bot parado automaticamente — planilha "${keyReal}" foi reimportada pelo admin.`,"warn")'),
+        "upload voltou a trocar as linhas debaixo do bot rodando");
+      check("📥 v180 (e): o painel tem o botão de importar de verdade (input de arquivo + POST /api/admin/sheet/upload) — a rota existia desde sempre sem UI nenhuma",
+        _adm180.includes('id="ip-file"') && _adm180.includes('type="file"') && _adm180.includes('accept=".json,application/json"') &&
+        _adm180.includes('"/api/admin/sheet/upload"') && _adm180.includes("function plImportarAbrir(") && _adm180.includes("FileReader"),
+        "botão de importar planilha sumiu do admin.html");
+      // limpeza: a planilha de teste não fica no ar pro resto da suíte
+      await req2("DELETE", "/api/admin/sheet/merge-teste");
+    }
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
 
     const disk = fs.readdirSync(path.join(DATA, "cvs"));
     check("PDFs válidos gravados no disco", disk.includes("cliente@test.com_1002.pdf") && disk.includes("cliente@test.com_1004.pdf"),

@@ -4059,8 +4059,11 @@ async function loadDynamicSheets(){
       // v94: "0 disponíveis" em verde era sinal trocado. Dois casos distintos:
       // planilha SEM contatos ainda (governo não liberou) → âmbar honesto;
       // usuário já enviou pra todas → verde de conquista.
+      // v180: o servidor agora declara esse estado (emEnriquecimento) e o texto
+      // diz o que acontece em seguida — o robô completa sozinho, ninguém
+      // precisa fazer nada.
       if(s.available===0){
-        if((s.withEmail||0)===0) return `<span style="color:#d97706;font-weight:700">⏳ contatos em breve</span><br><span style="font-size:9.5px;opacity:.75">${(s.count||0).toLocaleString('pt-BR')} vagas aguardando o governo liberar os e-mails</span>`;
+        if(s.emEnriquecimento||(s.withEmail||0)===0) return `<span style="color:#d97706;font-weight:700">⏳ em preparação</span><br><span style="font-size:9.5px;opacity:.75">${(s.count||0).toLocaleString('pt-BR')} vagas — o governo ainda não publicou os e-mails de contato; o robô completa sozinho</span>`;
         if(s.sent>0) return `<span style="color:var(--green);font-weight:700">✅ você já enviou pra todas!</span><br><span style="font-size:9.5px;opacity:.75">${s.sent.toLocaleString('pt-BR')} enviadas de ${(s.count||0).toLocaleString('pt-BR')}</span>`;
       }
       const disp=`<strong style="color:var(--green)">${s.available.toLocaleString('pt-BR')}</strong> disponíveis`;
@@ -4108,22 +4111,23 @@ async function loadDynamicSheets(){
     // v51 (dono, 25/07): a H-2B mais NOVA (d.sheets[0].latest, decidido pelo
     // servidor) vai pra PRIMEIRA posição (esquerda) e ganha o selo MAIS NOVA
     // em todos os seletores. Quando a lista de janeiro sair, migra sozinho.
-    // v94 (reestruturação parte 7): se a mais nova AINDA não tem nenhum
-    // contato (recém-saída do governo, "Pending Processing" — 0 emails),
-    // recomendá-la engana o usuário: o robô iniciado nela não envia NADA.
-    // Nesse estado ela ganha o selo honesto "⏳ EM BREVE" e NÃO rouba a
-    // primeira posição; assim que os contatos saírem (withEmail>0), o selo
-    // "⭐ MAIS NOVA" e a posição voltam sozinhos.
+    // v94 + v180: se a planilha AINDA não tem nenhum contato (recém-saída do
+    // governo, "Pending Processing" — 0 e-mails), recomendá-la engana o
+    // usuário: o robô iniciado nela não envia NADA. Quem decide isso agora é o
+    // SERVIDOR — `latest` só vem em planilha com contato de verdade, e a que
+    // ainda está sendo preenchida vem marcada `emEnriquecimento` (selo honesto
+    // "⏳ EM BREVE", sem roubar a 1ª posição e sem sumir da tela). Quando os
+    // contatos saírem, o "⭐ MAIS NOVA" e a posição voltam sozinhos.
+    const _selos=(key,cls,primeiro)=>{
+      const bAuto=document.querySelector(`#source-btns [data-src="${key}"]`);
+      const stab=document.getElementById('stab-'+key)||document.querySelector(`#stabs-row [data-src="${key}"]`);
+      const _mkFirst=(el)=>{if(!primeiro||!el||!el.parentElement)return;if(el.parentElement.firstElementChild!==el)el.parentElement.insertBefore(el,el.parentElement.firstElementChild);};
+      if(bAuto){bAuto.classList.add(cls);_mkFirst(bAuto);}
+      if(stab){stab.classList.add(cls);stab.style.marginTop='10px';_mkFirst(stab);}
+    };
+    (d.sheets||[]).filter(s2=>s2.emEnriquecimento).forEach(s2=>_selos(s2.key,'sheet-soon',false));
     const latest=(d.sheets||[]).find(s2=>s2.latest);
-    if(latest){
-      const prontaPraUso=(latest.withEmail||0)>0;
-      const selo=prontaPraUso?'sheet-latest':'sheet-soon';
-      const _mkFirst=(el)=>{if(!prontaPraUso)return;if(el&&el.parentElement&&el.parentElement.firstElementChild!==el)el.parentElement.insertBefore(el,el.parentElement.firstElementChild);};
-      const bAuto=document.querySelector(`#source-btns [data-src="${latest.key}"]`);
-      if(bAuto){bAuto.classList.add(selo);_mkFirst(bAuto);}
-      const stab=document.getElementById('stab-'+latest.key)||document.querySelector(`#stabs-row [data-src="${latest.key}"]`);
-      if(stab){stab.classList.add(selo);stab.style.marginTop='10px';_mkFirst(stab);}
-    }
+    if(latest)_selos(latest.key,'sheet-latest',true);
   }catch(e){
     console.warn('[sheets-list]',e.message);
     // v117 (incidente real, print de usuário 02/08: "não aparece a aba de

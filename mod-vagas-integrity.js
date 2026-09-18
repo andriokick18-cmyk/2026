@@ -64,15 +64,18 @@ function scoreRecord(rec) {
   return score;
 }
 
-// Mescla dois registros do MESMO case number: a "base" é o de maior score;
-// qualquer campo vazio na base é preenchido com o valor do outro registro.
-// Nunca perde um dado que já tinha sido capturado por qualquer um dos dois.
-function mergeRecords(a, b) {
-  const baseIsA = scoreRecord(a) >= scoreRecord(b);
-  const base = baseIsA ? a : b;
-  const extra = baseIsA ? b : a;
-  const out = { ...base };
-  for (const k of Object.keys(extra)) {
+// União de dois registros com a BASE JÁ ESCOLHIDA por quem chamou: o valor da
+// base vence em todo campo preenchido, e todo campo vazio na base é preenchido
+// com o do outro registro. Nunca perde um dado que já tinha sido capturado por
+// qualquer um dos dois.
+// v180: virou função própria porque existem DUAS políticas de "quem é a base"
+// sobre a MESMA união — o dedupe dentro de um arquivo escolhe pelo score
+// (mergeRecords, logo abaixo) e a importação/seed de planilha do admin escolhe
+// pela régua do dono (quem tem e-mail vence; depois a linha mais rica —
+// `_mesclarPlanilha` em server.js). Duas políticas, uma união só.
+function mergePreferindo(base, extra) {
+  const out = { ...(base || {}) };
+  for (const k of Object.keys(extra || {})) {
     const cur = out[k];
     const isEmpty = cur === "" || cur === null || cur === undefined || (Array.isArray(cur) && cur.length === 0);
     if (isEmpty && extra[k] !== "" && extra[k] !== null && extra[k] !== undefined) {
@@ -80,6 +83,12 @@ function mergeRecords(a, b) {
     }
   }
   return out;
+}
+
+// Mescla dois registros do MESMO case number: a "base" é o de maior score.
+function mergeRecords(a, b) {
+  const baseIsA = scoreRecord(a) >= scoreRecord(b);
+  return mergePreferindo(baseIsA ? a : b, baseIsA ? b : a);
 }
 
 // Deduplica um array de vagas pelo campo de ETA case number (default "c").
@@ -169,6 +178,7 @@ function buildManifest(rows, opts = {}) {
 module.exports = {
   normCase,
   scoreRecord,
+  mergePreferindo,
   mergeRecords,
   dedupeVagas,
   verifyIntegrity,

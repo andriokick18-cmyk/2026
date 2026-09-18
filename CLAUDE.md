@@ -647,3 +647,71 @@ outra rota já usava — dois denominadores pro mesmo "de N" da mesma tela.
 - **Parâmetro que o motor não entende é DECLARADO** (`_ignorados`), nunca
   descartado em silêncio — um filtro corrompido não pode virar "a planilha
   inteira" pro robô.
+
+## v180 — Planilha importável e seed enriquecido
+
+**Diagnóstico (18/09/2026).** `jul2026_compact.json` versionado no git é um
+ESQUELETO: 2.625 case numbers com empresa, estado, grupo A-H e status fixo
+"Pending Processing" — **0 e-mail, 0 título, 0 salário, 0 cidade, 0 descrição**
+e a mesma data de início em todas as linhas (dado de fachada). O dado completo
+daquela planilha só existe no DISCO DE PRODUÇÃO do site antigo, onde o robô de
+enriquecimento passou meses batendo na API do DOL vaga a vaga. Duas
+consequências viviam escondidas: (1) commitar um `jul2026_compact.json`
+enriquecido não adiantava nada, porque o seed do boot pulava quando "já existe
+dado real" em `/data`; (2) a planilha aparecia pro usuário como a **MAIS NOVA**
+com "0 vagas disponíveis" — vendida como a melhor, sendo que dela não sai
+nenhuma candidatura.
+
+**Fluxo do dono.** Baixar o JSON da planilha pelo painel antigo (botão "Baixar
+JSON" → `GET /api/admin/sheet/download/<chave>`) e então: **(a)** importar
+direto aqui pelo painel (Planilhas & Robôs → "Importar planilha (JSON)" ou
+"Importar JSON" no card da planilha) — o arquivo é lido NO NAVEGADOR, resumido
+("N linhas · N com e-mail · N com título…") e confirmado antes de subir; ou
+**(b)** mandar o arquivo pra virar o `jul2026_compact.json` bundled — o deploy
+seguinte aplica sozinho.
+
+**Regras novas (não reverter sem ordem do dono).**
+
+- **Importar numa chave que já existe é SUBSTITUIÇÃO MESCLADA, nunca troca
+  cega.** Régua, numa função só (`_mesclarPlanilha`, server.js): linha com
+  e-mail vence linha sem; entre duas iguais nesse quesito vence a mais rica
+  (campos preenchidos entre `t/w/ci/d/de/desc`); empate → a linha nova.
+  Escolhida a base, a UNIÃO campo a campo (`mergePreferindo`, mod-vagas-
+  integrity) só PREENCHE vazio — nunca zera: grupo A-H, `_sheet` e tudo que o
+  arquivo novo não trouxe continuam vivos, e **case number que existia e não
+  veio no arquivo continua no ar**. `k` só é recalculado (`detectCategory`)
+  onde falta. Registro em `sheets_meta.json`: `importedAt/importedBy/
+  importedRows/mergedFrom`.
+- **Linha sem e-mail agora ENTRA** na planilha (antes o upload jogava fora) —
+  é exatamente ela que o robô de enriquecimento existe pra completar. O que a
+  rota exige é que o ARQUIVO tenha e-mail em alguma linha; sem nenhum, 400 na
+  cara e a planilha no ar fica intocada.
+- **Importar PARA o robô de enriquecimento** que estiver rodando naquela chave
+  (mesma trava cooperativa do DELETE — senão ele segue escrevendo no array
+  velho e o progresso vai pro lixo); o `autoEnrichCycle` agendado em 3s
+  recomeça na planilha nova. Radar só avisa das vagas REALMENTE novas.
+- **Built-in (jan2026/jul2025/H-2A) também é importável** e NÃO vai pra
+  `SHEET_EXTRAS` (criaria uma planilha fantasma com a mesma chave, a H-2A
+  aparecendo 2x): atualiza o array certo e salva pelo funil único
+  `_saveEnrichedSheet`.
+- **Seed bundled com e-mail vence esqueleto em /data** (`_seedVenceEsqueleto`,
+  chamado por `seedJul2026FromBundle`): se o que está em `/data` não tem
+  NENHUM e-mail e o arquivo bundled tem, o bundled é MESCLADO por cima (mesma
+  `_mesclarPlanilha` — nunca duas réguas) e gravado em `/data`. Idempotente:
+  no boot seguinte `/data` já tem e-mail e a checagem sai antes de abrir o
+  arquivo. As built-ins já tinham o equivalente em `loadSheets` (a cópia
+  bundled recupera `/data` corrompido/sem e-mail).
+- **Selo "⭐ MAIS NOVA" só pra planilha COM e-mail.** `/api/sheets-list` marca
+  `latest` pela `latestH2bKey({comEmail:true})`; a candidata sem contato vem
+  com `emEnriquecimento:true` e o front mostra "⏳ em preparação — o governo
+  ainda não publicou os e-mails de contato; o robô completa sozinho".
+  **Nunca esconder a planilha** (o dono quer ver que ela existe) — só não
+  vendê-la como pronta. O robô de frescor continua usando `latestH2bKey()` sem
+  opção (pra ele a mais nova é a mais nova, com ou sem e-mail);
+  `latestH2bBruta` na resposta deixa isso visível.
+
+Testes: 12 checks novos no smoke (473 → 485), incluindo a mesclagem real por
+rota (grupo preservado, linha pobre não apaga e-mail, vaga ausente do arquivo
+preservada), a migração do seed pelo gancho `/api/test/seed-merge`
+(esqueleto→mesclado, idempotência, bundled esqueleto não mexe em nada), o
+caminho built-in e a presença do botão no painel.
