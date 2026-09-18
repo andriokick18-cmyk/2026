@@ -10506,6 +10506,26 @@ filtrar();
       if(!_isAdminCaller&&d.consentimento!==true){
         return json(res,400,{error:"Você precisa marcar que leu e entende como o programa funciona antes de continuar."});
       }
+      // 🗓️ v193 LOTE 11 — A DATA DE PAGAMENTO É VALIDADA NA PORTA.
+      // Ela vinha CRUA do cliente e só era convertida lá na aprovação, DEPOIS
+      // de creditar os dias: `new Date("xyz").toISOString()` estoura
+      // RangeError, o catch devolve 500 e o persistPedidos nunca roda — dias
+      // concedidos, ZERO entrada no caixa, e a 2ª tentativa bate no 409 "já
+      // foi ativado". Era a receita exata do "pedido ativo sem caixa" que a
+      // contabilidade existe pra evitar. Com data VÁLIDA mas absurda (ano
+      // 2090), o cliente ainda escolhia em que mês o dinheiro dele aparece no
+      // DRE. Agora: número ou string parseável, dentro de uma faixa sã — fora
+      // disso, 400 na cara (nunca "corrige depois" — regra v178).
+      let _pagoEmMs=null;
+      if(d.pagoEm!==undefined&&d.pagoEm!==null&&d.pagoEm!==""){
+        const _t=(typeof d.pagoEm==="number")?d.pagoEm:Date.parse(String(d.pagoEm));
+        const _MIN=Date.UTC(2024,0,1);              // antes disso o site nem existia
+        const _MAX=Date.now()+36*3600_000;          // 1 dia + margem de fuso
+        if(!Number.isFinite(_t)||_t<_MIN||_t>_MAX){
+          return json(res,400,{error:"A data do pagamento não faz sentido. Informe a data que está no comprovante (não pode ser no futuro nem de anos atrás)."});
+        }
+        _pagoEmMs=_t;
+      }
       // ── DEDUP: se o próprio usuário já tem um pedido EM ANÁLISE, não cria
       // outro — devolve o pendente existente. Regularização do admin EM NOME de
       // outro usuário (targetEmail != quem chamou) passa direto, sem dedup.
@@ -10546,20 +10566,28 @@ filtrar();
         status:"pendente", // pendente | pago | ativo | cancelado | expirado
         userEmail:targetEmail,
         criadoPor:s.user_email, // quem de fato fez a chamada (admin ou o próprio usuário)
-        userName:d.userName||"",
-        userWhatsapp:d.userWhatsapp||"",
+        // 🧱 v193 LOTE 11: campos livres com TIPO e TAMANHO (mesmos tetos do
+        // cadastro/settings). Antes aceitavam qualquer coisa — objeto, array,
+        // 1MB de texto — e iam inteiros pra DB_PEDIDOS (reserializado a cada
+        // clique do admin) e pra lista do painel.
+        userName:String(d.userName||"").slice(0,160),
+        userWhatsapp:String(d.userWhatsapp||"").slice(0,30),
         // v185 LOTE 3: userPhone (o "Telefone alternativo" do checkout) MORREU.
         // Desde o v175 existe UM telefone só (o WhatsApp obrigatório do
         // cadastro); o campo extra não era lido por NENHUMA tela nem por
         // nenhum aviso — era digitação pedida à toa no meio de uma compra.
-        userCity:d.userCity||"",
-        userState:d.userState||"",
-        userAddress:d.userAddress||"",
+        userCity:String(d.userCity||"").slice(0,80),
+        userState:String(d.userState||"").slice(0,60),
+        userAddress:String(d.userAddress||"").slice(0,200),
         plano:planoKey||d.plano||"vipro", // vip | vipro | doublepro
         dias:planoKey?diasReq:(parseInt(d.dias)||30),
         tipo:"plano",
         valorTotal:valorOficial,
-        desconto:parseFloat(d.desconto)||0,
+        // v193 LOTE 11: desconto SEMPRE 0. Nenhuma tela manda esse campo, mas
+        // ele vinha do cliente e era impresso no aviso aos sócios ("(50%
+        // desconto)") — e o valor cobrado é sempre o da tabela oficial. Se um
+        // dia existir desconto de verdade, nasce com UI e trilha próprias.
+        desconto:0,
         // Trilha de consentimento informado — carimba o que a pessoa
         // confirmou entender no momento da compra (auditável depois).
         consentimento:_isAdminCaller?null:{em:Date.now(),versaoTermos:"2026-09"},
@@ -10578,11 +10606,11 @@ filtrar();
           const allowed=['image/jpeg','image/jpg','image/png','image/webp','application/pdf'];
           return allowed.includes(t)?t:'image/jpeg';
         })(),
-        nota:d.nota||"",
+        nota:String(d.nota||"").slice(0,500),
         notaAdmin:"",
         ativadoPor:null,
         ativadoEm:null,
-        pagoEm:d.pagoEm||null,
+        pagoEm:_pagoEmMs,
       };
       if(typeof d.comprovante==="string"&&d.comprovante){
         const _arqC=saveComprovante(pedido.id,d.comprovante);
@@ -10720,15 +10748,7 @@ filtrar();
       ?list.map(pd=>{const _cu=getUser(pd.userEmail)||{};
         return {...pd,comprovante:temComprovante(pd),ehAdmin:isAdminEmail(pd.userEmail||""),
           contaNome:_cu.name||"",contaWhatsapp:_cu.whatsapp||_cu.phone||""};})
-      :list.map(pd=>{
-        const v=String((pd.preCheck||{}).veredito||"").toUpperCase();
-        const comprovanteStatus=!temComprovante(pd)?"sem":(v==="CONFERE"?"ok":(v==="ILEGIVEL"||v==="ERRO")?"ilegivel":v?"analise":"aguardando");
-        return {id:pd.id,createdAt:pd.createdAt,status:pd.status,tipo:pd.tipo,plano:pd.plano,dias:pd.dias,
-          valorTotal:pd.valorTotal,
-          autoAtivado:!!pd.autoAtivado,ativadoEm:pd.ativadoEm||null,pagoEm:pd.pagoEm||null,canceladoEm:pd.canceladoEm||null,
-          userEmail:pd.userEmail,comprovante:temComprovante(pd),comprovanteStatus,
-          motivoCancelamento:(pd.status==="cancelado"&&pd.notaAdmin)?String(pd.notaAdmin).slice(0,200):null};
-      });
+      :list.map(_pedidoVisaoUsuario);
     return json(res,200,{ok:true,pedidos:slim,total:list.length});
   }
   // 💼 MC5-P2 item 5: reenvio de comprovante pelo DONO do pedido pendente —
@@ -10770,6 +10790,10 @@ filtrar();
     if(!pd)return json(res,404,{error:"Pedido não encontrado."});
     const p=getUser(s.user_email);
     if(!isAdminVip(p)&&pd.userEmail!==s.user_email)return json(res,403,{error:"Acesso negado."});
+    // v193 LOTE 11: usuário comum vê a MESMA projeção da lista (função única),
+    // nunca o objeto cru — antes bastava GET no próprio pedido pra receber
+    // notaAdmin interna, avisoFalhas e o preCheck com e-mail de terceiro.
+    if(!isAdminVip(p))return json(res,200,{ok:true,pedido:_pedidoVisaoUsuario(pd),usuario:null});
     // Admin recebe também um retrato do VIP atual do usuário, para o modal calcular
     // a validade final (com empilhamento) e exibir o extrato de dias.
     let usuario=null;
@@ -10991,6 +11015,7 @@ filtrar();
         addCredito(pd.userEmail,{dias,tipo:"pago",origem:"pagamento",
           motivo:`Plano ${planoKey.toUpperCase()} ${dias}d — pedido #${pd.id.slice(-8).toUpperCase()}`,
           dadoPor:pd._ativadoEditor||"Admin",pedidoId:pd.id,valor:pd.valorTotal||0});
+        const _pgTs=(typeof pd.pagoEm==="number"&&Number.isFinite(pd.pagoEm))?pd.pagoEm:Date.parse(String(pd.pagoEm||""));
         if(!DB_FINANCEIRO.pagamentos)DB_FINANCEIRO.pagamentos=[];
         if(!DB_FINANCEIRO.pagamentos.some(x=>x.pedidoId===pd.id)){
           DB_FINANCEIRO.pagamentos.unshift({
@@ -10999,7 +11024,12 @@ filtrar();
             dias,valor:pd.valorTotal||0,desconto:0,
             nota:`Plano ${planoKey.toUpperCase()} ${dias}d — pedido #${pd.id.slice(-8).toUpperCase()}`,
             data:new Date().toISOString(),
-            dataPagamento:pd.pagoEm?new Date(pd.pagoEm).toISOString():new Date().toISOString(),
+            // v193 LOTE 11: cinto e suspensório — a criação já recusa data
+            // sem sentido, mas pedido LEGADO pode ter `pagoEm` lixo gravado
+            // antes desta versão. Aqui isso NUNCA mais pode estourar depois
+            // de creditar os dias: data impossível vira "hoje", que é o pior
+            // caso honesto (o lançamento entra; o dinheiro não some).
+            dataPagamento:new Date(Number.isFinite(_pgTs)?_pgTs:Date.now()).toISOString(),
             pedidoId:pd.id,source:"pedido_automatico",
             ativadoPor:pd._ativadoEditor||"Admin",ativadoPorEmail:_sessAdminEmail(s),
             // 💼 MC5-P5: dono do dinheiro só entra se veio EXPLÍCITO no enum.
@@ -14699,6 +14729,23 @@ const { getAuthErrNotifiedAt } = initWatchdogs({
 function persistPedidos(){
   try{ return !!persist(PEDIDOS_FILE, DB_PEDIDOS); }
   catch(e){ console.warn("[pedidos]",e.message); return false; }
+}
+// 🔒 v193 LOTE 11 — O QUE O DONO DO PEDIDO PODE VER: função ÚNICA, usada na
+// LISTA (/api/pedidos) e no DETALHE (GET /api/pedido/:id). O detalhe devolvia
+// o pedido CRU pro próprio usuário, furando a whitelist que a lista aplica de
+// propósito desde o MC5-P2 (o preCheck cru leva o E-MAIL DE OUTRO USUÁRIO no
+// dupAlerta; notaAdmin é nota interna — só a de cancelamento vira motivo
+// visível; e o base64 do comprovante não precisa voltar pra quem o enviou).
+// DIVERGENCIA nunca é exposta ao doador: pra ele fica "em análise" (não se
+// avisa quem tenta fraude o que o robô detectou).
+function _pedidoVisaoUsuario(pd){
+  const v=String((pd.preCheck||{}).veredito||"").toUpperCase();
+  const comprovanteStatus=!temComprovante(pd)?"sem":(v==="CONFERE"?"ok":(v==="ILEGIVEL"||v==="ERRO")?"ilegivel":v?"analise":"aguardando");
+  return {id:pd.id,createdAt:pd.createdAt,status:pd.status,tipo:pd.tipo,plano:pd.plano,dias:pd.dias,
+    valorTotal:pd.valorTotal,
+    autoAtivado:!!pd.autoAtivado,ativadoEm:pd.ativadoEm||null,pagoEm:pd.pagoEm||null,canceladoEm:pd.canceladoEm||null,
+    userEmail:pd.userEmail,comprovante:temComprovante(pd),comprovanteStatus,
+    motivoCancelamento:(pd.status==="cancelado"&&pd.notaAdmin)?String(pd.notaAdmin).slice(0,200):null};
 }
 // Grava o resultado do pré-check do comprovante no pedido (por id), sem corrida.
 function setPedidoPreCheck(pedidoId, pc){

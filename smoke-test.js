@@ -203,7 +203,15 @@ fs.writeFileSync(path.join(DATA, "pedidos.json"), JSON.stringify([
   // 🐛 pedido pendente há 7h — alimenta o watchdog pendingOrderAlert
   // (mod-sentinel.js) pro teste do fallback de admin sem token.
   { id: "pedwatch1", userEmail: "watchtest@test.com", userName: "Watch Teste", tipo: "doacao", plano: "vipro",
-    valorTotal: 150, status: "pendente", createdAt: Date.now() - 7 * 3600_000 }]));
+    valorTotal: 150, status: "pendente", createdAt: Date.now() - 7 * 3600_000 },
+  // 🗓️ v193 LOTE 11 — pedido LEGADO com `pagoEm` LIXO (criado antes da
+  // validação na porta). Aprovar este pedido era o bug: os dias eram
+  // creditados e só DEPOIS `new Date("xyz").toISOString()` estourava
+  // RangeError → 500, persistPedidos nunca rodava, ZERO entrada no caixa e a
+  // 2ª tentativa batia no 409 "já foi ativado" (o "pedido ativo sem caixa"
+  // que a contabilidade existe pra evitar).
+  { id: "pedlixo1", userEmail: "pagoemlixo@test.com", userName: "Pago Em Lixo", tipo: "plano", plano: "vip",
+    dias: 30, valorTotal: 100, status: "pendente", createdAt: Date.now() - 2 * 3600_000, pagoEm: "xyz" }]));
 fs.writeFileSync(path.join(DATA, "financeiro.json"), JSON.stringify({ pagamentos: [
   // 💼 MC4-P1: entrada avulsa SEM recebidoPor e SEM trilha de admin — tem que
   // cair no balde "sem dono" (nunca chutar) até o admin atribuir em 1 clique.
@@ -3747,6 +3755,58 @@ async function drillRestauracaoBackup() {
       typeof mc5p1Get.json?.pedido?.comprovanteHash === "string" && mc5p1Get.json.pedido.comprovanteHash.length === 64 &&
       mc5p1Get.json?.pedido?.preCheck?.veredito === "DIVERGENCIA",
       JSON.stringify({ hash: (mc5p1Get.json?.pedido?.comprovanteHash || "").slice(0, 12), veredito: mc5p1Get.json?.pedido?.preCheck?.veredito }));
+    // ═══ 🗓️ v193 LOTE 11: /api/pedido BLINDADO (data, campos livres, privacidade)
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "l11@test.com", name: "Lote Onze" });
+    const _l11Lixo = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "L11", userWhatsapp: "11 9", userCity: "SP", pagoEm: "xyz" });
+    const _l11Futuro = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "L11", userWhatsapp: "11 9", userCity: "SP", pagoEm: new Date("2090-03-01T12:00:00Z").getTime() });
+    check("🗓️ v193-L11: data de pagamento sem sentido é recusada NA CRIAÇÃO (400) — 'xyz' e ano 2090 — em vez de virar RangeError lá na aprovação (depois de creditar os dias) ou deixar o cliente escolher em que mês o dinheiro dele aparece no DRE",
+      _l11Lixo.status === 400 && /data do pagamento/i.test(_l11Lixo.json?.error || "") &&
+      _l11Futuro.status === 400,
+      JSON.stringify({ lixo: _l11Lixo.status, futuro: _l11Futuro.status, err: (_l11Lixo.json?.error || "").slice(0, 60) }));
+    const _l11Gigante = await req2("POST", "/api/pedido", {
+      plano: "vip", dias: 30, consentimento: true, pagoEm: Date.now(),
+      userName: { nome: "objeto" }, userWhatsapp: "11 99999 0000 ".repeat(10),
+      userCity: "c".repeat(400), userState: "s".repeat(400), userAddress: "x".repeat(1000_000),
+      nota: "n".repeat(9000), desconto: 50,
+    });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const _l11Admin = ((await get("/api/pedidos?status=pendente")).json?.pedidos || []).find((x) => x.id === _l11Gigante.json?.pedidoId) || {};
+    check("🧱 v193-L11: campos livres do pedido têm TIPO e TAMANHO — endereço de 1MB e nota gigante são cortados, objeto vira texto e o `desconto` vindo do cliente é sempre 0 (nenhuma tela manda esse campo, e ele era impresso no aviso aos sócios)",
+      _l11Gigante.json?.ok === true && typeof _l11Admin.userName === "string" && _l11Admin.userName.length <= 160 &&
+      (_l11Admin.userAddress || "").length === 200 && (_l11Admin.nota || "").length === 500 &&
+      (_l11Admin.userCity || "").length === 80 && (_l11Admin.userState || "").length === 60 && _l11Admin.desconto === 0,
+      JSON.stringify({ nome: typeof _l11Admin.userName, addr: (_l11Admin.userAddress || "").length, nota: (_l11Admin.nota || "").length, desc: _l11Admin.desconto }));
+
+    // REGRESSÃO do bug: pedido LEGADO com pagoEm lixo aprovado AGORA não pode
+    // mais dar 500 depois de creditar os dias — e tem que deixar lançamento.
+    const _l11Aprov = await req2("PATCH", "/api/pedido/pedlixo1", { status: "ativo", recebidoPor: "andrio" });
+    const _finL11 = (await get("/api/admin/financeiro")).json?.pagamentos || [];
+    const _entL11 = _finL11.filter((x) => x.pedidoId === "pedlixo1");
+    check("🗓️ v193-L11 (regressão): aprovar pedido LEGADO com `pagoEm` lixo credita os dias E lança no caixa — antes estourava 500 DEPOIS do crédito, o caixa ficava vazio e a 2ª tentativa batia no 409 'já ativado' (o 'pedido ativo sem caixa' clássico)",
+      _l11Aprov.status === 200 && _l11Aprov.json?.ok === true && _entL11.length === 1 &&
+      (_entL11[0].dataPagamento || "").slice(0, 10) === new Date().toISOString().slice(0, 10),
+      JSON.stringify({ status: _l11Aprov.status, lancamentos: _entL11.length, data: _entL11[0]?.dataPagamento }));
+
+    // Privacidade: o DETALHE do próprio pedido devolvia o objeto CRU
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "l11priv@test.com", name: "L11 Priv" });
+    const _l11Ped = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "L11 Priv", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:100", comprovante: Buffer.from("comp-l11-priv").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    await new Promise((r) => setTimeout(r, 400));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    await req2("PATCH", "/api/pedido/" + _l11Ped.json?.pedidoId, { status: "cancelado", notaAdmin: "Comprovante de outra pessoa — cancelado pelo suporte" });
+    const _l11VisaoAdmin = await get("/api/pedido/" + _l11Ped.json?.pedidoId);
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "l11priv@test.com" });
+    const _l11Visao = await get("/api/pedido/" + _l11Ped.json?.pedidoId);
+    const _l11Txt = JSON.stringify(_l11Visao.json || {});
+    check("🔒 v193-L11: o DONO do pedido vê a MESMA projeção da lista (função única) — sem notaAdmin interna, sem preCheck cru (que leva e-mail de OUTRO usuário no dupAlerta), sem avisoFalhas e sem o base64 — mas COM o motivoCancelamento que a Home mostra; o admin continua recebendo o pedido cru + o retrato do VIP",
+      _l11Visao.status === 200 && _l11Visao.json?.pedido?.motivoCancelamento === "Comprovante de outra pessoa — cancelado pelo suporte" &&
+      _l11Visao.json?.pedido?.comprovante === true && _l11Visao.json?.usuario === null &&
+      !_l11Txt.includes("notaAdmin") && !_l11Txt.includes("preCheck") && !_l11Txt.includes("avisoFalhas") &&
+      !_l11Txt.includes(Buffer.from("comp-l11-priv").toString("base64")) &&
+      _l11VisaoAdmin.json?.pedido?.notaAdmin && _l11VisaoAdmin.json?.pedido?.preCheck &&
+      _l11VisaoAdmin.json?.pedido?.comprovante === Buffer.from("comp-l11-priv").toString("base64"),
+      JSON.stringify({ motivo: _l11Visao.json?.pedido?.motivoCancelamento, usuario: _l11Visao.json?.usuario, temNota: _l11Txt.includes("notaAdmin") }));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+
     const _bytesLegado = Buffer.from("comprovante-mem-1").toString("base64");
     const _legado1 = await get("/api/pedido/pedmem1");
     const _mig2x = await req2("POST", "/api/test/migrar-comprovantes", { token: TEST_TOKEN });
