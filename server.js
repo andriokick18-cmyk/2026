@@ -9973,17 +9973,13 @@ filtrar();
       return json(res,200,{ok:true});
     }catch(e){return json(res,500,{error:e.message});}
   }
-  // ── Admin: revogar VIP ────────────────────────────────────
-  if(pathname==="/api/admin/revoke-vip"&&req.method==="POST"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Acesso negado."});
-    try{
-      const d=JSON.parse(await readBody(req));
-      const {email}=d;if(!email)return json(res,400,{error:"email obrigatório"});
-      setUser(email,{plan:'free',vip:{active:false,manualExpires:0,autoExpires:0}});
-      return json(res,200,{ok:true});
-    }catch(e){return json(res,500,{error:e.message});}
-  }
+  // 🤖 v188 LOTE 6: a rota /api/admin/revoke-vip foi REMOVIDA (regra 3 —
+  // código morto). Era uma 2ª cópia, PIOR, do /api/admin/vip/revoke: sem
+  // chamador nenhum no front, sem logAdminAction (revogar plano sem trilha
+  // de auditoria), sem clearTimeout/delAutoJob (o robô do usuário continuava
+  // agendado depois de "revogar") e sem 404 pra usuário inexistente (criava
+  // um registro vazio). A revogação oficial — e agora com botão no painel —
+  // é SÓ /api/admin/vip/revoke.
   // ── Admin: definir plano ──────────────────────────────────
   // 🔄 Reconciliação manual (admin): confere TODOS os pagantes e devolve dias
   if(pathname==="/api/admin/reconciliar-planos"&&req.method==="POST"){
@@ -10465,8 +10461,14 @@ filtrar();
     // vira o motivo visível). comprovanteStatus é derivado SEGURO:
     // DIVERGENCIA nunca é exposta ao doador (não se avisa quem tenta
     // fraude) — pra ele fica "em análise".
+    // 🧾 v188 LOTE 6: o admin decide olhando a LISTA — precisa do nome e do
+    // WhatsApp de quem pagou ali, não só do e-mail. O nome da CONTA vence o
+    // que foi digitado no checkout (o cadastro v175 obriga nome/sobrenome;
+    // userName é fallback de pedido antigo).
     const slim=isAdm
-      ?list.map(pd=>({...pd,comprovante:pd.comprovante?true:false,ehAdmin:isAdminEmail(pd.userEmail||"")}))
+      ?list.map(pd=>{const _cu=getUser(pd.userEmail)||{};
+        return {...pd,comprovante:pd.comprovante?true:false,ehAdmin:isAdminEmail(pd.userEmail||""),
+          contaNome:_cu.name||"",contaWhatsapp:_cu.whatsapp||_cu.phone||""};})
       :list.map(pd=>{
         const v=String((pd.preCheck||{}).veredito||"").toUpperCase();
         const comprovanteStatus=!pd.comprovante?"sem":(v==="CONFERE"?"ok":(v==="ILEGIVEL"||v==="ERRO")?"ilegivel":v?"analise":"aguardando");
@@ -12533,7 +12535,9 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
       const autoExpires   = autoDays>0 ? curAuto + autoDays*86400_000 : (target.vip?.autoExpires||0);
 
       const vip={...(target.vip||{}),active:true,manualExpires,autoExpires,
-        activatedAt:now,activatedBy:s.user_email,
+        // 🔐 v188 LOTE 6: quem concedeu é o e-mail REAL do sócio — a chave
+        // interna da sessão do painel pode ser o username reservado (v183).
+        activatedAt:now,activatedBy:_sessAdminEmail(s),
         note:d.note||"",days,autoDays,plan:planName,source:'admin',
         // 💳 v187: concessão manual carimbava o plano mas NUNCA os limites —
         // a conta caía na tabela LEGADA (o dobro do vendido) até alguém
@@ -12541,7 +12545,7 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
         ...limitsParaAtivacaoAdmin(target,planName)};
       const _audBefore=_vipSnapshot(target); // v19: snapshot pra reversão
       setUser(d.email,{plan:planName,vip});
-      logAdminAction(s.user_email,"vip_activate",d.email,_audBefore,_vipSnapshot(getUser(d.email)),`+${days}d manual, +${autoDays}d auto, plano ${planName}${d.note?` — ${d.note}`:""}`);
+      logAdminAction(_sessAdminEmail(s),"vip_activate",d.email,_audBefore,_vipSnapshot(getUser(d.email)),`+${days}d manual, +${autoDays}d auto, plano ${planName}${d.note?` — ${d.note}`:""}`);
       // 🧠 Cérebro 2.0 P1 (revisão adversarial): o crédito registrava só os
       // dias MANUAIS — ativação com autoDays > days (ex.: 0 manual + 30 auto)
       // deixava o extrato menor que o saldo real e o auditor de dias acusava
@@ -12558,7 +12562,14 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
         autoExpiresDate:autoExpires>now?new Date(autoExpires).toLocaleDateString("pt-BR"):null});
     }catch(e){return json(res,500,{error:e.message});}}
 
-    if(pathname==="/api/admin/vip/revoke"&&req.method==="POST"){try{const d=JSON.parse(await readBody(req));if(!d.email)return json(res,400,{error:"email obrigatório."});const _audBefore=_vipSnapshot(getUser(d.email));if(autoTimers.has(d.email)){clearTimeout(autoTimers.get(d.email));autoTimers.delete(d.email);}delAutoJob(d.email);setUser(d.email,{plan:"free",vip:{active:false,revokedAt:Date.now(),manualExpires:0,autoExpires:0}});logAdminAction(s.user_email,"vip_revoke",d.email,_audBefore,_vipSnapshot(getUser(d.email)),"VIP revogado → free");return json(res,200,{ok:true});}catch(e){return json(res,500,{error:e.message});}}
+    // 🤖 v188 LOTE 6: a ÚNICA rota de revogação (a duplicata /api/admin/revoke-vip
+    // foi removida). Duas correções ao ganhar botão no painel: (a) 404 pra
+    // usuário inexistente — antes um e-mail digitado errado criava um registro
+    // vazio e devolvia "ok"; (b) o vip é ZERADO, não SUBSTITUÍDO: o objeto novo
+    // apagava `vip.creditos` (o extrato de dias concedidos que a aba Usuários,
+    // a régua do ⚠️ e a auditoria financeira leem) — revogar um plano não pode
+    // apagar a história de quantos dias foram dados e por quê.
+    if(pathname==="/api/admin/vip/revoke"&&req.method==="POST"){try{const d=JSON.parse(await readBody(req));if(!d.email)return json(res,400,{error:"email obrigatório."});const _tgtRev=getUser(d.email);if(!_tgtRev)return json(res,404,{error:"Usuário não encontrado."});const _audBefore=_vipSnapshot(_tgtRev);if(autoTimers.has(d.email)){clearTimeout(autoTimers.get(d.email));autoTimers.delete(d.email);}delAutoJob(d.email);setUser(d.email,{plan:"free",vip:{...(_tgtRev.vip||{}),active:false,revokedAt:Date.now(),revokedBy:_sessAdminEmail(s),manualExpires:0,autoExpires:0,expiresAt:0,limits:null}});logAdminAction(_sessAdminEmail(s),"vip_revoke",d.email,_audBefore,_vipSnapshot(getUser(d.email)),"VIP revogado → free");return json(res,200,{ok:true});}catch(e){return json(res,500,{error:e.message});}}
 
     // ── CONTAS DUPLICADAS (v19, dono 15/07/2026): mesma pessoa com 2+ contas ──
     // Detecta por: (a) mesmo nome normalizado (sem acento/caixa/espaço extra),
@@ -12634,7 +12645,7 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
       else if(manualDays>0)planName="vip";
       else if(autoDays>0)planName="pro";
       const vip={...(target.vip||{}),active:true,manualExpires,autoExpires,
-        adjustedAt:now,adjustedBy:s.user_email,adjustedCreditado:true,
+        adjustedAt:now,adjustedBy:_sessAdminEmail(s),adjustedCreditado:true,
         note:d.note||(target.vip?.note||""),
         plan:planName,source:target.vip?.source||"admin",
         usedCode:target.vip?.usedCode||null,
@@ -12643,7 +12654,7 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
         ...limitsParaAtivacaoAdmin(target,planName)};
       const _audBefore=_vipSnapshot(target); // v19: snapshot pra reversão
       setUser(d.email,{plan:planName,vip});
-      logAdminAction(s.user_email,"set_expiry",d.email,_audBefore,_vipSnapshot(getUser(d.email)),`Validade → manual:${manualDays}d auto:${autoDays}d plano:${planName}`);
+      logAdminAction(_sessAdminEmail(s),"set_expiry",d.email,_audBefore,_vipSnapshot(getUser(d.email)),`Validade → manual:${manualDays}d auto:${autoDays}d plano:${planName}`);
       // 🧠 Cérebro 2.0 P1 (revisão adversarial): "definir vencimento exato"
       // (13r) não deixava NENHUMA evidência que os motores de dias leem — um
       // ajuste LEGÍTIMO do admin viraria acusação de "dias sem origem". O
@@ -12821,6 +12832,13 @@ if(pathname==="/api/admin/contabilidade"&&req.method==="GET"){
       const daysLeft=nextExp>0?Math.ceil((nextExp-now)/86400000):null;
       const diasCreditadosPagos=(Array.isArray(vip.creditos)?vip.creditos:[])
         .filter(c=>c&&c.tipo==="pago").reduce((a,c)=>a+(parseInt(c.dias,10)||0),0);
+      // 🤖 v188 LOTE 6: dia PAGO e dia DADO são coisas diferentes e a régua do
+      // ⚠️ (que só conta "pago") continua intocada — esta coluna é ADITIVA:
+      // mostra, ao lado, quantos dias foram concedidos como cortesia. Sem ela
+      // o admin via "restam 40 dias / creditados 0" e não tinha como saber,
+      // olhando a tela, que os 40 saíram de uma concessão manual legítima.
+      const diasCreditadosCortesia=(Array.isArray(vip.creditos)?vip.creditos:[])
+        .filter(c=>c&&c.tipo!=="pago").reduce((a,c)=>a+(parseInt(c.dias,10)||0),0);
       // 🔎 checagem de consistência simples: dias restantes > total creditado
       // como "pago" = suspeita (dias apareceram sem crédito registrado que
       // os explique). Só flaga quando há dias restantes de verdade.
@@ -12842,10 +12860,21 @@ if(pathname==="/api/admin/contabilidade"&&req.method==="GET"){
       const assinatura=rawSuspeita?_divergenciaAssinatura(regraId,u.email,[nextExp,diasCreditadosPagos]):null;
       const jaConfirmadaOk=!!(assinatura&&DB_DIVERGENCIAS_OK[assinatura]);
       const suspeita=rawSuspeita&&!jaConfirmadaOk;
+      // 🤖 v188 LOTE 6 (o maior buraco de receita da auditoria): pagante com o
+      // robô morto era INVISÍVEL no painel. O sentinela já detecta (vipDesync),
+      // mas avisava por sendNotifEmail e pushToUser — os DOIS são no-op nesta
+      // reconstrução, então o achado não chegava a ninguém. Aqui vai o estado
+      // CRU por usuário (nunca uma 2ª régua de "robô quebrado" — a régua é a do
+      // sentinela, que alimenta o card da aba Usuários): se o Gmail de envio
+      // está conectado (BOOLEANO — o token NUNCA viaja) e o que o robô dele
+      // está fazendo agora.
+      const _jobU=getAutoJob(u.email);
       usuarios.push({
         email:u.email,nome:u.name||u.email,plano:getPlan(u),
         manualExpires:vip.manualExpires||0,autoExpires:vip.autoExpires||0,
-        daysLeft,diasCreditadosPagos,
+        daysLeft,diasCreditadosPagos,diasCreditadosCortesia,
+        gmailConectado:!!u.refresh_token,
+        robo:_jobU?{ativo:!!_jobU.active,status:String(_jobU.status||""),fila:(_jobU.queue||[]).length}:null,
         isAdmin:isAdminVip(u),assinatura,
         suspeita:!!suspeita,motivo:rawSuspeita?"dias restantes maiores que o total creditado":null
       });

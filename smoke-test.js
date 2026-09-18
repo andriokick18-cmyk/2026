@@ -4705,6 +4705,100 @@ async function testAuthWatchdogPush() {
         "o carimbo de limites ou o subtítulo do gate voltaram a ter 2 réguas");
     }
 
+    // ═══ 🤖 v188 LOTE 6: PAINEL — HISTÓRICO DE PEDIDOS E VIP POR BOTÃO ═════
+    // As duas entregas nominais do backlog do dono (task #111) + o maior
+    // buraco de receita da auditoria (pagante com o robô parado, invisível).
+    {
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      // (1) HISTÓRICO — a rota SEMPRE filtrou por status e devolveu o pedido
+      // inteiro; a tela é que só pedia "pendente" e descartava o resto.
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "aprov188@test.com", name: "Aprovado 188" });
+      await req2("POST", "/api/settings", { whatsapp: "53 98145 3496" });
+      const _pApr = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Aprovado 188", userWhatsapp: "53 98145 3496", userCity: "Pelotas", userState: "RS" });
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "canc188@test.com", name: "Cancelado 188" });
+      const _pCan = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Cancelado 188", userWhatsapp: "53 98145 3496", userCity: "Pelotas", userState: "RS" });
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      await req2("PATCH", "/api/pedido/" + _pApr.json?.pedidoId, { status: "ativo" });
+      await req2("PATCH", "/api/pedido/" + _pCan.json?.pedidoId, { status: "cancelado", notaAdmin: "comprovante de outra pessoa" });
+      const _lAtivo = (await get("/api/pedidos?status=ativo")).json?.pedidos || [];
+      const _lCanc = (await get("/api/pedidos?status=cancelado")).json?.pedidos || [];
+      const _rowApr = _lAtivo.find((x) => x.id === _pApr.json?.pedidoId) || {};
+      const _rowCan = _lCanc.find((x) => x.id === _pCan.json?.pedidoId) || {};
+      check("🤖 v188-L6: o painel consegue ver o HISTÓRICO — ?status=ativo e ?status=cancelado devolvem listas separadas e corretas, com quem aprovou/cancelou, quando e o motivo (a rota já fazia tudo isso; só a tela pedia 'pendente' e jogava o objeto fora)",
+        _rowApr.status === "ativo" && _rowApr.ativadoEm > 0 && !!_rowApr._ativadoEditor &&
+        _rowCan.status === "cancelado" && /outra pessoa/.test(_rowCan.notaAdmin || "") &&
+        !_lAtivo.some((x) => x.id === _pCan.json?.pedidoId) && !_lCanc.some((x) => x.id === _pApr.json?.pedidoId),
+        JSON.stringify({ aprovado: { st: _rowApr.status, por: _rowApr._ativadoEditor, em: _rowApr.ativadoEm }, cancelado: { st: _rowCan.status, nota: _rowCan.notaAdmin } }).slice(0, 200));
+      check("🤖 v188-L6: a linha do pedido leva o nome e o WhatsApp da CONTA (cadastro v175 — obrigatório), não só o e-mail: é com eles que o admin decide e fala com o cliente sem sair da tela",
+        typeof _rowApr.contaNome === "string" && _rowApr.contaNome === "Aprovado 188" &&
+        String(_rowApr.contaWhatsapp || "").replace(/[^0-9]/g, "").length >= 10,
+        JSON.stringify({ nome: _rowApr.contaNome, wa: _rowApr.contaWhatsapp }));
+
+      // (2) VIP POR BOTÃO — as 4 rotas existiam prontas e sem nenhum botão.
+      // Pela sessão do PAINEL (chave interna = username), a concessão tem que
+      // ficar registrada no e-mail REAL do sócio (v183 LOTE 1) e ser revertível.
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "vipbtn188@test.com", name: "VIP Botao 188" });
+      COOKIE = "";
+      await req2("POST", "/api/admin-panel/login", { user: "diego", password: "teste-smoke-diego-2026" });
+      const _actVip = await req2("POST", "/api/admin/vip/activate", { email: "vipbtn188@test.com", days: 30, autoDays: 0, plan: "vip", note: "reposicao" });
+      const _finVip = (await get("/api/admin/financeiro-usuario/vipbtn188@test.com")).json;
+      const _credVip = (_finVip?.creditos || [])[0] || {};
+      const _audList = (await get("/api/admin/audit")).json?.audit || [];
+      const _audVip = _audList.find((a) => a.action === "vip_activate" && a.targetEmail === "vipbtn188@test.com") || {};
+      check("🤖 v188-L6 (task #111-B): conceder VIP pelo painel soma os dias, carimba o plano e grava no extrato do usuário com o E-MAIL REAL do sócio que clicou (a sessão do painel tem o username como chave interna — v183 LOTE 1)",
+        _actVip.json?.ok === true && _finVip?.plano?.manual?.ativo === true &&
+        _credVip.dias === 30 && _credVip.dadoPor === "Diego" &&
+        _audVip.admin === "jesuscristh22@gmail.com" && !!_audVip.before,
+        JSON.stringify({ cred: { dias: _credVip.dias, por: _credVip.dadoPor }, aud: { admin: _audVip.admin, acao: _audVip.action } }));
+      const _revVip = await req2("POST", "/api/admin/audit/revert", { id: _audVip.id, motivo: "teste de reversao" });
+      const _finVip2 = (await get("/api/admin/financeiro-usuario/vipbtn188@test.com")).json;
+      check("🤖 v188-L6: a concessão feita pelo botão é REVERSÍVEL em 1 clique (/api/admin/audit/revert restaura o snapshot de antes) — dar dias pelo painel nunca é irreversível",
+        _revVip.json?.ok === true && _finVip2?.plano?.manual?.ativo === false,
+        JSON.stringify({ revert: _revVip.status, manualAtivoDepois: _finVip2?.plano?.manual?.ativo }));
+
+      // (3) REVOGAR — rota única (/api/admin/vip/revoke): zera os dois
+      // relógios, para o robô e PRESERVA o extrato de dias concedidos.
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "revog188@test.com", name: "Revogado 188", plan: "vipro", vip: { active: true, plan: "vipro", source: "payment", manualExpires: Date.now() + 20 * 86400000, autoExpires: Date.now() + 20 * 86400000, creditos: [{ id: "cred_x", quando: Date.now(), dias: 30, tipo: "pago", origem: "pagamento", motivo: "Plano VIPro 30d", dadoPor: "Diego" }] } });
+      await req2("POST", "/api/test/auto-job", { token: TEST_TOKEN, email: "revog188@test.com", job: { active: true, status: "waiting_interval", queue: [{ to: "x@y.com" }], nextSendAt: Date.now() + 60000 } });
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      const _revok = await req2("POST", "/api/admin/vip/revoke", { email: "revog188@test.com" });
+      const _finRev = (await get("/api/admin/financeiro-usuario/revog188@test.com")).json;
+      const _jobRev = (await req2("POST", "/api/test/auto-job", { token: TEST_TOKEN, email: "revog188@test.com" })).json;
+      check("🤖 v188-L6: revogar pelo painel zera os DOIS relógios, para o robô automático do usuário (delAutoJob) e PRESERVA o extrato de dias concedidos — o objeto novo que a rota gravava antes apagava vip.creditos, a história de quanto já foi dado e por quê",
+        _revok.json?.ok === true && _finRev?.plano?.manual?.ativo === false && _finRev?.plano?.auto?.ativo === false &&
+        (_finRev?.creditos || []).length === 1 && !_jobRev?.job,
+        JSON.stringify({ manual: _finRev?.plano?.manual?.ativo, auto: _finRev?.plano?.auto?.ativo, creditos: (_finRev?.creditos || []).length, job: !!_jobRev?.job }));
+      const _revNaoExiste = await req2("POST", "/api/admin/vip/revoke", { email: "naoexiste188@test.com" });
+      const _rotaMorta = await req2("POST", "/api/admin/revoke-vip", { email: "revog188@test.com" });
+      check("🤖 v188-L6: a rota duplicada /api/admin/revoke-vip (sem trilha de auditoria, sem parar o robô e criando registro pra e-mail inexistente) foi REMOVIDA — e a rota oficial responde 404 pra usuário que não existe, em vez de criar um do nada",
+        _rotaMorta.status === 404 && _revNaoExiste.status === 404,
+        JSON.stringify({ rotaRemovida: _rotaMorta.status, usuarioInexistente: _revNaoExiste.status }));
+
+      // (4) ROBÔ PARADO DE PAGANTE — o vigia detecta, mas avisava por 2 canais
+      // no-op (sendNotifEmail/pushToUser). Agora o resultado aparece na tela.
+      COOKIE = "";
+      await req2("POST", "/api/admin-panel/login", { user: "andrio", password: "teste-smoke-andrio-2026" });
+      const _sent = (await req2("POST", "/api/admin/health-sentinel/run", {})).json;
+      const _contab = (await get("/api/admin/contabilidade")).json;
+      const _uRev = (_contab?.usuarios || []).find((x) => x.email === "revog188@test.com") || {};
+      check("🤖 v188-L6: /api/admin/contabilidade passou a dizer, por usuário, se o Gmail de ENVIO está conectado (booleano — o token nunca viaja) e o que o robô dele está fazendo; sem isso o painel não respondia 'esse cliente paga e está conseguindo enviar?'",
+        "gmailConectado" in _uRev && _uRev.gmailConectado === false && "robo" in _uRev &&
+        typeof (_contab?.usuarios || [])[0]?.diasCreditadosCortesia === "number" &&
+        _sent?.ok === true && Array.isArray(_sent?.report?.vipDesync),
+        JSON.stringify({ gmail: _uRev.gmailConectado, robo: _uRev.robo, sentinela: !!_sent?.ok }));
+
+      const _admL6 = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
+      const _srvL6 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      check("🤖 v188-L6 (estrutural): o painel consome o vigia (health-sentinel + varredura sob demanda), tem a coluna de Gmail/robô, o filtro de status dos pedidos e o botão de plano por usuário — e nenhuma tela chama a rota removida",
+        _admL6.includes('api("/api/admin/health-sentinel")') && _admL6.includes('api("/api/admin/health-sentinel/run"') &&
+        _admL6.includes("function celulaGmailRobo(") && _admL6.includes('id="pend-status"') &&
+        _admL6.includes("function abrirVipModal(") && _admL6.includes("function detalhesPedido(") &&
+        _admL6.includes('api("/api/admin/vip/revoke"') && !_admL6.includes("/api/admin/revoke-vip") &&
+        !_srvL6.includes('pathname==="/api/admin/revoke-vip"'),
+        "faltou peça do painel do lote 6 ou a rota duplicada voltou");
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    }
+
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
 
     const disk = fs.readdirSync(path.join(DATA, "cvs"));

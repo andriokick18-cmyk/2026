@@ -346,6 +346,22 @@ tbody tr:hover{background:var(--glass2)}
       </div>
 
       <div class="view" id="view-usuarios">
+        <!-- 🤖 v188 LOTE 6: o maior buraco de receita da auditoria — cliente
+             PAGANTE com o robô morto. O vigia (health-sentinel) já detectava a
+             cada 6h, mas avisava por e-mail e por push, os dois no-op nesta
+             reconstrução: o achado não chegava a ninguém e os sócios só
+             descobriam pelo WhatsApp do cliente. Aqui ele aparece na tela, com
+             a varredura sob demanda. A régua de "robô quebrado" continua UMA
+             SÓ (a do mod-sentinel) — este card só mostra o que ela achou. -->
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title"><i class="ti ti-robot-off" style="color:var(--red)"></i>Robôs parados de quem paga</div>
+            <div class="panel-actions">
+              <button class="btn btn-sm" id="btn-sentinela" onclick="rodarVarreduraSentinela()"><i class="ti ti-refresh"></i> Rodar varredura agora</button>
+            </div>
+          </div>
+          <div class="panel-body" id="robos-parados-body"><div class="spin"></div></div>
+        </div>
         <div class="panel">
           <div class="panel-head">
             <div class="panel-title"><i class="ti ti-users"></i>Usuários por dias de VIP</div>
@@ -360,10 +376,10 @@ tbody tr:hover{background:var(--glass2)}
             <div class="tbl-wrap">
               <table>
                 <thead>
-                  <tr><th>Usuário</th><th>Plano</th><th>Dias restantes</th><th>Dias creditados (pago)</th><th></th><th></th></tr>
+                  <tr><th>Usuário</th><th>Plano</th><th>Dias restantes</th><th>Dias creditados (pago)</th><th>Cortesia</th><th>Gmail / robô</th><th></th><th></th><th></th></tr>
                 </thead>
                 <tbody id="tbl-usuarios">
-                  <tr><td colspan="6"><div class="spin"></div></td></tr>
+                  <tr><td colspan="9"><div class="spin"></div></td></tr>
                 </tbody>
               </table>
             </div>
@@ -372,11 +388,26 @@ tbody tr:hover{background:var(--glass2)}
         </div>
       </div>
 
+      <!-- 🧾 v188 LOTE 6 (task #111-A do backlog do dono): a rota /api/pedidos
+           SEMPRE soube filtrar por status e devolver o pedido inteiro — só a
+           tela é que pedia "pendente" e jogava o resto fora. Sem histórico, o
+           admin não tinha como responder "esse pedido foi aprovado? por quem?
+           quando? por que foi cancelado?" sem abrir o JSON no servidor. -->
       <div class="view" id="view-pendentes">
         <div class="panel">
           <div class="panel-head">
-            <div class="panel-title"><i class="ti ti-hourglass"></i>Pedidos pendentes</div>
+            <div class="panel-title"><i class="ti ti-hourglass"></i>Pedidos</div>
             <div class="panel-actions">
+              <div class="search-wrap">
+                <i class="ti ti-search"></i>
+                <input type="search" id="pend-search" placeholder="Nome, e-mail ou nº do pedido…" oninput="renderPendentes(STATE.pendentes)">
+              </div>
+              <select id="pend-status" onchange="carregarPendentes()" style="width:auto;min-width:150px">
+                <option value="pendente">Pendentes</option>
+                <option value="ativo">Aprovados</option>
+                <option value="cancelado">Cancelados</option>
+                <option value="">Todos</option>
+              </select>
               <button class="btn btn-sm" onclick="carregarPendentes()"><i class="ti ti-refresh"></i> Atualizar lista</button>
             </div>
           </div>
@@ -384,14 +415,14 @@ tbody tr:hover{background:var(--glass2)}
             <div class="tbl-wrap">
               <table>
                 <thead>
-                  <tr><th>Usuário</th><th>Tipo</th><th>Valor</th><th>Plano</th><th>Pré-check</th><th>Data</th><th>Ações</th></tr>
+                  <tr><th>Usuário</th><th>Status</th><th>Valor</th><th>Plano</th><th>Pré-check</th><th>Data</th><th>Ações</th></tr>
                 </thead>
                 <tbody id="tbl-pendentes">
                   <tr><td colspan="7"><div class="spin"></div></td></tr>
                 </tbody>
               </table>
             </div>
-            <div class="empty" id="pend-empty" style="display:none"><i class="ti ti-check"></i>Nenhum pedido pendente no momento.</div>
+            <div class="empty" id="pend-empty" style="display:none"><i class="ti ti-check"></i>Nenhum pedido nesta lista.</div>
           </div>
         </div>
       </div>
@@ -576,6 +607,53 @@ tbody tr:hover{background:var(--glass2)}
     <div class="modal-foot">
       <button type="button" class="btn" onclick="responderDivergencia(false)"><i class="ti ti-x"></i> Não, é um problema</button>
       <button type="button" class="btn btn-green" id="div-btn-ok" onclick="responderDivergencia(true)"><i class="ti ti-check"></i> Concordo, está OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- ⭐ v188 LOTE 6 (task #111-B do backlog do dono): conceder / estender /
+     definir vencimento / revogar VIP pelo painel. As 4 rotas existiam
+     prontas, auditadas e reversíveis desde sempre — e nenhuma tinha botão:
+     a única forma de dar ou tirar dias era chamar a API na mão. As duas
+     semânticas ficam SEPARADAS e escritas na tela (SOMAR dias × DEFINIR a
+     data exata), que foi um dos riscos apontados na auditoria. -->
+<div class="modal-bg" id="modal-vip">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title"><i class="ti ti-star" style="color:var(--amber)"></i> Plano do usuário</div><button class="modal-close" onclick="fecharModal('modal-vip')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body">
+      <div id="vip-quem" style="margin-bottom:12px"></div>
+      <div class="field">
+        <label>Plano</label>
+        <select id="vip-plano">
+          <option value="vip">VIP (só manual)</option>
+          <option value="vipro">VIPro (manual + automático)</option>
+          <option value="doublepro">DoublePro</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Dias de envio MANUAL</label>
+        <input type="number" id="vip-manual" min="0" max="365" value="30">
+      </div>
+      <div class="field">
+        <label>Dias de envio AUTOMÁTICO</label>
+        <input type="number" id="vip-auto" min="0" max="365" value="0">
+        <div class="hint">VIP não tem automático — deixe 0. VIPro/DoublePro normalmente usam o mesmo número do manual.</div>
+      </div>
+      <div class="field">
+        <label>Motivo / observação (fica no extrato do usuário)</label>
+        <input type="text" id="vip-nota" maxlength="160" placeholder="Ex.: reposição dos 15 dias que sobraram">
+      </div>
+      <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:11px 12px;font-size:12.5px;color:var(--t2);line-height:1.6">
+        <b style="color:var(--text)">SOMAR</b> empilha os dias em cima do que já existe (renovação).<br>
+        <b style="color:var(--text)">DEFINIR VENCIMENTO</b> ignora o que existe e faz o plano vencer daqui a exatamente esses dias.<br>
+        Toda ação fica no Audit Log e pode ser revertida.
+      </div>
+    </div>
+    <div class="modal-foot" style="flex-wrap:wrap;gap:8px">
+      <button type="button" class="btn btn-red" onclick="vipRevogar()"><i class="ti ti-ban"></i> Revogar plano</button>
+      <button type="button" class="btn" onclick="fecharModal('modal-vip')">Cancelar</button>
+      <button type="button" class="btn" onclick="vipAplicar('set-expiry')"><i class="ti ti-calendar"></i> Definir vencimento</button>
+      <button type="button" class="btn btn-green" onclick="vipAplicar('activate')"><i class="ti ti-plus"></i> Somar dias</button>
     </div>
   </div>
 </div>
@@ -861,7 +939,7 @@ async function atualizarTudo(){
 var TITULOS={
   overview:{t:"Visão Geral",s:"Números exatos, direto do servidor"},
   usuarios:{t:"Usuários por Dias de VIP",s:"Todos os usuários, ordenados por dias restantes"},
-  pendentes:{t:"Pedidos Pendentes",s:"Comprovantes aguardando aprovação"},
+  pendentes:{t:"Pedidos",s:"Pendentes, aprovados e cancelados — com quem aprovou e por quê"},
   planilhas:{t:"Planilhas & Robôs",s:"As vagas se alimentam sozinhas do DOL — coleta, enriquecimento e frescor"},
   notificacoes:{t:"Notificações por e-mail",s:"A conta Google que envia os códigos e avisos do sistema"}
 };
@@ -879,6 +957,9 @@ function switchTab(nome){
   toggleSidebar(false);
   if(nome==="planilhas")loadPlanilhas();else _plStop();
   if(nome==="notificacoes")loadNotificacoes();
+  // 🩺 v188 LOTE 6: o vigia é lido quando a aba abre (nunca no boot — o
+  // relatório vive em memória do servidor e a varredura sozinha já roda).
+  if(nome==="usuarios")carregarSentinela();
 }
 
 function toggleSidebar(abrir){
@@ -935,16 +1016,159 @@ function renderLinhasUsuarios(lista){
     // claro sem mudar nada no servidor (mesmo daysLeft que já chegava).
     var dias=!temDias?"—":(u.daysLeft<=0?"Vencido":(u.daysLeft+" dia"+(u.daysLeft===1?"":"s")));
     var creditados=u.diasCreditadosPagos!=null?u.diasCreditadosPagos:0;
+    var cortesia=u.diasCreditadosCortesia!=null?u.diasCreditadosCortesia:0;
     html+='<tr>'
       +'<td><div class="cell-main">'+esc(u.nome||u.email)+'</div><div class="cell-sub">'+esc(u.email)+'</div></td>'
       +'<td><span class="badge blue">'+esc(u.plano||"free")+'</span></td>'
       +'<td>'+esc(dias)+'</td>'
       +'<td>'+esc(creditados)+' dia'+((creditados===1)?"":"s")+'</td>'
+      +'<td>'+(cortesia>0?('<span class="badge gray">'+esc(cortesia)+' dia'+((cortesia===1)?"":"s")+'</span>'):'—')+'</td>'
+      +'<td>'+celulaGmailRobo(u)+'</td>'
       +'<td>'+(u.suspeita?('<button class="warn-flag" data-email="'+esc(u.email||"")+'" title="Ver motivo da suspeita" onclick="abrirDivergencia(this.dataset.email)"><i class="ti ti-alert-triangle"></i></button>'):'')+'</td>'
       +'<td><button class="key-flag" data-email="'+esc(u.email||"")+'" title="Definir/redefinir senha (conta antiga sem senha ou senha esquecida)" onclick="definirSenhaUsuario(this.dataset.email)"><i class="ti ti-key"></i></button></td>'
+      +'<td><button class="btn btn-sm" data-email="'+esc(u.email||"")+'" title="Conceder, estender, definir vencimento ou revogar o plano" onclick="abrirVipModal(this.dataset.email)"><i class="ti ti-star"></i> Plano</button></td>'
       +'</tr>';
   }
   tbody.innerHTML=html;
+}
+
+// 🤖 v188 LOTE 6: "esse cliente paga e o robô dele está enviando?" era uma
+// pergunta que o painel NÃO respondia — nem se o Gmail de envio estava
+// conectado (sem Gmail, plano pago não manda uma candidatura sequer). Só o
+// BOOLEANO viaja do servidor, nunca o token.
+function celulaGmailRobo(u){
+  var gm=u.gmailConectado
+    ?'<span class="badge green"><i class="ti ti-mail-check"></i> Gmail ok</span>'
+    :'<span class="badge red"><i class="ti ti-mail-off"></i> sem Gmail</span>';
+  var r=u.robo;
+  var rb;
+  if(!r)rb='<span class="badge gray">robô nunca ligado</span>';
+  else if(r.ativo)rb='<span class="badge green"><i class="ti ti-robot"></i> '+esc(r.status||"rodando")+' · fila '+esc(r.fila||0)+'</span>';
+  else rb='<span class="badge amber"><i class="ti ti-robot-off"></i> '+esc(r.status||"parado")+'</span>';
+  return gm+'<div class="cell-sub" style="margin-top:4px">'+rb+'</div>';
+}
+
+// 🩺 v188 LOTE 6: card "robôs parados de quem paga". A lista vem do MESMO
+// vigia que já rodava a cada 6h (mod-sentinel → vipDesync) — nenhuma 2ª régua
+// de "robô quebrado" no navegador; o que mudou é que agora ela é VISTA.
+async function carregarSentinela(){
+  var box=document.getElementById("robos-parados-body");
+  if(!box)return;
+  try{
+    var d=await api("/api/admin/health-sentinel");
+    renderRobosParados((d&&d.report)||{});
+  }catch(e){
+    box.innerHTML='<div style="font-size:13px;color:var(--t2)">Não foi possível ler o vigia: '+esc(e.message)+'</div>';
+  }
+}
+
+function renderRobosParados(rep){
+  var box=document.getElementById("robos-parados-body");
+  if(!box)return;
+  var lista=(rep&&rep.vipDesync)||[];
+  var quando=rep&&rep.lastRun?fmtData(rep.lastRun):"nunca rodou nesta instância";
+  var rodape='<div style="font-size:11.5px;color:var(--t3);margin-top:10px">Última varredura: '+esc(quando)+' · o vigia roda sozinho a cada 6h. O usuário NÃO é avisado (o site não manda notificação) — quem fala com ele é você.</div>';
+  if(!lista.length){
+    box.innerHTML='<div style="font-size:13.5px;color:var(--green)"><i class="ti ti-check"></i> Nenhum pagante com o robô parado agora.</div>'+rodape;
+    return;
+  }
+  var html='<div class="tbl-wrap"><table><thead><tr><th>Cliente</th><th>Plano</th><th>Dias restantes</th><th>Situação do robô</th><th>Sumido há</th></tr></thead><tbody>';
+  for(var i=0;i<lista.length;i++){
+    var x=lista[i];
+    html+='<tr>'
+      +'<td><div class="cell-main">'+esc(x.nome||x.email)+'</div><div class="cell-sub">'+esc(x.email)+'</div></td>'
+      +'<td><span class="badge blue">'+esc(x.plano||"vip")+'</span></td>'
+      +'<td>'+esc(x.diasRestantes!=null?x.diasRestantes:"—")+'</td>'
+      +'<td><span class="badge red">'+esc(x.status||"sem_job")+'</span>'+(x.tokenOk?'':'<div class="cell-sub">sem token de envio válido</div>')+'</td>'
+      +'<td>'+esc(x.diasInativo!=null?(x.diasInativo+" dia(s)"):"—")+'</td>'
+      +'</tr>';
+  }
+  html+='</tbody></table></div>';
+  box.innerHTML=html+rodape;
+}
+
+async function rodarVarreduraSentinela(){
+  var btn=document.getElementById("btn-sentinela");
+  if(btn)btn.disabled=true;
+  try{
+    var d=await api("/api/admin/health-sentinel/run",{method:"POST",body:{}});
+    renderRobosParados((d&&d.report)||{});
+    toast("Varredura concluída.","ok");
+  }catch(e){
+    toast("Erro na varredura: "+e.message,"err");
+  }finally{
+    if(btn)btn.disabled=false;
+  }
+}
+
+/* ═══════════════════ ⭐ PLANO DO USUÁRIO (task #111-B) ═══════════════════ */
+var _vipAlvo=null;
+
+function abrirVipModal(email){
+  var lista=(STATE.dash&&STATE.dash.usuarios)||[];
+  var u=lista.find(function(x){return x.email===email;});
+  if(!u){toast("Usuário não encontrado — atualize a lista e tente de novo.","err");return;}
+  _vipAlvo=u;
+  var restam=(u.daysLeft!=null)?u.daysLeft:0;
+  var venceManual=u.manualExpires?fmtData(u.manualExpires):"—";
+  var venceAuto=u.autoExpires?fmtData(u.autoExpires):"—";
+  document.getElementById("vip-quem").innerHTML=
+    '<div style="font-size:14px;font-weight:800;color:#fff">'+esc(u.nome||u.email)+'</div>'
+    +'<div style="font-size:12.5px;color:var(--t2)">'+esc(u.email)+'</div>'
+    +'<div style="font-size:12.5px;color:var(--t2);margin-top:8px">Hoje: <b style="color:var(--text)">'+esc(u.plano||"free")+'</b> · '
+    +(restam>0?('restam <b style="color:var(--text)">'+restam+' dia'+(restam===1?"":"s")+'</b>'):'<b style="color:var(--red)">sem plano ativo</b>')+'</div>'
+    +'<div style="font-size:12px;color:var(--t3);margin-top:3px">Manual vence: '+esc(venceManual)+' · Automático vence: '+esc(venceAuto)+'</div>';
+  var planoSel=document.getElementById("vip-plano");
+  planoSel.value=["vip","vipro","doublepro"].indexOf(u.plano)>=0?u.plano:"vipro";
+  document.getElementById("vip-manual").value=30;
+  document.getElementById("vip-auto").value=planoSel.value==="vip"?0:30;
+  document.getElementById("vip-nota").value="";
+  abrirModal("modal-vip");
+}
+
+// modo "activate" = SOMA dias sobre o que já existe · "set-expiry" = DEFINE a
+// data exata (ignora o que existe). As duas semânticas são rotas diferentes e
+// ficam explícitas na tela — misturá-las foi um dos riscos da auditoria.
+async function vipAplicar(modo){
+  if(!_vipAlvo)return;
+  var email=_vipAlvo.email;
+  var plano=document.getElementById("vip-plano").value;
+  var manual=parseInt(document.getElementById("vip-manual").value,10)||0;
+  var auto=parseInt(document.getElementById("vip-auto").value,10)||0;
+  var nota=(document.getElementById("vip-nota").value||"").trim();
+  if(manual<=0&&auto<=0){toast("Informe pelo menos 1 dia (manual ou automático).","err");return;}
+  var txt=modo==="activate"
+    ?("SOMAR "+manual+" dia(s) manual e "+auto+" dia(s) automático ao plano de "+email+" (plano "+plano+")?")
+    :("DEFINIR o vencimento de "+email+" para daqui a "+manual+" dia(s) manual e "+auto+" dia(s) automático (plano "+plano+")?\n\nIsso IGNORA os dias que ele já tem — o plano passa a vencer exatamente nessas datas.");
+  if(!confirm(txt))return;
+  try{
+    if(modo==="activate"){
+      await api("/api/admin/vip/activate",{method:"POST",body:{email:email,days:manual,autoDays:auto,plan:plano,note:nota}});
+    }else{
+      await api("/api/admin/vip/set-expiry",{method:"POST",body:{email:email,manualDays:manual,autoDays:auto,plan:plano,note:nota}});
+    }
+    toast(modo==="activate"?"Dias somados ao plano.":"Vencimento definido.","ok");
+    fecharModal("modal-vip");
+    _vipAlvo=null;
+    carregarDashboard(false);
+  }catch(e){
+    toast("Erro: "+e.message,"err");
+  }
+}
+
+async function vipRevogar(){
+  if(!_vipAlvo)return;
+  var email=_vipAlvo.email;
+  if(!confirm("REVOGAR o plano de "+email+"?\n\nO plano vira free na hora, o robô automático dele é parado e o extrato de dias concedidos é preservado. A ação fica no Audit Log."))return;
+  try{
+    await api("/api/admin/vip/revoke",{method:"POST",body:{email:email}});
+    toast("Plano revogado.","ok");
+    fecharModal("modal-vip");
+    _vipAlvo=null;
+    carregarDashboard(false);
+  }catch(e){
+    toast("Erro ao revogar: "+e.message,"err");
+  }
 }
 
 function filtrarUsuarios(){
@@ -1046,18 +1270,33 @@ function corVeredito(v){
   return"gray";
 }
 
+// 🧾 v188 LOTE 6: o status agora vem do select (vazio = todos). O PILL da
+// barra lateral continua contando SÓ pendentes — é ele que diz "tem trabalho
+// na mesa"; se ele passasse a contar o histórico inteiro viraria enfeite.
+function _pendStatusSel(){
+  var el=document.getElementById("pend-status");
+  return el?el.value:"pendente";
+}
+
 async function carregarPendentes(){
   var tbody=document.getElementById("tbl-pendentes");
   tbody.innerHTML='<tr><td colspan="7"><div class="spin"></div></td></tr>';
   document.getElementById("pend-empty").style.display="none";
+  var st=_pendStatusSel();
   try{
-    var r=await api("/api/pedidos?status=pendente");
+    var r=await api("/api/pedidos"+(st?("?status="+encodeURIComponent(st)):""));
     STATE.pendentes=r.pedidos||[];
+    STATE.pendStatus=st;
     renderPendentes(STATE.pendentes);
+    var nPend=st==="pendente"?STATE.pendentes.length:null;
+    if(nPend===null){
+      try{ var rp=await api("/api/pedidos?status=pendente"); nPend=(rp.pedidos||[]).length; }
+      catch(e2){ nPend=0; }
+    }
     var pill=document.getElementById("pill-pendentes");
-    if(STATE.pendentes.length>0){
+    if(nPend>0){
       pill.style.display="inline-block";
-      pill.textContent=STATE.pendentes.length;
+      pill.textContent=nPend;
     }else{
       pill.style.display="none";
     }
@@ -1072,9 +1311,28 @@ async function carregarPendentes(){
   }
 }
 
+function _badgeStatusPedido(st){
+  var v=String(st||"pendente");
+  if(v==="ativo")return'<span class="badge green"><i class="ti ti-check"></i> aprovado</span>';
+  if(v==="cancelado")return'<span class="badge red"><i class="ti ti-x"></i> cancelado</span>';
+  if(v==="pago")return'<span class="badge blue">pago</span>';
+  if(v==="expirado")return'<span class="badge gray">expirado</span>';
+  return'<span class="badge amber">pendente</span>';
+}
+
 function renderPendentes(lista){
   var tbody=document.getElementById("tbl-pendentes");
   var empty=document.getElementById("pend-empty");
+  // Busca local por nome / e-mail / nº do pedido — o servidor já filtrou por
+  // status; aqui é só achar a pessoa de quem o cliente está falando agora.
+  var termo=((document.getElementById("pend-search")||{}).value||"").trim().toLowerCase();
+  if(termo&&lista&&lista.length){
+    lista=lista.filter(function(pd){
+      return String(pd.contaNome||pd.userName||"").toLowerCase().indexOf(termo)>=0
+        ||String(pd.userEmail||"").toLowerCase().indexOf(termo)>=0
+        ||String(pd.id||"").toLowerCase().indexOf(termo)>=0;
+    });
+  }
   if(!lista||!lista.length){
     tbody.innerHTML="";
     empty.style.display="block";
@@ -1087,44 +1345,76 @@ function renderPendentes(lista){
   // urgem revisão, porque cada hora que passa é hora de acesso concedido
   // sem confirmação humana ainda. Ordenação estável (não mexe na ordem
   // relativa dentro de cada grupo).
-  var ordenada=lista.map(function(pd,i){return {pd:pd,i:i};}).sort(function(a,b){
-    var pa=a.pd.autoAtivado?0:1, pb=b.pd.autoAtivado?0:1;
-    return pa!==pb?pa-pb:a.i-b.i;
-  }).map(function(x){return x.pd;});
+  // Fora do modo "Pendentes" (histórico) a ordem útil é a cronológica
+  // inversa — o pedido mais recente primeiro.
+  var ordenada;
+  if(STATE.pendStatus!=="pendente"){
+    ordenada=lista.slice().sort(function(a,b){return (b.createdAt||0)-(a.createdAt||0);});
+  }else{
+    ordenada=lista.map(function(pd,i){return {pd:pd,i:i};}).sort(function(a,b){
+      var pa=a.pd.autoAtivado?0:1, pb=b.pd.autoAtivado?0:1;
+      return pa!==pb?pa-pb:a.i-b.i;
+    }).map(function(x){return x.pd;});
+  }
   var html="";
   for(var i=0;i<ordenada.length;i++){
     var pd=ordenada[i];
-    var tipoBadge='<span class="badge blue">Plano</span>';
+    var statusPd=String(pd.status||"pendente");
     var planoTxt=esc(pd.plano||"—")+(pd.dias?(" · "+esc(pd.dias)+"d"):"");
     var pc=pd.preCheck||null;
+    // 🧾 v188 LOTE 6: o pré-check da IA já gravava pagador, banco, data e nº
+    // da transação — a tela mostrava só o veredito. É justamente esse detalhe
+    // que deixa o admin decidir sem abrir o comprovante um por um.
     var precheckHtml='<span class="badge gray">sem leitura</span>';
     if(pc&&pc.veredito){
       precheckHtml='<span class="badge '+corVeredito(pc.veredito)+'">'+esc(pc.veredito)+'</span>';
-      if(pc.valorLido!=null){
-        precheckHtml+='<div class="cell-sub">lido: '+fmtMoney(pc.valorLido)+'</div>';
-      }
+      if(pc.valorLido!=null)precheckHtml+='<div class="cell-sub">lido: '+fmtMoney(pc.valorLido)+'</div>';
+      if(pc.pagadorLido)precheckHtml+='<div class="cell-sub">de: '+esc(pc.pagadorLido)+'</div>';
+      if(pc.instituicaoLida)precheckHtml+='<div class="cell-sub">'+esc(pc.instituicaoLida)+'</div>';
+      if(pc.dataLida)precheckHtml+='<div class="cell-sub">'+esc(pc.dataLida)+(pc.horaLida?(" "+esc(pc.horaLida)):"")+'</div>';
+      if(pc.transacaoIdLida)precheckHtml+='<div class="cell-sub">TX '+esc(String(pc.transacaoIdLida).slice(0,24))+'</div>';
+    }
+    // Quem aprovou/cancelou, quando e por quê — a rota sempre devolveu, a
+    // tela é que descartava.
+    var trilha='';
+    if(statusPd==="ativo"&&(pd.ativadoEm||pd._ativadoEditor||pd.ativadoPor))
+      trilha='<div class="cell-sub">por '+esc(pd._ativadoEditor||pd.ativadoPor||"admin")+(pd.ativadoEm?(" · "+fmtData(pd.ativadoEm)):"")+'</div>';
+    if(statusPd==="cancelado"){
+      trilha='<div class="cell-sub">'+(pd.autoCancelado?"cancelado pelo robô":("por "+esc(pd.canceladoPor||"admin")))+(pd.canceladoEm?(" · "+fmtData(pd.canceladoEm)):"")+'</div>';
+      if(pd.notaAdmin)trilha+='<div class="cell-sub" style="color:var(--amber)">'+esc(String(pd.notaAdmin).slice(0,120))+'</div>';
     }
     // Selo de ativação provisória — o admin precisa saber, olhando a lista,
     // que ESTE usuário já está usando o plano antes de decidir aprovar ou
     // rejeitar (comprovante falso = clicar Cancelar aqui remove o acesso).
-    var provisorioBadge=pd.autoAtivado
+    var provisorioBadge=(pd.autoAtivado&&statusPd==="pendente")
       ?'<div class="cell-sub"><span class="badge amber"><i class="ti ti-bolt"></i> já ativo (provisório) — revisar</span></div>'
       :'';
     var comprovanteBtn=pd.comprovante
       ?('<button class="btn btn-sm" onclick="verComprovante(\''+esc(pd.id)+'\')"><i class="ti ti-eye"></i> Ver</button>')
       :'<span class="badge gray">sem anexo</span>';
-    html+='<tr'+(pd.autoAtivado?' style="background:var(--amberg)"':'')+'>'
-      +'<td><div class="cell-main">'+esc(pd.userEmail||"—")+'</div>'+(pd.ehAdmin?'<div class="cell-sub">conta admin</div>':'')+provisorioBadge+'</td>'
-      +'<td>'+tipoBadge+'</td>'
+    // Aprovar/Cancelar só existem em pedido PENDENTE — aprovar um cancelado
+    // já é recusado com 409 no servidor (v178); o botão nem deve aparecer.
+    var acoes=comprovanteBtn
+      +'<button class="btn btn-sm" onclick="detalhesPedido(\''+esc(pd.id)+'\')"><i class="ti ti-info-circle"></i> Detalhes</button>';
+    if(statusPd==="pendente"){
+      acoes+='<button class="btn btn-sm btn-green" onclick="confirmarAprovarPedido(\''+esc(pd.id)+'\')"><i class="ti ti-check"></i> Aprovar</button>'
+        +'<button class="btn btn-sm btn-red" onclick="cancelarPedido(\''+esc(pd.id)+'\')"><i class="ti ti-x"></i> '+(pd.autoAtivado?"Rejeitar e retirar plano":"Cancelar")+'</button>';
+    }
+    // O nome vem da CONTA (o cadastro v175 obriga) — userName do checkout é
+    // só fallback de pedido antigo. wa.me só com dígitos.
+    var nomeCli=pd.contaNome||pd.userName||"";
+    var waDig=String(pd.contaWhatsapp||pd.userWhatsapp||"").replace(/[^0-9]/g,"");
+    var linhaCli='<div class="cell-main">'+esc(nomeCli||pd.userEmail||"—")+'</div>'
+      +(nomeCli?('<div class="cell-sub">'+esc(pd.userEmail||"")+'</div>'):'')
+      +(waDig.length>=10?('<div class="cell-sub"><a href="https://wa.me/'+esc(waDig.length<=11?("55"+waDig):waDig)+'" target="_blank" rel="noopener" style="color:var(--green)"><i class="ti ti-brand-whatsapp"></i> '+esc(pd.contaWhatsapp||pd.userWhatsapp||"")+'</a></div>'):'');
+    html+='<tr'+(pd.autoAtivado&&statusPd==="pendente"?' style="background:var(--amberg)"':'')+'>'
+      +'<td>'+linhaCli+(pd.ehAdmin?'<div class="cell-sub">conta admin</div>':'')+provisorioBadge+'</td>'
+      +'<td>'+_badgeStatusPedido(statusPd)+trilha+'</td>'
       +'<td><div class="cell-main">'+fmtMoney(pd.valorTotal)+'</div></td>'
       +'<td>'+planoTxt+'</td>'
       +'<td>'+precheckHtml+'</td>'
       +'<td>'+fmtData(pd.createdAt)+'</td>'
-      +'<td><div class="row-actions">'
-        +comprovanteBtn
-        +'<button class="btn btn-sm btn-green" onclick="confirmarAprovarPedido(\''+esc(pd.id)+'\')"><i class="ti ti-check"></i> Aprovar</button>'
-        +'<button class="btn btn-sm btn-red" onclick="cancelarPedido(\''+esc(pd.id)+'\')"><i class="ti ti-x"></i> '+(pd.autoAtivado?"Rejeitar e retirar plano":"Cancelar")+'</button>'
-      +'</div></td>'
+      +'<td><div class="row-actions">'+acoes+'</div></td>'
       +'</tr>';
   }
   tbody.innerHTML=html;
@@ -1178,10 +1468,67 @@ async function verComprovante(id){
   }
 }
 
-function confirmarAprovarPedido(id){
-  if(!confirm("Aprovar este pedido? Isso ativa o plano do usuário na hora.")){
-    return;
+// ℹ️ v188 LOTE 6: GET /api/pedido/:id SEMPRE devolveu, junto com o pedido, um
+// retrato do VIP atual do usuário (plano, vencimentos, extrato de dias) — e o
+// front descartava esse objeto inteiro. É exatamente o que responde "aprovar
+// este pedido vai empilhar dias em cima de quê?".
+async function detalhesPedido(id){
+  try{
+    var d=await api("/api/pedido/"+encodeURIComponent(id));
+    var pd=d.pedido||{},us=d.usuario||null;
+    var h='<div style="font-size:13.5px;line-height:1.7">'
+      +'<div><b style="color:#fff">'+esc(pd.contaNome||pd.userName||pd.userEmail||"—")+'</b></div>'
+      +'<div style="color:var(--t2)">'+esc(pd.userEmail||"")+'</div>'
+      +'<div style="margin-top:10px">Pedido <b>#'+esc(String(pd.id||"").slice(-8).toUpperCase())+'</b> · '+_badgeStatusPedido(pd.status)+'</div>'
+      +'<div>Plano: <b>'+esc(pd.plano||"—")+'</b> · '+esc(pd.dias||0)+' dias · '+fmtMoney(pd.valorTotal)+'</div>'
+      +'<div>Criado em '+fmtData(pd.createdAt)+(pd.pagoEm?(" · pago em "+fmtData(pd.pagoEm)):"")+'</div>';
+    if(pd.status==="ativo")h+='<div>Aprovado por '+esc(pd._ativadoEditor||pd.ativadoPor||"admin")+(pd.ativadoEm?(" em "+fmtData(pd.ativadoEm)):"")+'</div>';
+    if(pd.status==="cancelado"){
+      h+='<div>'+(pd.autoCancelado?"Cancelado pelo robô":("Cancelado por "+esc(pd.canceladoPor||"admin")))+(pd.canceladoEm?(" em "+fmtData(pd.canceladoEm)):"")+'</div>';
+      if(pd.notaAdmin)h+='<div style="color:var(--amber)">Motivo: '+esc(pd.notaAdmin)+'</div>';
+    }
+    var pc=pd.preCheck||null;
+    if(pc&&pc.veredito){
+      h+='<div style="margin-top:10px"><b style="color:#fff">Leitura do comprovante</b></div>'
+        +'<div>'+esc(pc.veredito)+(pc.valorLido!=null?(" · lido "+fmtMoney(pc.valorLido)):"")+'</div>'
+        +(pc.pagadorLido?('<div>Pagador: '+esc(pc.pagadorLido)+'</div>'):'')
+        +(pc.instituicaoLida?('<div>Instituição: '+esc(pc.instituicaoLida)+'</div>'):'')
+        +(pc.dataLida?('<div>Data no comprovante: '+esc(pc.dataLida)+(pc.horaLida?(" "+esc(pc.horaLida)):"")+'</div>'):'')
+        +(pc.transacaoIdLida?('<div>Transação: '+esc(pc.transacaoIdLida)+'</div>'):'')
+        +(pc.resumo?('<div style="color:var(--t2)">'+esc(pc.resumo)+'</div>'):'');
+    }
+    if(us){
+      h+='<div style="margin-top:10px"><b style="color:#fff">Plano do usuário hoje</b></div>'
+        +'<div>'+esc(us.plan||"free")+' · restam '+esc(us.diasRestantes||0)+' dia(s)</div>'
+        +'<div>Manual vence: '+(us.manualExpires?fmtData(us.manualExpires):"—")+' · Automático: '+(us.autoExpires?fmtData(us.autoExpires):"—")+'</div>'
+        +'<div style="color:var(--t2)">Dias já creditados: '+esc(us.totalPago||0)+' pago(s) · '+esc(us.totalGratis||0)+' cortesia</div>';
+      var cr=(us.creditos||[]).slice(0,6);
+      if(cr.length){
+        h+='<div style="margin-top:6px;color:var(--t2);font-size:12.5px">Últimas concessões:</div>';
+        for(var i=0;i<cr.length;i++){
+          h+='<div style="font-size:12.5px;color:var(--t2)">• '+esc(cr[i].dias)+'d '+esc(cr[i].tipo||"")+' — '+esc(cr[i].motivo||cr[i].origem||"")+' ('+fmtData(cr[i].quando)+')</div>';
+        }
+      }
+    }
+    h+='</div>';
+    abrirModalInfo("Pedido #"+String(pd.id||"").slice(-8).toUpperCase(),h);
+  }catch(e){
+    toast("Erro ao carregar detalhes: "+e.message,"err");
   }
+}
+
+// 🧾 v188 LOTE 6: o confirm genérico ("Aprovar este pedido?") não dizia de
+// QUEM nem de QUANTO — aprovar o pedido errado numa lista de vários é
+// dinheiro e dias de plano no cliente errado.
+function confirmarAprovarPedido(id){
+  var pd=(STATE.pendentes||[]).find(function(x){return x.id===id;})||{};
+  var quem=pd.contaNome||pd.userName||pd.userEmail||"este usuário";
+  var txt="Aprovar o pedido de "+quem
+    +"\n\nPlano: "+(pd.plano||"—")+" · "+(pd.dias||0)+" dias"
+    +"\nValor: "+fmtMoney(pd.valorTotal)
+    +"\nE-mail: "+(pd.userEmail||"—")
+    +"\n\nIsso ativa o plano na hora e lança a entrada no caixa.";
+  if(!confirm(txt))return;
   aprovarPedido(id);
 }
 
