@@ -23,6 +23,7 @@
 const http   = require("http");
 const https  = require("https");
 const fs     = require("fs");
+const fsp    = require("fs").promises; // v191 LOTE 9: cópia de backup sem travar o event loop
 const path   = require("path");
 const crypto = require("crypto");
 const util   = require("util");
@@ -323,7 +324,7 @@ function hourBRT() {
 })();
 const DATA_DIR    = process.env.DATA_DIR || (fs.existsSync("/data") ? "/data" : "/tmp");
 // ── 💾 STORAGE ENGINE (Fase 4): SQLite com fallback JSON e dual-write ──────
-const { initStorage, storageLoad, storagePersist, storageInfo } = require("./storage.js");
+const { initStorage, storageLoad, storagePersist, storageDelete, storageInfo } = require("./storage.js");
 initStorage(DATA_DIR);
 const USERS_FILE  = path.join(DATA_DIR, "users.json");
 const SESSIONS_FILE = path.join(DATA_DIR, "sessions.json"); // KB-078: só guarda OAuth __sender__ em andamento — login NUNCA sobrevive a deploy (de propósito)
@@ -1337,6 +1338,20 @@ function boot() {
     persist(BLOCKED_FILE,DB_BLOCKED);
     console.log(`[migração] 🔓 lista de banidos ZERADA — ${_qtd} e-mail(is) liberados (ordem do dono, 21/08/2026)`);
   }
+  // 🧹 v191 LOTE 9 — o backup.json aposentado sai do disco E do SQLite.
+  // Ele guardava TODOS os usuários (refresh_token do Google e hash de senha em
+  // TEXTO PURO — passava por fora do DATA_ENC_KEY) e ninguém nunca o leu.
+  // Deixar o resíduo no volume seria pior que antes: um arquivo em claro
+  // parado pra sempre, e ainda copiado pra dentro de cada backup se um dia
+  // saísse do BACKUP_EXCLUIR. A limpeza é idempotente (só age se existir).
+  try{
+    const _bkJson=path.join(DATA_DIR,"backup.json");
+    const _tinhaArquivo=fs.existsSync(_bkJson);
+    if(_tinhaArquivo) fs.unlinkSync(_bkJson);
+    const _tinhaNoDb=storageDelete(_bkJson);
+    if(_tinhaArquivo||_tinhaNoDb) console.log(`[migração] 🧹 backup.json aposentado removido (arquivo: ${_tinhaArquivo?"sim":"não"}, SQLite: ${_tinhaNoDb?"sim":"não"}) — guardava tokens e senhas em texto puro e ninguém o lia.`);
+  }catch(e){ console.warn("[migração] backup.json:",e.message); }
+
   DB_TRIAL_USED = load(TRIAL_USED_FILE, {phones:{},ips:{},googleIds:{}});
   if(!DB_TRIAL_USED.phones) DB_TRIAL_USED.phones={};
   if(!DB_TRIAL_USED.ips) DB_TRIAL_USED.ips={};
@@ -1392,7 +1407,24 @@ function boot() {
   // aqui — ver defesa complementar em /api/auto/start (self-heal de timer morto).
 }
 
+// ❄️ v191 LOTE 9 — CONGELAMENTO DE GRAVAÇÕES (restauração de backup).
+// BUG REAL do procedimento de emergência: a rota de restore copiava os .json
+// de volta pra /data e apagava o .db, mas o PROCESSO seguia vivo com TUDO em
+// memória no estado PRÉ-restore — em segundos um setUser debounced regravava
+// users.json por cima, e o "reinicie o servidor" mandava SIGTERM, cujo
+// flushAll() grava a MEMÓRIA inteira em cima dos arquivos restaurados. Ou
+// seja: pedidos/financeiro voltavam e usuários/histórico/robôs voltavam ao
+// estado de antes — restauração MISTA e silenciosa, justo no procedimento que
+// se executa em pânico. A partir daqui, restaurar CONGELA toda gravação até o
+// reinício: um único portão (persist) cobre users/hist/auto/pedidos/
+// financeiro/sessões/tudo mais, porque todo banco passa por aqui.
+let _gravacoesCongeladas = false;
+let _gravacoesCongeladasMotivo = "";
 function persist(file, data) {
+  if (_gravacoesCongeladas) {
+    console.warn(`[freeze] ❄️ persist(${path.basename(file)}) IGNORADO — ${_gravacoesCongeladasMotivo}. Reinicie o servidor pra concluir.`);
+    return false;
+  }
   // Fase 4: SQLite atômico (WAL) + espelho JSON (STORAGE_MIRROR=off desliga o espelho)
   // V955: users.json passa pelo cifrador de campos sensíveis (cópia — runtime intocado)
   if (file === USERS_FILE) data = _encUsersForDisk(data);
@@ -2164,8 +2196,15 @@ function exportLogsCSV(userEmail) {
   return [hdr.join(","), ...rows].join("\n");
 }
 
-// Backup
-setInterval(()=>{ try{persist(path.join(DATA_DIR,"backup.json"),{ts:new Date().toISOString(),users:DB_USERS,total:Object.keys(DB_USERS).length});persistLogs();}catch{} },10*60*1000);
+// v191 LOTE 9 — o antigo backup.json MORREU (só o persistLogs deste timer
+// continua). Ele reserializava TODOS os usuários a cada 10min e gravava
+// refresh_token do Google e hash de senha em TEXTO PURO (o persist() só cifra
+// o USERS_FILE — este arquivo passava por fora do DATA_ENC_KEY), num arquivo
+// que NINGUÉM lia: nem o boot, nem o restore, nem o painel. Era só custo de
+// disco/CPU e uma cópia em claro dos segredos de todo mundo. O backup de
+// verdade (criarBackupCompleto + rotas /api/admin/v2/backup/*) cobre tudo,
+// com os campos sensíveis já cifrados, e é ele que o RESTAURACAO_BACKUP.md usa.
+setInterval(()=>{ try{persistLogs();}catch{} },10*60*1000);
 
 // ── BACKUP COMPLETO AUTOMÁTICO (2026-07-08, a pedido do Andrio) ────────────
 // O backup.json acima é só uma rede de segurança de usuários, sobrescrita a
@@ -2206,7 +2245,11 @@ function _diskFreeMB(){
   try{ const st=fs.statfsSync(DATA_DIR); return Math.round(st.bavail*st.bsize/1048576); }
   catch{ return null; } // statfs indisponível → não bloqueia
 }
-function criarBackupCompleto(){
+// v191 LOTE 9: ASSÍNCRONO. Copiar todos os .json + a pasta cvs/ inteira com
+// fs.cpSync/copyFileSync travava o event loop pra TODOS os usuários (2min
+// depois de cada boot é justamente a janela em que todo mundo reconecta
+// pós-deploy). Mesmo trabalho, com as versões de fs.promises.
+async function criarBackupCompleto(){
   try{
     if(!fs.existsSync(DATA_DIR)) return {ok:false,error:"DATA_DIR inexistente"};
     fs.mkdirSync(BACKUP_DIR,{recursive:true});
@@ -2229,7 +2272,7 @@ function criarBackupCompleto(){
     for(const f of fs.readdirSync(DATA_DIR)){
       if(!f.endsWith(".json")) continue;
       if(BACKUP_EXCLUIR.has(f)) continue; // 11/07: logs efêmeros não merecem 3 cópias
-      try{ fs.copyFileSync(path.join(DATA_DIR,f), path.join(dir,f)); n++; }
+      try{ await fsp.copyFile(path.join(DATA_DIR,f), path.join(dir,f)); n++; }
       catch(e){ console.warn("[backup] falhou copiar",f,e.message); }
     }
     // v21 (07/2026): os PDFs agora vivem SÓ em CVS_DIR (saíram do users.json),
@@ -2237,7 +2280,7 @@ function criarBackupCompleto(){
     // antes (base64 no JSON inflava cada PDF em ~33%, copiado 3x na retenção).
     try{
       if(fs.existsSync(CVS_DIR)){
-        fs.cpSync(CVS_DIR, path.join(dir,"cvs"), {recursive:true});
+        await fsp.cp(CVS_DIR, path.join(dir,"cvs"), {recursive:true});
         n+=fs.readdirSync(CVS_DIR).length;
       }
     }catch(e){ console.warn("[backup] falhou copiar pasta cvs/:",e.message); }
@@ -2296,6 +2339,26 @@ setTimeout(()=>{
   }catch(e){console.warn("[disk] compactação de boot:",e.message);}
 },90_000);
 
+// v191 LOTE 9 — idade (em horas) do backup mais recente, ou null se não há
+// nenhum. Só olha pastas no padrão da poda (/^\d{4}-/) — a mesma que a
+// retenção e a faxina de emergência enxergam.
+function _horasDesdeUltimoBackup(){
+  try{
+    const dirs=fs.readdirSync(BACKUP_DIR).filter(d=>/^\d{4}-/.test(d));
+    if(!dirs.length) return null;
+    let maisNovo=0;
+    for(const d of dirs){
+      try{ const st=fs.statSync(path.join(BACKUP_DIR,d)); if(st.mtimeMs>maisNovo) maisNovo=st.mtimeMs; }catch{}
+    }
+    return maisNovo ? (Date.now()-maisNovo)/3600_000 : null;
+  }catch{ return null; }
+}
+// Roda o backup de boot só se fizer sentido (ver comentário abaixo).
+const BACKUP_BOOT_MIN_H = 12;
+// No npm test o atraso é configurável pra provar a decisão de verdade; em
+// produção continua sendo 2 minutos, como sempre foi.
+const _BACKUP_BOOT_DELAY = (process.env.TEST_LOGIN_TOKEN && process.env.BACKUP_BOOT_MS) ? Number(process.env.BACKUP_BOOT_MS) : 2*60_000;
+const _rodarBackup = (motivo) => criarBackupCompleto().catch(e=>console.error(`[backup] falha inesperada (${motivo}):`,e?.message||e));
 (function agendarBackupDiario(){
   // 1x por dia, ~03:00 BRT (06:00 UTC) — horário de menor uso.
   const now=new Date();
@@ -2303,12 +2366,23 @@ setTimeout(()=>{
   proxima.setUTCHours(6,5,0,0);
   if(proxima<=now) proxima.setUTCDate(proxima.getUTCDate()+1);
   setTimeout(function tickDiario(){
-    criarBackupCompleto();
-    setInterval(criarBackupCompleto, 24*3600_000);
+    _rodarBackup("diário");
+    setInterval(()=>_rodarBackup("diário"), 24*3600_000);
   }, proxima-now);
   // Backup também logo no boot (rede de segurança se o servidor ficar dias
   // sem passar pelas 3h — ex.: redeploys frequentes).
-  setTimeout(criarBackupCompleto, 2*60_000);
+  // ⚠️ v191 LOTE 9: mas SÓ se o mais recente já tiver ≥12h. Este repo faz
+  // deploy a cada commit e a retenção é de 3 pastas: numa tarde de 3 commits,
+  // 3 backups novos (todos do mesmo estado de hoje) empurravam pra fora os
+  // backups de ONTEM — exatamente o que alguém procura quando algo dá errado.
+  setTimeout(()=>{
+    const h=_horasDesdeUltimoBackup();
+    if(h!==null && h < BACKUP_BOOT_MIN_H){
+      console.log(`[backup] boot: já existe backup de ${h.toFixed(1)}h atrás — pulado (a retenção de ${BACKUP_RETENCAO} guarda os dias anteriores).`);
+      return;
+    }
+    _rodarBackup("boot");
+  }, _BACKUP_BOOT_DELAY);
 })();
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -4836,15 +4910,19 @@ function _releaseManualSlot(email){ const n=(_manualSendReserved.get(email)||0)-
 let _publicStatsCache = null;
 
 // ── PERFORMANCE: debounce de persist para evitar escrita excessiva no disco ──
+// v191 LOTE 9: o mapa guarda {tid, data} — o PAYLOAD pendente junto com o
+// timer. Sem isso o flushAll do SIGTERM só sabia regravar uma lista FIXA de
+// bancos, e qualquer persistDebounced fora dela (journey.json hoje, o próximo
+// que alguém escrever amanhã) simplesmente se perdia no deploy.
 const _persistDebounceTimers = new Map();
 function persistDebounced(file, data, delayMs = 2000) {
   if (_persistDebounceTimers.has(file)) {
-    clearTimeout(_persistDebounceTimers.get(file));
+    clearTimeout(_persistDebounceTimers.get(file).tid);
   }
-  _persistDebounceTimers.set(file, setTimeout(() => {
+  _persistDebounceTimers.set(file, { data, tid: setTimeout(() => {
     _persistDebounceTimers.delete(file);
     persist(file, data);
-  }, delayMs));
+  }, delayMs) });
 }
 // ⚡ v190 LOTE 8 — THROTTLE COM TETO (não é debounce puro).
 // O problema do debounce puro numa via CONTÍNUA: cada chamada faz
@@ -4861,27 +4939,33 @@ function persistThrottled(file, data, delayMs = 3000, maxWaitMs = 30000) {
   if (agora - _persistSujoDesde.get(file) >= maxWaitMs) {
     // teto estourado: grava AGORA (e cancela o debounce pendente)
     if (_persistDebounceTimers.has(file)) {
-      clearTimeout(_persistDebounceTimers.get(file));
+      clearTimeout(_persistDebounceTimers.get(file).tid);
       _persistDebounceTimers.delete(file);
     }
     _persistSujoDesde.delete(file);
     return persist(file, data);
   }
-  if (_persistDebounceTimers.has(file)) clearTimeout(_persistDebounceTimers.get(file));
-  _persistDebounceTimers.set(file, setTimeout(() => {
+  if (_persistDebounceTimers.has(file)) clearTimeout(_persistDebounceTimers.get(file).tid);
+  _persistDebounceTimers.set(file, { data, tid: setTimeout(() => {
     _persistDebounceTimers.delete(file);
     _persistSujoDesde.delete(file);
     persist(file, data);
-  }, delayMs));
+  }, delayMs) });
 }
-// Força escrita imediata e cancela debounce pendente (usar no shutdown)
-function persistFlush(file, data) {
-  if (_persistDebounceTimers.has(file)) {
-    clearTimeout(_persistDebounceTimers.get(file));
-    _persistDebounceTimers.delete(file);
-  }
-  _persistSujoDesde.delete(file);
-  persist(file, data);
+// ❄️ v191 LOTE 9 — liga o congelamento de gravações (só a restauração de
+// backup chama). Cancela TUDO que está pendente (debounces + o timer de
+// sessões) pra que nada caia em cima dos arquivos que acabaram de voltar do
+// backup, e a partir daqui persist() vira no-op até o processo reiniciar.
+function congelarGravacoes(motivo) {
+  if (_gravacoesCongeladas) return false;
+  _gravacoesCongeladas = true;
+  _gravacoesCongeladasMotivo = String(motivo || "gravações congeladas").slice(0, 200);
+  try { _persistDebounceTimers.forEach((ent) => clearTimeout(ent.tid)); } catch {}
+  _persistDebounceTimers.clear();
+  _persistSujoDesde.clear();
+  try { if (_sessPersistT) { clearTimeout(_sessPersistT); _sessPersistT = null; } } catch {}
+  console.warn(`[freeze] ❄️ GRAVAÇÕES CONGELADAS — ${_gravacoesCongeladasMotivo}. Nada mais vai ao disco até o servidor reiniciar (inclusive o flushAll do SIGTERM).`);
+  return true;
 }
 
 async function doAutoSend(email) {
@@ -14204,6 +14288,7 @@ try{
   }
 }catch(e){ console.warn("[notif-cooldown] falha ao carregar cooldowns persistidos:", e.message); }
 function _persistNotifCooldowns(){
+  if(_gravacoesCongeladas) return; // ❄️ v191 LOTE 9: escrita direta (não passa por persist) — o restore também congela esta
   try{
     _DB_NOTIF_COOLDOWN.notifSentAt = _notifSentAt;
     _DB_NOTIF_COOLDOWN.authErrNotifiedAt = (typeof getAuthErrNotifiedAt==="function") ? getAuthErrNotifiedAt() : (_DB_NOTIF_COOLDOWN.authErrNotifiedAt||{});
@@ -14893,35 +14978,62 @@ recategorizeAllSheets();
 
 // ── Graceful shutdown: persiste TODOS os bancos ──────────
 function flushAll() {
+  // ❄️ v191 LOTE 9: com as gravações congeladas (restauração de backup em
+  // andamento), o SIGTERM NÃO pode gravar a memória por cima dos arquivos que
+  // acabaram de voltar do backup — era exatamente isso que desfazia o restore.
+  if (_gravacoesCongeladas) {
+    console.warn(`[shutdown] ❄️ gravações congeladas (${_gravacoesCongeladasMotivo}) — nada foi salvo por cima dos arquivos restaurados. É o comportamento certo: suba o servidor de novo pra carregar o backup.`);
+    return;
+  }
   console.log("[shutdown] Persistindo dados...");
 
-  // 1. Cancela todos os timers de debounce pendentes
-  _persistDebounceTimers.forEach((tid, _file) => clearTimeout(tid));
+  // 1. FLUSH GENÉRICO: todo persistDebounced/persistThrottled pendente vai pro
+  //    disco com o payload que ele guardou (v191 LOTE 9). Antes o shutdown só
+  //    CANCELAVA esses timers e regravava uma lista fixa — journey.json (e
+  //    qualquer banco novo que use o debounce) se perdia em todo deploy.
+  const _gravados = new Set();
+  for (const [file, ent] of [..._persistDebounceTimers]) {
+    clearTimeout(ent.tid);
+    try { persist(file, ent.data); _gravados.add(file); }
+    catch(e) { console.warn("[shutdown] pendente " + path.basename(file) + ":", e.message); }
+  }
   _persistDebounceTimers.clear();
+  _persistSujoDesde.clear();
 
-  // 2. Persiste todos os bancos de dados principais
-  try { persist(USERS_FILE,  DB_USERS); } catch(e) { console.warn("[shutdown] users:", e.message); }
+  // 2. Persiste todos os bancos principais — DEDUPLICADO contra o passo 1:
+  //    users.json e history.json são os maiores do sistema e serializá-los 2x
+  //    num sinal em que o Render dá poucos segundos é justamente o que pode
+  //    fazer o processo morrer no meio da gravação.
+  const _grava = (file, data, rotulo) => {
+    if (_gravados.has(file)) return;
+    _gravados.add(file);
+    try { persist(file, data); } catch(e) { console.warn("[shutdown] " + rotulo + ":", e.message); }
+  };
+  _grava(USERS_FILE,  DB_USERS,  "users");
   try { persistSessions();              } catch(e) { console.warn("[shutdown] sessions:", e.message); }
-  try { persist(HIST_FILE,   DB_HIST);  } catch(e) { console.warn("[shutdown] hist:",  e.message); }
-  try { persist(AUTO_FILE,   DB_AUTO);  } catch(e) { console.warn("[shutdown] auto:",  e.message); }
-  try { persist(NOTES_FILE,  DB_NOTES); } catch(e) { console.warn("[shutdown] notes:", e.message); }
-  try { persist(ALERTS_FILE, DB_ALERTS); } catch(e) { console.warn("[shutdown] alerts:", e.message); } // v47: faltava — com setAlerts debounced, sem isso um alerta recém-salvo se perderia no deploy
-  try { persist(LOGS_FILE,   DB_LOGS);  } catch(e) { console.warn("[shutdown] logs:",  e.message); }
-  try { persist(PUSH_FILE,   DB_PUSH);  } catch(e) { console.warn("[shutdown] push:",  e.message); }
-  try { persist(APPIDX_FILE, DB_APP_INDEX); } catch(e) { console.warn("[shutdown] appidx:", e.message); }
-  try { persist(NOTIF_FILE,    DB_NOTIF);    } catch(e) { console.warn("[shutdown] notif:",    e.message); }
-  try { persist(SUGGESTIONS_FILE, DB_SUGGESTIONS); } catch(e) { console.warn("[shutdown] suggestions:", e.message); }
-  try { persist(REVIEWS_FILE, DB_REVIEWS); } catch(e) { console.warn("[shutdown] reviews:", e.message); }
+  _grava(HIST_FILE,   DB_HIST,   "hist");
+  _grava(AUTO_FILE,   DB_AUTO,   "auto");
+  _grava(NOTES_FILE,  DB_NOTES,  "notes");
+  _grava(ALERTS_FILE, DB_ALERTS, "alerts"); // v47: faltava — com setAlerts debounced, sem isso um alerta recém-salvo se perderia no deploy
+  _grava(LOGS_FILE,   DB_LOGS,   "logs");
+  _grava(PUSH_FILE,   DB_PUSH,   "push");
+  _grava(APPIDX_FILE, DB_APP_INDEX, "appidx");
+  _grava(NOTIF_FILE,  DB_NOTIF,  "notif");
+  _grava(SUGGESTIONS_FILE, DB_SUGGESTIONS, "suggestions");
+  _grava(REVIEWS_FILE, DB_REVIEWS, "reviews");
   try { _persistNotifCooldowns(); } catch(e) { console.warn("[shutdown] notif-cooldowns:", e.message); }
 
   // 3. Persiste sent_emails (conversão Set → Array)
   try {
     const out = {};
     for (const [k, v] of Object.entries(DB_SENT)) out[k] = [...v];
-    persist(SENT_FILE, out);
+    _grava(SENT_FILE, out, "sent");
   } catch(e) { console.warn("[shutdown] sent:", e.message); }
 
-  console.log("[shutdown] ✅ Dados salvos.");
+  // A LISTA vai pro log de propósito: é a prova, num deploy real, de que
+  // nenhum banco foi serializado duas vezes no mesmo desligamento (e de que
+  // os debounces pendentes entraram). O smoke lê exatamente esta linha.
+  console.log(`[shutdown] ✅ Dados salvos (${_gravados.size} banco(s), sem repetir nenhum): ${[..._gravados].map(f=>path.basename(f)).join(",")}`);
 }
 process.on("SIGTERM",()=>{flushAll();process.exit(0);});
 process.on("SIGINT", ()=>{flushAll();process.exit(0);});
@@ -15108,6 +15220,7 @@ console.log("[health-sentinel] 🩺 Módulo carregado: desync VIP↔robô, lembr
 const { createAdminV2Router } = require("./mod-admin-v2.js");
 const handleAdminV2Routes = createAdminV2Router({
   getSess, getUser, isAdminVip, json, readBody, DATA_DIR,
+  congelarGravacoes, // ❄️ v191 LOTE 9: restaurar backup congela as gravações até o reinício
 });
 console.log("[admin-v2] ⛃ Módulo de backup carregado (rotas /api/admin/v2/backup/*).");
 

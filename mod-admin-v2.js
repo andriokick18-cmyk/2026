@@ -28,7 +28,7 @@ const path = require("path");
 const crypto = require("crypto");
 
 function createAdminV2Router(ctx){
-  const { getSess, getUser, isAdminVip, json, readBody, DATA_DIR } = ctx;
+  const { getSess, getUser, isAdminVip, json, readBody, DATA_DIR, congelarGravacoes } = ctx;
 
   /* ───────────────────────── Auditoria permanente ───────────────────── */
   const AUDIT_FILE = path.join(DATA_DIR, "audit_v2.json");
@@ -127,9 +127,17 @@ function createAdminV2Router(ctx){
       const dir=path.join(BK_DIR,name);
       if(!name||!fs.existsSync(dir)){json(res,404,{error:"Backup não encontrado."});return true;}
       try{
-        // segurança: snapshot automático antes de restaurar
+        // segurança: snapshot automático antes de restaurar (copyFileSync
+        // direto — não passa por persist(), então funciona igual congelado)
         const pre=path.join(BK_DIR,"pre-restore-"+Date.now());fs.mkdirSync(pre,{recursive:true});
         for(const f of fs.readdirSync(DATA_DIR))if(f.endsWith(".json"))try{fs.copyFileSync(path.join(DATA_DIR,f),path.join(pre,f));}catch{}
+        // ❄️ v191 LOTE 9 — CONGELA TODA GRAVAÇÃO daqui até o reinício.
+        // Sem isso o restore era desfeito sozinho: o processo seguia vivo com
+        // a memória PRÉ-restore, um setUser debounced regravava users.json
+        // segundos depois e o SIGTERM do "reinicie o servidor" mandava o
+        // flushAll gravar TUDO por cima dos arquivos recém-restaurados —
+        // pedidos/financeiro voltavam, usuários/histórico/robôs não.
+        try{ if(typeof congelarGravacoes==="function") congelarGravacoes("restauração do backup "+name+" em andamento"); }catch{}
         let n=0;
         for(const f of fs.readdirSync(dir)){
           const src=path.join(dir,f);
@@ -145,8 +153,8 @@ function createAdminV2Router(ctx){
         for(const dbf of ["h2bapply.db","h2bapply.db-wal","h2bapply.db-shm"]){
           try{fs.unlinkSync(path.join(DATA_DIR,dbf));}catch{}
         }
-        audit(req,{admin:adminName,sessionEmail:s.user_email,action:"backup_restore",target:"sistema",field:"backup",newValue:name,note:`${n} arquivos restaurados (PDFs inclusos) + SQLite resetado pra re-importar; reinicie o servidor`});
-        json(res,200,{ok:true,restored:n,aviso:"Arquivos restaurados (PDFs inclusos) e SQLite preparado pra re-importar. REINICIE o servidor para concluir."});
+        audit(req,{admin:adminName,sessionEmail:s.user_email,action:"backup_restore",target:"sistema",field:"backup",newValue:name,note:`${n} arquivos restaurados (PDFs inclusos) + SQLite resetado pra re-importar + gravações congeladas; reinicie o servidor`});
+        json(res,200,{ok:true,restored:n,congelado:true,aviso:"Arquivos restaurados (PDFs inclusos) e SQLite preparado pra re-importar. As gravações estão CONGELADAS (nada mais vai ao disco, nem no desligamento) pra nada sobrescrever o backup. REINICIE o servidor agora para concluir — até lá o site continua servindo o estado antigo que está na memória."});
       }catch(e){json(res,500,{error:e.message});}
       return true;
     }

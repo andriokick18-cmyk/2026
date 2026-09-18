@@ -133,6 +133,22 @@ function storagePersist(file, data){
   return _finish(sqliteOk);
 }
 
+// ── DELETE: apaga a collection do SQLite (o JSON em disco é do chamador) ────
+// v191 LOTE 9: sem isto, um arquivo aposentado (ex.: o antigo backup.json, que
+// guardava refresh_token e hash de senha em texto puro) continuava vivo DENTRO
+// do h2bapply.db pra sempre — apagar só o .json não tirava os segredos do
+// banco, e o próximo storageLoad ainda o ressuscitaria.
+function storageDelete(file){
+  if(!_db) return false;
+  try{
+    _db.prepare("DELETE FROM kv WHERE collection = ?").run(collectionOf(file));
+    return true;
+  }catch(e){
+    console.warn(`[storage] delete(${collectionOf(file)}) falhou:`, e.message);
+    return false;
+  }
+}
+
 // ── Diagnóstico para o painel admin ─────────────────────────────────────────
 function storageInfo(){
   const info = { mode:_mode, mirror:MIRROR, collections:[] };
@@ -145,4 +161,4 @@ function storageInfo(){
   return info;
 }
 
-module.exports = { initStorage, storageLoad, storagePersist, storageInfo };
+module.exports = { initStorage, storageLoad, storagePersist, storageDelete, storageInfo };

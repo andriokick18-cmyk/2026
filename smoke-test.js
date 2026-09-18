@@ -271,6 +271,14 @@ fs.writeFileSync(path.join(DATA, "invalid_emails.json"), JSON.stringify({
 fs.writeFileSync(path.join(DATA, "jul2025_compact.json"), '[{"c":"ETA-123","n":"Truncada Corp","e":"x@y.co');
 fs.writeFileSync(path.join(DATA, "h2a_jun2026_compact.json"), "[]");
 
+// 🧹 v191 LOTE 9: resíduo do backup.json aposentado — ele guardava TODOS os
+// usuários com refresh_token do Google e hash de senha em TEXTO PURO (passava
+// por fora do DATA_ENC_KEY) e ninguém nunca o leu. O boot tem que apagá-lo.
+fs.writeFileSync(path.join(DATA, "backup.json"), JSON.stringify({
+  ts: new Date().toISOString(), total: 1,
+  users: { "vazado@test.com": { email: "vazado@test.com", refresh_token: "1//SEGREDO-EM-TEXTO-PURO", passwordHash: "hash-em-texto-puro" } },
+}));
+
 // ── Helpers ─────────────────────────────────────────────────────────────
 const TEST_TOKEN = "smoke-" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 let COOKIE = ""; // jar de 1 cookie (sessão de teste)
@@ -374,6 +382,166 @@ async function testAuthWatchdogPush() {
   await wd.authErrorWatchdog();
   check("📲 robô parado >12h por erro de Gmail dispara PUSH pro cliente",
     pushed && pushed.email === "vip@test.com" && /reconecte/i.test(pushed.payload?.title || ""), JSON.stringify(pushed)?.slice(0, 120));
+}
+
+// ── 🛟 v191 LOTE 9 — DRILL REAL DE RESTAURAÇÃO DE BACKUP ────────────────
+// O roteiro de emergência (RESTAURACAO_BACKUP.md) era "ensaiado" só até a
+// metade: ninguém nunca tinha restaurado com o SERVIDOR VIVO e reiniciado
+// depois. E era aí que ele se desfazia sozinho — o processo seguia com toda a
+// memória PRÉ-restore, um setUser debounced regravava users.json segundos
+// depois e o SIGTERM do "reinicie o servidor" mandava o flushAll gravar TUDO
+// por cima dos arquivos recém-restaurados (pedidos/financeiro voltavam,
+// usuários/histórico/robôs não: restauração MISTA e silenciosa).
+// Este drill sobe um servidor SÓ dele, com disco próprio, e faz o caminho
+// inteiro de verdade: backup → mudanças → restore pela rota → SIGTERM →
+// reinício → os dados restaurados continuam lá.
+async function drillRestauracaoBackup() {
+  const DATA_B = fs.mkdtempSync(path.join(os.tmpdir(), "h2b-restore-"));
+  const PORT_B = PORT + 40;
+  const BASE_B = `http://127.0.0.1:${PORT_B}`;
+  let COOKIE_B = "";
+  let logB = "";
+  let srvB = null;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const reqB = (method, p, payload) => new Promise((resolve, reject) => {
+    const body = payload === undefined ? null : JSON.stringify(payload);
+    const r = http.request(BASE_B + p, {
+      method,
+      headers: {
+        ...(body ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) } : {}),
+        ...(COOKIE_B ? { Cookie: COOKIE_B } : {}),
+      },
+    }, (res) => {
+      const sc = res.headers["set-cookie"];
+      if (sc && sc.length) COOKIE_B = sc[0].split(";")[0];
+      let b = ""; res.on("data", (c) => (b += c));
+      res.on("end", () => { let json = null; try { json = JSON.parse(b); } catch {} resolve({ status: res.statusCode, body: b, json }); });
+    });
+    r.on("error", reject); if (body) r.write(body); r.end();
+  });
+  const subir = async () => {
+    logB = "";
+    srvB = spawn(process.execPath, ["server.js"], {
+      cwd: __dirname,
+      env: { ...process.env, PORT: String(PORT_B), DATA_DIR: DATA_B, STORAGE: "json", TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890", BACKUP_BOOT_MS: "1200" },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    srvB.stdout.on("data", (c) => (logB += c));
+    srvB.stderr.on("data", (c) => (logB += c));
+    const t0 = Date.now();
+    while (Date.now() - t0 < 40_000) {
+      try { const r = await reqB("GET", "/api/status"); if (r.status) return true; } catch {}
+      await sleep(300);
+    }
+    return false;
+  };
+  const derrubar = (sinal) => new Promise((resolve) => {
+    if (!srvB) return resolve();
+    const p = srvB; srvB = null;
+    p.once("exit", () => resolve());
+    p.kill(sinal);
+    setTimeout(resolve, 12_000);
+  });
+  const lerJson = (f) => { try { return JSON.parse(fs.readFileSync(path.join(DATA_B, f), "utf8")); } catch { return null; } };
+  const pastasBackup = () => { try { return fs.readdirSync(path.join(DATA_B, "backups")).filter((d) => /^\d{4}-/.test(d)); } catch { return []; } };
+
+  try {
+    // Estado ORIGINAL em disco ANTES do 1º boot — é ele que o backup guarda.
+    fs.writeFileSync(path.join(DATA_B, "users.json"), JSON.stringify({
+      "drill@test.com": {
+        email: "drill@test.com", name: "Drill ORIGINAL", plan: "vipro", created_at: new Date().toISOString(),
+        cvs: [], profiles: [], saved: [], onboarded: true,
+        vip: { active: true, plan: "vipro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 },
+      },
+    }));
+    fs.writeFileSync(path.join(DATA_B, "auto_jobs.json"), JSON.stringify({ "drill@test.com": { active: false, status: "ORIGINAL", queue: [] } }));
+    fs.writeFileSync(path.join(DATA_B, "history.json"), JSON.stringify({ "drill@test.com": [{ id: "h1", ts: Date.now(), to: "original@empresa.com", company: "ORIGINAL LTDA", status: "enviado" }] }));
+
+    check("🛟 v191-L9 (drill): servidor de restauração subiu com o estado ORIGINAL", await subir());
+
+    await reqB("POST", "/api/test/login", { token: TEST_TOKEN, email: "admdrill@test.com", name: "Admin Drill", isAdmin: true });
+    const bk = await reqB("POST", "/api/admin/v2/backup/create", { adminName: "Drill" });
+    const nomeBk = bk.json?.name;
+    check("🛟 v191-L9 (drill): backup completo criado pela rota do painel (todos os .json + cvs/)",
+      bk.json?.ok === true && !!nomeBk && bk.json.files > 0, JSON.stringify({ status: bk.status, name: nomeBk, files: bk.json?.files }));
+
+    // MUDANÇAS depois do backup — é isso que a restauração tem que desfazer.
+    await reqB("POST", "/api/test/login", { token: TEST_TOKEN, email: "drill@test.com", plan: "doublepro", vip: { active: true, plan: "doublepro", source: "payment", manualExpires: Date.now() + 90 * 86400_000, autoExpires: Date.now() + 90 * 86400_000 } });
+    await reqB("POST", "/api/test/auto-job", { token: TEST_TOKEN, email: "drill@test.com", job: { active: false, status: "MUDADO_DEPOIS_DO_BACKUP", queue: [] } });
+    await reqB("POST", "/api/test/login", { token: TEST_TOKEN, email: "depois@test.com", name: "Criado depois do backup" });
+
+    await reqB("POST", "/api/test/login", { token: TEST_TOKEN, email: "admdrill@test.com", isAdmin: true });
+    const rest = await reqB("POST", "/api/admin/v2/backup/restore", { name: nomeBk, adminName: "Drill", confirm: "RESTAURAR" });
+    check("🛟 v191-L9 (drill): a rota de restore devolve os arquivos E declara que CONGELOU as gravações até o reinício",
+      rest.json?.ok === true && rest.json?.restored > 0 && rest.json?.congelado === true && /CONGELAD/i.test(rest.json?.aviso || ""),
+      JSON.stringify({ status: rest.status, restored: rest.json?.restored, congelado: rest.json?.congelado }));
+
+    // Gravação SÍNCRONA depois do restore (markSent → persistSent → persist):
+    // com o congelamento, NADA disso pode chegar ao disco.
+    const sentAntes = JSON.stringify(lerJson("sent_emails.json") || {});
+    await reqB("POST", "/api/test/login", { token: TEST_TOKEN, email: "drill@test.com", sentTo: ["congelado@empresa.com"] });
+    await sleep(2500); // passa do debounce de histórico (1,5s) — ele também não pode gravar
+    const sentDepois = JSON.stringify(lerJson("sent_emails.json") || {});
+    check("❄️ v191-L9 (drill): com a restauração em andamento, NENHUMA gravação nova chega ao disco (nem a síncrona do markSent, nem os debounces pendentes)",
+      sentDepois === sentAntes && !sentDepois.includes("congelado@empresa.com") && /GRAVAÇÕES CONGELADAS/.test(logB),
+      JSON.stringify({ mudou: sentDepois !== sentAntes }));
+
+    await derrubar("SIGTERM");
+    const usersPos = lerJson("users.json") || {};
+    const autoPos = lerJson("auto_jobs.json") || {};
+    check("🛟 v191-L9 (drill): o SIGTERM do 'reinicie o servidor' NÃO grava a memória por cima do backup restaurado — era isso que desfazia a restauração inteira",
+      !!usersPos["drill@test.com"] && !usersPos["depois@test.com"] && autoPos["drill@test.com"]?.status === "ORIGINAL" &&
+      /gravações congeladas/i.test(logB),
+      JSON.stringify({ temDepois: !!usersPos["depois@test.com"], job: autoPos["drill@test.com"]?.status }));
+
+    // REINÍCIO: o servidor tem que subir servindo o estado restaurado.
+    const backupsAntesBoot = pastasBackup().length;
+    check("🛟 v191-L9 (drill): servidor reiniciou depois da restauração", await subir());
+    await reqB("POST", "/api/test/login", { token: TEST_TOKEN, email: "drill@test.com" });
+    const stDrill = await reqB("GET", "/api/status");
+    const jobDrill = await reqB("POST", "/api/test/auto-job", { token: TEST_TOKEN, email: "drill@test.com" });
+    const histDrill = await reqB("GET", "/api/history");
+    check("🛟 v191-L9 (drill): depois do reinício o servidor SERVE o estado restaurado — plano, robô e histórico do backup (não os de depois dele)",
+      stDrill.json?.plan === "vipro" && jobDrill.json?.job?.status === "ORIGINAL" &&
+      JSON.stringify(histDrill.json || {}).includes("ORIGINAL LTDA"),
+      JSON.stringify({ plano: stDrill.json?.plan, job: jobDrill.json?.job?.status }));
+
+    await sleep(1800); // passa do BACKUP_BOOT_MS (1,2s) deste boot
+    check("💾 v191-L9: boot com backup recente (<12h) NÃO cria outra pasta de backup — com deploy a cada commit e retenção de 3, três commits numa tarde apagavam os backups de ontem",
+      pastasBackup().length === backupsAntesBoot && /já existe backup de/.test(logB),
+      JSON.stringify({ antes: backupsAntesBoot, depois: pastasBackup().length }));
+
+    // journey.json só existe via persistDebounced e NUNCA esteve na lista fixa
+    // do flushAll — antes deste lote ele se perdia em todo deploy.
+    const pdf = Buffer.from("%PDF-1.4 drill " + "conteudo de teste ".repeat(300)).toString("base64");
+    const upl = await reqB("POST", "/api/cv/upload", { base64: pdf, name: "Drill.pdf", cvType: "resume" });
+    await derrubar("SIGTERM");
+    await sleep(300); // o stdout do processo ainda pode estar chegando
+    const jornada = lerJson("journey.json") || {};
+    const linhaFlush = (logB.match(/\[shutdown\] ✅ Dados salvos \(.*?\): ([^\n]+)/) || [])[1] || "";
+    const listaFlush = linhaFlush.split(",").map((x) => x.trim()).filter(Boolean);
+    const repetido = listaFlush.filter((f, i) => listaFlush.indexOf(f) !== i);
+    check("💾 v191-L9: o flushAll do desligamento grava TODO debounce pendente (journey.json entrou sem estar em lista fixa nenhuma) e não serializa banco nenhum duas vezes",
+      upl.json?.ok === true && JSON.stringify(jornada["drill@test.com"] || []).includes("pdf_upload") &&
+      listaFlush.includes("journey.json") && listaFlush.includes("users.json") && repetido.length === 0,
+      JSON.stringify({ lista: linhaFlush.slice(0, 160), repetido }));
+
+    // Mesma decisão, o outro lado: backup ANTIGO (>12h) volta a rodar no boot.
+    for (const d of pastasBackup()) {
+      const velho = Date.now() - 20 * 3600_000;
+      try { fs.utimesSync(path.join(DATA_B, "backups", d), velho / 1000, velho / 1000); } catch {}
+    }
+    const antesVelho = pastasBackup().length;
+    await subir();
+    await sleep(2500);
+    check("💾 v191-L9: com o backup mais recente já velho (20h), o boot CRIA um novo — a rede de segurança continua existindo, só parou de se atropelar",
+      pastasBackup().length === antesVelho + 1, JSON.stringify({ antes: antesVelho, depois: pastasBackup().length }));
+  } catch (e) {
+    check("🛟 v191-L9 (drill): execução sem exceção", false, e.message);
+  } finally {
+    try { await derrubar("SIGKILL"); } catch {}
+    try { fs.rmSync(DATA_B, { recursive: true, force: true }); } catch {}
+  }
 }
 
 // ── Execução ────────────────────────────────────────────────────────────
@@ -4905,6 +5073,26 @@ async function testAuthWatchdogPush() {
         "faltou peça do painel do lote 6 ou a rota duplicada voltou");
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     }
+
+    // 🧹 v191 LOTE 9 — o backup.json aposentado: parou de ser escrito e o
+    // resíduo (com refresh_token e hash de senha em texto puro) sai do disco
+    // E do SQLite no boot. A cópia da pasta cvs/ virou assíncrona: com
+    // fs.cpSync ela travava o event loop pra TODO MUNDO 2min depois de cada
+    // deploy — exatamente quando todos reconectam.
+    const _srvL9 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+    check("🧹 v191-L9: o backup.json aposentado (todos os usuários com refresh_token e senha em TEXTO PURO, lido por ninguém) parou de ser escrito e o boot apaga o resíduo do disco e do SQLite",
+      !fs.existsSync(path.join(DATA, "backup.json")) &&
+      !/persist\(path\.join\(DATA_DIR,\s*"backup\.json"\)/.test(_srvL9) &&
+      _srvL9.includes("storageDelete(_bkJson)") &&
+      /BACKUP_EXCLUIR = new Set\(\[[^\]]*"backup\.json"/.test(_srvL9),
+      `residuo=${fs.existsSync(path.join(DATA, "backup.json"))}`);
+    check("💾 v191-L9 (estrutural): o backup completo copia com fs.promises (cpSync da pasta cvs/ inteira travava o event loop de todo mundo) e nenhum timer chama a função sem tratar a promessa",
+      _srvL9.includes("async function criarBackupCompleto()") && _srvL9.includes("await fsp.copyFile(") && _srvL9.includes("await fsp.cp(CVS_DIR") &&
+      _srvL9.includes("criarBackupCompleto().catch(") && !/setTimeout\(criarBackupCompleto/.test(_srvL9) && !/setInterval\(criarBackupCompleto/.test(_srvL9),
+      "criarBackupCompleto ainda é síncrono ou algum timer chama sem .catch");
+
+    // 🛟 v191 LOTE 9 — drill de restauração de backup (servidor e disco só dele)
+    await drillRestauracaoBackup();
 
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
 
