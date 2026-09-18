@@ -1397,3 +1397,128 @@ num 5º lugar.
   localStorage tem que ter ESCOPO (o `draft_<id>` global entregava o texto da
   Conta A pra Conta B no mesmo aparelho — mesma classe que o v177-FIX6
   fechou). `setInterval` perpétuo pra "melhoria" com zero casos não existe.
+
+## v199–v201 — Varredura total, lotes 17-19
+
+Continuação direta do v183–v186, v187–v190, v191–v194 e v195–v198 (mesma ordem
+do dono, 18/09/2026: **"O que ainda pode melhorar? O que não faz sentido
+existir? Ou funciona errado? Pensa sobre tudo e resolva!"** + autorização
+total). Estes 3 lotes são o português fixo · a faxina do servidor · as guardas
+da suíte. 26 checks novos e 6 asserções antigas removidas ou reescritas porque
+codificavam comportamento que não existe mais (654 → 676). sw v62 → v65.
+
+**v199 — Lote 17: português fixo de verdade** (`app.js`, `server.js`, sw v63).
+O README e este arquivo dizem que "o app não tem seletor de idioma nem detecta
+idioma do navegador — é só em português, de propósito". A regra era declarada e
+NÃO era real: `_curLang` aceitava `'en'`/`'es'` do localStorage `h2b_lang`,
+gravado a partir do `d.language` que o servidor devolvia, e `/api/settings`
+aceitava e gravava pt|en|es. Como NENHUMA tela tem botão de idioma, uma conta
+com `language:'en'` (legada ou gravada por um POST direto) abria o site inteiro
+em inglês **sem nenhum caminho de volta**. Junto saíram 3 resíduos que
+procuravam `#lang-label`/`#lang-flag`/`.lang-opt` (não existem no HTML), o POST
+de idioma que rodava a CADA `applyLang()` e o evento `h2b:langchange` (zero
+ouvintes no repo).
+
+**v200 — Lote 18: faxina do servidor** (`server.js`, `app.js`,
+`mod-watchdogs.js`, `mod-sentinel.js`, sw v64). 786 linhas a menos no server.js,
+todas provadas inalcançáveis: o stack inteiro de leitura de caixa de entrada
+(`gmailFetchInbox`, `gmailMarkRead`, o parser de mensagem, `matchAppToEmail` e
+as 3 rotas `/api/inbox*` — duas delas SEM guarda, chamariam o Gmail com um
+escopo que a conta não tem), o callback-legacy sob `if(false&&…)`, o índice
+`app_index.json` (ESCRITO a cada candidatura enviada pra alimentar um leitor que
+também era inalcançável), o leitor de bounce que só rodava dentro dele, 2 sinks
+sem front (`/api/note/:id`, `/api/alerts`), o `d.settings` do `/api/settings`
+(merge de objeto arbitrário do cliente dentro do users.json) e 5 bancos que só
+eram carregados no boot e regravados no shutdown. Mais 2 vigias que só existiam
+no papel e uma afirmação diária falsa (ver regras abaixo).
+
+**v201 — Lote 19: as guardas da suíte** (`smoke-test.js`, `sw.js`,
+`sw-bump.js`, `package.json`, `.node-version`, `CLAUDE.md`, sw v65). Três
+buracos de confiança: as 2 guardas do CACHE_NAME eram sempre-verdadeiras (só
+conferiam "versão ≥ v43"); a suíte subia o servidor UMA vez, num disco limpo e
+sempre com `STORAGE=json`, então nem a idempotência das migrações de boot nem o
+SQLite que roda em produção eram exercitados; e um check com título de feature
+de outro projeto ("Respostas Certas") passava só pelo portão genérico
+`/api/admin`.
+
+### Regras novas (não quebrar)
+
+- **O IDIOMA É UMA CONSTANTE**: `const _curLang = 'pt'` — uma atribuição só, em
+  todo o front. É PROIBIDO ler/gravar `h2b_lang`, consultar `navigator.language`
+  ou mandar idioma pro servidor. A whitelist do `/api/settings` é `"pt"` e só
+  (`'pt-BR'` continua sendo aceito e normalizado — é o que toda conta antiga
+  carrega). Os dicionários EN/ES e as guardas i18n continuam VIVOS por decisão
+  do dono: o dia em que existir seletor, muda-se essa linha e mais nada. O que
+  morreu foram 235 chaves que nenhuma tela usa (medidas por script, régua
+  conservadora: só entra quem não aparece em lugar nenhum fora do dicionário,
+  contando os prefixos montados dinamicamente) e 24 chaves DUPLICADAS dentro do
+  mesmo dicionário — o JS sobrescreve a primeira em silêncio, e uma delas
+  (`send_profile`) tinha 2 valores diferentes. Guarda nova: **os 3 dicionários
+  têm EXATAMENTE o mesmo conjunto de chaves, sem duplicata** — chave que nasce
+  em 1 língua só é buraco de tradução que a i18n-1 só pega quando a chave chega
+  ao HTML.
+- **CONTA PRESA EM DADO RUIM É CURADA POR MIGRAÇÃO, NUNCA SÓ "PRA FRENTE"**:
+  `_migrarIdiomaParaPt` normaliza no boot todo `language !== "pt"`, com log de
+  quantas contas e idempotente (no boot seguinte ninguém bate na condição). E
+  conta nova já nasce com o valor final (`"pt"`, não `"pt-BR"`) — senão a
+  migração teria trabalho eterno e o 2º boot acusaria reaplicação.
+- **O APP SÓ ENVIA — E AGORA SÓ EXISTE O QUE ENVIA**: não há mais nenhuma
+  função, rota ou banco de leitura de caixa de entrada. `GMAIL_SEND_ONLY`
+  continua `const true` como documentação (guarda própria no smoke).
+  `pushToUser`/`sendNotifEmail` FICAM: são contrato de injeção de 4 módulos, e a
+  decisão de mantê-los como stubs está escrita no mod-config.js.
+- **REMOVER O LEITOR SEM REMOVER O ESCRITOR É O PIOR DOS MUNDOS**: o
+  `app_index.json` era escrito a cada candidatura pra alimentar um único leitor
+  morto. Índice, escritor e leitor saíram no MESMO commit. Nada gravado em disco
+  é apagado (campos antigos em registros continuam lá, só param de ser
+  alimentados) — a mesma régua vale pra qualquer sink futuro.
+- **OS 3 BANCOS DE BOUNCE SÃO HISTÓRICO + AJUSTE MANUAL**: `DB_INVALID_EMAILS`
+  continua sendo LIDO no envio (manual e robô pulam endereço com bounce
+  conhecido) e escrito pelo admin em `/api/admin/email-intelligence/mark-invalid`
+  — nunca mais por descoberta automática, que dependia de ler a inbox.
+- **VIGIA QUE NÃO PODE ACENDER É PIOR QUE NENHUM**: `vipExpiryWatchdog` era um
+  `return` vazio agendado a cada 15min (e o comentário ainda prometia "10
+  automáticos/dia grátis", o oposto do ZERO envio grátis do v172) — removido;
+  quem para o robô de quem não tem plano é o `scheduleAuto` (`paused_no_vip`,
+  v172h). O monitor de planilhas do sentinela testava `typeof getSheet` de uma
+  global que não existe no módulo (a função chega em `ctx.getSheet`), então
+  `S.planilhas` era SEMPRE `[]` e o resumo dizia "0 planilha(s) com alerta" com
+  planilha envelhecida na frente dele. Agora a lista vem da MESMA função do robô
+  de frescor (planilhas publicadas) e "completa" é medida pela régua única
+  `CAMPOS_ESSENCIAIS` (v182), nunca por e-mail só.
+- **LOG DE ROBÔ NÃO AFIRMA O QUE NÃO ACONTECEU**: o "Resumo Diário do Dono"
+  executava `for(const ae of ADMIN_EMAILS){}` — corpo VAZIO — e gravava "Enviado
+  aos admins: …" todo dia. O laço morreu e o texto virou "Resumo de ontem". Não
+  virou e-mail: seria um 4º tipo além dos 3 sancionados no v175, decisão do dono.
+  A FORMA do JSON de retorno não muda (`respostas:0`).
+- **"TRIAL" NÃO SE INVENTA NA SAÍDA**: os 2 pontos que expõem `vip.source`
+  devolvem `null` quando o campo falta (não existe trial nesta reconstrução). Os
+  ramos que COMPARAM `source==="trial"` continuam intocados — ali é sentinela
+  viva na exclusão de plano pago.
+- **O BUMP DO SERVICE WORKER TEM COMANDO E TEM PROVA**:
+  `npm run sw-bump -- "o que mudou"` sobe o `CACHE_NAME` E regrava o
+  `CACHE_FRONT_FINGERPRINT` (hash de index.html + admin.html + app.js +
+  h2b-extras-user.js). Nunca editar os dois à mão. O smoke importa a função de
+  hash do próprio `sw-bump.js` (fonte única) e FALHA quando o front mudou sem o
+  bump, dizendo o comando. **Guarda que compara com o estado real dos arquivos,
+  nunca um número que só cresce** — é o que as 2 guardas antigas não faziam.
+- **O 2º BOOT É O QUE IMPORTA**: este repo faz deploy a cada commit, então a
+  suíte derruba o servidor com SIGTERM (esperando o evento `exit` com teto — sem
+  isso o próximo spawn bate em porta ocupada e a suíte falha pelo motivo errado)
+  e sobe de novo no MESMO DATA_DIR. Migração de boot que REAPLIQUE quebra o
+  teste (casando só com os prefixos de log que significam APLICAÇÃO — vários
+  blocos logam sem fazer nada). Também é provado ali: robô em `sending` e em
+  `waiting_limit` voltam com a fila inteira, pedido provisório continua pendente
+  e ativo, e a sessão de login cai **de propósito** (o boot declara a decisão no
+  log). Subir/derrubar servidor é um helper ÚNICO (`spawnServidor`/
+  `matarServidor`/`esperarNoAr`), compartilhado com o drill de restauração do
+  v191 — proibida uma 2ª cópia.
+- **O MODO DE PRODUÇÃO É EXERCITADO**: um 3º servidor curto roda SEM
+  `STORAGE=json` (SQLite + espelho JSON) e prova .db criado, JSONs importados e
+  dado de volta depois de um restart. Sem `node:sqlite` nem `better-sqlite3` no
+  ambiente, o check PULA com aviso explícito no log — **nunca falso-verde**.
+- **A MAJOR DO NODE É UMA SÓ**: `.node-version` (o que o Render honra), `engines`
+  do package.json e o `node-version` do CI apontam pro MESMO número (hoje 22, a
+  major que o CI já prova a cada push). Guarda no smoke mantém os 3 em
+  sincronia. Subir pra uma major que o CI não roda é quebrar o deploy por causa
+  de um teste.
