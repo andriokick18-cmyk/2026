@@ -803,7 +803,7 @@ async function _mcUltimoPedido(){
     const p=meus[0];
     const stMap={pendente:["🕐",t('mc_8'),"var(--amber)"],pago:["💰",t('mc_13'),"#2563eb"],ativo:["✅",t('mc_9'),"var(--green)"],cancelado:["❌",t('mc_10'),"var(--red)"]};
     const st2=stMap[String(p.status||"").toLowerCase()]||["ℹ️",String(p.status||"?"),"var(--t3)"];
-    box.innerHTML=`${esc(t('mc_7'))} <strong>R$ ${brl(p.valorTotal)}</strong> · <span style="color:${st2[2]};font-weight:700">${st2[0]} ${esc(st2[1])}</span>${p.createdAt?` · ${new Date(p.createdAt).toLocaleDateString('pt-BR')}`:''}`;
+    box.innerHTML=`${esc(t('mc_7'))} <strong>R$ ${brl(p.valorTotal)}</strong> · <span style="color:${esc(st2[2])};font-weight:700">${esc(st2[0])} ${esc(st2[1])}</span>${p.createdAt?` · ${new Date(p.createdAt).toLocaleDateString('pt-BR')}`:''}`;
   }catch(e){box.textContent="";}
 }
 
@@ -1217,11 +1217,11 @@ function _vfBuildSecs(){
   });
   VF.secs=secs;
   body.innerHTML=(live?`<div class="vf-note">${esc(t('vf_live_note'))}</div>`:"")+secs.map(s=>`
-    <section class="vf-sec" id="vf-sec-${s.k}">
-      <div class="vf-sec-hd"><span>${s.ico} ${esc(t('vf_sec_'+s.k))}</span><span class="vf-sec-n" id="vf-secn-${s.k}"></span></div>
+    <section class="vf-sec" id="vf-sec-${esc(s.k)}">
+      <div class="vf-sec-hd"><span>${esc(s.ico)} ${esc(t('vf_sec_'+s.k))}</span><span class="vf-sec-n" id="vf-secn-${esc(s.k)}"></span></div>
       ${s.k==="q"?`<input class="vf-search" id="vf-q" type="search" value="${esc(VF.draft.q||"")}" placeholder="${esc(t('vf_q_ph'))}" oninput="VF.draft.q=this.value.trim();vfRefresh()">`:""}
-      ${s.busca?`<input class="vf-search" id="vf-busca-${s.busca}" type="search" placeholder="${esc(t('vf_search_'+s.busca))}" oninput="vfBusca('${s.busca}',this.value)">`:""}
-      <div class="vf-opts" id="vf-opts-${s.k}"></div>
+      ${s.busca?`<input class="vf-search" id="vf-busca-${esc(s.busca)}" type="search" placeholder="${esc(t('vf_search_'+s.busca))}" oninput="vfBusca('${esc(s.busca)}',this.value)">`:""}
+      <div class="vf-opts" id="vf-opts-${esc(s.k)}"></div>
     </section>`).join("");
 }
 // ⌨️ v182 LOTE 9: Escape fecha o painel (reaproveitando vfClose, que já devolve
@@ -1619,7 +1619,7 @@ function vfRenderChips(ctx){
   if(!chips.length){box.style.display="none";box.innerHTML="";}
   else{
     box.style.display="flex";
-    box.innerHTML=chips.map(c=>`<span class="vf-chip" style="--c:${c.cor}">${esc(c.lbl)}<button type="button" aria-label="${esc(t('vf_remove'))}" onclick="vfRemove('${ctx}','${c.dim}',${_vfAttr(c.v)})">×</button></span>`).join("")+
+    box.innerHTML=chips.map(c=>`<span class="vf-chip" style="--c:${esc(c.cor)}">${esc(c.lbl)}<button type="button" aria-label="${esc(t('vf_remove'))}" onclick="vfRemove('${esc(ctx)}','${esc(c.dim)}',${_vfAttr(c.v)})">×</button></span>`).join("")+
       `<button type="button" class="vf-chip vf-chip-clear" onclick="vfClear('${ctx}')">${esc(t('vf_clear'))}</button>`;
   }
   const n=vfAtivos(VF.st[ctx]);
@@ -2157,7 +2157,7 @@ async function loadSheetMeta(reset=false){
       // "Jul 2025" pra qualquer outra planilha, e com as estações invertidas)
       const sheetLabel=_sheetLabelFor(tab);
       const filtrosLbl=vfResumoCurto("manual");
-      cnt.innerHTML=`<strong>${remaining.toLocaleString("pt-BR")}</strong> restantes · <span style="font-size:11px;color:var(--t3)">${sentInSheet>0?`<span style="color:var(--green)">✅ ${sentInSheet} enviadas</span> de ${sTrueTotal.toLocaleString("pt-BR")}`:sTrueTotal.toLocaleString("pt-BR")+` vagas`}</span> · <span style="font-size:11px;color:var(--blue)">${sheetLabel}</span>${filtrosLbl}`;
+      cnt.innerHTML=`<strong>${remaining.toLocaleString("pt-BR")}</strong> restantes · <span style="font-size:11px;color:var(--t3)">${sentInSheet>0?`<span style="color:var(--green)">✅ ${sentInSheet} enviadas</span> de ${sTrueTotal.toLocaleString("pt-BR")}`:sTrueTotal.toLocaleString("pt-BR")+` vagas`}</span> · <span style="font-size:11px;color:var(--blue)">${esc(sheetLabel)}</span>${filtrosLbl}`;
     }
     const sib=g("#sib-jobs");if(sib){sib.style.display="";sib.textContent=sTotal>999?"999+":String(sTotal);}
   }catch(e){g("#lmore").innerHTML=`<div style="padding:14px;text-align:center;font-size:13px;color:var(--red)">Erro. <span style="cursor:pointer;text-decoration:underline" onclick="loadSheetMeta()">Tentar novamente</span></div>`;}
@@ -2191,7 +2191,7 @@ function updSheetCounter(){
   const remaining=sTotal;
   const trueTotal=sTrueTotal||sTotal;
   const sheetLabel=_sheetLabelFor(tab); // v90: nome real da planilha ativa
-  cnt.innerHTML=`<strong>${remaining.toLocaleString("pt-BR")}</strong> restantes · <span style="font-size:11px;color:var(--t3)">${sentInSheet>0?`<span style="color:var(--green)">${sentInSheet} enviadas</span> de ${trueTotal.toLocaleString("pt-BR")}`:trueTotal.toLocaleString("pt-BR")+` total`}</span> · <span style="font-size:11px;color:var(--blue)">${sheetLabel}</span>`;
+  cnt.innerHTML=`<strong>${remaining.toLocaleString("pt-BR")}</strong> restantes · <span style="font-size:11px;color:var(--t3)">${sentInSheet>0?`<span style="color:var(--green)">${sentInSheet} enviadas</span> de ${trueTotal.toLocaleString("pt-BR")}`:trueTotal.toLocaleString("pt-BR")+` total`}</span> · <span style="font-size:11px;color:var(--blue)">${esc(sheetLabel)}</span>`;
 }
 
 function mkSheetCard(j){
@@ -2218,7 +2218,7 @@ function mkSheetCard(j){
   const _inAutoQ=_autoQueueIds.has(j.id)||_autoQueueIds.has(j.caseNum);
   return`<div class="jcard${isApplied||_inAutoQ?" applied":""}" id="jcard-${iid}" onclick="selSheetJob('${esc(j.id)}')"${(isApplied||_inAutoQ)?' style="display:none"':""}>
     <div class="jcard-cat-row" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;padding-right:26px">
-      <span class="jcard-cat-badge" id="jctg-cat-${iid}"><i class="ti ${catInfo.icon}" style="font-size:9px"></i> ${catInfo.name}</span>
+      <span class="jcard-cat-badge" id="jctg-cat-${iid}"><i class="ti ${esc(catInfo.icon)}" style="font-size:9px"></i> ${esc(catInfo.name)}</span>
       ${j.wage&&j.wage!=="–"?`<span style="font-size:12px;font-weight:800;color:#10b981">💰 ${esc(j.wage)}</span>`:""}
     </div>
     <div class="jcard-title" id="jct-${iid}">${esc(jobTitle)}</div>
@@ -2308,9 +2308,9 @@ function updSheetCard(cn,job){
   // Update category badge with real title
   if(catEl){
     const catInfo=getOccupationCategoryByKey(job.category,job.title||job.occupation||"");
-    catEl.innerHTML=`<i class="ti ${catInfo.icon}" style="font-size:9px"></i> ${catInfo.name}`;
+    catEl.innerHTML=`<i class="ti ${esc(catInfo.icon)}" style="font-size:9px"></i> ${esc(catInfo.name)}`;
   }
-  if(tge)tge.innerHTML=`${job.active?'<span class="tag tg"><i class="ti ti-check" style="font-size:9px"></i>Ativa</span>':'<span class="tag tr"><i class="ti ti-x" style="font-size:9px"></i>Inativa</span>'}<span class="tag ${job.visa==="H-2A"?"ta":"tb"}">${esc(job.visa||"H-2B")}</span>${job.wage&&job.wage!=="–"?`<span class="tag tg">${esc(job.wage)}</span>`:""}<span class="tag tgr"><i class="ti ti-map-pin" style="font-size:9px"></i>${esc(job.state)}</span>${job.workers>1?`<span class="tag tgr">${job.workers}×</span>`:""}${job.start&&job.start!=="–"?`<span class="tag ta"><i class="ti ti-calendar" style="font-size:9px"></i>${esc(job.start)}</span>`:""}`;
+  if(tge)tge.innerHTML=`${job.active?'<span class="tag tg"><i class="ti ti-check" style="font-size:9px"></i>Ativa</span>':'<span class="tag tr"><i class="ti ti-x" style="font-size:9px"></i>Inativa</span>'}<span class="tag ${job.visa==="H-2A"?"ta":"tb"}">${esc(job.visa||"H-2B")}</span>${job.wage&&job.wage!=="–"?`<span class="tag tg">${esc(job.wage)}</span>`:""}<span class="tag tgr"><i class="ti ti-map-pin" style="font-size:9px"></i>${esc(job.state)}</span>${job.workers>1?`<span class="tag tgr">${esc(job.workers)}×</span>`:""}${job.start&&job.start!=="–"?`<span class="tag ta"><i class="ti ti-calendar" style="font-size:9px"></i>${esc(job.start)}</span>`:""}`;
   if(card&&APPLIED.has(cn))card.style.display="none";
   // 🧹 v38 (dono, 22/07): e-mail descoberto no enriquecimento pertence a
   // empregador JÁ contatado → o card some NA HORA (a regra é por e-mail do
@@ -2392,7 +2392,7 @@ function mkCard(j){
   const matchBadge=j.matchScore!=null?`<span class="tag ${_mCor}" title="${esc((j.matchWhy||[]).join(" · ")||"combinação com seu perfil")}"><i class="ti ti-target-arrow" style="font-size:9px"></i>${j.matchScore}%</span>`:"";
   return`<div class="jcard${(ap||_inAQ)?" applied":""}" id="jcard-${j.id}" onclick="selJob2('${j.id}')"${(ap||_inAQ)?' style="display:none"':""}
     <div class="jcard-cat-row">
-      <span class="jcard-cat-badge"><i class="ti ${catInfo.icon}" style="font-size:9px"></i> ${catInfo.name}</span>
+      <span class="jcard-cat-badge"><i class="ti ${esc(catInfo.icon)}" style="font-size:9px"></i> ${esc(catInfo.name)}</span>
       ${matchBadge}
     </div>
     <div class="jcard-title">${esc(j.title)}</div>
@@ -4117,7 +4117,7 @@ function renderLogs(){
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:baseline;justify-content:space-between;gap:6px">
             <div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.company||l.jobTitle||"–")}</div>
-            <div style="font-size:10px;color:${horaColor};white-space:nowrap;flex-shrink:0;font-weight:700">${dataStr?dataStr+" ":""}<span style="color:${horaColor}">${hora}</span></div>
+            <div style="font-size:10px;color:${horaColor};white-space:nowrap;flex-shrink:0;font-weight:700">${dataStr?dataStr+" ":""}<span style="color:${horaColor}">${esc(hora)}</span></div>
           </div>
           ${(l.jobTitle&&l.jobTitle!==l.company)?`<div style="font-size:11px;color:var(--t2);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><i class="ti ti-briefcase" style="font-size:10px"></i> ${esc(l.jobTitle)}</div>`:""}
           ${l.to?`<div style="font-size:11px;color:var(--blue);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><i class="ti ti-mail" style="font-size:10px"></i> ${esc(l.to)}</div>`:""}
@@ -4351,9 +4351,9 @@ async function loadDynamicSheets(){
         const btn=document.createElement('button');
         btn.className='source-btn'; btn.dataset.src=s.key;
         btn.setAttribute('onclick',`selectSource('${s.key}')`);
-        btn.innerHTML=`<div class="source-btn-icon">${s.emoji||'📋'}</div>`+
-          `<div class="source-btn-label"><strong>${s.name}</strong> `+
-          `<span style="display:inline-block;font-size:9px;font-weight:800;padding:1px 5px;border-radius:4px;background:${visaBg};color:${visaCor};margin-left:3px;vertical-align:middle">${s.visa}</span></div>`+
+        btn.innerHTML=`<div class="source-btn-icon">${esc(s.emoji||'📋')}</div>`+
+          `<div class="source-btn-label"><strong>${esc(s.name)}</strong> `+
+          `<span style="display:inline-block;font-size:9px;font-weight:800;padding:1px 5px;border-radius:4px;background:${visaBg};color:${visaCor};margin-left:3px;vertical-align:middle">${esc(s.visa)}</span></div>`+
           `<div class="source-btn-count">${_srcCntHtml(s)}</div>`;
         sb.appendChild(btn);
       });
@@ -4369,7 +4369,7 @@ async function loadDynamicSheets(){
         btn.className='stab'; btn.id='stab-'+s.key;
         btn.style.marginTop='8px';
         btn.setAttribute('onclick',`setTab('${s.key}')`);
-        btn.innerHTML=`<i class="ti ${visaIcon}" style="color:${visaCor}"></i><strong>${s.name}</strong><span class="stab-cnt">${(s.count||0).toLocaleString('pt-BR')}</span>`;
+        btn.innerHTML=`<i class="ti ${visaIcon}" style="color:${visaCor}"></i><strong>${esc(s.name)}</strong><span class="stab-cnt">${(s.count||0).toLocaleString('pt-BR')}</span>`;
         stabsRow.appendChild(btn);
       });
     }
@@ -4916,7 +4916,7 @@ function renderRecentLogs(logs){
           <!-- Linha 1: empresa + horário -->
           <div style="display:flex;align-items:baseline;justify-content:space-between;gap:6px">
             <div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.company||l.jobTitle||"–")}</div>
-            <div style="font-size:11px;font-weight:700;color:${horaColor};white-space:nowrap;flex-shrink:0">${hora}</div>
+            <div style="font-size:11px;font-weight:700;color:${horaColor};white-space:nowrap;flex-shrink:0">${esc(hora)}</div>
           </div>
           <!-- Linha 2: vaga/título -->
           ${(l.jobTitle&&l.jobTitle!==l.company)?`<div style="font-size:11px;color:var(--t2);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><i class="ti ti-briefcase" style="font-size:10px"></i> ${esc(l.jobTitle)}</div>`:""}
@@ -5407,7 +5407,12 @@ async function confirmDeleteAccount(){
     }
   },{passive:false});
 })();
-function showBanner(t,html,action){const b=g("#banner");if(!b)return;const cm={blue:"al-blue",amber:"al-amber",green:"al-green",red:"al-red"};b.className=`banner ${cm[t]||"al-blue"}`;const actionBtn=action?`<button onclick="${action}" style="margin-left:8px;background:rgba(26,86,219,.15);border:1.5px solid var(--blueb);color:var(--blue);border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit">${action.includes("profile")?"Configurar →":"Ver →"}</button>`:"";b.innerHTML=`<i class="ti ti-info-circle" style="font-size:15px;flex-shrink:0"></i><span style="flex:1">${html}</span>${actionBtn}<button aria-label="Fechar" title="Fechar" onclick="this.parentElement.classList.add('gone')" style="margin-left:6px;background:none;border:none;cursor:pointer;opacity:.6;font-size:18px;padding:0 2px;flex-shrink:0"><i class="ti ti-x"></i></button>`;b.classList.remove("gone");}
+// 🧹 v205 LOTE 23: showBanner() REMOVIDA — zero chamadores em todo o repo
+// (conferido por grep em app.js, index.html, admin.html e nos módulos), e
+// ela era a única função do front cuja API era "me passe HTML pronto":
+// recebia `html` e um `action` que virava atributo onclick, sem escape
+// possível. Código morto que só servia pra manter 2 exceções na guarda
+// de XSS. O elemento #banner continua no HTML, agora sem escritor.
 function toast(msg,type=""){const w=g("#tw");const el=document.createElement("div");el.className="t"+(type?" "+type:"");el.textContent=msg;w.appendChild(el);requestAnimationFrame(()=>requestAnimationFrame(()=>el.classList.add("show")));setTimeout(()=>{el.classList.remove("show");setTimeout(()=>el.remove(),300);},2800);}
 
 // ═══════════════════════════════════════════
@@ -5776,7 +5781,7 @@ async function renderPendingOrderCard(){
         :esc(t('po_pend_s'))+(dt?" · "+esc(dt):"")}</div>
       <div style="margin-top:7px;display:flex;gap:8px;flex-wrap:wrap">
         ${cancelado?`<button onclick="sv('plans')" style="background:var(--purple);color:#fff;border:none;border-radius:9px;padding:7px 12px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">${esc(t('po_refazer'))}</button>`:""}
-        <a href="${WA_SUPORTE}" target="_blank" rel="noopener noreferrer" style="background:#fff;border:1px solid var(--border2);color:var(--t2);border-radius:9px;padding:7px 12px;font-size:12px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:5px">💬 ${esc(t('po_wa'))}</a>
+        <a href="${esc(WA_SUPORTE)}" target="_blank" rel="noopener noreferrer" style="background:#fff;border:1px solid var(--border2);color:var(--t2);border-radius:9px;padding:7px 12px;font-size:12px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:5px">💬 ${esc(t('po_wa'))}</a>
       </div>
     </div>
     ${cancelado?`<button onclick="dispensarPedidoCancelado('${esc(p.id)}')" aria-label="${esc(t('po_fechar'))}" title="${esc(t('po_fechar'))}" style="background:none;border:none;color:var(--t3);font-size:18px;cursor:pointer;line-height:1;padding:2px 4px;min-width:44px;min-height:44px">×</button>`:""}
@@ -6183,7 +6188,7 @@ if ("serviceWorker" in navigator) {
           const div = document.createElement('div');
           div.className = 'df-tick';
           div.style.animationDelay = (i * 0.15) + 's';
-          div.innerHTML = `<span>${item.icon}</span><span>${item.text}</span>`;
+          div.innerHTML = `<span>${esc(item.icon)}</span><span>${esc(item.text)}</span>`;
           ticker.appendChild(div);
         });
       }
@@ -6600,7 +6605,7 @@ function _renderAdminSenderLimits(senders){
   limEl.innerHTML=allEmails.map(em=>`
     <div style="display:flex;align-items:center;gap:8px">
       <div style="flex:1;font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(em)}</div>
-      <input class="input" id="adm-lim-${esc(em.replace(/[@.]/g,'_'))}" type="number" inputmode="decimal" min="1" max="999" placeholder="400" value="${currentLimits[em]||''}" style="width:70px;font-size:12px;padding:5px 8px">
+      <input class="input" id="adm-lim-${esc(em.replace(/[@.]/g,'_'))}" type="number" inputmode="decimal" min="1" max="999" placeholder="400" value="${esc(currentLimits[em]||'')}" style="width:70px;font-size:12px;padding:5px 8px">
       <span style="font-size:10px;color:var(--t3)">/dia</span>
     </div>`).join("");
 }
@@ -7816,7 +7821,7 @@ function _renderPlanosUI(d){
     const isSel=sel===pl;
     return `<div style="background:var(--surface);border:2px solid ${isSel?'var(--blue)':'var(--border2)'};border-radius:var(--rl);padding:14px;margin-bottom:10px;${isSel?'box-shadow:0 0 0 3px rgba(37,99,235,.14)':''}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <div style="font-size:14.5px;font-weight:800">${NOME[pl]}</div>
+        <div style="font-size:14.5px;font-weight:800">${esc(NOME[pl])}</div>
         ${isSel?'<span style="font-size:10px;font-weight:800;color:var(--blue);background:var(--bluel);border-radius:8px;padding:3px 8px">✓</span>':''}
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">${manualBadge}${autoBadge}${emailBadge}</div>
@@ -7913,7 +7918,7 @@ function goToPlanStep2() {
 
   const sc=g('#plan-summary-content');
   if(sc) sc.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;font-size:14px">
-    <div><strong>${NOME[plano]||plano}</strong> · ${dias===365?'1 ano':dias+' dias'}</div>
+    <div><strong>${esc(NOME[plano]||plano)}</strong> · ${dias===365?'1 ano':dias+' dias'}</div>
     <div style="font-weight:800;color:var(--green);font-size:18px">R$ ${brl(total)}</div>
   </div><div style="font-size:11px;color:var(--t3);margin-top:4px">O valor exato é sempre conferido pelo servidor — este é o preço oficial da tabela.</div>`;
 
@@ -7922,19 +7927,19 @@ function goToPlanStep2() {
   if(payEl){
     payEl.innerHTML=`<div style="background:linear-gradient(135deg,rgba(16,185,129,.1),rgba(5,150,105,.06));border:1.5px solid rgba(16,185,129,.35);border-radius:12px;padding:14px">
       <div style="font-size:13px;font-weight:800;color:var(--green);margin-bottom:10px;display:flex;align-items:center;gap:6px">
-        📱 Pagar via Pix (PicPay) — ${NOME[plano]||plano} · ${dias===365?'1 ano':dias+' dias'}
+        📱 Pagar via Pix (PicPay) — ${esc(NOME[plano]||plano)} · ${dias===365?'1 ano':dias+' dias'}
       </div>
       <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:10px;margin-bottom:10px">
         <div style="font-size:11px;color:var(--t3);margin-bottom:4px">Chave Pix (telefone) — PicPay:</div>
-        <div style="font-size:16px;font-weight:800;color:var(--green);letter-spacing:.5px;word-break:break-all">${PIX_KEY}</div>
-        <div style="font-size:11px;color:var(--t3);margin-top:4px">Titular: <strong style="color:var(--text)">${PIX_NAME}</strong></div>
+        <div style="font-size:16px;font-weight:800;color:var(--green);letter-spacing:.5px;word-break:break-all">${esc(PIX_KEY)}</div>
+        <div style="font-size:11px;color:var(--t3);margin-top:4px">Titular: <strong style="color:var(--text)">${esc(PIX_NAME)}</strong></div>
       </div>
-      <button class="btn btn-success w100" onclick="navigator.clipboard.writeText('${PIX_KEY}');toast('Chave Pix copiada ✓','g')" style="margin-bottom:10px;font-size:14px;padding:12px">
+      <button class="btn btn-success w100" onclick="navigator.clipboard.writeText('${esc(PIX_KEY)}');toast('Chave Pix copiada ✓','g')" style="margin-bottom:10px;font-size:14px;padding:12px">
         <i class="ti ti-copy"></i> Copiar chave Pix
       </button>
       <div style="background:rgba(16,185,129,.12);border-radius:8px;padding:10px;text-align:center">
         <div style="font-size:20px;font-weight:800;color:var(--green)">R$ ${brl(total)}</div>
-        <div style="font-size:11px;color:var(--t3);margin-top:2px">${NOME[plano]||plano} · ${dias===365?'1 ano':dias+' dias'}</div>
+        <div style="font-size:11px;color:var(--t3);margin-top:2px">${esc(NOME[plano]||plano)} · ${dias===365?'1 ano':dias+' dias'}</div>
       </div>
       <div style="font-size:11px;color:var(--t3);margin-top:8px;text-align:center">
         Pague por QUALQUER banco ou pelo app do PicPay usando a chave acima. Depois envie o comprovante abaixo — seu pedido é analisado assim que o comprovante chegar.

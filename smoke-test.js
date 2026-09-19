@@ -1658,6 +1658,44 @@ async function drillRestauracaoBackup() {
         _faltando22.length === 0, "fora do .env.example: " + _faltando22.join(", "));
     }
 
+    // ═══ 🛡️ v205 LOTE 23 — A GUARDA DE XSS JULGA CADA ${...} ═════════════
+    // A guarda antiga dava uma instrução `.innerHTML=` por segura assim que
+    // UM esc() aparecesse em qualquer ponto dela — e foi exatamente assim
+    // que o `${icon}` (campo livre do perfil) passou batido até o
+    // v177-FIX2: o `${names}` ao lado tinha esc(), então a instrução
+    // inteira era dada por boa. A fraqueza ficou registrada no CLAUDE.md
+    // como risco conhecido; aqui ela foi corrigida de raiz.
+    {
+      const _xg = fs.readFileSync(path.join(__dirname, "check-xss-guard.js"), "utf8");
+      const _app23 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      check("🛡️ v205-L23 (estrutural): a guarda de XSS julga EXPRESSÃO por EXPRESSÃO (extrai cada ${...} de cada template, em qualquer nível) — a régua antiga, 'a instrução inteira tem algum esc()', não existe mais",
+        _xg.includes("function exprsDe(") && _xg.includes("function seguro(") &&
+        /for \(const expr of exprsDe\(stmt\)\)/.test(_xg) &&
+        !/const temEsc\s*=/.test(_xg) && !/temInterpolacaoDinamica/.test(_xg),
+        "a guarda voltou a medir a instrução inteira");
+      check("🛡️ v205-L23 (estrutural): a guarda cobre os 4 arquivos do front (app.js, admin.html, index.html e h2b-extras-user.js — o index.html estava de fora), enxerga insertAdjacentHTML/outerHTML além de innerHTML, e a allowlist continua indexada por ASSINATURA com o motivo escrito ao lado",
+        /\["index\.html", scriptsDe/.test(_xg) && /\["admin\.html", scriptsDe/.test(_xg) &&
+        /insertAdjacentHTML\\s\*\\\(/.test(_xg) && /outerHTML/.test(_xg) &&
+        _xg.includes("const SAFE_FNS = {") && _xg.includes("const ALLOWLIST = new Set([") &&
+        !/arquivo:linha" na/.test(_xg),
+        "a guarda não cobre os 4 arquivos ou perdeu a allowlist por assinatura");
+      // As 31 ocorrências que carregavam DADO e ganharam esc() nesta revisão
+      // (amostra das mais caras: vaga do DOL, planilha, chave Pix, limite
+      // digitado pelo admin, hora do log, nome do plano do pedido).
+      check("🛡️ v205-L23: o que é DADO passou a ser escapado de verdade — vaga do DOL (workers), nome/emoji/visto de planilha, chave Pix e titular, limite por Gmail digitado pelo admin, hora do log e o nome do plano do pedido chegam por esc() no innerHTML",
+        _app23.includes("${esc(job.workers)}") && _app23.includes("<strong>${esc(s.name)}</strong>") &&
+        _app23.includes("${esc(s.emoji||'📋')}") && _app23.includes("${esc(PIX_KEY)}") && _app23.includes("${esc(PIX_NAME)}") &&
+        _app23.includes("${esc(currentLimits[em]||'')}") && _app23.includes("${esc(hora)}") &&
+        _app23.includes("${esc(NOME[plano]||plano)}") && _app23.includes("${esc(sheetLabel)}") &&
+        !/\$\{PIX_KEY\}/.test(_app23) && !/\$\{job\.workers\}/.test(_app23) && !/\$\{s\.visa\}/.test(_app23),
+        "alguma das interpolações de dado voltou a ser crua");
+      check("🧹 v205-L23: showBanner() saiu do front — zero chamadores em todo o repo e era a ÚNICA função cuja API era 'me passe HTML pronto' (recebia `html` e um `action` que virava atributo onclick, sem escape possível)",
+        !/function showBanner\s*\(/.test(_app23) &&
+        !/showBanner\s*\(/.test(fs.readFileSync(path.join(__dirname, "index.html"), "utf8")) &&
+        !/showBanner\s*\(/.test(fs.readFileSync(path.join(__dirname, "admin.html"), "utf8")),
+        "showBanner voltou ou ainda tem chamador");
+    }
+
 
     // Migrações de cura (v20/v21)
     const raw = fs.readFileSync(path.join(DATA, "users.json"), "utf8");
