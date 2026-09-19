@@ -1732,3 +1732,56 @@ de dado pessoal (LGPD) pra sempre no histórico do git.
   409/404/400, emailContato com DoublePro 200/200, caixa intocado, lista,
   exclusão, disco síncrono, Audit Log, estrutural).
 
+## v217 — Robôs de planilha ficam 100% manuais (dono, 19/09/2026)
+
+**Pedido do dono** (depois de uma auditoria de custo/recursos que apontou os
+robôs de planilha do site antigo E do novo rodando por relógio o dia
+inteiro): *"esse vigia do dol se ele estiver no sistema novo, pode deletar
+ele, quero apenas coisas referentes ao que o 2026 tem hoje, pq eu resumi o
+programa todo para nao gastar, entao objetivo dele é funcionar, enviar,
+cadastrar, vender e funcionar. robos só precisa 2 vezes por ano quando
+entrar planilha nova. e nao mais que isso."*
+
+**Análise antes de mexer**: o repo 2026 não tinha "vigia de anúncios do
+DOL" (essa é feature do site antigo, `New-repository`, congelado desde o
+v151 — não existe aqui). O que existia era o agendamento automático dos 4
+robôs de planilha (v174) em `PLANILHAS.iniciarAgendadores()`:
+enriquecimento (15s pós-boot + vigia a cada 30min), vagas novas H-2A
+(2min pós-boot + a cada 12h), H-2A do mês (8min pós-boot + a cada 12h) e
+H-2B do mês (20min pós-boot + a cada 12h). Nenhum destes é usado por
+`scheduleAuto`/envio, cadastro, login ou venda de plano — são só
+manutenção de dado de vaga, e o próprio dono já tinha as rotas manuais
+prontas (aba Planilhas & Robôs) desde o v174.
+
+**O que mudou**: `iniciarAgendadores()` (mod-planilhas.js) não registra
+mais NENHUM `setTimeout`/`setInterval` — só loga que os robôs são manuais
+e devolve `false`. `statusPainel().agendado` virou sempre `false` (o
+admin.html já sabia mostrar "Só manual" pra esse estado, desde o v174 —
+não precisou UI nova). Os 4 robôs continuam 100% funcionais e testados,
+só que por clique do admin: `POST /api/admin/enrich/start`,
+`POST /api/admin/sheet/coleta-start`, `POST /api/admin/sheet/
+h2a-bimestral-run`, `POST /api/admin/sheet/h2b-mensal-run`,
+`POST /api/admin/sheet/h2a-novas-run`. **Única exceção que continua
+automática**: o enriquecimento disparado 3s depois de um upload manual de
+planilha (server.js) — não é um agendador por relógio, é a continuação do
+MESMO clique do admin (ele acabou de subir a planilha; faz sentido já
+completar os campos). Os watchdogs de ENVIO (`mod-watchdogs.js`,
+`mod-sentinel.js`, os 4 vigias de `DB_AUTO` em server.js) e o cron de
+expiração de VIP **não foram tocados** — são "funcionar, enviar, vender",
+exatamente o que a ordem do dono manda preservar.
+
+**Textos atualizados** (admin.html, README.md, server.js): nenhum lugar
+mais afirma "roda sozinho"/"2x/dia"/"a cada Nh" pros robôs de planilha —
+a régua agora é "clique quando o DOL publicar temporada nova".
+
+**PROIBIDO**: reintroduzir `T()`/`I()` (timers) dentro de
+`iniciarAgendadores()`, ou qualquer outro agendador automático de
+coleta/enriquecimento de vaga, sem ordem EXPRESSA e NOVA do dono. A
+seção v174 acima (13/09/2026) descreve a implementação ORIGINAL —
+histórico, não o comportamento atual; este parágrafo é quem manda hoje.
+
+Testes: guarda estrutural no smoke prova que `iniciarAgendadores()` não
+contém `setTimeout`/`setInterval`, que as 5 rotas manuais continuam
+funcionando (já cobertas pelos checks do v174/v177/v207), e que
+`statusPainel().agendado` é sempre `false`.
+

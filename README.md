@@ -24,15 +24,17 @@ período, paga via Pix e sobe o comprovante diretamente.
   obrigatório por perfil)
 - Exibe vagas das planilhas DOL (Jan/2026, Jul/2025, Jul/2026, H-2A) e
   "Vagas ao Vivo" (busca direta ao DOL)
-- Alimenta as planilhas sozinho (v174, `mod-planilhas.js`): coleta do feed
-  oficial do DOL (rascunho → o admin publica com 1 clique), enriquecimento
-  vaga a vaga pela API do DOL (e-mail, cidade, datas, nº de vagas, telefone,
-  salário, funções, URL), vagas novas H-2A 2x/dia e as planilhas do mês
-  ("H-2A <Mês> <Ano>" publica sozinha acima do mínimo; "H-2B <Mês> <Ano>"
-  fica sempre em rascunho). Aba "Planilhas & Robôs" no painel admin. Cada
-  vaga é enriquecida UMA ÚNICA VEZ pelo ETA Case Number (v208, 19/09/2026)
-  — depois disso não é reconsultada no DOL (não existe robô de "frescor";
-  o produto não mostra status ativa/inativa/expirada pro usuário)
+- Alimenta as planilhas (v174, `mod-planilhas.js`): coleta do feed oficial
+  do DOL (rascunho → o admin publica com 1 clique), enriquecimento vaga a
+  vaga pela API do DOL (e-mail, cidade, datas, nº de vagas, telefone,
+  salário, funções, URL), vagas novas H-2A e as planilhas do mês ("H-2A
+  <Mês> <Ano>" publica sozinha acima do mínimo; "H-2B <Mês> <Ano>" fica
+  sempre em rascunho). 100% MANUAL desde o v217 (19/09/2026) — nenhum robô
+  roda por relógio; tudo é 1 clique na aba "Planilhas & Robôs" do painel
+  admin, disparado quando o DOL publica temporada nova (poucas vezes por
+  ano). Cada vaga é enriquecida UMA ÚNICA VEZ pelo ETA Case Number (v208,
+  19/09/2026) — depois disso não é reconsultada no DOL (não existe robô de
+  "frescor"; o produto não mostra status ativa/inativa/expirada pro usuário)
 - Cadastro completo e obrigatório com e-mail Gmail verificado por código de
   6 dígitos (vale 5 min) enviado pela conta de notificações do site; o
   e-mail confirmado é o mesmo Gmail que envia as candidaturas. Recuperação

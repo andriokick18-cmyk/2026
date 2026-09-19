@@ -18,17 +18,34 @@
      fica pronta pra sempre — nunca mais reconsultada, nunca marcada como
      inativa/expirada. Reconferir vaga já completa contrariava isso. Ver
      docs/H2BAPPLY_PRODUCT_RULES.md 7b e docs/DECISIONS.md (19/09/2026).
-   • VAGAS NOVAS H-2A (_runH2aNovasCycle): 2x/dia baixa o feed h2a do dia,
-     ENTRA vaga ativa nova (nunca duplica) e SAI inativa (negada/retirada/
-     temporada encerrada) — trava anti-catástrofe se >50% sumiria de uma vez.
+   • VAGAS NOVAS H-2A (_runH2aNovasCycle): baixa o feed h2a do dia, ENTRA
+     vaga ativa nova (nunca duplica) e SAI inativa (negada/retirada/temporada
+     encerrada) — trava anti-catástrofe se >50% sumiria de uma vez.
    • COLETA DO DOL (_runDolColeta): baixa feeds ZIP do datahub, dedupa por
      case number, filtro de qualidade, integridade, salva em RASCUNHO
      (publicar é do admin — KB-078) ou auto-publica quando autorizado.
-   • PLANILHAS DO MÊS (_runPlanilhaMensal → H-2A e H-2B): todo mês nasce a
+   • PLANILHAS DO MÊS (_runPlanilhaMensal → H-2A e H-2B): monta a
      "H-2A <Mês> <Ano>" (auto-publica acima do mínimo — exceção autorizada
      por escrito, 13p) e a "H-2B <Mês> <Ano>" (SEMPRE rascunho — 13p2).
    Todo robô: erro só loga e avisa admin por push — nunca derruba o servidor;
    planilha anterior fica intacta se a coleta falhar.
+
+   • v217 (dono, 19/09/2026 — "eu resumi o programa todo para nao gastar...
+     robos só precisa 2 vezes por ano quando entrar planilha nova. e nao
+     mais que isso"): NENHUM destes 4 robôs roda mais SOZINHO. O DOL só
+     publica temporada nova (cap H-2B de abril e de outubro) poucas vezes
+     por ano — não há razão de negócio pra bater no DOL o dia inteiro pra
+     manter uma planilha "fresca" que não muda entre uma temporada e outra.
+     `iniciarAgendadores()` não registra mais nenhum timer automático;
+     cada robô continua 100% funcional, mas só roda quando o ADMIN clica
+     (aba Planilhas & Robôs) — ele sabe quando saiu temporada nova. A ÚNICA
+     exceção que continua automática é o enriquecimento disparado 3s depois
+     de um UPLOAD manual de planilha (server.js) — é parte do MESMO clique
+     do admin, não um agendador. Objetivo do site (ordem do dono): apenas
+     funcionar, enviar, cadastrar e vender — nenhuma dessas 4 depende de
+     robô de vaga rodando sozinho. PROIBIDO reintroduzir agendamento
+     automático (T()/I() em iniciarAgendadores) sem ordem EXPRESSA e NOVA
+     do dono. Ver docs/DECISIONS.md (19/09/2026).
    ═══════════════════════════════════════════════════════════════════════ */
 "use strict";
 
@@ -629,23 +646,23 @@ function createPlanilhas(deps) {
   }
 
   // ══════════════════════════════════════════════════════════════════════
-  //  ⏰ AGENDADORES — o pipeline se mantém sozinho (desligado no npm test:
-  //  o sandbox não alcança o DOL e cada robô é provado pelas rotas com o
-  //  feed falso; mesma filosofia da autonomia do Cérebro)
+  //  ⏰ AGENDADORES — DESLIGADOS DE PROPÓSITO (v217, dono, 19/09/2026). O DOL
+  //  só publica temporada nova poucas vezes por ano — nenhum destes 4 robôs
+  //  (enriquecimento, vagas novas H-2A, H-2A do mês, H-2B do mês) roda mais
+  //  sozinho por relógio. Continuam 100% funcionais, só que por CLIQUE do
+  //  admin (aba Planilhas & Robôs) — rotas /api/admin/enrich/start,
+  //  /api/admin/sheet/coleta-start, /api/admin/sheet/h2a-bimestral-run,
+  //  /api/admin/sheet/h2b-mensal-run, /api/admin/sheet/h2a-novas-run. A
+  //  ÚNICA automação que sobrevive é o enriquecimento disparado 3s após um
+  //  UPLOAD manual (server.js) — é parte do MESMO clique do admin, nunca um
+  //  agendador por relógio. PROIBIDO reintroduzir T()/I() aqui sem ordem
+  //  EXPRESSA e NOVA do dono.
   // ══════════════════════════════════════════════════════════════════════
-  const timers = [];
   function iniciarAgendadores() {
-    if (isTest) { console.log("[planilhas] 🧪 modo teste — agendadores dos robôs de planilha desligados (disparo só por rota)"); return false; }
-    const T = (ms, fn, nome) => timers.push(setTimeout(() => fn().catch(e => console.error(`[${nome}] boot erro:`, e.message)), ms));
-    const I = (ms, fn, nome) => timers.push(setInterval(() => fn().catch(e => console.error(`[${nome}] ciclo erro:`, e.message)), ms));
-    // v195 LOTE 14: o I(12h) era redundante — o vigia de 30min já reenfileira
-    // sozinho tudo que ficou pendente (e agora sem reperguntar o vazio).
-    T(15_000, autoEnrichCycle, "auto-enrich"); I(30 * 60_000, autoEnrichCycle, "auto-enrich-watchdog");
-    T(2 * 60_000, () => runH2aNovasCycle("boot"), "h2a-novas"); I(12 * 3600_000, () => runH2aNovasCycle("agendado"), "h2a-novas");
-    T(8 * 60_000, () => runH2aMensal("boot"), "h2a-mensal"); I(12 * 3600_000, () => runH2aMensal("agendado"), "h2a-mensal");
-    T(20 * 60_000, () => runH2bMensal("boot"), "h2b-mensal"); timers.push(setTimeout(() => I(12 * 3600_000, () => runH2bMensal("agendado"), "h2b-mensal"), 20 * 60_000));
-    console.log("[planilhas] ⏰ robôs agendados: enriquecimento (15s, vigia 30min) · vagas novas H-2A (2min, 12h) · H-2A do mês (8min, 12h) · H-2B do mês (20min, 12h) — frescor retirado, v208 (dono, 19/09/2026)");
-    return true;
+    console.log(isTest
+      ? "[planilhas] 🧪 modo teste — robôs de planilha são manuais (disparo só por rota), como em produção desde o v217"
+      : "[planilhas] ⏰ robôs de planilha são 100% MANUAIS (v217, 19/09/2026) — sem timer automático; use a aba Planilhas & Robôs quando o DOL publicar temporada nova");
+    return false;
   }
 
   // Painel: TUDO numa chamada (estado de cada robô + últimas rodadas)
@@ -664,7 +681,10 @@ function createPlanilhas(deps) {
       // dolColeta em memória). Mesma leitura já usada em coleta-publish (367).
       coleta: { running: dolColeta.running, key: dolColeta.key, count: dolColeta.count, error: dolColeta.error, progress: dolColeta.progress, startedAt: dolColeta.startedAt, finishedAt: dolColeta.finishedAt, published: dolColeta.key ? (getMeta()[dolColeta.key]?.published === true) : false },
       mensalH2a: DB_H2A_BIM, mensalH2b: DB_H2B_MEN,
-      agendado: !isTest,
+      // v217: nunca mais "agendado" — nenhum robô de planilha roda por
+      // relógio, nem em produção. O painel (admin.html) já sabia mostrar
+      // "Só manual" pra este campo falso; só passou a valer sempre.
+      agendado: false,
     };
   }
 

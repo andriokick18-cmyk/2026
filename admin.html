@@ -548,7 +548,7 @@ tbody tr:hover{background:var(--glass2)}
             <div class="panel-actions"><button class="btn btn-sm" onclick="loadPlanilhas()"><i class="ti ti-refresh"></i> Atualizar</button></div>
           </div>
           <div class="panel-body">
-            <p class="pl-help">Tudo aqui roda sozinho no servidor. Os botões só forçam uma rodada agora — nada precisa de clique pra funcionar.</p>
+            <p class="pl-help">100% manual (v217, 19/09/2026) — o DOL só publica temporada nova poucas vezes por ano, então nenhum robô roda sozinho: clique o botão de cada um abaixo quando souber que saiu vaga nova.</p>
             <div class="pl-robos" id="pl-robos-list"><div class="spin"></div></div>
           </div>
         </div>
@@ -586,7 +586,7 @@ tbody tr:hover{background:var(--glass2)}
             </div>
           </div>
           <div class="panel-body">
-            <p class="pl-help">Pra cada ETA case number, consulta a API do DOL e completa e-mail, cidade, datas, nº de vagas, telefone, salário, funções e URL. Salva no disco a cada vaga e retoma de onde parou. Roda sozinho 15s após o boot, a cada 12h e no upload de planilha — o botão "Enriquecer DOL" de cada planilha só força.</p>
+            <p class="pl-help">Pra cada ETA case number, consulta a API do DOL e completa e-mail, cidade, datas, nº de vagas, telefone, salário, funções e URL. Salva no disco a cada vaga e retoma de onde parou. Só roda no upload de uma planilha nova (3s depois, automático) ou quando você clica "Enriquecer DOL" em cada planilha.</p>
             <div id="en-cur" class="pl-note" style="display:none"></div>
             <div class="pl-progress"><div class="pl-bar" id="en-bar"></div></div>
             <div class="pl-log" id="en-log"><div class="pl-log-empty">Sem atividade recente.</div></div>
@@ -1067,7 +1067,7 @@ var TITULOS={
   overview:{t:"Visão Geral",s:"Números exatos, direto do servidor"},
   usuarios:{t:"Usuários por Dias de VIP",s:"Todos os usuários, ordenados por dias restantes"},
   pendentes:{t:"Pedidos",s:"Pendentes, aprovados e cancelados — com quem aprovou e por quê"},
-  planilhas:{t:"Planilhas & Robôs",s:"As vagas se alimentam sozinhas do DOL — coleta e enriquecimento, cada vaga só uma vez"},
+  planilhas:{t:"Planilhas & Robôs",s:"Coleta e enriquecimento do DOL — 100% manual, clique quando sair temporada nova"},
   notificacoes:{t:"Notificações por e-mail",s:"A conta Google que envia os códigos e avisos do sistema"},
   migracao:{t:"Códigos de migração VIP",s:"Cliente do site antigo resgata os dias que restavam — uso único, preso ao Gmail, sem cobrança nova"}
 };
@@ -1901,9 +1901,12 @@ document.addEventListener("keydown",function(ev){
 boot();
 
 /* ═══════════════════ PLANILHAS & ROBÔS (v174) ═══════════════════
-   Ordem do dono (13/09/2026): as planilhas se alimentam sozinhas — coleta
-   do DOL, enriquecimento vaga a vaga, frescor, vagas novas H-2A e as
-   planilhas do mês. Esta aba mostra o estado de cada robô numa chamada só
+   Ordem do dono (13/09/2026): as planilhas se alimentam — coleta do DOL,
+   enriquecimento vaga a vaga, vagas novas H-2A e as planilhas do mês.
+   v217 (dono, 19/09/2026 — "resumi o programa todo pra não gastar... robôs
+   só precisa 2 vezes por ano quando entrar planilha nova"): NENHUM destes
+   robôs roda mais sozinho por relógio — todos são disparados por clique
+   nesta aba. Esta aba mostra o estado de cada robô numa chamada só
    (/api/admin/planilhas/status), deixa forçar qualquer um e publica os
    rascunhos com 1 clique. Poll adaptativo: 2,5s com robô rodando, 15s
    parado, e para ao sair da aba. Nada de template literal em innerHTML:
@@ -1998,23 +2001,23 @@ function _plRenderRobos(d){
   var en=d.enrich||{},hn=d.h2aNovas||{},ma=d.mensalH2a||{},mb=d.mensalH2b||{},co=d.coleta||{};
   var rodando=[en.running&&"enriquecimento",co.running&&"coleta",hn.running&&"vagas novas H-2A"].filter(Boolean);
   _plSet("pl-robos",d.agendado?"Ligados":"Só manual");
-  _plSet("pl-robos-sub",rodando.length?"rodando agora: "+rodando.join(", "):d.agendado?"todos agendados, nenhum rodando agora":"agendadores desligados (modo teste)");
+  _plSet("pl-robos-sub",rodando.length?"rodando agora: "+rodando.join(", "):"sem agendador — clique o botão de cada robô quando precisar (v217)");
   var cards=[
     {emoji:"🤖",titulo:"Enriquecimento DOL",badge:_plBadge(en.running?"⚡ Rodando":"⏹ Parado",en.running?"green":"gray"),
-     desc:"Completa cada vaga pela API do DOL (e-mail, cidade, datas, nº de vagas, telefone, salário, funções, URL). 15s após o boot, a cada 12h e no upload de planilha; vigia a cada 30min.",
-     res:(en.running?"Planilha <b>"+esc(en.sheetKey||"?")+"</b> — "+_plNum(en.done)+"/"+_plNum(en.total)+" (ok "+_plNum(en.ok)+" · sem e-mail "+_plNum(en.noEmail)+" · erros "+_plNum(en.errors)+")":"Último salvamento: "+esc(en.savedAt?fmtData(en.savedAt):"nunca")+". Use \"Enriquecer DOL\" de cada planilha pra forçar.")
+     desc:"Completa cada vaga pela API do DOL (e-mail, cidade, datas, nº de vagas, telefone, salário, funções, URL). Só roda no upload de uma planilha nova (automático, 3s depois) ou quando você clica.",
+     res:(en.running?"Planilha <b>"+esc(en.sheetKey||"?")+"</b> — "+_plNum(en.done)+"/"+_plNum(en.total)+" (ok "+_plNum(en.ok)+" · sem e-mail "+_plNum(en.noEmail)+" · erros "+_plNum(en.errors)+")":"Último salvamento: "+esc(en.savedAt?fmtData(en.savedAt):"nunca")+". Use \"Enriquecer DOL\" de cada planilha pra rodar.")
        +_plFilaHtml(d.enrichFila)},
     {emoji:"🌾",titulo:"Vagas novas H-2A",badge:_plBadge(hn.running?"⚡ Rodando":hn.lastError?"⚠️ Erro":"⏹ Parado",hn.running?"green":hn.lastError?"amber":"gray"),
-     desc:"2x/dia sincroniza a planilha H-2A com o feed oficial: ENTRA vaga ativa nova (nunca duplica) e SAI inativa (negada/retirada/temporada encerrada). Trava se mais da metade sumiria de uma vez. Se o DOL ainda não publicou o arquivo de hoje, usa o dia anterior; se não houver arquivo nenhum, avisa e tenta de novo em 1 hora.",
-     res:"Última rodada: "+esc(_plAgo(hn.lastRunAt))+" — +"+_plNum(hn.lastAdded)+" novas · −"+_plNum(hn.lastRemoved)+" inativas (acumulado +"+_plNum(hn.totalAdded)+" / −"+_plNum(hn.totalRemoved)+", "+_plNum(hn.runs)+" rodadas). Planilha H-2A: <b>"+_plNum(hn.totalPlanilha)+"</b> vagas."+(hn.lastError?"<br>⚠️ "+esc(hn.lastError)+(hn.proximaTentativa?" — nova tentativa automática às "+esc(fmtData(hn.proximaTentativa))+".":""):""),
+     desc:"Sincroniza a planilha H-2A com o feed oficial: ENTRA vaga ativa nova (nunca duplica) e SAI inativa (negada/retirada/temporada encerrada). Trava se mais da metade sumiria de uma vez. Roda só quando você clica — o DOL só publica temporada nova poucas vezes por ano.",
+     res:"Última rodada: "+esc(_plAgo(hn.lastRunAt))+" — +"+_plNum(hn.lastAdded)+" novas · −"+_plNum(hn.lastRemoved)+" inativas (acumulado +"+_plNum(hn.totalAdded)+" / −"+_plNum(hn.totalRemoved)+", "+_plNum(hn.runs)+" rodadas). Planilha H-2A: <b>"+_plNum(hn.totalPlanilha)+"</b> vagas."+(hn.lastError?"<br>⚠️ "+esc(hn.lastError)+(hn.proximaTentativa?" — nova tentativa automática às "+esc(fmtData(hn.proximaTentativa))+" (até 3x, só pra esta rodada).":""):""),
      btn:{id:"pl-btn-h2a-novas",fn:"plH2aNovasRun()",ic:"ti-plant-2",lbl:"Buscar novas agora",off:!!hn.running}},
     {emoji:"🌾",titulo:"H-2A do mês (publica sozinha)",badge:_plBadge(ma.lastKey?"Última: "+ma.lastKey:"Nunca rodou",ma.lastKey?"blue":"gray"),
-     desc:"Todo mês nasce a \"H-2A <Mês> <Ano>\" com as vagas dos últimos 90 dias (6 feeds do DOL). Publica sozinha se passar na guarda de qualidade; senão fica em rascunho.",
-     res:ma.lastRunAt?"Última: "+esc(fmtData(ma.lastRunAt))+" — "+_plNum(ma.lastCount)+" vagas, "+(ma.lastPublished?"publicada sozinha":"em rascunho")+".":"Roda 8min após o boot e checa a cada 12h.",
+     desc:"Monta a \"H-2A <Mês> <Ano>\" com as vagas dos últimos 90 dias (6 feeds do DOL). Publica sozinha se passar na guarda de qualidade; senão fica em rascunho. Roda só quando você clica.",
+     res:ma.lastRunAt?"Última: "+esc(fmtData(ma.lastRunAt))+" — "+_plNum(ma.lastCount)+" vagas, "+(ma.lastPublished?"publicada sozinha":"em rascunho")+".":"Nunca rodou — clique quando o DOL publicar temporada nova.",
      btn:{id:"pl-btn-h2a-mes",fn:"plMensalRun('h2a')",ic:"ti-calendar-repeat",lbl:"Gerar/refazer a do mês",off:!!co.running}},
     {emoji:"🧊",titulo:"H-2B do mês (sempre rascunho)",badge:_plBadge(mb.lastKey?"Última: "+mb.lastKey:"Nunca rodou",mb.lastKey?"blue":"gray"),
-     desc:"Todo mês nasce a \"H-2B <Mês> <Ano>\" (últimos 90 dias). Fica SEMPRE em rascunho — você revisa e publica com 1 clique na lista de planilhas.",
-     res:mb.lastRunAt?"Última: "+esc(fmtData(mb.lastRunAt))+" — "+_plNum(mb.lastCount)+" vagas, "+(mb.lastPublished?"já publicada":"em rascunho")+".":"Roda 20min após o boot e checa a cada 12h.",
+     desc:"Monta a \"H-2B <Mês> <Ano>\" (últimos 90 dias). Fica SEMPRE em rascunho — você revisa e publica com 1 clique na lista de planilhas. Roda só quando você clica.",
+     res:mb.lastRunAt?"Última: "+esc(fmtData(mb.lastRunAt))+" — "+_plNum(mb.lastCount)+" vagas, "+(mb.lastPublished?"já publicada":"em rascunho")+".":"Nunca rodou — clique quando o DOL publicar temporada nova.",
      btn:{id:"pl-btn-h2b-mes",fn:"plMensalRun('h2b')",ic:"ti-calendar-repeat",lbl:"Gerar/refazer a do mês",off:!!co.running}}
   ];
   _plG("pl-robos-list").innerHTML=cards.map(_plRoboCard).join("");

@@ -3939,10 +3939,23 @@ async function drillBloqueioComprasNovas() {
       const _srvPl = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
       const _modPl = fs.readFileSync(path.join(__dirname, "mod-planilhas.js"), "utf8");
       const _admPl = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
-      check("📋 v174: (estrutural) agendadores ligados no boot (PLANILHAS.iniciarAgendadores), H-2B mensal NUNCA publica sozinha (autoPublish:false) e a H-2A sim, upload dispara o enriquecimento e o painel tem a aba Planilhas & Robôs",
-        _srvPl.includes("PLANILHAS.iniciarAgendadores()") && /runH2bMensal[\s\S]{0,400}autoPublish: false/.test(_modPl) && /runH2aMensal[\s\S]{0,400}autoPublish: true/.test(_modPl) && _srvPl.includes("PLANILHAS.autoEnrichCycle()") &&
+      check("📋 v174: (estrutural) H-2B mensal NUNCA publica sozinha (autoPublish:false) e a H-2A sim, upload dispara o enriquecimento e o painel tem a aba Planilhas & Robôs",
+        /runH2bMensal[\s\S]{0,400}autoPublish: false/.test(_modPl) && /runH2aMensal[\s\S]{0,400}autoPublish: true/.test(_modPl) && _srvPl.includes("PLANILHAS.autoEnrichCycle()") &&
         _admPl.includes('data-view="planilhas"') && _admPl.includes("function loadPlanilhas(") && _admPl.includes("/api/admin/planilhas/status") && _admPl.includes("/api/admin/sheet/coleta-publish"),
         "estrutura do v174 incompleta");
+      // 🚫 v217 (dono, 19/09/2026 — "resumi o programa todo para nao gastar...
+      // robos só precisa 2 vezes por ano quando entrar planilha nova"):
+      // NENHUM robô de planilha pode ter agendamento por relógio. Guarda
+      // estrutural PERMANENTE — mede a função inteira (do "function
+      // iniciarAgendadores" até o próximo "function " de nível 2), não o
+      // arquivo todo, pra pegar de verdade um T()/I() que volte lá dentro.
+      const _iniAgFn = (_modPl.match(/function iniciarAgendadores\(\)[\s\S]*?\n  \}/) || [""])[0];
+      check("🚫 v217 (estrutural, guarda permanente): iniciarAgendadores() não registra NENHUM setTimeout/setInterval — robôs de planilha são só por clique do admin, nunca por relógio",
+        _iniAgFn.length > 20 && !/setTimeout|setInterval/.test(_iniAgFn) && _srvPl.includes("PLANILHAS.iniciarAgendadores()"),
+        "iniciarAgendadores() ainda agenda algo sozinho: " + _iniAgFn.slice(0, 200));
+      const _plStatusAg = await get("/api/admin/planilhas/status");
+      check("🚫 v217: /api/admin/planilhas/status devolve agendado:false (o painel mostra \"Só manual\") mesmo em produção — não só no npm test",
+        _plStatusAg.json?.agendado === false, JSON.stringify(_plStatusAg.json?.agendado));
     }
 
     // 💳 v175: os pedidos criados acima (blocos de compra) geraram aviso por

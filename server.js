@@ -3198,7 +3198,7 @@ function seedJul2026FromBundle(force){
       if(!fs.existsSync(SHEETS_DIR)) fs.mkdirSync(SHEETS_DIR,{recursive:true});
       fs.writeFileSync(path.join(SHEETS_DIR,"jul2026.json"), JSON.stringify(seed));
     }catch(e){ console.warn("[sheet] ⚠️ jul2026 seed: falha ao gravar em /data/sheets:", e.message); }
-    console.log(`[sheet] 🌱 jul2026 semeada do arquivo bundled: ${seed.length} vagas publicadas (sem e-mail ainda — Enriquecimento automático completa sozinho a partir de 15s após o boot).`);
+    console.log(`[sheet] 🌱 jul2026 semeada do arquivo bundled: ${seed.length} vagas publicadas (sem e-mail ainda — Enriquecimento é manual desde o v217, use a aba Planilhas & Robôs).`);
 
     // Também alimenta o mapa de grupos oficiais (mesmos dados, mesma
     // fonte) — assim o card "Grupos — Julho 2026" já mostra as
@@ -14904,11 +14904,12 @@ server.listen(PORT,"0.0.0.0",()=>{
   // e-mails já conhecidos como mortos), só a DESCOBERTA de novos bounces
   // por leitura de inbox parou.
 
-  // ── 📋 v174: robôs de planilha (mod-planilhas.js) — enriquecimento DOL vaga
-  // a vaga (15s, 12h, vigia 30min), frescor (5min, 6h), vagas novas H-2A
-  // (2min, 12h), H-2A do mês (8min, 12h) e H-2B do mês (20min, 12h). No npm
-  // test ficam desligados (o sandbox não alcança o DOL; cada robô é provado
-  // pelas rotas com o feed falso).
+  // ── 📋 v217 (dono, 19/09/2026): robôs de planilha (mod-planilhas.js) —
+  // enriquecimento, vagas novas H-2A, H-2A do mês e H-2B do mês — não têm
+  // MAIS agendamento por relógio nenhum. iniciarAgendadores() só loga; cada
+  // robô roda por clique do admin (aba Planilhas & Robôs) quando o DOL
+  // publicar temporada nova (poucas vezes por ano). Chamada mantida pra não
+  // esconder o boot deste módulo, mas não registra timer algum.
   PLANILHAS.iniciarAgendadores();
 
   // 📊 Resumo Diário do Dono — push às 8h BRT com os números de ontem.
