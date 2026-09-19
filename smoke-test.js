@@ -6564,6 +6564,25 @@ async function drillRestauracaoBackup() {
 
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
 
+    // v209/v210 (achados reais da Bíblia de Testes, 19/09/2026):
+    // (a) admin via "Grátis"/"Sem plano ativo" no card de status e no badge
+    // do Perfil enquanto o Admin→Usuários mostrava doublepro — o card lia
+    // só vip.manualExpires/autoExpires, sem saber que isAdminVip() já
+    // libera tudo sem precisar desses relógios.
+    // (b) badge de vaga "Ativa"/"Inativa" violava a regra 0.2 (nenhum
+    // status de vaga pro usuário — enriquecimento é 1x só e nunca
+    // reconferido, então "ativa/inativa" vira mentira com o tempo).
+    const _appV209 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+    check("🔁 v209: planLabelAtivo()/renderPlanStatusCard()/planBadgeHTML() tratam U.isAdmin ANTES de concluir 'Grátis' — admin não lê vip.manualExpires/autoExpires pra saber se tem acesso",
+      /function planLabelAtivo\(\)\{[\s\S]{0,800}if\(U\.isAdmin\)/.test(_appV209) &&
+      /if\(!hasManual&&!hasAuto&&U\.isAdmin\)/.test(_appV209) &&
+      (_appV209.match(/if\(!hasManual&&!hasAuto&&U\.isAdmin\)/g) || []).length >= 2,
+      "algum dos 3 lugares (label/card/badge) voltou a concluir 'Grátis' só pelos relógios de VIP, sem checar admin");
+    check("🔁 v210: nenhum badge 'Ativa'/'Inativa' de vaga sobrou em app.js (regra 0.2 — nem badge, nem menção de status de vaga pro usuário)",
+      !/Ativa<\/span>['"`]?:['"`]?<span class="tag tr">/.test(_appV209) && !_appV209.includes("Ativa</span>':'<span class=\"tag tr\">") &&
+      !/\{j\.active\?['"`]<span class="tag tg">/.test(_appV209) && !/\{job\.active\?['"`]<span class="tag tg">/.test(_appV209),
+      "achou algum resquício de badge Ativa/Inativa condicionado em .active");
+
     const disk = fs.readdirSync(path.join(DATA, "cvs"));
     check("PDFs válidos gravados no disco", disk.includes("cliente@test.com_1002.pdf") && disk.includes("cliente@test.com_1004.pdf"),
       disk.join(", "));

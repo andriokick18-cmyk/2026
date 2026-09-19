@@ -712,6 +712,12 @@ function planLabelAtivo(){
   const v=U.vip,now=Date.now();
   const m=!!(v?.manualExpires&&v.manualExpires>now);
   const a=!!(v?.autoExpires&&v.autoExpires>now);
+  // v209 (bug real, achado na Bíblia de Testes: admin via "Grátis"/"Sem
+  // plano ativo" no Perfil enquanto o Admin→Usuários mostrava doublepro):
+  // admin tem acesso total por isAdminVip() no servidor, SEM depender de
+  // vip.manualExpires/autoExpires — o rótulo precisa dizer isso, não ler os
+  // dois relógios como se fosse conta comum e concluir "Grátis" por engano.
+  if(U.isAdmin)return"👑 Admin";
   if(!m&&!a)return"Grátis";
   if(m&&a)return String(U.plan||"")==="doublepro"?PLAN_NAMES.doublepro:"⭐🤖 VIPro";
   return m?"⭐ VIP":"🤖 Pro";
@@ -723,6 +729,10 @@ function planBadgeHTML(){
   const now=Date.now();
   const hasManual=v?.manualExpires&&v.manualExpires>now;
   const hasAuto=v?.autoExpires&&v.autoExpires>now;
+  // v209: admin não passa por vip.manualExpires/autoExpires (isAdminVip()
+  // já libera tudo no servidor) — badge "Grátis" pro próprio admin é o bug
+  // real que a Bíblia de Testes flagrou.
+  if(!hasManual&&!hasAuto&&U.isAdmin)return`<span class="tag" style="font-size:10px;background:rgba(124,58,237,.12);color:#7c3aed;border-color:rgba(124,58,237,.3)">👑 Admin</span>`;
   if(!hasManual&&!hasAuto)return`<span class="tag tgr" style="font-size:10px">Grátis</span>`;
   const ml=hasManual?daysLeft(v.manualExpires):-1;
   const al=hasAuto?daysLeft(v.autoExpires):-1;
@@ -786,7 +796,16 @@ function renderPlanStatusCard(){
     <div style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;margin-bottom:10px;letter-spacing:.5px">👤 ${esc(t('mc_1'))}</div>`;
   if(hasManual)html+=row("⭐","VIP Manual",ml,v.manualExpires);
   if(hasAuto)html+=row("🤖","Pro Automático",al,v.autoExpires);
-  if(!hasManual&&!hasAuto){
+  if(!hasManual&&!hasAuto&&U.isAdmin){
+    // v209: admin não tem (nem precisa ter) vip.manualExpires/autoExpires —
+    // o acesso vem de isAdminVip() no servidor. Mostrar a mesma caixa
+    // vermelha de "sem plano ativo" faz o próprio admin achar que precisa
+    // comprar um plano (achado real testando ao vivo).
+    html+=`<div style="background:var(--purplel,rgba(124,58,237,.08));border:1.5px solid var(--purpleb,rgba(124,58,237,.3));border-radius:var(--r);padding:12px 14px;margin-bottom:8px">
+      <div style="font-weight:800;font-size:13px;color:#7c3aed">👑 Conta admin</div>
+      <div style="font-size:11px;color:var(--t2);margin-top:3px">Acesso total ao envio (manual e automático) por ser admin — não depende de plano/dias VIP. Este card não mostra dias porque não há vencimento.</div>
+    </div>`;
+  } else if(!hasManual&&!hasAuto){
     // 🔒 (ordem do dono, 12/09/2026 — "nenhum usuário vai ter envio grátis"):
     // conta sem plano tem manualLimit/autoLimit = 0 de verdade (v172).
     // Mostrar "0 envios manuais por dia" (ou pior, o `||10` antigo que
@@ -2220,11 +2239,11 @@ function mkSheetCard(j){
   const isApplied=APPLIED.has(j.id);
 
   // Monta tags completas com dados que já vêm do servidor
-  const statusTag=j.active!==undefined
-    ?(j.active
-      ?'<span class="tag tg"><i class="ti ti-check" style="font-size:9px"></i>Ativa</span>'
-      :'<span class="tag tr"><i class="ti ti-x" style="font-size:9px"></i>Inativa</span>')
-    :"";
+  // v209: badge de status (ativa/inativa) REMOVIDO — regra de negócio
+  // permanente (docs/H2BAPPLY_PRODUCT_RULES.md 7b): cada vaga é enriquecida
+  // UMA vez e nunca mais reconferida, então "ativa/inativa" reflete só o
+  // instante da coleta e vira uma mentira com o tempo — nenhum status de
+  // vaga pode aparecer pro usuário, nem como badge nem como filtro.
   const visaTag=j.visa
     ?`<span class="tag ${j.visa==="H-2A"?"ta":"tb"}">${j.visa}</span>`
     :'<span class="tag tb">H-2B</span>';
@@ -2241,7 +2260,7 @@ function mkSheetCard(j){
     </div>
     <div class="jcard-title" id="jct-${iid}">${esc(jobTitle)}</div>
     <div class="jcard-co" id="jcc-${iid}"><i class="ti ti-building" style="font-size:9px"></i>${esc(j.company||"–")} · <i class="ti ti-map-pin" style="font-size:9px"></i>${j.city&&j.city!=="–"?esc(j.city)+", ":""}${esc(j.state||"–")}</div>
-    <div class="jcard-tags" id="jctg-${iid}">${statusTag}${visaTag}${stateLbl}${wkTag}${dateLbl}${wageLbl}</div>
+    <div class="jcard-tags" id="jctg-${iid}">${visaTag}${stateLbl}${wkTag}${dateLbl}${wageLbl}</div>
     ${j.url?`<a href="${esc(j.url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:rgba(59,130,246,.7);text-decoration:none;margin-top:3px"><i class="ti ti-external-link" style="font-size:9px"></i>Ver vaga DOL</a>`:""}
   </div>`;
 }
@@ -2328,7 +2347,8 @@ function updSheetCard(cn,job){
     const catInfo=getOccupationCategoryByKey(job.category,job.title||job.occupation||"");
     catEl.innerHTML=`<i class="ti ${esc(catInfo.icon)}" style="font-size:9px"></i> ${esc(catInfo.name)}`;
   }
-  if(tge)tge.innerHTML=`${job.active?'<span class="tag tg"><i class="ti ti-check" style="font-size:9px"></i>Ativa</span>':'<span class="tag tr"><i class="ti ti-x" style="font-size:9px"></i>Inativa</span>'}<span class="tag ${job.visa==="H-2A"?"ta":"tb"}">${esc(job.visa||"H-2B")}</span>${job.wage&&job.wage!=="–"?`<span class="tag tg">${esc(job.wage)}</span>`:""}<span class="tag tgr"><i class="ti ti-map-pin" style="font-size:9px"></i>${esc(job.state)}</span>${job.workers>1?`<span class="tag tgr">${esc(job.workers)}×</span>`:""}${job.start&&job.start!=="–"?`<span class="tag ta"><i class="ti ti-calendar" style="font-size:9px"></i>${esc(job.start)}</span>`:""}`;
+  // v209: sem badge de ativa/inativa (mesma regra de mkSheetCard acima).
+  if(tge)tge.innerHTML=`<span class="tag ${job.visa==="H-2A"?"ta":"tb"}">${esc(job.visa||"H-2B")}</span>${job.wage&&job.wage!=="–"?`<span class="tag tg">${esc(job.wage)}</span>`:""}<span class="tag tgr"><i class="ti ti-map-pin" style="font-size:9px"></i>${esc(job.state)}</span>${job.workers>1?`<span class="tag tgr">${esc(job.workers)}×</span>`:""}${job.start&&job.start!=="–"?`<span class="tag ta"><i class="ti ti-calendar" style="font-size:9px"></i>${esc(job.start)}</span>`:""}`;
   if(card&&APPLIED.has(cn))card.style.display="none";
   // 🧹 v38 (dono, 22/07): e-mail descoberto no enriquecimento pertence a
   // empregador JÁ contatado → o card some NA HORA (a regra é por e-mail do
@@ -2416,7 +2436,6 @@ function mkCard(j){
     <div class="jcard-title">${esc(j.title)}</div>
     <div class="jcard-co"><i class="ti ti-building" style="font-size:9px"></i>${esc(j.company)}</div>
     <div class="jcard-tags">
-      ${j.active?'<span class="tag tg"><i class="ti ti-check" style="font-size:9px"></i>Ativa</span>':'<span class="tag tr"><i class="ti ti-x" style="font-size:9px"></i>Inativa</span>'}
       <span class="tag ${j.visa==="H-2A"?"ta":"tb"}">${j.visa==="H-2A"?"H-2A":"H-2B"}</span>
       <span class="tag tgr"><i class="ti ti-map-pin" style="font-size:9px"></i>${esc(j.state)}</span>
       ${j.wage&&j.wage!=="–"?`<span class="tag tg">${esc(j.wage)}</span>`:""}
@@ -2445,7 +2464,6 @@ function mkDetailHTML(j){
     <div class="jd-title">${esc(j.title)}</div>
     <div class="jd-co"><i class="ti ti-building"></i>${esc(j.company)}</div>
     <div class="jd-tags">
-      ${j.active?'<span class="tag tg"><i class="ti ti-circle-check"></i>Ativa</span>':'<span class="tag tr">Inativa</span>'}
       <span class="tag ${j.visa==="H-2A"?"ta":"tb"}">${j.visa==="H-2A"?"🌾 H-2A Agrícola":"🔧 H-2B Não-Agrícola"}</span>
       ${APPLIED.has(j.id)?'<span class="tag tp"><i class="ti ti-check"></i>Enviado</span>':""}
     </div>
