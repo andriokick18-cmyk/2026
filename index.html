@@ -1177,6 +1177,15 @@ textarea.input,input.input,select.input{background:#f5f7ff;color:#1e1b4b}
 .ln-step-arrow{font-size:20px;color:rgba(255,255,255,.15);flex-shrink:0}
 @media(max-width:580px){.ln-step-arrow{display:none}.ln-steps{gap:12px}}
 
+/* ── v212: "Veja o site por dentro" — prints reais, sem JS/animação ── */
+.ln-real{background:linear-gradient(160deg,#07001a 0%,#0f0730 45%,#0e1428 100%);border-top:1px solid rgba(124,58,237,.25)}
+.ln-real-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:22px;margin-top:8px}
+.ln-real-card{margin:0;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:18px;overflow:hidden;display:flex;flex-direction:column}
+.ln-real-card img{width:100%;height:auto;display:block;border-bottom:1px solid rgba(255,255,255,.08)}
+.ln-real-card figcaption{padding:14px 16px 18px;font-size:12.5px;line-height:1.6;color:rgba(255,255,255,.55)}
+.ln-real-card figcaption strong{display:block;font-size:14px;color:#fff;margin-bottom:4px}
+@media(max-width:560px){.ln-real-grid{grid-template-columns:1fr;max-width:420px;margin-left:auto;margin-right:auto}}
+
 /* ── Plans section ── */
 
 
@@ -1776,7 +1785,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
 
       <!-- Coluna esquerda: copy + CTA -->
       <div class="ln-hero-copy">
-        <div class="ln-vip-pill"><i class="ti ti-eye"></i> 👀 <strong>Veja como funciona</strong> antes de assinar um plano</div>
+        <a href="#veja-por-dentro" class="ln-vip-pill" style="text-decoration:none;cursor:pointer"><i class="ti ti-eye"></i> 👀 <strong>Veja como funciona</strong> antes de assinar um plano</a>
         <h1 class="ln-hero-title">Trabalhe nos<br><span class="ln-title-usa">Estados Unidos</span></h1>
         <!-- v170 (dono, 09/09/2026 — "revise o que tá escrito, explique melhor que não
              criamos nada, apenas somos uma ponte"): a landing inteira só falava em
@@ -1941,6 +1950,45 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <div class="ln-step-title">4. Empresa te responde</div>
           <div class="ln-step-desc">A resposta cai direto na caixa de entrada do seu próprio Gmail.</div>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ v212 (dono, 19/09/2026 — pedido feito 3x: "não é link escondido pra
+       Central de Tutoriais, é o tutorial completo, com fotos GRANDES e
+       REAIS, direto na landing, antes de qualquer cadastro"): a animação
+       genérica em HTML/CSS ("Veja em ação", empresas inventadas tipo "Green
+       Valley Inc") foi REMOVIDA de vez (ver app.js) e trocada por 5 prints
+       de verdade do site rodando, tirados com Playwright contra o servidor
+       real. Sem JS, sem login — qualquer visitante já vê isso ao abrir a
+       página. As legendas usam a MESMA linguagem simples do resto da
+       landing (nunca "compra"/"contratar" — regra 6f/v66 do produto). ══ -->
+  <section class="ln-section ln-real" id="veja-por-dentro">
+    <div class="ln-section-inner">
+      <div class="ln-sec-label">Prints reais, do site rodando agora</div>
+      <h2 class="ln-sec-title">Veja o site por dentro</h2>
+      <p class="ln-sec-sub">Nada de simulação. São capturas de tela do H2BApply de verdade, passo a passo — pra você entender como funciona antes de criar sua conta.</p>
+      <div class="ln-real-grid">
+        <figure class="ln-real-card">
+          <img src="/tut-img/landing-1-cadastro.jpg" alt="Tela de criação de conta do H2BApply, com campos de nome, e-mail e senha" loading="lazy">
+          <figcaption><strong>1. Crie sua conta</strong>Só e-mail e senha — sem precisar de Gmail nem cartão pra começar.</figcaption>
+        </figure>
+        <figure class="ln-real-card">
+          <img src="/tut-img/landing-2-perfil.jpg" alt="Tela de perfil do candidato com currículo em PDF anexado" loading="lazy">
+          <figcaption><strong>2. Monte seu perfil</strong>Seu currículo em PDF e os seus textos de e-mail — o robô só entrega, nunca escreve por você.</figcaption>
+        </figure>
+        <figure class="ln-real-card">
+          <img src="/tut-img/landing-3-vagas.jpg" alt="Lista de vagas H-2B reais coletadas do site oficial do governo americano" loading="lazy">
+          <figcaption><strong>3. Escolha as vagas</strong>Vagas de verdade, coletadas direto do SeasonalJobs.dol.gov — o site oficial do governo dos EUA.</figcaption>
+        </figure>
+        <figure class="ln-real-card">
+          <img src="/tut-img/landing-4-automatico.jpg" alt="Tela do envio automático em andamento, mostrando a fila de candidaturas sendo enviada" loading="lazy">
+          <figcaption><strong>4. Ligue o automático</strong>O robô manda uma candidatura de cada vez, pelo seu próprio Gmail, enquanto você faz outra coisa.</figcaption>
+        </figure>
+        <figure class="ln-real-card">
+          <img src="/tut-img/landing-5-painel.jpg" alt="Painel do usuário mostrando estatísticas reais de candidaturas enviadas" loading="lazy">
+          <figcaption><strong>5. Acompanhe tudo</strong>Quantas vagas você já viu, quantas empresas já foram contatadas e quantas respostas podem estar a caminho.</figcaption>
+        </figure>
       </div>
     </div>
   </section>
@@ -4208,260 +4256,6 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
 #lwarn-check-label { cursor: pointer; }
 #lwarn-check { cursor: pointer; }
 #lwarn-ok-btn { cursor: pointer !important; }
-
-/* ═══════════════════════════════════════════════
-   AUTO DEMO SECTION
-═══════════════════════════════════════════════ */
-.auto-demo-section {
-  background: linear-gradient(160deg, #07001a 0%, #0f0730 40%, #1a0a4a 70%, #0e1428 100%);
-  padding: 48px 20px;
-  position: relative;
-  overflow: hidden;
-  border-top: 1px solid rgba(124,58,237,0.25);
-}
-.auto-demo-section::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse 600px 400px at 50% 50%, rgba(124,58,237,0.1) 0%, transparent 70%);
-  pointer-events: none;
-}
-.auto-demo-inner { max-width: 900px; margin: 0 auto; position: relative; z-index: 1; }
-.auto-demo-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; color: #a78bfa; margin-bottom: 8px; }
-.auto-demo-title { font-family: 'Sora', sans-serif; font-size: clamp(20px, 4vw, 32px); font-weight: 800; color: #fff; margin-bottom: 6px; }
-.auto-demo-sub { font-size: 14px; color: rgba(255,255,255,0.6); margin-bottom: 32px; }
-
-/* Phone mockup */
-.demo-stage {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 40px;
-  flex-wrap: wrap;
-}
-.demo-phone {
-  width: 220px;
-  height: 420px;
-  background: #0a0020;
-  border-radius: 30px;
-  border: 2px solid rgba(139,92,246,0.4);
-  box-shadow:
-    0 0 0 6px rgba(124,58,237,0.08),
-    0 0 60px rgba(124,58,237,0.25),
-    0 20px 60px rgba(0,0,0,0.6);
-  position: relative;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-.demo-phone-notch {
-  width: 70px; height: 18px;
-  background: #0a0020;
-  border-radius: 0 0 12px 12px;
-  position: absolute; top: 0; left: 50%;
-  transform: translateX(-50%);
-  z-index: 10;
-  border: 2px solid rgba(139,92,246,0.3);
-  border-top: none;
-}
-
-
-/* Demo screens */
-.demo-frame {
-  position: absolute;
-  inset: 0;
-  padding: 22px 0 0;
-  display: flex;
-  flex-direction: column;
-  opacity: 0;
-  transition: opacity 0.5s ease;
-}
-.demo-frame.active { opacity: 1; }
-
-/* Screen 1 — Job list */
-.df-header {
-  background: linear-gradient(90deg, #0a1628, #1a2a50);
-  padding: 10px 12px;
-  font-size: 11px;
-  font-weight: 700;
-  color: #60a5fa;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-.df-job-list { flex: 1; overflow: hidden; padding: 6px 8px; display: flex; flex-direction: column; gap: 6px; }
-.df-jcard {
-  background: rgba(255,255,255,0.06);
-  border-radius: 8px;
-  padding: 8px 10px;
-  border: 1px solid rgba(255,255,255,0.08);
-  font-size: 9px;
-  color: rgba(255,255,255,0.8);
-  position: relative;
-}
-.df-jcard-title { font-weight: 700; margin-bottom: 2px; font-size: 10px; }
-.df-jcard-co { color: rgba(255,255,255,0.5); }
-
-/* Cursor animation */
-.demo-cursor {
-  width: 16px; height: 16px;
-  background: #fff;
-  border-radius: 50%;
-  position: absolute;
-  z-index: 20;
-  box-shadow: 0 0 12px rgba(255,255,255,0.8), 0 0 0 4px rgba(255,255,255,0.15);
-  pointer-events: none;
-  transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
-}
-
-/* Screen 2 — Composing email */
-.df-email-area {
-  flex: 1;
-  padding: 8px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.df-email-field {
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 6px;
-  padding: 5px 8px;
-  font-size: 8px;
-  color: rgba(255,255,255,0.7);
-  position: relative;
-  overflow: hidden;
-}
-.df-email-label { font-size: 7px; color: rgba(255,255,255,0.35); margin-bottom: 2px; }
-.df-typing-text {
-  font-size: 8px;
-  color: rgba(255,255,255,0.85);
-  white-space: nowrap;
-  overflow: hidden;
-  width: 0;
-  animation: none;
-}
-.df-typing-text.typing { animation: typeAnim 1.2s steps(30, end) forwards; }
-@keyframes typeAnim { to { width: 100%; } }
-.df-send-flash {
-  background: linear-gradient(90deg, #7c3aed, #2563eb);
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 9px;
-  font-weight: 800;
-  color: #fff;
-  text-align: center;
-  margin-top: auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  opacity: 0;
-  transform: scale(0.9);
-  transition: all 0.3s ease;
-}
-.df-send-flash.visible { opacity: 1; transform: scale(1); }
-
-/* Screen 3 — Sent success */
-.df-success-screen {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-.df-success-icon {
-  width: 52px; height: 52px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #10b981, #059669);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  box-shadow: 0 0 30px rgba(16,185,129,0.5);
-  animation: successPulse 0.5s ease;
-}
-@keyframes successPulse {
-  0% { transform: scale(0.3); opacity: 0; }
-  60% { transform: scale(1.15); }
-  100% { transform: scale(1); opacity: 1; }
-}
-.df-success-count {
-  font-family: 'Sora', sans-serif;
-  font-size: 24px;
-  font-weight: 900;
-  color: #10b981;
-}
-.df-success-lbl { font-size: 9px; color: rgba(255,255,255,0.5); }
-.df-success-ticker {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 100%;
-  padding: 0 10px;
-}
-.df-tick {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 8px;
-  color: rgba(255,255,255,0.6);
-  opacity: 0;
-  transform: translateX(-10px);
-  animation: tickIn 0.3s ease forwards;
-}
-@keyframes tickIn { to { opacity: 1; transform: none; } }
-
-/* Demo stats aside */
-.demo-stats-aside {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  max-width: 260px;
-}
-.demo-stat-card {
-  background: rgba(255,255,255,0.04);
-  border: 1.5px solid rgba(139,92,246,0.2);
-  border-radius: 14px;
-  padding: 16px 20px;
-  color: #fff;
-}
-.demo-stat-num {
-  font-family: 'Sora', sans-serif;
-  font-size: 32px;
-  font-weight: 900;
-  background: linear-gradient(135deg, #a78bfa, #60a5fa);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  line-height: 1;
-  margin-bottom: 4px;
-}
-.demo-stat-lbl { font-size: 12px; color: rgba(255,255,255,0.55); }
-.demo-feats-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.demo-feat {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  color: rgba(255,255,255,0.8);
-}
-.demo-feat-icon {
-  width: 32px; height: 32px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 15px;
-  flex-shrink: 0;
-}
-
-
 
 /* ══ PROFILE SUBTABS ══ */
 #v-profile { overflow: hidden !important; }
