@@ -1020,6 +1020,29 @@ textarea.input,input.input,select.input{background:#f5f7ff;color:#1e1b4b}
 }
 .btn-login-sm:hover{opacity:.9;transform:translateY(-1px)}
 
+/* 🔶 v215b: banner "já era assinante VIP?" — bem chamativo, cor contrastante
+   com o navy da landing, pulso sutil (nunca pisca rápido/agressivo). */
+@keyframes lnOldsiteGlow{0%,100%{box-shadow:0 4px 18px rgba(245,158,11,.4),0 0 0 2px rgba(234,88,12,.85)}50%{box-shadow:0 6px 28px rgba(245,158,11,.65),0 0 0 3px rgba(234,88,12,1)}}
+.ln-oldsite-banner{
+  display:flex;align-items:center;gap:14px;
+  background:linear-gradient(135deg,#f59e0b,#ea580c);
+  color:#fff;text-decoration:none;
+  padding:14px 20px;margin:0;
+  animation:lnOldsiteGlow 2.4s ease-in-out infinite;
+  position:relative;z-index:150;
+}
+.ln-oldsite-banner:active{opacity:.92}
+.ln-oldsite-ico{font-size:26px;flex-shrink:0}
+.ln-oldsite-txt{flex:1;min-width:0}
+.ln-oldsite-title{font-size:13.5px;font-weight:900;line-height:1.3}
+.ln-oldsite-sub{font-size:12px;font-weight:600;opacity:.95;margin-top:2px;line-height:1.4}
+@media (max-width:640px){
+  .ln-oldsite-banner{padding:12px 14px;gap:10px}
+  .ln-oldsite-ico{font-size:22px}
+  .ln-oldsite-title{font-size:12.5px}
+  .ln-oldsite-sub{font-size:11px}
+}
+
 /* ── HERO ── */
 .ln-hero{
   position:relative;
@@ -1783,6 +1806,20 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       </button>
     </div>
   </nav>
+
+  <!-- 🔶 v215b (dono, 19/09/2026 — "botão grande explicativo com o link do
+       ambiente velho pra usuários terminarem de usar seus dias VIP lá"):
+       banner sempre visível, logo abaixo da navbar, ANTES do hero — quem
+       já era assinante bate o olho aqui antes de decidir Entrar/Criar
+       conta. Clique explícito do usuário, nunca auto-redirect. -->
+  <a href="https://h2bapply.onrender.com" target="_blank" rel="noopener noreferrer" class="ln-oldsite-banner">
+    <div class="ln-oldsite-ico">⚡</div>
+    <div class="ln-oldsite-txt">
+      <div class="ln-oldsite-title">Já era assinante VIP antes? Seus dias continuam lá</div>
+      <div class="ln-oldsite-sub">Toque aqui pra entrar no site antigo com a MESMA conta e terminar de usar seu plano</div>
+    </div>
+    <i class="ti ti-external-link" style="font-size:20px;flex-shrink:0;color:#fff"></i>
+  </a>
 
   <!-- ── HERO ── -->
   <div class="ln-hero">

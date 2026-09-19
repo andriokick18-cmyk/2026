@@ -6699,6 +6699,16 @@ async function drillBloqueioComprasNovas() {
       (_idxV214.match(/href="https:\/\/h2bapply\.onrender\.com"/g) || []).length >= 2 &&
       !/h2bapply\.onrender\.com[\s\S]{0,120}location\.(href|assign|replace)/.test(_idxV214),
       `ocorrências vip-old-banner=${(_idxV214.match(/class="vip-old-banner"/g) || []).length} onrender=${(_idxV214.match(/href="https:\/\/h2bapply\.onrender\.com"/g) || []).length}`);
+    // 🔶 v215b (dono, 19/09/2026, mesmo dia): o mesmo aviso, mas na LANDING
+    // (pré-login) — visitante que já era VIP bate o olho ANTES de decidir
+    // Entrar/Criar conta, logo abaixo da navbar. Bem chamativo (.ln-oldsite-
+    // banner, cor contrastante, pulso sutil), <a> explícito, nunca redirect
+    // automático.
+    check("🔶 v215b estrutural: landing (pré-login) tem o banner 'já era assinante VIP?' logo abaixo da navbar, chamativo (.ln-oldsite-banner) e com link explícito pro h2bapply.onrender.com — nunca auto-redirect",
+      /class="ln-oldsite-banner"/.test(_idxV214) &&
+      /<nav class="ln-nav">[\s\S]{0,1200}<a href="https:\/\/h2bapply\.onrender\.com"[^>]*class="ln-oldsite-banner"/.test(_idxV214) &&
+      !/ln-oldsite-banner[\s\S]{0,200}location\.(href|assign|replace)/.test(_idxV214),
+      "banner da landing sumiu, saiu do lugar (depois da navbar) ou virou auto-redirect");
     check("🚧 estrutural: loadPlanos() troca o banner de manutenção pelo seletor de compra lendo SEMPRE U.newPurchasesBlocked (nunca decide sozinho no front) — e applyStatus() propaga o campo vindo do /api/status",
       /if\(U\.newPurchasesBlocked\)\{/.test(_appV209) &&
       /newPurchasesBlocked:!!d\.newPurchasesBlocked/.test(_appV209),
