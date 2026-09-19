@@ -680,6 +680,80 @@ async function drillRestauracaoBackup() {
   }
 }
 
+// ── 🚧 INTERRUPTOR DE EMERGÊNCIA — compra nova (19/09/2026, ATUALIZADO no
+// mesmo dia: h2bapply.com passou a apontar pra este ambiente DE VERDADE) ──
+// Nasceu bloqueado por default (o ambiente ainda não era o domínio oficial);
+// virou interruptor de emergência DESLIGADO por default assim que o domínio
+// foi migrado de verdade — continuar bloqueando por padrão derrubaria
+// assinatura nova de gente real. Este drill sobe um servidor PRÓPRIO
+// (BLOCK_NEW_PURCHASES=true) só pra provar que o interruptor, SE ligado um
+// dia, recusa de verdade no backend — e confirma que a suíte principal
+// (sem essa env, igual produção hoje) deixa comprar normal.
+async function drillBloqueioComprasNovas() {
+  const DATA_N = fs.mkdtempSync(path.join(os.tmpdir(), "h2b-blocknew-"));
+  const PORT_N = PORT + 70;
+  const BASE_N = `http://127.0.0.1:${PORT_N}`;
+  let COOKIE_N = "";
+  let logN = "";
+  let srvN = null;
+  const reqN = (method, p, payload) => new Promise((resolve, reject) => {
+    const body = payload === undefined ? null : JSON.stringify(payload);
+    const r = http.request(BASE_N + p, {
+      method,
+      headers: {
+        ...(body ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) } : {}),
+        ...(COOKIE_N ? { Cookie: COOKIE_N } : {}),
+      },
+    }, (res) => {
+      const sc = res.headers["set-cookie"];
+      if (sc && sc.length) COOKIE_N = sc[0].split(";")[0];
+      let b = ""; res.on("data", (c) => (b += c));
+      res.on("end", () => { let json = null; try { json = JSON.parse(b); } catch {} resolve({ status: res.statusCode, body: b, json }); });
+    });
+    r.on("error", reject); if (body) r.write(body); r.end();
+  });
+  try {
+    // BLOCK_NEW_PURCHASES=true DE PROPÓSITO — o único lugar da suíte que ativa
+    // o interruptor de emergência (a suíte principal roda com ele desligado,
+    // igual produção hoje).
+    srvN = spawnServidor({ PORT: String(PORT_N), DATA_DIR: DATA_N, STORAGE: "json", TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890", BLOCK_NEW_PURCHASES: "true" }, (t) => (logN += t));
+    const up = await esperarNoAr(() => reqN("GET", "/api/status"), 40_000);
+    check("🚧 (drill compra bloqueada): servidor subiu com BLOCK_NEW_PURCHASES=true (interruptor de emergência ligado)", up === true);
+
+    await reqN("POST", "/api/test/login", { token: TEST_TOKEN, email: "compradorbloq@test.com", name: "Comprador Bloqueado" });
+    const st1 = await reqN("GET", "/api/status");
+    check("🚧 /api/status devolve newPurchasesBlocked:true pra usuário comum com o interruptor ligado",
+      st1.json?.newPurchasesBlocked === true, JSON.stringify(st1.json?.newPurchasesBlocked));
+
+    const tent = await reqN("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Comprador Bloqueado", userWhatsapp: "11 99999", userCity: "SP" });
+    check("🚧 POST /api/pedido é RECUSADO (403) pra usuário comum com o interruptor ligado — o bloqueio é de VERDADE no backend (bateu direto na API, sem passar pela tela), não só o botão escondido no front",
+      tent.status === 403 && tent.json?.newPurchasesBlocked === true && typeof tent.json?.error === "string" && tent.json.error.length > 0,
+      `status=${tent.status} body=${JSON.stringify(tent.json).slice(0, 220)}`);
+
+    const listaVazia = await reqN("GET", "/api/pedidos");
+    check("🚧 nenhum pedido foi criado pela tentativa bloqueada (a recusa acontece ANTES de qualquer gravação)",
+      Array.isArray(listaVazia.json?.pedidos) && listaVazia.json.pedidos.length === 0,
+      JSON.stringify(listaVazia.json).slice(0, 200));
+
+    // Admin: o painel dele continua normal (newPurchasesBlocked:false) e o
+    // fluxo "Regularizar" (pedido retroativo em nome de outro usuário)
+    // segue funcionando de verdade — o interruptor nunca trava o admin.
+    await reqN("POST", "/api/test/login", { token: TEST_TOKEN, email: "admbloq@test.com", name: "Admin Bloqueio", isAdmin: true });
+    const stAdmin = await reqN("GET", "/api/status");
+    check("🚧 /api/status NÃO marca newPurchasesBlocked pro admin (painel dele continua normal, sem banner nenhum)",
+      stAdmin.json?.newPurchasesBlocked === false, JSON.stringify(stAdmin.json?.newPurchasesBlocked));
+
+    const regular = await reqN("POST", "/api/pedido", { userEmail: "regularizado@test.com", plano: "vip", dias: 15, valorTotal: 77, userName: "Regularizado Retroativo", userWhatsapp: "11 99999", userCity: "SP" });
+    check("🚧 admin CONTINUA conseguindo criar pedido retroativo (Regularizar) com o interruptor de emergência ligado — o bloqueio nunca trava o admin",
+      regular.status === 200 && regular.json?.ok === true, `status=${regular.status} body=${JSON.stringify(regular.json).slice(0, 200)}`);
+  } catch (e) {
+    check("🚧 drill de bloqueio de compra nova sem exceção", false, e.message);
+  } finally {
+    try { await matarServidor(srvN, "SIGKILL"); } catch {}
+    try { fs.rmSync(DATA_N, { recursive: true, force: true }); } catch {}
+  }
+}
+
 // ── Execução ────────────────────────────────────────────────────────────
 (async () => {
   console.log(`🧪 Smoke test — porta ${PORT}, dados em ${DATA}`);
@@ -688,6 +762,10 @@ async function drillRestauracaoBackup() {
   // vazada, nem a nova) — o teste define a SUA PRÓPRIA senha via env,
   // exatamente como uma instalação real deveria fazer (a env sempre vence o
   // hash de fábrica embutido no código).
+  // 🚧 Sem BLOCK_NEW_PURCHASES — a suíte principal roda no estado real de
+  // PRODUÇÃO hoje (interruptor de emergência desligado, compra normal). O
+  // interruptor LIGADO tem drill isolado próprio (drillBloqueioComprasNovas,
+  // servidor+env dele).
   const ENV_SRV = { PORT: String(PORT), DATA_DIR: DATA, STORAGE: "json", TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890", DOL_FEED_BASE: `http://127.0.0.1:${FEED_PORT}/feed`, DOL_API_BASE: `http://127.0.0.1:${FEED_PORT}/dol/`, H2A_BIM_MIN_PUBLICAR: "10", GOOGLE_FAKE_BASE: `http://127.0.0.1:${GOOGLE_PORT}`, ADMIN_PANEL_PASS_ANDRIO: "teste-smoke-andrio-2026", ADMIN_PANEL_PASS_DIEGO: "teste-smoke-diego-2026" };
   let log = "";
   let srv = spawnServidor(ENV_SRV, (t) => (log += t));
@@ -6608,6 +6686,36 @@ async function drillRestauracaoBackup() {
       /onclick="selJob2\('\$\{j\.id\}'\)"\$\{\(ap\|\|_inAQ\)\?' style="display:none"':""\}>/.test(_appV209) &&
       /onclick="selSheetJob\('\$\{esc\(j\.id\)\}'\)"\$\{\(isApplied\|\|_inAutoQ\)\?' style="display:none"':""\}>/.test(_appV209),
       "a tag de abertura do card voltou a ficar sem '>' antes da quebra de linha");
+
+    // 🔶 v215 (dono, 19/09/2026 — domínio migrado de verdade pra cá):
+    // estrutural — o banner "já era assinante VIP?" pro site antigo
+    // (h2bapply.onrender.com) é SEMPRE visível (nunca condicionado a
+    // U.newPurchasesBlocked), aparece na aba Planos E no Painel/Home, bem
+    // chamativo (cor contrastante — classe .vip-old-banner), e é um <a>
+    // explícito (clique do usuário), nunca JS de auto-redirect.
+    const _idxV214 = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+    check("🔶 v215 estrutural: banner 'já era assinante VIP?' pro site antigo aparece 2x (Planos + Home/Painel), sempre com a classe chamativa .vip-old-banner e link explícito pro h2bapply.onrender.com — nunca window.location automático",
+      (_idxV214.match(/class="vip-old-banner"/g) || []).length >= 2 &&
+      (_idxV214.match(/href="https:\/\/h2bapply\.onrender\.com"/g) || []).length >= 2 &&
+      !/h2bapply\.onrender\.com[\s\S]{0,120}location\.(href|assign|replace)/.test(_idxV214),
+      `ocorrências vip-old-banner=${(_idxV214.match(/class="vip-old-banner"/g) || []).length} onrender=${(_idxV214.match(/href="https:\/\/h2bapply\.onrender\.com"/g) || []).length}`);
+    check("🚧 estrutural: loadPlanos() troca o banner de manutenção pelo seletor de compra lendo SEMPRE U.newPurchasesBlocked (nunca decide sozinho no front) — e applyStatus() propaga o campo vindo do /api/status",
+      /if\(U\.newPurchasesBlocked\)\{/.test(_appV209) &&
+      /newPurchasesBlocked:!!d\.newPurchasesBlocked/.test(_appV209),
+      "o gate de U.newPurchasesBlocked sumiu de loadPlanos() ou applyStatus() parou de propagar o campo");
+
+    // 🚧 A suíte principal (SEM BLOCK_NEW_PURCHASES, igual produção real
+    // hoje — domínio já migrado) precisa continuar vendendo normal: prova
+    // que /api/status NÃO marca newPurchasesBlocked por padrão.
+    const _stSemBloqueio = await get("/api/status");
+    check("🚧 /api/status NÃO bloqueia compra por padrão (interruptor de emergência desligado — é o estado real de produção desde que o domínio migrou pra cá)",
+      _stSemBloqueio.json?.newPurchasesBlocked === false || _stSemBloqueio.json?.newPurchasesBlocked === undefined,
+      JSON.stringify(_stSemBloqueio.json?.newPurchasesBlocked));
+
+    // 🚧 Drill isolado (servidor próprio, COM BLOCK_NEW_PURCHASES=true)
+    // provando que o interruptor de emergência, se algum dia for ligado,
+    // recusa de verdade no backend — ver função acima.
+    await drillBloqueioComprasNovas();
 
     const disk = fs.readdirSync(path.join(DATA, "cvs"));
     check("PDFs válidos gravados no disco", disk.includes("cliente@test.com_1002.pdf") && disk.includes("cliente@test.com_1004.pdf"),

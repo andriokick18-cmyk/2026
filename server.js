@@ -589,6 +589,18 @@ function _vipSnapshot(u){
 // VIP. Preços em R$ — mudar aqui exige avisar o Andrio antes (dinheiro real).
 const PLANO_PRECO_TAB={vip:{30:100,60:190,90:270,365:960},vipro:{30:150,60:285,90:405,365:1440},doublepro:{30:250,60:475,90:675,365:2400}};
 
+// 🚧 INTERRUPTOR DE EMERGÊNCIA — compra nova (dono, 19/09/2026, ATUALIZADO no
+// mesmo dia: "h2bapply.com agora aponta pra este ambiente DE VERDADE"). Nasceu
+// como bloqueio enquanto este ambiente ainda NÃO era o domínio oficial — essa
+// premissa morreu: o domínio já foi migrado pro DNS deste ambiente, então
+// tráfego REAL de h2bapply.com cai aqui agora. Continuar bloqueando por
+// padrão derrubaria assinatura nova de cliente de verdade (prioridade #2 da
+// casa) sem motivo nenhum. Virou interruptor de emergência: default LIGADO
+// (compra funciona normal, sem mudança nenhuma pro usuário) — só desliga com
+// env explícita, pra um freeze futuro de verdade (ex.: nova migração). Admin
+// (Regularizar/retroativo) nunca é afetado, congelado ou não.
+const NEW_PURCHASES_BLOCKED = process.env.BLOCK_NEW_PURCHASES === "true";
+
 // ══════════════════════════════════════════════════════════════════════════
 // 💰 CONTABILIDADE CANÔNICA — UMA função, UM número (dono, 15/07/2026)
 // O painel mostrava 4 receitas diferentes pro MESMO caixa:
@@ -10188,6 +10200,13 @@ filtrar();
       const planoKey={vip:"vip",vipro:"vipro",doublepro:"doublepro"}[String(d.plano||"").toLowerCase()];
       const diasReq=parseInt(d.dias,10)||0;
       const _isAdminCaller=isAdminVip(getUser(s.user_email))||isAdminEmail(_sessAdminEmail(s));
+      // 🚧 Interruptor de emergência: desligado por padrão (ver
+      // NEW_PURCHASES_BLOCKED) — só bloqueia se BLOCK_NEW_PURCHASES=true
+      // for setado de propósito. Admin (Regularizar) passa direto sempre —
+      // é documentação de compra ANTIGA, não venda nova.
+      if(NEW_PURCHASES_BLOCKED&&!_isAdminCaller){
+        return json(res,403,{error:"Assinaturas novas estão pausadas no momento por uma manutenção rápida — tente novamente em instantes.",newPurchasesBlocked:true});
+      }
       let valorOficial=null;
       if(planoKey&&(PLANO_PRECO_TAB[planoKey]||{})[diasReq]!=null){
         valorOficial=PLANO_PRECO_TAB[planoKey][diasReq];
@@ -10960,7 +10979,7 @@ filtrar();
     // quem já tem o pedido na mesa do admin (o servidor já não repete: ver
     // planGateMsg). null quando não há provisório vencendo com pedido pendente.
     const _provPend = _provisorioPendente(p);
-    return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,planRulesNotice:_prNotice,
+    return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,newPurchasesBlocked:NEW_PURCHASES_BLOCKED&&!isAdminVip(p),planRulesNotice:_prNotice,
       provisorioPendente:_provPend?{pedidoId:_provPend.pedidoId,ref:_provPend.ref}:null,manualCdOff:p.manualCdOff===true,gmailConnected,gmailEmail,emailContato:p.emailContato||null,emailVerificado:!!p.emailVerificadoEm,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",estado:p.estado||p.state||"",language:p.language||"pt",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||null}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,adminMessage:p.adminMessage||null,profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.gmailConnectedAt||p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===(gmailEmail||s.user_email)||x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||300),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
   }
 

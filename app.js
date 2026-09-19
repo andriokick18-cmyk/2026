@@ -175,7 +175,10 @@ function applyStatus(d){
   // 💳 v187: {pedidoId,ref} quando a janela provisória de 3 dias venceu e o
   // pedido AINDA está com o admin — é o que impede a tela de mandar quem já
   // pagou "assinar de novo" (ver _planGateSubTxt).
-  provisorioPendente:d.provisorioPendente||null};
+  provisorioPendente:d.provisorioPendente||null,
+  // 🚧 Migração de domínio: banner na aba Planos em vez do seletor de compra
+  // (ver loadPlanos()). Nunca decidido no front — sempre o que o servidor manda.
+  newPurchasesBlocked:!!d.newPurchasesBlocked};
   UPROFILES=d.profiles||[];U.profiles=UPROFILES;
   // Pedido pendente na Home: se o plano/gate mudou, o card em cache virou
   // mentira — força uma releitura na próxima renderização.
@@ -6840,6 +6843,10 @@ const LANG_DICT = {
     // 🌐 Etapa 4 do i18n — Perfil/Planos/Ranking/Configurações
     "personal_data":"Dados Pessoais","required_lbl":"OBRIGATÓRIO",
     "plans_title":"Planos H2BApply","plans_sub":"Escolha um plano, pague via PIX e envie o comprovante",
+    "plan_blocked_title":"Assinaturas novas estão pausadas no momento",
+    "plan_blocked_msg":"Estamos com uma manutenção rápida no sistema de pagamento — volte em instantes. Se você já é assinante, seu plano continua funcionando normalmente.",
+    "vip_old_title":"Já era assinante VIP antes?",
+    "vip_old_msg":"Toque aqui pra entrar no site antigo com a MESMA conta e continuar usando seu plano",
     "contact_data":"Seus dados de contato","contact_sub":"Para ativarmos seu plano e entrar em contato",
     "order_summary":"📋 Resumo do pedido","notes_lbl":"Observações",
         "settings_sub":"Sua conta, sua privacidade.","your_account":"Sua conta",
@@ -6978,6 +6985,10 @@ const LANG_DICT = {
     "cd_soon":"Sending any moment...","cd_next":"Next send in","cd_starts":"Starts in","cd_resumes":"Resumes in",
     "personal_data":"Personal Info","required_lbl":"REQUIRED",
     "plans_title":"H2BApply Plans","plans_sub":"Choose a plan, pay via PIX and send the receipt",
+    "plan_blocked_title":"New subscriptions are paused right now",
+    "plan_blocked_msg":"We're doing quick maintenance on the payment system — check back shortly. If you're already a subscriber, your plan keeps working normally.",
+    "vip_old_title":"Were you already a VIP subscriber?",
+    "vip_old_msg":"Tap here to log into the old site with the SAME account and keep using your plan",
     "contact_data":"Your contact info","contact_sub":"So we can activate your plan and reach you",
     "order_summary":"📋 Order summary","notes_lbl":"Notes",
         "settings_sub":"Your account, your privacy.","your_account":"Your account",
@@ -7098,6 +7109,10 @@ const LANG_DICT = {
     "cd_soon":"Enviando en instantes...","cd_next":"Próximo envío en","cd_starts":"Inicia en","cd_resumes":"Reanuda en",
     "personal_data":"Datos Personales","required_lbl":"OBLIGATORIO",
     "plans_title":"Planes H2BApply","plans_sub":"Elige un plan, paga vía PIX y envía el comprobante",
+    "plan_blocked_title":"Las suscripciones nuevas están pausadas por ahora",
+    "plan_blocked_msg":"Estamos con un mantenimiento rápido del sistema de pago — vuelve en instantes. Si ya eres suscriptor, tu plan sigue funcionando normal.",
+    "vip_old_title":"¿Ya eras suscriptor VIP antes?",
+    "vip_old_msg":"Toca aquí para entrar al sitio antiguo con la MISMA cuenta y seguir usando tu plan",
     "contact_data":"Tus datos de contacto","contact_sub":"Para activar tu plan y contactarte",
     "order_summary":"📋 Resumen del pedido","notes_lbl":"Observaciones",
         "settings_sub":"Tu cuenta, tu privacidad.","your_account":"Tu cuenta",
@@ -7540,6 +7555,20 @@ window._diasEscolhido = window._diasEscolhido || null;
 // silêncio — mostra um card com "tentar de novo" (mesmo padrão dos outros
 // loads do app).
 async function loadPlanos(){
+  // 🚧 Migração de domínio: enquanto U.newPurchasesBlocked (vindo do
+  // /api/status — nunca decidido no front), a tela mostra só o banner
+  // pro site oficial + link explícito pro site antigo (existing VIP users
+  // clicam eles mesmos — nunca auto-redirect) e NEM busca preço/monta o
+  // seletor de compra. plan-status-card, mig-card (código de migração) e
+  // Meus Pedidos continuam do jeito de sempre — só a compra NOVA some.
+  const banner=g('#plan-blocked-banner'), step1=g('#plan-step-1');
+  if(U.newPurchasesBlocked){
+    if(banner)banner.style.display='block';
+    if(step1)step1.style.display='none';
+    return;
+  }
+  if(banner)banner.style.display='none';
+  if(step1)step1.style.display='';
   const box=g('#plan-select'); if(!box)return;
   box.innerHTML=`<div style="text-align:center;padding:20px"><span class="spin"></span></div>`;
   try{

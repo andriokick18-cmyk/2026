@@ -447,6 +447,11 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 .sb-auto-btn.is-active{color:#059669;font-weight:800}
 .sb-auto-btn.is-active i{color:#059669}
 @keyframes sbAutoGlow{0%,100%{box-shadow:0 12px 30px rgba(219,39,119,.4)}50%{box-shadow:0 16px 40px rgba(249,115,22,.55)}}
+/* 🔶 v215: banner "assinante VIP do site antigo" — bem chamativo, pulso
+   sutil (nunca pisca rápido/agressivo) pra chamar atenção sem incomodar. */
+@keyframes vipOldGlow{0%,100%{box-shadow:0 4px 18px rgba(245,158,11,.45),0 0 0 2px rgba(234,88,12,.9)}50%{box-shadow:0 6px 26px rgba(245,158,11,.7),0 0 0 3px rgba(234,88,12,1)}}
+.vip-old-banner{display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,#f59e0b,#ea580c);color:#fff;border:2px solid #fff;border-radius:var(--rl);padding:14px 16px;text-decoration:none;animation:vipOldGlow 2.4s ease-in-out infinite}
+.vip-old-banner:active{transform:scale(.98)}
 .sb-profile{margin:5px 3px;padding:10px 11px;border:1.5px solid var(--border);border-radius:var(--r);background:var(--sf2)}
 .sb-av{width:32px;height:32px;border-radius:50%;overflow:hidden;flex-shrink:0;background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center}
 /* Bottom nav — ver definição única mais abaixo (v171: consolidada) */
@@ -2380,6 +2385,21 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
             </div>
           </div>
 
+          <!-- 🔶 v215 (dono, 19/09/2026 — domínio h2bapply.com migrado de
+               verdade pra este ambiente): mesmo banner chamativo da aba
+               Planos, também no topo do Painel — "dentro de 1-2 segundos"
+               de quem chega. -->
+          <div style="padding:14px 14px 0">
+            <a href="https://h2bapply.onrender.com" target="_blank" rel="noopener noreferrer" class="vip-old-banner">
+              <div style="font-size:30px;flex-shrink:0">⚡</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13.5px;font-weight:900;text-transform:uppercase;letter-spacing:.3px" data-i18n="vip_old_title">Já era assinante VIP antes?</div>
+                <div style="font-size:12.5px;font-weight:600;opacity:.95;margin-top:2px" data-i18n="vip_old_msg">Toque aqui pra entrar no site antigo com a MESMA conta e continuar usando seu plano</div>
+              </div>
+              <i class="ti ti-external-link" style="font-size:20px;flex-shrink:0"></i>
+            </a>
+          </div>
+
           <!-- ══ CTA PRIMÁRIO — Envio Automático (mesmos ids de sempre: renderHome atualiza o status ao vivo) ══ -->
           <div style="padding:14px 14px 0">
             <div class="home-auto-card inactive" id="home-auto-card" onclick="openAutoModal()" role="button" tabindex="0" style="cursor:pointer;margin:0;border-radius:24px;padding:22px 22px;position:relative;overflow:hidden;transition:transform .15s,box-shadow .15s" onmouseenter="this.style.transform='translateY(-2px)'" onmouseleave="this.style.transform=''">
@@ -3245,6 +3265,21 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       <!-- ══ PLANS ══ -->
       <div class="view gone" id="v-plans"><div class="view-scroll" style="padding-bottom:80px">
 
+        <!-- 🔶 v215 (dono, 19/09/2026 — domínio h2bapply.com migrado de
+             verdade pra este ambiente): quem já era assinante VIP no site
+             antigo pode não achar a conta/plano dele aqui ainda — banner
+             SEMPRE visível, bem chamativo (cor contrastante, borda, pulso
+             sutil), logo no topo — clique EXPLÍCITO do usuário, nunca
+             auto-redirect. -->
+        <a href="https://h2bapply.onrender.com" target="_blank" rel="noopener noreferrer" class="vip-old-banner" style="margin-bottom:16px">
+          <div style="font-size:30px;flex-shrink:0">⚡</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13.5px;font-weight:900;text-transform:uppercase;letter-spacing:.3px" data-i18n="vip_old_title">Já era assinante VIP antes?</div>
+            <div style="font-size:12.5px;font-weight:600;opacity:.95;margin-top:2px" data-i18n="vip_old_msg">Toque aqui pra entrar no site antigo com a MESMA conta e continuar usando seu plano</div>
+          </div>
+          <i class="ti ti-external-link" style="font-size:20px;flex-shrink:0"></i>
+        </a>
+
         <!-- Status do plano atual -->
         <div id="plan-status-card" style="display:none;margin-bottom:14px"></div>
         <!-- 🎟️ v206: quem tinha VIP no site antigo resgata os dias que sobraram com
@@ -3272,6 +3307,17 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <div style="font-size:44px;margin-bottom:8px">💎</div>
           <div style="font-family:'Sora',sans-serif;font-size:22px;font-weight:800" data-i18n="plans_title">Planos H2BApply</div>
           <div style="font-size:13px;opacity:.8;margin-top:6px" data-i18n="plans_sub">Escolha um plano, pague via PIX e envie o comprovante</div>
+        </div>
+
+        <!-- 🚧 Interruptor de emergência (desligado por padrão — ver
+             BLOCK_NEW_PURCHASES em server.js): só aparece se um dia for
+             preciso CONGELAR assinatura nova de verdade (ex.: uma futura
+             migração real). Some/aparece via loadPlanos() lendo
+             U.newPurchasesBlocked (/api/status). -->
+        <div id="plan-blocked-banner" style="display:none;background:var(--surface);border:2px solid var(--border2);border-radius:var(--rl);padding:18px 16px;margin-bottom:14px;text-align:center">
+          <div style="font-size:34px;margin-bottom:6px">🚧</div>
+          <div style="font-size:15px;font-weight:800;margin-bottom:6px" data-i18n="plan_blocked_title">Assinaturas novas estão pausadas no momento</div>
+          <div style="font-size:12.5px;color:var(--t2);line-height:1.6" data-i18n="plan_blocked_msg">Estamos com uma manutenção rápida no sistema de pagamento — volte em instantes. Se você já é assinante, seu plano continua funcionando normalmente.</div>
         </div>
 
         <!-- ETAPAS -->
