@@ -6590,6 +6590,25 @@ async function drillRestauracaoBackup() {
       !/\{j\.active\?['"`]<span class="tag tg">/.test(_appV209) && !/\{job\.active\?['"`]<span class="tag tg">/.test(_appV209),
       "achou algum resquício de badge Ativa/Inativa condicionado em .active");
 
+    // 🚨 v213 (bug real, achado ao vivo pelo dono depois do v210: Envio Manual
+    // 100% quebrado — clique em qualquer vaga da aba "ao vivo" do DOL nunca
+    // abria o detalhe). Causa raiz: mkCard() (loadJobs, aba ao vivo) tinha o
+    // `>` de fechamento da tag <div class="jcard"...> comido pelo ternário
+    // do style="display:none" — o browser nunca fechava o card, os filhos
+    // (título/empresa/tags) viravam IRMÃOS soltos dentro de #jlist em vez de
+    // aninhados no card clicável, e o onclick nunca era alcançado. Bug
+    // PRÉ-EXISTENTE (não veio do v209/v210 — confirmado no histórico da
+    // sessão que já lia essa linha quebrada antes de qualquer edição de
+    // hoje), só ficou perto o bastante do trecho tocado pro dono desconfiar.
+    // Guarda genérica: as duas funções que montam card de vaga (mkCard,
+    // mkSheetCard) têm que fechar a tag <div class="jcard"...> com `>` ANTES
+    // da 1ª quebra de linha do template — nunca deixar o `>` cair pro meio
+    // dos atributos seguintes.
+    check("🚨 v213 (estrutural): mkCard()/mkSheetCard() fecham a tag <div class=\"jcard\"...> com '>' antes da 1ª quebra de linha — nunca mais um card de vaga nasce sem fechar a tag de abertura (bug real: clique nunca abria o detalhe, filhos viravam irmãos soltos em #jlist)",
+      /onclick="selJob2\('\$\{j\.id\}'\)"\$\{\(ap\|\|_inAQ\)\?' style="display:none"':""\}>/.test(_appV209) &&
+      /onclick="selSheetJob\('\$\{esc\(j\.id\)\}'\)"\$\{\(isApplied\|\|_inAutoQ\)\?' style="display:none"':""\}>/.test(_appV209),
+      "a tag de abertura do card voltou a ficar sem '>' antes da quebra de linha");
+
     const disk = fs.readdirSync(path.join(DATA, "cvs"));
     check("PDFs válidos gravados no disco", disk.includes("cliente@test.com_1002.pdf") && disk.includes("cliente@test.com_1004.pdf"),
       disk.join(", "));

@@ -2415,7 +2415,7 @@ function mkCard(j){
   // null = sem perfil ainda (visitante ou perfil não preenchido) — some, não mostra 0%.
   const _mCor=j.matchScore>=70?"tg":j.matchScore>=40?"ta":"tr";
   const matchBadge=j.matchScore!=null?`<span class="tag ${_mCor}" title="${esc((j.matchWhy||[]).join(" · ")||"combinação com seu perfil")}"><i class="ti ti-target-arrow" style="font-size:9px"></i>${j.matchScore}%</span>`:"";
-  return`<div class="jcard${(ap||_inAQ)?" applied":""}" id="jcard-${j.id}" onclick="selJob2('${j.id}')"${(ap||_inAQ)?' style="display:none"':""}
+  return`<div class="jcard${(ap||_inAQ)?" applied":""}" id="jcard-${j.id}" onclick="selJob2('${j.id}')"${(ap||_inAQ)?' style="display:none"':""}>
     <div class="jcard-cat-row">
       <span class="jcard-cat-badge"><i class="ti ${esc(catInfo.icon)}" style="font-size:9px"></i> ${esc(catInfo.name)}</span>
       ${matchBadge}
