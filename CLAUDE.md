@@ -1537,3 +1537,144 @@ de outro projeto ("Respostas Certas") passava só pelo portão genérico
   major que o CI já prova a cada push). Guarda no smoke mantém os 3 em
   sincronia. Subir pra uma major que o CI não roda é quebrar o deploy por causa
   de um teste.
+
+## v202–v205 — Varredura total, lotes 20-23 (fim da varredura)
+
+Fecha a varredura de 22 lotes aberta no v183 (mesma ordem do dono,
+18/09/2026: **"O que ainda pode melhorar? O que não faz sentido existir? Ou
+funciona errado? Pensa sobre tudo e resolva!"** + autorização total). Estes 4
+lotes são o motor de envio testado de verdade · o CSS de telas que não
+existem mais · a documentação que não engana · a guarda de XSS por
+expressão. 21 checks novos e 2 asserções antigas fortalecidas (676 → 697).
+sw v65 → v67.
+
+**v202 — Lote 20: o motor de envio finalmente testado** (`mod-gmail.js`,
+`server.js`, `smoke-test.js`, `.env.example`). A prioridade nº1 do produto —
+a candidatura CHEGAR no empregador — tinha cobertura comportamental ZERO:
+todo POST em `/api/send` e `/api/auto/start` da suíte parava nos portões
+(402/429/400/lock), porque o Gmail e o endpoint de token do Google são hosts
+fixos que o sandbox não alcança. As garantias mais caras do repo (token
+vencido no meio da fila que renova e re-tenta a MESMA vaga, erro pós-envio
+que não pode virar "falha", extra com auth morta isolado) eram provadas por
+GREP DE STRING no server.js: renomear um log quebrava o teste, quebrar a
+lógica mantendo o texto passava verde. E o check da sentinela ainda gastava
+segundos esperando timeout de rede real pro Google. **Bug real achado ao
+testar de verdade**: o `markSent` do envio MANUAL vivia DENTRO do try de
+contabilidade cujo catch (v177-FIX3) devolve `ok:true` de propósito — uma
+exceção ali (cliente mandando `desc` como número faz `buildJobSnapshot`
+estourar) fazia o servidor dizer "candidatura enviada" sem NUNCA registrar o
+empregador na regra 8.
+
+**v203 — Lote 21: CSS de telas que não existem mais + 2 ReferenceError**
+(`index.html`, `app.js`, `smoke-test.js`, sw v66). Os `<style>` do
+index.html carregavam 292 regras (~33KB) de features removidas de propósito.
+A REVISÃO VISUAL REAL no Chromium que este lote exigia (Playwright, landing
++ 9 views, 1280px e 390×844, antes e depois) achou o que nenhum teste via:
+dois ReferenceError de produção, da mesma classe — função removida, CHAMADA
+esquecida. `_loadSoundPref()` (deixada pelo v189) abortava o app.js inteiro
+na linha 6015, e tudo que era `const` depois dela ficava em TDZ pra sempre:
+`LANG_DICT`, `_curLang` e **`PIX_KEY`/`PIX_NAME`, a chave Pix do checkout**.
+`_showWelcome()` (deixada pelo v198) estourava na 1ª linha do `renderHome` e
+a Home inteira não renderizava.
+
+**v204 — Lote 22: documentação que não engana a próxima sessão**
+(`README.md`, `CLAUDE.md`, `server.js`, `.env.example`). O CLAUDE.md manda
+ler o README como fonte da verdade — e os dois mentiam: a aba Enviadas
+estava em "o que NÃO existe" com a view viva, e o topo declarava que
+Gemini/Cérebro Contábil não existem mandando "parar e confirmar", enquanto o
+Gemini É quem lê o comprovante de PIX e o motor contábil roda no servidor.
+Comentários "fonte da verdade" do server.js diziam "free → 20 manual + 10
+auto/dia" (o oposto do ZERO envio grátis), que a ativação provisória "só
+roda no gancho de teste" (falso desde o v177) e mandavam restaurar backup
+numa "aba Configurações" que nunca existiu.
+
+**v205 — Lote 23: a guarda de XSS julga cada `${...}`** (`check-xss-guard.js`,
+`app.js`, `smoke-test.js`, sw v67). A guarda antiga dava a instrução
+`.innerHTML=` inteira por segura assim que UM esc() aparecesse nela — foi
+assim que o `${icon}` passou batido até o v177-FIX2, e a fraqueza estava
+registrada aqui como risco conhecido. As 405 expressões interpoladas do
+front foram revisadas uma a uma: 31 ocorrências de DADO ganharam esc() de
+verdade, 75 entraram na allowlist com o motivo, e `showBanner()` (zero
+chamadores, API "me passe HTML pronto") foi removida.
+
+### Regras novas (não quebrar)
+
+- **O GOOGLE FALSO SÓ EXISTE NO `npm test`, E SÓ PROS 2 HOSTS EXATOS**: o
+  funil único de rede (`httpsReq`, mod-gmail.js) redireciona
+  `gmail.googleapis.com` e `oauth2.googleapis.com` — nunca um wildcard de
+  subdomínio, nunca o DOL/userinfo/Gemini — e SÓ com DUPLA TRAVA:
+  `TEST_LOGIN_TOKEN` presente **e** `GOOGLE_FAKE_BASE` apontando pra
+  `http://127.0.0.1|localhost`. Mesma régua do `DOL_API_BASE` do v182: em
+  produção nada muda. Guarda permanente com 10 combinações no smoke —
+  afrouxar isso é transformar o app num redirecionador de credencial do
+  Google.
+- **ENVIO É PROVADO POR COMPORTAMENTO, NÃO POR GREP**: os 6 cenários do
+  motor (manual ponta a ponta, fila de 3 que diminui, 401 no meio da fila
+  que renova e re-tenta a MESMA vaga, erro pós-envio com `ok:true`,
+  invalid_grant que pausa e devolve a vaga, extra isolado com o robô
+  seguindo) rodam contra o Gmail falso, com fixtures de plano PAGO — nenhum
+  portão é contornado. Os estruturais antigos ficam AO LADO (custam zero e
+  pegam remoção acidental do caminho de renovação). PROIBIDO trocar um
+  check comportamental por grep de string de log.
+- **A REGRA 8 GRAVA ANTES DA CONTABILIDADE**: no `/api/send`, `markSent` é a
+  PRIMEIRA coisa depois do 200 do Gmail — nunca dentro do try cujo catch
+  devolve `ok:true`. A candidatura já saiu; registrar o empregador não pode
+  depender de mais nada dar certo (era assim que a mesma empresa podia
+  receber 2 candidaturas).
+- **A FILA ESPERTA REORDENA — TESTE NÃO ASSUME ORDEM**: `/api/auto/start`
+  monta a fila pelo score de encaixe com jitter. Check que afirma "a 1ª
+  vaga é a X" quebra por sorte; afirme o CONJUNTO, ou aceite qualquer uma
+  das vagas semeadas.
+- **CSS MORTO SE PODA POR SELETOR, NUNCA POR BLOCO**: só sai regra cujos
+  seletores citam EXCLUSIVAMENTE classes mortas. Regra MISTA (a classe viva
+  ao lado da morta) fica intocada — por isso `.hcard`/`.plan-card`/
+  `.future-card` continuam vivos dentro das 2 regras do tema claro, com
+  contador no smoke pra travar regra NOVA dessas famílias. Classe montada
+  por concatenação (`"ls-"+l.status`) e o bloco de fallback de ícones
+  (`ti-emoji-fallback`) ficam FORA da poda de propósito.
+- **PODA DE CSS EXIGE REVISÃO VISUAL REAL**: não existe teste de regressão
+  visual na suíte — prints no Chromium (landing + as 9 views, 1280px e
+  390×844) ANTES e DEPOIS são a única rede. Da última vez, 17 dos 20 saíram
+  byte a byte idênticos e os 3 restantes eram overlay/animação com tempo
+  próprio. Estabilize a tela (fechar tour e convite de currículo) antes de
+  comparar, senão o ruído esconde a regressão de verdade.
+- **FUNÇÃO REMOVIDA LEVA AS CHAMADAS JUNTO — E TEM GUARDA**: duas guardas
+  permanentes no smoke. (1) Nenhuma CHAMADA DE TOPO do app.js pode apontar
+  pra função inexistente — ali o ReferenceError aborta o ARQUIVO INTEIRO e
+  tudo que é `const` depois fica em TDZ (foi o `_loadSoundPref()`).
+  (2) Nenhuma chamada do bundle do front a um nome com `_` ou maiúscula sem
+  declaração nenhuma — pega a chamada escondida dentro de função (foi o
+  `_showWelcome()` na 1ª linha do `renderHome`). Ao tirar a definição de uma
+  função, tire os consumidores no MESMO commit.
+- **"NÃO EXISTE" ≠ "EXISTE SEM TELA"**: o topo deste arquivo e o README
+  listam features removidas e mandam "parar e confirmar". Antes de remover
+  qualquer coisa dessa lista, confira no CÓDIGO: o Gemini existe (lê o
+  comprovante de PIX, v177) e o motor contábil existe no servidor
+  (`computeSocios`/`computeDreMensal`/`_fecharMes`/`relatorioExecutivoDre`)
+  — o que não existe é a ABA deles. Apagar por causa do parágrafo é quebrar
+  dinheiro.
+- **COMENTÁRIO COM NÚMERO DE PLANO É PROIBIDO FORA DA TABELA**: a tabela
+  única vive em `mod-config.js`. Cópia em comentário envelhece e vira
+  armadilha — a próxima sessão lê, acredita e "corrige" o código pra bater
+  com ela. Vale pra qualquer comentário "fonte da verdade": se ele afirma um
+  estado do sistema, ou está certo, ou sai.
+- **GUARDA POR TEXTO NÃO PODE MEDIR O PRÓPRIO COMENTÁRIO**: quando o
+  comentário novo cita o texto velho pra explicar por que ele saiu, a guarda
+  tem que medir a FORMA que só o código velho tinha (a linha de tabela
+  `//   free → 20 manual…`, o literal do `new Set([...])`), nunca a palavra
+  solta — senão ela se auto-sabota. Mesma família da regra "guarda por frase
+  desconta comentários" do v189.
+- **TODA ENV LIDA POR `process.env` CONSTA NO `.env.example`**: guarda
+  permanente no smoke (23 envs hoje). Env de teste entra como linha
+  comentada, com o aviso de nunca definir em produção. O arquivo se declara
+  "fonte da verdade revisada contra process.env real" e envelhecia sozinho.
+- **XSS SE MEDE POR EXPRESSÃO, NUNCA POR INSTRUÇÃO**: cada `${...}` de cada
+  template dentro de `innerHTML`/`outerHTML`/`insertAdjacentHTML` é julgado
+  sozinho, nos 4 arquivos do front. Passa quem vai por
+  `esc`/`escAttr`/`_vfAttr`, quem é número/booleano/string literal, quem
+  termina em formatação de número ou data, quem é chamada de `SAFE_FNS`
+  (cada entrada com ASSINATURA e o porquê, escrita depois de LER o corpo da
+  função) e quem é operador cujos ramos EMITIDOS são todos seguros. O resto
+  entra na ALLOWLIST **por assinatura da EXPRESSÃO**, com o motivo — nunca
+  por "arquivo:linha" (entrada por linha nasce morta). PROIBIDO voltar a
+  aceitar uma instrução inteira porque "tem um esc() em algum lugar dela".
