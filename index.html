@@ -1049,17 +1049,25 @@ textarea.input,input.input,select.input{background:#f5f7ff;color:#1e1b4b}
   padding:56px 20px 0;
   max-width:1100px;margin:0 auto;width:100%;
 }
+/* 🧩 v216 (dono, 19/09/2026): grid-template-areas em vez de 2 blocos soltos —
+   dá controle de ORDEM independente por breakpoint sem duplicar HTML. No
+   desktop, intro+actions ficam empilhados na coluna esquerda (como sempre
+   foi) e o preview de capturas reais ocupa a coluna direita inteira. No
+   mobile (1 coluna), o preview sobe pra ANTES dos botões de Entrar/Criar
+   conta — pedido explícito do dono: "tem que aparecer no hero, sem a
+   pessoa precisar rolar pra baixo pra descobrir que existe". */
 .ln-hero-inner{
   display:grid;
   grid-template-columns:1fr 340px;
-  gap:48px;align-items:stretch;
+  grid-template-areas:"intro visual" "actions visual";
+  gap:12px 48px;align-items:start;
 }
-/* ⚠️ QA 11/09: item de grid sem min-width próprio herda min-width:auto —
-   um texto sem quebra dentro (ex.: handle do Instagram) empurra a coluna
-   além do espaço disponível e corta a borda direita de botões/caixas no
-   mobile. min-width:0 deixa o item encolher até o tamanho da track. */
-.ln-hero-copy{min-width:0}
-@media(max-width:860px){.ln-hero-inner{grid-template-columns:1fr}}
+.ln-hero-intro{grid-area:intro;min-width:0}
+.ln-hero-actions{grid-area:actions;min-width:0}
+.ln-hero-visual{grid-area:visual}
+@media(max-width:860px){
+  .ln-hero-inner{grid-template-columns:1fr;grid-template-areas:"intro" "visual" "actions"}
+}
 /* v169 (dono, 08/09/2026 — "imagem desproporcional ao espaço que tem ali pra
    baixo"): era uma caixa 4:3 de altura FIXA (255px) ao lado de uma coluna de
    texto com o dobro/triplo disso (badge+título+subtítulo+chips+3 botões+
@@ -1067,9 +1075,23 @@ textarea.input,input.input,select.input{background:#f5f7ff;color:#1e1b4b}
    vazio embaixo da imagem. Trocado por altura 100% (stretch no grid — a
    imagem some acompanha a coluna de texto, nunca mais fica curta) + foto
    nova, vertical, feita sob medida pelo dono pra esse formato mais alto. */
-.ln-hero-visual{position:relative;border-radius:20px;overflow:hidden;box-shadow:0 20px 50px rgba(15,23,42,.35);height:100%;min-height:340px}
-.ln-hero-visual img{width:100%;height:100%;object-fit:cover;display:block}
-@media(max-width:860px){.ln-hero-visual{display:none}}
+.ln-hero-visual{position:relative;height:100%;min-height:340px;display:flex;align-items:center}
+/* 🖼️ v216 (dono, 19/09/2026, ao vivo no navegador — "a arte da Estátua da
+   Liberdade tá com overflow, cortada nas duas bordas, texto ilegível, tem
+   até erro de português 'próxilmo'"): a arte gerada saiu, no lugar entra um
+   preview chamativo com CAPTURAS REAIS do site (as mesmas 5 fotos da seção
+   "Veja o site por dentro", só que já aqui no hero — ninguém precisa rolar
+   pra baixo pra descobrir que existem). Link inteiro pra #veja-por-dentro,
+   que agora vem logo depois do hero (v216 moveu a seção pra cima). */
+.ln-preview-card{display:block;position:relative;width:100%;text-decoration:none;background:linear-gradient(160deg,#131b3a,#0d1530);border:1.5px solid rgba(99,102,241,.35);border-radius:20px;padding:16px 16px 20px;box-shadow:0 20px 50px rgba(15,23,42,.35);transition:transform .18s,box-shadow .18s}
+.ln-preview-card:hover{transform:translateY(-3px);box-shadow:0 26px 60px rgba(79,70,229,.3)}
+.ln-preview-eyebrow{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;color:#a5b4fc;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px}
+.ln-preview-main{width:100%;border-radius:13px;display:block;box-shadow:0 10px 26px rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.1)}
+.ln-preview-thumbs{display:flex;gap:8px;margin-top:10px}
+.ln-preview-thumbs img{width:calc(50% - 4px);border-radius:9px;display:block;opacity:.88;border:1px solid rgba(255,255,255,.08);transition:opacity .15s}
+.ln-preview-card:hover .ln-preview-thumbs img{opacity:1}
+.ln-preview-badge{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:14px;font-size:12.5px;font-weight:800;color:#fff;background:rgba(99,102,241,.18);border:1px solid rgba(129,140,248,.4);border-radius:99px;padding:9px 14px}
+@media(max-width:860px){.ln-hero-visual{min-height:0;margin-top:8px}}
 /* ── VITRINE (foto real de exemplo de vagas) ── */
 .ln-showcase{padding:20px 20px 8px;max-width:1100px;margin:0 auto;width:100%}
 .ln-showcase-inner{background:var(--surface);border:1.5px solid var(--border);border-radius:22px;overflow:hidden;display:grid;grid-template-columns:1.3fr 1fr;box-shadow:0 10px 40px rgba(15,23,42,.08)}
@@ -1825,8 +1847,8 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
   <div class="ln-hero">
     <div class="ln-hero-inner">
 
-      <!-- Coluna esquerda: copy + CTA -->
-      <div class="ln-hero-copy">
+      <!-- Coluna esquerda, parte 1: título + proposta de valor -->
+      <div class="ln-hero-intro">
         <a href="#veja-por-dentro" class="ln-vip-pill" style="text-decoration:none;cursor:pointer"><i class="ti ti-eye"></i> 👀 <strong>Veja como funciona</strong> antes de assinar um plano</a>
         <h1 class="ln-hero-title">Trabalhe nos<br><span class="ln-title-usa">Estados Unidos</span></h1>
         <!-- v170 (dono, 09/09/2026 — "revise o que tá escrito, explique melhor que não
@@ -1841,6 +1863,12 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <div class="ln-feat"><i class="ti ti-shield-check"></i> Anti-duplicata</div>
           <div class="ln-feat"><i class="ti ti-lock"></i> Só envia — nunca lê seu Gmail</div>
         </div>
+      </div>
+
+      <!-- Coluna esquerda, parte 2: CTAs + prova social (v216: virou item de
+           grid próprio pra poder vir DEPOIS do preview de capturas no
+           mobile — ver grid-template-areas de .ln-hero-inner). -->
+      <div class="ln-hero-actions">
         <button class="ln-login-btn" onclick="openAuthGate('login','login')">
           <i class="ti ti-login" style="font-size:18px"></i> Já tenho conta — Entrar
         </button>
@@ -1902,9 +1930,20 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
         </div>
       </div>
 
-      <!-- Coluna direita: foto real (Estátua da Liberdade + farol de Martha's Vineyard) -->
-      <div class="ln-hero-visual" aria-hidden="true">
-        <img src="/img/landing-hero-tall.jpg" alt="" loading="eager">
+      <!-- Coluna direita: preview de capturas REAIS do site (v216, 19/09/2026
+           — a arte gerada com overflow/texto cortado/erro de português saiu
+           daqui; entram as mesmas fotos reais da seção "Veja o site por
+           dentro", logo abaixo, pra ninguém precisar rolar pra descobrir). -->
+      <div class="ln-hero-visual">
+        <a href="#veja-por-dentro" class="ln-preview-card" aria-label="Ver mais capturas de tela reais do H2BApply">
+          <div class="ln-preview-eyebrow"><span class="live-dot"></span> Capturas reais do site rodando</div>
+          <img class="ln-preview-main" src="/tut-img/landing-4-automatico.jpg" alt="Tela real do envio automático do H2BApply, mostrando candidaturas sendo enviadas ao vivo" loading="eager">
+          <div class="ln-preview-thumbs">
+            <img src="/tut-img/landing-1-cadastro.jpg" alt="Tela real de criação de conta" loading="lazy">
+            <img src="/tut-img/landing-3-vagas.jpg" alt="Tela real com lista de vagas H-2B" loading="lazy">
+          </div>
+          <div class="ln-preview-badge"><i class="ti ti-photo"></i> 5 telas reais do site <i class="ti ti-arrow-down"></i></div>
+        </a>
       </div>
 
     </div>
@@ -1923,6 +1962,50 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       <span id="ps-total-auto" style="display:none"></span>
     </div>
   </div>
+
+  <!-- ══ v212 (dono, 19/09/2026 — pedido feito 3x: "não é link escondido pra
+       Central de Tutoriais, é o tutorial completo, com fotos GRANDES e
+       REAIS, direto na landing, antes de qualquer cadastro"): a animação
+       genérica em HTML/CSS ("Veja em ação", empresas inventadas tipo "Green
+       Valley Inc") foi REMOVIDA de vez (ver app.js) e trocada por 5 prints
+       de verdade do site rodando, tirados com Playwright contra o servidor
+       real. Sem JS, sem login — qualquer visitante já vê isso ao abrir a
+       página. As legendas usam a MESMA linguagem simples do resto da
+       landing (nunca "compra"/"contratar" — regra 6f/v66 do produto).
+       v216 (dono, 19/09/2026, ao vivo no navegador): a seção subiu pra
+       LOGO DEPOIS do hero — antes vinha depois de Benefícios/Como funciona;
+       "é o que deve chamar mais atenção primeiro", antes de qualquer seção
+       secundária. O preview no próprio hero (ln-preview-card) já aponta
+       pra cá com #veja-por-dentro. ══ -->
+  <section class="ln-section ln-real" id="veja-por-dentro">
+    <div class="ln-section-inner">
+      <div class="ln-sec-label">Prints reais, do site rodando agora</div>
+      <h2 class="ln-sec-title">Veja o site por dentro</h2>
+      <p class="ln-sec-sub">Nada de simulação. São capturas de tela do H2BApply de verdade, passo a passo — pra você entender como funciona antes de criar sua conta.</p>
+      <div class="ln-real-grid">
+        <figure class="ln-real-card">
+          <img src="/tut-img/landing-1-cadastro.jpg" alt="Tela de criação de conta do H2BApply, com campos de nome, e-mail e senha" loading="lazy">
+          <figcaption><strong>1. Crie sua conta</strong>Só e-mail e senha — sem precisar de Gmail nem cartão pra começar.</figcaption>
+        </figure>
+        <figure class="ln-real-card">
+          <img src="/tut-img/landing-2-perfil.jpg" alt="Tela de perfil do candidato com currículo em PDF anexado" loading="lazy">
+          <figcaption><strong>2. Monte seu perfil</strong>Seu currículo em PDF e os seus textos de e-mail — o robô só entrega, nunca escreve por você.</figcaption>
+        </figure>
+        <figure class="ln-real-card">
+          <img src="/tut-img/landing-3-vagas.jpg" alt="Lista de vagas H-2B reais coletadas do site oficial do governo americano" loading="lazy">
+          <figcaption><strong>3. Escolha as vagas</strong>Vagas de verdade, coletadas direto do SeasonalJobs.dol.gov — o site oficial do governo dos EUA.</figcaption>
+        </figure>
+        <figure class="ln-real-card">
+          <img src="/tut-img/landing-4-automatico.jpg" alt="Tela do envio automático em andamento, mostrando a fila de candidaturas sendo enviada" loading="lazy">
+          <figcaption><strong>4. Ligue o automático</strong>O robô manda uma candidatura de cada vez, pelo seu próprio Gmail, enquanto você faz outra coisa.</figcaption>
+        </figure>
+        <figure class="ln-real-card">
+          <img src="/tut-img/landing-5-painel.jpg" alt="Painel do usuário mostrando estatísticas reais de candidaturas enviadas" loading="lazy">
+          <figcaption><strong>5. Acompanhe tudo</strong>Quantas vagas você já viu, quantas empresas já foram contatadas e quantas respostas podem estar a caminho.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
 
   <!-- ── SEÇÃO BENEFÍCIOS ── -->
   <section class="ln-section ln-benefits">
@@ -1992,45 +2075,6 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <div class="ln-step-title">4. Empresa te responde</div>
           <div class="ln-step-desc">A resposta cai direto na caixa de entrada do seu próprio Gmail.</div>
         </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══ v212 (dono, 19/09/2026 — pedido feito 3x: "não é link escondido pra
-       Central de Tutoriais, é o tutorial completo, com fotos GRANDES e
-       REAIS, direto na landing, antes de qualquer cadastro"): a animação
-       genérica em HTML/CSS ("Veja em ação", empresas inventadas tipo "Green
-       Valley Inc") foi REMOVIDA de vez (ver app.js) e trocada por 5 prints
-       de verdade do site rodando, tirados com Playwright contra o servidor
-       real. Sem JS, sem login — qualquer visitante já vê isso ao abrir a
-       página. As legendas usam a MESMA linguagem simples do resto da
-       landing (nunca "compra"/"contratar" — regra 6f/v66 do produto). ══ -->
-  <section class="ln-section ln-real" id="veja-por-dentro">
-    <div class="ln-section-inner">
-      <div class="ln-sec-label">Prints reais, do site rodando agora</div>
-      <h2 class="ln-sec-title">Veja o site por dentro</h2>
-      <p class="ln-sec-sub">Nada de simulação. São capturas de tela do H2BApply de verdade, passo a passo — pra você entender como funciona antes de criar sua conta.</p>
-      <div class="ln-real-grid">
-        <figure class="ln-real-card">
-          <img src="/tut-img/landing-1-cadastro.jpg" alt="Tela de criação de conta do H2BApply, com campos de nome, e-mail e senha" loading="lazy">
-          <figcaption><strong>1. Crie sua conta</strong>Só e-mail e senha — sem precisar de Gmail nem cartão pra começar.</figcaption>
-        </figure>
-        <figure class="ln-real-card">
-          <img src="/tut-img/landing-2-perfil.jpg" alt="Tela de perfil do candidato com currículo em PDF anexado" loading="lazy">
-          <figcaption><strong>2. Monte seu perfil</strong>Seu currículo em PDF e os seus textos de e-mail — o robô só entrega, nunca escreve por você.</figcaption>
-        </figure>
-        <figure class="ln-real-card">
-          <img src="/tut-img/landing-3-vagas.jpg" alt="Lista de vagas H-2B reais coletadas do site oficial do governo americano" loading="lazy">
-          <figcaption><strong>3. Escolha as vagas</strong>Vagas de verdade, coletadas direto do SeasonalJobs.dol.gov — o site oficial do governo dos EUA.</figcaption>
-        </figure>
-        <figure class="ln-real-card">
-          <img src="/tut-img/landing-4-automatico.jpg" alt="Tela do envio automático em andamento, mostrando a fila de candidaturas sendo enviada" loading="lazy">
-          <figcaption><strong>4. Ligue o automático</strong>O robô manda uma candidatura de cada vez, pelo seu próprio Gmail, enquanto você faz outra coisa.</figcaption>
-        </figure>
-        <figure class="ln-real-card">
-          <img src="/tut-img/landing-5-painel.jpg" alt="Painel do usuário mostrando estatísticas reais de candidaturas enviadas" loading="lazy">
-          <figcaption><strong>5. Acompanhe tudo</strong>Quantas vagas você já viu, quantas empresas já foram contatadas e quantas respostas podem estar a caminho.</figcaption>
-        </figure>
       </div>
     </div>
   </section>
