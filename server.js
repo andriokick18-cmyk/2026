@@ -5759,6 +5759,22 @@ const SESS_TTL =7*24*60*60*1000;
 // de admin (a sessão já cai por completo a cada deploy — isto cobre o admin
 // ficando logado por dias entre deploys, hipótese real no Render).
 const ADMIN_SESS_TTL =24*60*60*1000;
+// v209 (bug real, 19/09/2026 — "Sessão OAuth inválida ou expirada" intermitente
+// no 1º connect, tanto do Gmail de envio quanto da conta de notificações):
+// __connectsend__ (/oauth/connect-send) e __notif__ (/oauth/notif-connect) já
+// chamavam persistSessions() logo após criar o state, achando que sobreviviam
+// a um restart no meio da ida-e-volta do Google — igual __sender__. Mas
+// persistSessions() só GRAVAVA entradas __sender__ (o resto era descartado no
+// próprio snapshot) e _loadSessionsFromDisk() só RESTAURAVA __sender__. Ou
+// seja: se o Render reiniciasse (deploy ou "acordar" do free tier) bem entre o
+// clique em "Conectar" e a volta do OAuth, o state some e o callback cai no
+// fallback genérico "Sessão OAuth inválida ou expirada" — sem culpa nenhuma do
+// usuário, só bastava clicar de novo (com o servidor já estável). Nenhum dos
+// 3 é uma sessão de LOGIN de verdade — são handshakes de OAuth de <10min, a
+// MESMA categoria que já tinha esse tratamento pro __sender__; generalizado
+// pra lista única, pra nenhum handshake novo repetir esse mesmo bug.
+const OAUTH_HANDSHAKE_PREFIXES=["__sender__","__connectsend__","__notif__"];
+function _isOauthHandshake(id){return OAUTH_HANDSHAKE_PREFIXES.some(pfx=>id.startsWith(pfx));}
 function _loadSessionsFromDisk(){
   const box=Object.create(null);
   try{
@@ -5768,9 +5784,9 @@ function _loadSessionsFromDisk(){
     const now=Date.now();let kept=0,expired=0,loggedOut=0;
     for(const[id,s]of Object.entries(raw)){
       if(!s){expired++;continue;}
-      // Só __sender__ (OAuth de Gmail extra em andamento) pode sobreviver,
-      // e só se ainda estiver dentro da janela de 10min dele.
-      if(id.startsWith("__sender__")){
+      // Handshakes de OAuth em andamento (<10min) podem sobreviver a um
+      // restart no meio do caminho — não são "login", são um passo de UI.
+      if(_isOauthHandshake(id)){
         if(s.pending||now-(s.created||0)>600_000){expired++;continue;}
         box[id]=s;kept++;continue;
       }
@@ -5789,12 +5805,13 @@ function persistSessions(){
     const snap={};
     for(const[id,s]of Object.entries(sessions)){
       if(!s)continue;
-      // [FIX] __sender__ precisa sobreviver a restart/cold-start (Render free tier
-      // "dorme" com inatividade — se o servidor reiniciar entre o usuário clicar em
-      // "Conectar Gmail Extra" e voltar do OAuth do Google, esse estado em memória
-      // se perdia e o e-mail extra nunca era salvo). Expira sozinho em 10min (ver
-      // checagem de idade no callback), então é seguro persistir.
-      if(id.startsWith("__sender__")){snap[id]=s;continue;}
+      // Handshakes de OAuth (__sender__/__connectsend__/__notif__) precisam
+      // sobreviver a restart/cold-start (Render free tier "dorme" com
+      // inatividade — se o servidor reiniciar entre o clique em "Conectar" e
+      // a volta do OAuth do Google, esse estado em memória se perdia e a
+      // conexão nunca completava). Expiram sozinhos em 10min (checagem de
+      // idade no callback), então é seguro persistir.
+      if(_isOauthHandshake(id)){snap[id]=s;continue;}
       // 🔒 Pedido do dono: sessões de LOGIN (e o __p__ pendente de login) NUNCA
       // são gravadas em disco — elas só existem em memória durante o processo
       // atual. Assim, o próximo boot (deploy ou restart) já não encontra nada
@@ -8354,6 +8371,22 @@ filtrar();
     try{const d=JSON.parse((await readBody(req))||"{}");if(d.token!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});
       const s=getSess(req);const st=crypto.randomBytes(8).toString("hex");sessions["__notif__"+st]={ownerEmail:s?.user_email||"",created:Date.now()};
       return json(res,200,{ok:true,state:st});}catch(e){return json(res,400,{error:e.message});}
+  }
+  // 🧪 v209 (só teste): mesmo papel do notif-state acima, mas pro handshake
+  // __connectsend__ (/oauth/connect-send) — prova que os dois sobrevivem a um
+  // restart no meio do caminho (ver OAUTH_HANDSHAKE_PREFIXES).
+  if(pathname==="/api/test/connectsend-state"&&req.method==="POST"&&process.env.TEST_LOGIN_TOKEN){
+    try{const d=JSON.parse((await readBody(req))||"{}");if(d.token!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});
+      const s=getSess(req);const st=crypto.randomBytes(8).toString("hex");sessions["__connectsend__"+st]={ownerEmail:s?.user_email||"",created:Date.now(),fromTab:"plans"};
+      return json(res,200,{ok:true,state:st});}catch(e){return json(res,400,{error:e.message});}
+  }
+  // 🧪 v209 (só teste): diz se um id de sessão específico existe em memória
+  // AGORA — usado pra provar que um handshake de OAuth sobreviveu (ou não) a
+  // um restart real do processo, sem depender de rede pro Google no callback.
+  if(pathname==="/api/test/session-exists"&&req.method==="GET"&&process.env.TEST_LOGIN_TOKEN){
+    if(String(u.searchParams.get("token")||"")!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});
+    const id=String(u.searchParams.get("id")||"");
+    return json(res,200,{ok:true,exists:!!sessions[id]});
   }
   if(pathname==="/api/test/notif-conectar"&&req.method==="POST"&&process.env.TEST_LOGIN_TOKEN){
     try{const d=JSON.parse((await readBody(req))||"{}");if(d.token!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});

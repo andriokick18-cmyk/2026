@@ -6430,6 +6430,16 @@ async function drillRestauracaoBackup() {
     const _b2StAntes = (await get("/api/status")).json;
     const _cookieAntes = COOKIE;
 
+    // v209: handshakes de OAuth "no meio do caminho" — exatamente o estado
+    // real que a Bíblia de Testes flagrou (clique em Conectar, o Render
+    // reinicia ANTES da volta do Google, "Sessão OAuth inválida ou
+    // expirada" sem culpa do usuário). __sender__ já sobrevivia; __notif__ e
+    // __connectsend__ eram persistidos mas nunca RESTAURADOS (bug real).
+    const _b2Notif = await req2("POST", "/api/test/notif-state", { token: TEST_TOKEN });
+    const _b2CSend = await req2("POST", "/api/test/connectsend-state", { token: TEST_TOKEN });
+    const _b2NotifId = "__notif__" + _b2Notif.json?.state;
+    const _b2CSendId = "__connectsend__" + _b2CSend.json?.state;
+
     const _logAntes = log.length;
     const _morreuLimpo = await matarServidor(srv, "SIGTERM");
     check("🔁 v199-L19: o servidor desliga LIMPO com SIGTERM (o mesmo sinal do deploy do Render) — o processo sai sozinho dentro do teto, sem precisar de SIGKILL",
@@ -6437,6 +6447,15 @@ async function drillRestauracaoBackup() {
     srv = spawnServidor(ENV_SRV, (t) => (log += t));
     const _subiu2 = await waitUp(40_000);
     check("🔁 v199-L19: 2º boot no MESMO DATA_DIR (o que acontece a cada deploy deste repo) sobe e responde HTTP", _subiu2);
+    // v209: prova o fix de raiz — os dois handshakes criados ANTES do SIGTERM
+    // (no meio do caminho, exatamente como um clique real em "Conectar" que
+    // o Render interrompe) sobrevivem ao restart e existem no 2º boot.
+    const _b2NotifDepois = await get(`/api/test/session-exists?token=${TEST_TOKEN}&id=${encodeURIComponent(_b2NotifId)}`);
+    const _b2CSendDepois = await get(`/api/test/session-exists?token=${TEST_TOKEN}&id=${encodeURIComponent(_b2CSendId)}`);
+    check("🔁 v209: handshake __notif__ (Admin → Notificações → Conectar conta Google) sobrevive a um restart no meio do caminho — antes sumia e o admin via 'Sessão OAuth inválida ou expirada' sem motivo aparente",
+      _b2NotifDepois.json?.exists === true, JSON.stringify(_b2NotifDepois.json));
+    check("🔁 v209: handshake __connectsend__ (Conectar Gmail pra enviar) sobrevive a um restart no meio do caminho — mesmo bug que afetava a 1ª tentativa de conexão do usuário comum",
+      _b2CSendDepois.json?.exists === true, JSON.stringify(_b2CSendDepois.json));
     const _log2 = log.slice(_logAntes);
     // Só os prefixos que significam APLICAÇÃO de migração — vários blocos
     // logam mesmo sem fazer nada, e casar com eles daria falso vermelho.
