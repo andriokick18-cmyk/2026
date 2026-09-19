@@ -1678,3 +1678,57 @@ chamadores, API "me passe HTML pronto") foi removida.
   entra na ALLOWLIST **por assinatura da EXPRESSÃO**, com o motivo — nunca
   por "arquivo:linha" (entrada por linha nasce morta). PROIBIDO voltar a
   aceitar uma instrução inteira porque "tem um esc() em algum lugar dela".
+
+## v206 — Códigos de migração VIP do site antigo (dono, 19/09/2026)
+
+**Pedido do dono** (documento vindo do Projeto "h2bapply versão final"): os
+clientes que ainda tinham dias de VIP no site antigo precisam recuperar esses
+dias no site novo sem pagar de novo — um código por cliente, enviado por
+WhatsApp. O documento trazia um esboço com os clientes embutidos no
+`server.js`; NÃO foi seguido ao pé da letra por um motivo que ele não sabia:
+**este repositório é PÚBLICO no GitHub** (a API do GitHub responde 200 sem
+autenticação). Nome e Gmail de cliente em arquivo versionado seria vazamento
+de dado pessoal (LGPD) pra sempre no histórico do git.
+
+**O que existe agora**
+- **Painel admin → "Códigos de migração"** (sidebar, bloco Contabilidade):
+  criar 1 código (nome, Gmail do site antigo, plano, dias, código opcional)
+  ou importar em lote (`nome;gmail;plano;dias[;codigo]`, uma linha por
+  cliente — linha errada é recusada com o motivo, as certas entram); lista
+  com status (⏳ aguardando / ✅ usado por quem e quando), busca, botão
+  **Mensagem** (copia o texto pronto do WhatsApp) e exclusão SÓ de código
+  sem uso. Rotas `GET/POST /api/admin/migracao-codigos` e
+  `POST /api/admin/migracao-codigos/excluir` (admin, trilha no Audit Log).
+- **Aba Planos do usuário → "🎟️ Tenho um código de migração do site
+  antigo"** (`<details>` fechado por padrão, i18n `mig_*` nas 3 línguas):
+  `POST /api/vip/resgatar-codigo` (sessão, rate-limit 20/15min por IP).
+- **Dados**: `DATA_DIR/migration_codes.json` (`persist` SÍNCRONO — é
+  acesso, regra 6e; entra no backup completo como todo .json do DATA_DIR).
+
+**Invariantes (não quebrar)**
+- **Dado de cliente NUNCA no git**: o servidor nasce com ZERO códigos; a
+  guarda estrutural do smoke recusa `DB_MIGRACAO_CODES["..."]=` ou qualquer
+  `H2B26-XXXX-XXXX` literal no server.js. A lista dos clientes fica com o
+  dono e entra pelo painel.
+- **Preso ao Gmail**: o código só resgata na conta cujo Gmail confirmado no
+  cadastro (`emailContato`, v175; fallback `email` pra conta legada/teste)
+  é IGUAL ao do código → senão 403. Uso único (409 na repetição); o uso é
+  marcado ANTES de gravar o VIP e sem `await` no meio (dois cliques nunca
+  passam os dois).
+- **Mesma régua de ativação do resto do site**: `addManualVipDays` +
+  `addAutoVipDays` (só se o plano tem automático) somando sobre o que já
+  existir; `vip.limits` carimbado por `limitsParaAtivacaoAdmin` calculado
+  com o snapshot PRÉ-ativação (depois de estender os relógios a conta já
+  está ativa e a função devolveria `{}`); reler `getUser` depois dos
+  helpers (13j); `addCredito` tipo `gratis` origem `migracao`.
+- **`vip.source = "migracao"`**: conta como plano ATIVO pra tudo que é
+  feature (Gmails por plano via `getMaxSenders`, gates de envio) — o
+  cliente PAGOU, só que no site antigo — mas NUNCA lança no caixa nem cria
+  pedido; a régua "só `payment`/`pago` tem pedido" da divergência
+  `vip_sem_pedido` não a acusa. Não usar `code`/`trial` aqui: essas duas
+  são cortesia e cortariam os Gmails de envio de quem pagou.
+- Testes: 14 checks (zero seed, criação, lote, duplicado, 403 conta errada,
+  401 anônimo, resgate + limites 100/100 + 2 relógios + senderMax,
+  409/404/400, emailContato com DoublePro 200/200, caixa intocado, lista,
+  exclusão, disco síncrono, Audit Log, estrutural).
+

@@ -417,6 +417,7 @@ const JOURNEY_FILE = path.join(DATA_DIR, "journey.json");       // Jornada do us
 const ADMIN_SETTINGS_FILE = path.join(DATA_DIR, "admin_settings.json"); // Admin global settings
 const REVIEWS_FILE     = path.join(DATA_DIR, "reviews.json");        // Avaliações reais de usuários p/ landing page (moderadas por admin)
 const PEDIDOS_FILE     = path.join(DATA_DIR, "pedidos.json");         // Pedidos de plano dos usuários
+const MIGRACAO_CODES_FILE = path.join(DATA_DIR, "migration_codes.json"); // 🎟️ v206: códigos de migração VIP do site antigo — nascem SÓ pelo painel (o repo é público; dado de cliente nunca entra no git)
 const FINANCEIRO_FILE  = path.join(DATA_DIR, "financeiro.json");      // Dados financeiros (entradas + gastos)
 const BLOCKED_FILE     = path.join(DATA_DIR, "blocked_emails.json");  // Emails banidos permanentemente
 const TRIAL_USED_FILE  = path.join(DATA_DIR, "trial_used.json");       // Histórico anti-abuse: phones/IPs que já receberam trial
@@ -512,6 +513,7 @@ function _sessAdminNome(s){
 // Notifications: { notifications: [{id, title, body, createdAt, createdBy, readBy:[email,...]}] }
 let DB_REVIEWS = []; // Array de avaliações reais de usuários {id,text,rating,displayName,location,email,plan,status,createdAt}
 let DB_PEDIDOS     = []; // Array de pedidos de plano
+let DB_MIGRACAO_CODES = {}; // 🎟️ v206: {CODIGO:{nome,email,plano,dias,criadoEm,criadoPor,usadoEm,usadoPor}}
 let DB_FINANCEIRO  = {pagamentos:[],gastos:[]};  // Dados financeiros persistentes
 // ── AUDITORIA DE AÇÕES DO ADMIN (v19, dono 15/07/2026) ──────────────────────
 // Toda mutação de plano/VIP feita pelo painel fica registrada com snapshot
@@ -1163,6 +1165,8 @@ function boot() {
   if(!Array.isArray(DB_REVIEWS)) DB_REVIEWS = [];
   DB_PEDIDOS = load(PEDIDOS_FILE, []);
   if(!Array.isArray(DB_PEDIDOS)) DB_PEDIDOS = [];
+  DB_MIGRACAO_CODES = load(MIGRACAO_CODES_FILE, {});
+  if(!DB_MIGRACAO_CODES||typeof DB_MIGRACAO_CODES!=="object"||Array.isArray(DB_MIGRACAO_CODES)) DB_MIGRACAO_CODES = {};
   _migrarComprovantesParaDisco(); // 🧾 v192 LOTE 10 (idempotente, qualquer status)
   DB_ADMIN_AUDIT = load(ADMIN_AUDIT_FILE, []);
   if(!Array.isArray(DB_ADMIN_AUDIT)) DB_ADMIN_AUDIT = [];
@@ -2485,6 +2489,49 @@ function addCredito(email, c){
   creditos.push(credito);
   setUser(email, { vip: { ...vip, creditos } });
   return credito;
+}
+
+// ── 🎟️ v206 — CÓDIGOS DE MIGRAÇÃO VIP (site antigo → site novo) ──────────
+// Ordem do dono (19/09/2026): quem ainda tinha dias de VIP no site antigo
+// recebe um código de USO ÚNICO, preso ao MESMO Gmail de antes, que credita
+// os dias que sobraram no site novo — ZERO cobrança nova, ZERO lançamento no
+// caixa (o dinheiro entrou lá). Os códigos nascem SÓ pelo painel admin e
+// vivem em DATA_DIR/migration_codes.json: este repositório é PÚBLICO no
+// GitHub, então nome/e-mail de cliente NUNCA entra em arquivo versionado.
+const _MIG_ALFABETO="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sem 0/O/1/I — o código é ditado por WhatsApp
+function _migGerarCodigo(){
+  const b=crypto.randomBytes(8);let out="";
+  for(let i=0;i<8;i++){out+=_MIG_ALFABETO[b[i]%_MIG_ALFABETO.length];if(i===3)out+="-";}
+  return "H2B26-"+out;
+}
+const _migNormCodigo=c=>String(c||"").trim().toUpperCase().replace(/\s+/g,"");
+// O e-mail que "identifica" a conta nova é o Gmail CONFIRMADO no cadastro
+// (emailContato, v175); conta legada/teste sem esse campo cai no próprio email.
+const _migEmailDaConta=u=>String(u?.emailContato||u?.email||"").toLowerCase().trim();
+const MIG_PLANOS=["vip","vipro","doublepro"];
+function _migVisao(cod){
+  const c=DB_MIGRACAO_CODES[cod]||{};
+  return {codigo:cod,nome:c.nome||"",email:c.email||"",plano:c.plano||"vipro",dias:c.dias||0,criadoEm:c.criadoEm||null,criadoPor:c.criadoPor||null,usado:!!c.usadoEm,usadoEm:c.usadoEm||null,usadoPor:c.usadoPor||null};
+}
+// Valida e grava UM código (em memória — quem chama persiste). Devolve
+// {codigo} ou {erro} explicando a linha recusada; nunca lança.
+function _migCriarCodigo(item,por){
+  const nome=String(item?.nome||"").trim().slice(0,80);
+  const email=String(item?.email||"").trim().toLowerCase();
+  const plano=String(item?.plano||"vipro").trim().toLowerCase();
+  const dias=parseInt(item?.dias,10);
+  let codigo=_migNormCodigo(item?.codigo);
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>120)return {erro:"e-mail inválido"};
+  if(!MIG_PLANOS.includes(plano))return {erro:"plano inválido (use vip, vipro ou doublepro)"};
+  if(!Number.isFinite(dias)||dias<1||dias>365)return {erro:"dias precisa ser um número de 1 a 365"};
+  if(codigo){
+    if(!/^[A-Z0-9-]{6,24}$/.test(codigo))return {erro:"código inválido (6 a 24 letras/números/hífen)"};
+    if(DB_MIGRACAO_CODES[codigo])return {erro:"código já existe"};
+  }else{
+    do{codigo=_migGerarCodigo();}while(DB_MIGRACAO_CODES[codigo]);
+  }
+  DB_MIGRACAO_CODES[codigo]={nome,email,plano,dias,criadoEm:Date.now(),criadoPor:por||"admin"};
+  return {codigo};
 }
 
 const todayStr = () => todayStrBRT();
@@ -10001,6 +10048,49 @@ filtrar();
   // devolve a mediana REAL das últimas confirmações de comprovante
   // (createdAt→ativadoEm) — promessa honesta no checkout, no lugar de um
   // prazo fixo inventado.
+  // ── 🎟️ v206 — RESGATE DO CÓDIGO DE MIGRAÇÃO (usuário logado) ─────────────
+  // Regras: código de uso único; só vale na conta cujo Gmail confirmado é o
+  // MESMO da tabela (ninguém usa o código de outra pessoa); credita manual
+  // (+auto quando o plano tem) somando sobre o que já existir; carimba
+  // vip.limits pela tabela NOVA (contrato de hoje); source "migracao" —
+  // conta como plano ATIVO pra tudo que é feature (Gmails por plano etc.),
+  // mas nunca vira lançamento no caixa nem "pedido".
+  if(pathname==="/api/vip/resgatar-codigo"&&req.method==="POST"){
+    const _ip=_clientIp(req);
+    if(rateLimit("migcod_"+_ip,20,900_000))return json(res,429,{error:"Muitas tentativas. Aguarde 15 minutos."});
+    try{
+      const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
+      const u=getUser(s.user_email);if(!u)return json(res,404,{error:"Usuário não encontrado."});
+      const d=JSON.parse(await readBody(req));
+      const codigo=_migNormCodigo(d.codigo);
+      if(!codigo)return json(res,400,{error:"Informe o código."});
+      const c=DB_MIGRACAO_CODES[codigo];
+      if(!c)return json(res,404,{error:"Código inválido. Confira letras e hífens (formato H2B26-XXXX-XXXX)."});
+      if(c.usadoEm)return json(res,409,{error:"Este código já foi usado."});
+      if(String(c.email||"").toLowerCase()!==_migEmailDaConta(u))
+        return json(res,403,{error:"Este código pertence a outra conta. Ele só funciona na conta cadastrada com o MESMO Gmail que você usava no site antigo."});
+      const now=Date.now();
+      const dias=Math.max(1,Math.min(365,parseInt(c.dias,10)||0));
+      const planName=MIG_PLANOS.includes(c.plano)?c.plano:"vipro";
+      const temAuto=(PLAN_LIMITS_NEW[planName]?.auto||0)>0;
+      // Carimbo dos limites decidido ANTES de estender os relógios: depois
+      // disso a conta já está ativa e limitsParaAtivacaoAdmin devolveria {}
+      // (mesma razão pela qual /api/admin/vip/activate calcula com o snapshot).
+      const carimbo=limitsParaAtivacaoAdmin(u,planName);
+      // Marca o uso ANTES de gravar o VIP — entre o await do body e aqui não
+      // existe outro await, então dois cliques simultâneos nunca passam os dois.
+      c.usadoEm=now;c.usadoPor=s.user_email;
+      persist(MIGRACAO_CODES_FILE,DB_MIGRACAO_CODES);
+      const manualExpires=addManualVipDays(s.user_email,dias);
+      const autoExpires=temAuto?addAutoVipDays(s.user_email,dias):(getUser(s.user_email)?.vip?.autoExpires||0);
+      const fresh=getUser(s.user_email); // 13j: reler depois dos helpers que gravaram
+      setUser(s.user_email,{plan:planName,vip:{...(fresh.vip||{}),active:true,plan:planName,source:"migracao",days:dias,autoDays:temAuto?dias:0,activatedAt:now,activatedBy:"migracao_site_antigo",migracaoCodigo:codigo,migracaoDe:c.email,...carimbo}});
+      addCredito(s.user_email,{dias,tipo:"gratis",origem:"migracao",motivo:`Migração do site antigo — código ${codigo} (${planName}, ${dias}d, sem cobrança nova)`,dadoPor:"sistema"});
+      try{trackJourney(s.user_email,"plan_migrated",{detail:`${planName} +${dias}d pelo código de migração ${codigo}`,meta:{codigo,plano:planName,dias}});}catch{}
+      console.log(`[migracao] 🎟️ ${s.user_email} resgatou ${codigo}: ${planName} +${dias}d (manual até ${new Date(manualExpires).toLocaleDateString("pt-BR")})`);
+      return json(res,200,{ok:true,dias,plano:planName,manualExpires,autoExpires});
+    }catch(e){return json(res,500,{error:e.message});}
+  }
   if(pathname==="/api/planos"&&req.method==="GET"){
     const tabela=[];
     for(const[pl,combos]of Object.entries(PLANO_PRECO_TAB))
@@ -11642,6 +11732,9 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
       // que nenhuma rota normal monta.
       if(d.createdAt)setUser(email,{created_at:String(d.createdAt)});
       if(d.gmailConnectedAt)setUser(email,{gmailConnectedAt:Number(d.gmailConnectedAt)});
+      // 🎟️ v206 (só teste): conta nova de verdade tem chave=username e o Gmail
+      // confirmado em emailContato — é essa identidade que prende o código de migração.
+      if(d.emailContato)setUser(email,{emailContato:String(d.emailContato).toLowerCase().trim(),emailVerificadoEm:Date.now()});
       if(d.vip)setUser(email,{vip:d.vip,plan:d.plan||getUser(email)?.plan});
       const sid="test_"+crypto.randomBytes(16).toString("hex");
       sessions[sid]={user_email:email,user_name:String(d.name||"Test"),created_at:Date.now(),access_token:"test-token",expires_at:Date.now()+3600_000};
@@ -12207,6 +12300,30 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
       console.log(`[gift-days] +${dias}d para ${email} por ${s.user_email} — ${motivo.slice(0,80)}`);
       return json(res,200,{ok:true,dias,manualExpires:v.manualExpires,autoExpires:v.autoExpires||0,
         venceEm:new Date(v.manualExpires).toLocaleDateString("pt-BR")});
+    }catch(e){return json(res,500,{error:e.message});}}
+    // ── 🎟️ v206 — CÓDIGOS DE MIGRAÇÃO VIP: listar / criar (1 ou lote) / excluir sem uso ──
+    if(pathname==="/api/admin/migracao-codigos"&&req.method==="GET"){try{
+      const lista=Object.keys(DB_MIGRACAO_CODES).map(_migVisao).sort((a,b)=>(b.criadoEm||0)-(a.criadoEm||0));
+      return json(res,200,{ok:true,codigos:lista,total:lista.length,usados:lista.filter(c=>c.usado).length});
+    }catch(e){return json(res,500,{error:e.message});}}
+    if(pathname==="/api/admin/migracao-codigos"&&req.method==="POST"){try{
+      const d=JSON.parse(await readBody(req));
+      const itens=Array.isArray(d.itens)?d.itens.slice(0,500):[d];
+      const criados=[],erros=[];
+      itens.forEach((it,i)=>{const r=_migCriarCodigo(it,_sessAdminEmail(s));if(r.erro)erros.push({linha:i+1,erro:r.erro,email:String(it?.email||"").slice(0,120)});else criados.push(_migVisao(r.codigo));});
+      if(criados.length){
+        persist(MIGRACAO_CODES_FILE,DB_MIGRACAO_CODES);
+        logAdminAction(_sessAdminEmail(s),"migracao_codigo_create",criados.map(c=>c.email).join(", ").slice(0,300),null,null,`${criados.length} código(s) de migração criado(s)`);
+      }
+      return json(res,200,{ok:true,criados,erros});
+    }catch(e){return json(res,500,{error:e.message});}}
+    if(pathname==="/api/admin/migracao-codigos/excluir"&&req.method==="POST"){try{
+      const d=JSON.parse(await readBody(req));const cod=_migNormCodigo(d.codigo);
+      const c=DB_MIGRACAO_CODES[cod];if(!c)return json(res,404,{error:"Código não encontrado."});
+      if(c.usadoEm)return json(res,400,{error:"Código já usado — fica no histórico e não pode ser excluído."});
+      delete DB_MIGRACAO_CODES[cod];persist(MIGRACAO_CODES_FILE,DB_MIGRACAO_CODES);
+      logAdminAction(_sessAdminEmail(s),"migracao_codigo_delete",c.email,null,null,`código ${cod} excluído sem uso`);
+      return json(res,200,{ok:true});
     }catch(e){return json(res,500,{error:e.message});}}
     if(pathname==="/api/admin/vip/activate"&&req.method==="POST"){try{
       const d=JSON.parse(await readBody(req));

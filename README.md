@@ -43,6 +43,13 @@ período, paga via Pix e sobe o comprovante diretamente.
   plano ativa na hora por 3 dias (janela provisória) enquanto o pedido
   segue pendente — a confirmação humana do admin continua SEMPRE
   obrigatória pro período cheio
+- Códigos de migração VIP (v206): quem ainda tinha dias de VIP no site
+  antigo recebe do admin um código de uso único (aba "Códigos de migração"
+  do painel, criação 1 a 1 ou em lote, mensagem de WhatsApp pronta pra
+  copiar) e resgata os dias na aba Planos. O código só funciona na conta
+  cadastrada com o MESMO Gmail de antes, credita os dias na tabela nova de
+  limites e nunca lança nada no caixa. Os códigos vivem em
+  `DATA_DIR/migration_codes.json`, nunca no repositório (que é público)
 - Aba **Enviadas** (`#v-hist`, na sidebar e no bottom-nav): histórico de
   candidaturas com busca, filtro e detalhe de cada envio, e o botão de
   resetar a fila. O mesmo histórico é o que impede o robô de contatar duas
