@@ -3304,14 +3304,17 @@ function getSheet(n) { return n==="jan2026"?SHEET_JAN:n==="jul2025"?SHEET_JUL:(n
 // v180: `comEmail:true` só considera planilha que JÁ tem contato — o selo
 // "⭐ MAIS NOVA" da lista do usuário usa essa variante (vender como mais nova
 // uma planilha de onde não sai NENHUMA candidatura é propaganda enganosa).
-// O robô de frescor continua chamando sem opção: pra ele "mais nova" é mais
-// nova mesmo, com ou sem e-mail (é justamente ela que precisa ser conferida).
+// latestH2bBruta (sem opções, GET /api/sheets-list) continua sem exigir
+// e-mail: é o "mais nova de verdade" bruto, informativo pro admin, mesmo
+// antes do enriquecimento terminar (v208: não existe mais robô de frescor
+// pra "precisar conferir" — a variante ficou só como leitura honesta).
 function latestH2bKey(opts){
   const exigirEmail = !!(opts && opts.comEmail);
   let best=null,bestScore=-1;
   const consider=(key)=>{
     // v174: a "H-2B <Mês> <Ano>" do robô mensal (chave h2b-AAAAMM) também
-    // disputa — a mais recente vira a H-2B MAIS NOVA sozinha (lista + frescor).
+    // disputa — a mais recente vira a H-2B MAIS NOVA sozinha (na lista do
+    // usuário e no latestH2bBruta que o admin lê).
     const m=String(key).toLowerCase().match(/(jan|jul)\s*(\d{4})/);
     const m2=String(key).toLowerCase().match(/^h2b-(\d{4})(\d{2})$/);
     if(!m&&!m2)return;
@@ -7231,7 +7234,7 @@ ul li{margin-bottom:6px}
   if(pathname==="/api/admin/notificacoes/status"&&req.method==="GET"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
     const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
-    return json(res,200,{ok:true,...NOTIF.status(),destinatarios:_notifDestinatarios(),oauthConfigurado:CONFIGURADO_OAUTH(),meuEmail:s.user_email});
+    return json(res,200,{ok:true,...NOTIF.status(),destinatarios:_notifDestinatarios(),oauthConfigurado:CONFIGURADO_OAUTH(),meuEmail:s.user_email,redirectUri:_oauthBase(req)+"/oauth/callback"});
   }
   if(pathname==="/api/admin/notificacoes/desconectar"&&req.method==="POST"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
@@ -7290,14 +7293,6 @@ ul li{margin-bottom:6px}
     const was=_enrichBot.running;_enrichBot.running=false;
     if(was)_enrichLog("⏹ Parado pelo admin — o progresso já está salvo no disco; Enriquecer de novo retoma de onde parou.","warn");
     return json(res,200,{ok:true,wasRunning:was});
-  }
-  if(pathname==="/api/admin/sheet/fresh-run"&&req.method==="POST"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
-    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
-    if(PLANILHAS.freshBot.running)return json(res,409,{error:"O robô de frescor já está rodando."});
-    if(_enrichBot.running)return json(res,409,{error:"Enriquecimento em andamento — o frescor espera ele terminar."});
-    PLANILHAS.runFreshCycle().catch(e=>console.error("[planilha-fresca] manual:",e.message));
-    return json(res,200,{ok:true,started:true});
   }
   if(pathname==="/api/admin/sheet/coleta-start"&&req.method==="POST"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
@@ -7384,7 +7379,7 @@ ul li{margin-bottom:6px}
         uploaded:meta.uploaded||null,source:meta.source||(builtin?"bundled":"upload"),
         published:builtin?true:meta.published===true,
         publishedAt:meta.publishedAt||null,
-        enriched:meta.enriched||st.withCity,enrichedAt:meta.enrichedAt||null,freshAt:meta.freshAt||null,
+        enriched:meta.enriched||st.withCity,enrichedAt:meta.enrichedAt||null,
         withEmail:arr.filter(r=>r.e&&String(r.e).includes("@")).length,
         stats:st,enrichPct:arr.length>0?Math.round((st.withCity/arr.length)*100):0};
     };
@@ -8352,6 +8347,14 @@ filtrar();
   }
   // 🧪 só no npm test: "conecta" uma conta de notificações falsa (o envio
   // real nunca sai — mod-notif grava no outbox). Mesma trava do /api/test/login.
+  // 📧 v207 (só teste): cria o estado "conexão da conta de notificações em
+  // andamento" — o /oauth/notif-connect real exige GOOGLE_CLIENT_ID/SECRET (o
+  // smoke não tem) e é isso que deixa provar o caminho de ERRO do callback.
+  if(pathname==="/api/test/notif-state"&&req.method==="POST"&&process.env.TEST_LOGIN_TOKEN){
+    try{const d=JSON.parse((await readBody(req))||"{}");if(d.token!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});
+      const s=getSess(req);const st=crypto.randomBytes(8).toString("hex");sessions["__notif__"+st]={ownerEmail:s?.user_email||"",created:Date.now()};
+      return json(res,200,{ok:true,state:st});}catch(e){return json(res,400,{error:e.message});}
+  }
   if(pathname==="/api/test/notif-conectar"&&req.method==="POST"&&process.env.TEST_LOGIN_TOKEN){
     try{const d=JSON.parse((await readBody(req))||"{}");if(d.token!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});
       NOTIF.conectar({email:String(d.email||"suporteh2bapply@gmail.com").toLowerCase(),refresh_token:"teste-rt-"+crypto.randomBytes(4).toString("hex"),connectedBy:"smoke-test"});
@@ -8583,10 +8586,21 @@ filtrar();
   if(pathname==="/oauth/callback"){
     const code=u.searchParams.get("code"),error=u.searchParams.get("error");
     const fail=m=>{res.writeHead(302,{Location:"/?err="+encodeURIComponent(m)});res.end();};
+    const _st=u.searchParams.get("state")||"";
+    // 📧 v207 (caso real, dono testando na véspera do lançamento): erro do
+    // Google no fluxo de ADMIN (conta de notificações) voltava pra LANDING
+    // como "Login cancelado." — cara de login de usuário, sem dizer o que
+    // fazer. Agora volta pro painel, na aba certa, com o passo a passo.
+    if(error&&sessions["__notif__"+_st]){
+      delete sessions["__notif__"+_st];
+      const _msgN=error==="access_denied"
+        ?"Conexão cancelada na tela do Google — nenhuma conta foi conectada. O que fazer: 1. Clique em Conectar conta Google de novo. 2. Na tela do Google, escolha a conta de suporte (não a sua pessoal). 3. Permita \"Enviar e-mail em seu nome\"."
+        :`O Google recusou a conexão (${error}). O que conferir no Google Cloud Console → APIs e serviços → Credenciais: 1. A URL de retorno mostrada nesta aba está em "URIs de redirecionamento autorizados" do cliente OAuth do site. 2. Se a tela de permissão está em modo Teste, a conta de suporte está na lista de usuários de teste. Depois clique em Conectar conta Google de novo.`;
+      res.writeHead(302,{Location:"/admin?notif=erro&msg="+encodeURIComponent(_msgN)});return res.end();
+    }
     if(error)return fail(error==="access_denied"?"Login cancelado.":"Erro OAuth: "+error);
     if(!code)return fail("Código OAuth inválido.");
     // [FIX redirect_uri_mismatch] — detecta se é fluxo add-sender pelo state
-    const _st=u.searchParams.get("state")||"";
     if(sessions["__sender__"+_st]){
       const fail2=m=>{res.writeHead(302,{Location:"/?err="+encodeURIComponent(m)+"&tab=profile"});res.end();};
       const pending2=sessions["__sender__"+_st];
@@ -14886,7 +14900,7 @@ const { healthSentinelRun, pendingOrderAlert, queueSanitizerRun, getPedAlertSent
   // robô — a lista de planilhas PUBLICADAS (a do frescor) e a régua única de
   // "completa" (CAMPOS_ESSENCIAIS, via progressoPlanilha). Nada de uma 2ª
   // lista montada à mão aqui dentro.
-  planilhasPublicadas: ()=>PLANILHAS.planilhasParaFrescor(),
+  planilhasPublicadas: ()=>PLANILHAS.planilhasPublicadas(),
   progressoPlanilha: _progressoPlanilha,
   cooldownMaps: { notifSentAt: ()=>_notifSentAt, authErrNotifiedAt: getAuthErrNotifiedAt },
   pedAlertSentInit: _DB_NOTIF_COOLDOWN.pedAlertSent, // V951: sobrevive a deploy

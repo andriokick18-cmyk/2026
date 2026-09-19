@@ -13,9 +13,11 @@
      nº de vagas, telefone, salário, SOC, descrição, horas, URL… Educado
      com o DOL (1 vaga por vez, backoff em 403/429, rotação de User-Agent),
      salva no disco a CADA vaga (sobrevive a deploy), retoma de onde parou.
-   • FRESCOR (_runFreshCycle): confere status/datas/salário das vagas JÁ
-     completas das planilhas mais recentes (H-2B mais nova + H-2A), lote
-     limitado, uma planilha por ciclo.
+   • v208 (dono, 19/09/2026) — O ROBÔ DE FRESCOR FOI RETIRADO. Regra nova do
+     produto: cada vaga é enriquecida UMA ÚNICA VEZ pelo ETA Case Number e
+     fica pronta pra sempre — nunca mais reconsultada, nunca marcada como
+     inativa/expirada. Reconferir vaga já completa contrariava isso. Ver
+     docs/H2BAPPLY_PRODUCT_RULES.md 7b e docs/DECISIONS.md (19/09/2026).
    • VAGAS NOVAS H-2A (_runH2aNovasCycle): 2x/dia baixa o feed h2a do dia,
      ENTRA vaga ativa nova (nunca duplica) e SAI inativa (negada/retirada/
      temporada encerrada) — trava anti-catástrofe se >50% sumiria de uma vez.
@@ -139,6 +141,28 @@ function createPlanilhas(deps) {
 
   const saveMeta = () => { try { fs.writeFileSync(SHEETS_META_FILE, JSON.stringify(getMeta(), null, 2)); } catch (e) { console.warn("[planilhas] meta não gravado:", e.message); } };
   const hoje = () => new Date().toISOString().slice(0, 10);
+  // 🗓️ v207 (caso real, sábado 19/09/2026 — "HTTP 404 for .../zip/h2a/2026-09-19"):
+  // o DOL gera o arquivo do dia à meia-noite do horário do Leste dos EUA e nem
+  // todo dia tem arquivo (fim de semana/feriado); hoje() é UTC, então entre
+  // 00:00 e ~05:00 UTC o arquivo "de hoje" ainda nem existe. Um 404 aqui NÃO é
+  // falha do robô — é "o DOL ainda não publicou": a régua é tentar os dias
+  // anteriores até achar o arquivo mais recente. Qualquer outro erro (403,
+  // 5xx, rede) continua estourando — esse sim é falha de verdade. Nunca
+  // inventa dado: ou baixa um arquivo real do DOL ou reporta o erro.
+  const feedDatas = (desde, dias) => { const out = []; const t0 = Date.parse(desde + "T12:00:00Z"); for (let i = 0; i < dias; i++) out.push(new Date(t0 - i * 86400_000).toISOString().slice(0, 10)); return out; };
+  async function baixarFeedComFallback(bs, base, type, { desde, dias = 7, onPulo } = {}) {
+    const datas = feedDatas(desde || hoje(), dias);
+    for (let i = 0; i < datas.length; i++) {
+      const url = `${base}/${type}/${datas[i]}`;
+      try { const raw = await bs.downloadAndParse(url); return { raw, data: datas[i], pulados: i }; }
+      catch (e) {
+        if (!/HTTP 404\b/.test(String(e.message))) throw e;
+        if (onPulo) onPulo(datas[i]);
+        if (i < datas.length - 1) await new Promise(r => setTimeout(r, process.env.DOL_FEED_BASE ? 20 : 2500)); // educado com o DOL
+      }
+    }
+    throw new Error(`o DOL não publicou o arquivo ${type} de nenhum dos últimos ${dias} dias (${datas[datas.length - 1]} a ${datas[0]}) — o site oficial pode estar sem atualização ou fora do ar`);
+  }
   const DEAD_ST = /denied|withdrawn|invalidat|expired|cancel/i;
   const DOL_HDR = () => ({ "Accept": "application/json", "Accept-Encoding": "gzip", "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36", "Cache-Control": "no-cache", "Referer": "https://seasonaljobs.dol.gov/" });
 
@@ -153,7 +177,7 @@ function createPlanilhas(deps) {
   const _dolLocal = /^http:\/\/(127\.0\.0\.1|localhost)[:/]/i.test(DOL_API_BASE);
   // Ritmo com o DOL: INTOCADO em produção (o dono autorizou o robô levar
   // semanas). Só encolhe quando a base é local — não há governo do outro lado.
-  const RITMO = { enrich: _dolLocal ? 20 : 800, fresh: _dolLocal ? 5 : 1500 };
+  const RITMO = { enrich: _dolLocal ? 20 : 800 };
   function _dolReqOpts(caseNumber) {
     const params = new URLSearchParams({ "api-version": "2020-06-30" });
     params.append("$filter", `case_number eq '${caseNumber}'`); params.append("$top", "1");
@@ -383,82 +407,17 @@ function createPlanilhas(deps) {
     }
   }
 
-  // ══════════════════════════════════════════════════════════════════════
-  //  🔄 FRESCOR — status/datas/salário das vagas já completas (planilhas recentes)
-  // ══════════════════════════════════════════════════════════════════════
-  const freshBot = { running: false, sheetKey: null, checked: 0, changed: 0, lastRunAt: null };
-  function aplicarFrescor(row, dol) {
-    const before = JSON.stringify([row.st, row.d, row.de, row.w, row.wk, row.e]);
-    if (dol.case_status) row.st = String(dol.case_status).trim();
-    const d = (dol.begin_date || dol.start_date || ""); if (d) row.d = String(d).slice(0, 10);
-    const de = (dol.end_date || dol.expiration_date || ""); if (de) row.de = String(de).slice(0, 10);
-    const wk = parseInt(dol.total_positions || dol.nbr_workers_requested || 0); if (wk) row.wk = wk;
-    if (dol.basic_rate_from) row.w = String(parseFloat(dol.basic_rate_from).toFixed(2));
-    if (!row.e) {
-      const ems = [dol.apply_email, dol.employer_email, dol.employer_poc_email, dol.attorney_agent_email, dol.employer_contact_email]
-        .map(e => String(e || "").trim().toLowerCase()).filter(e => e && e.includes("@") && !e.startsWith("n/a"));
-      if (ems.length) row.e = ems[0];
-    }
-    return JSON.stringify([row.st, row.d, row.de, row.w, row.wk, row.e]) !== before;
-  }
-  // 🔄 v182 LOTE 8 — O FRESCOR COBRE TODA PLANILHA PUBLICADA. Até aqui olhava
-  // só a H-2B mais nova, a H-2A fixa e a H-2A do mês: jan2026 e jul2025 (11.446
-  // vagas "Certified", de onde sai a maior parte dos envios) nunca eram
-  // reconferidas, então uma vaga retirada/negada lá continuaria viva pra sempre
-  // e o robô mandaria candidatura pra ela. O ritmo com o DOL NÃO muda (mesmo
-  // teto de 120 linhas por ciclo, uma planilha por ciclo) — só a cobertura, com
-  // rodízio pela planilha reconferida há MAIS tempo (carimbo `freshAt` por
-  // planilha no meta, que já existia; nunca um 2º nome pro mesmo carimbo).
-  // Rascunho (published===false) fica de fora: ninguém se candidata a ele.
-  // (Substitui a lista fixa [H-2B mais nova, "h2a-jun2026", H-2A do mês] do
-  // v177-FIX7 — a planilha H-2A do MÊS, que se publica sozinha, continua
-  // coberta, agora por construção e não por um padrão de chave a mais.)
-  function planilhasParaFrescor() {
+  // ═════════════════════════════════════════════════════════════════
+  //  📋 PLANILHAS PUBLICADAS — fonte única da lista que o vigia de saúde e o
+  //  admin usam pra saber "quais planilhas existem de verdade pro usuário"
+  //  (rascunho fica de fora — ninguém se candidata a ele). Nome antigo era
+  //  `planilhasParaFrescor`; o frescor saiu (v208), a lista continua útil.
+  // ═════════════════════════════════════════════════════════════════
+  function planilhasPublicadas() {
     const meta = getMeta();
     const extras = Object.keys(getExtras() || {}).filter(k => meta[k]?.published !== false);
     return [...new Set(["jan2026", "jul2025", "h2a-jun2026", ...extras])]
       .filter(k => { const a = getSheet(k); return Array.isArray(a) && a.length; });
-  }
-  async function runFreshCycle() {
-    if (enrichBot.running || freshBot.running) return; // enriquecimento tem prioridade
-    const keys = planilhasParaFrescor();
-    const meta = getMeta();
-    let pick = null, oldest = Infinity;
-    for (const k of keys) { const arr = getSheet(k); if (!arr || !arr.length) continue; const at = meta[k]?.freshAt || 0; if (at < oldest) { oldest = at; pick = k; } }
-    if (!pick) return;
-    const sheet = getSheet(pick);
-    const cands = sheet.filter(r => r.c && r.e && String(r.e).includes("@"));
-    cands.sort((a, b) => ((a.d ? 1 : 0) - (b.d ? 1 : 0)) || ((a.fq || 0) - (b.fq || 0)));
-    const batch = cands.slice(0, 120);
-    if (!batch.length) { if (!meta[pick]) meta[pick] = { name: pick }; meta[pick].freshAt = Date.now(); saveMeta(); return; }
-    freshBot.running = true; freshBot.sheetKey = pick; freshBot.checked = 0; freshBot.changed = 0;
-    botLog("planilha-fresca", "Planilha Sempre Fresca", `🚀 ${pick}: conferindo ${batch.length} vaga(s) no DOL (status/datas/salário)`, "info");
-    let delay = RITMO.fresh, errs = 0;
-    try {
-      for (const row of batch) {
-        if (!freshBot.running || enrichBot.running) break;
-        try {
-          const { status, body } = await dolApiCase(row.c, DOL_HDR());
-          if (status === 200) {
-            const dol = (body?.value || body?.results || body?.data || [])[0] || null;
-            if (dol && aplicarFrescor(row, dol)) freshBot.changed++;
-            row.fq = Date.now(); freshBot.checked++; errs = 0; delay = Math.max(RITMO.fresh, delay - 200);
-          } else if (status === 403 || status === 429) {
-            errs++; delay = Math.min(60_000, delay * 2);
-            botLog("planilha-fresca", "Planilha Sempre Fresca", `🚫 DOL bloqueou (HTTP ${status}) — desacelerando pra ${Math.round(delay / 1000)}s`, "warn");
-          } else { errs++; row.fq = Date.now(); freshBot.checked++; }
-          if (errs >= 6) { botLog("planilha-fresca", "Planilha Sempre Fresca", `⛔ ${errs} erros seguidos — parando este ciclo (volta no próximo)`, "warn"); break; }
-        } catch (e) { errs++; if (errs >= 6) break; }
-        await new Promise(r => setTimeout(r, delay));
-      }
-    } finally {
-      freshBot.running = false; freshBot.lastRunAt = Date.now();
-      if (freshBot.checked > 0) {
-        try { saveSheet(pick, sheet); } catch (e) { botLog("planilha-fresca", "Planilha Sempre Fresca", `❌ erro ao salvar: ${e.message}`, "error"); }
-        if (!meta[pick]) meta[pick] = { name: pick }; meta[pick].freshAt = Date.now(); saveMeta();
-        botLog("planilha-fresca", "Planilha Sempre Fresca", `✅ ${pick}: ${freshBot.checked} conferida(s), ${freshBot.changed} atualizada(s) de verdade`, freshBot.changed ? "ok" : "info");
-      }
-    }
   }
 
   // ══════════════════════════════════════════════════════════════════════
@@ -481,12 +440,12 @@ function createPlanilhas(deps) {
       dcLog(`🚀 Coleta iniciada: ${sheetName} (${visa}) — ${datas.length} feed(s): ${datas.join(", ")}`);
       const records = []; let feedsOk = 0, feedsDone = 0;
       for (const feedDate of datas) {
-        const url = `${base}/${type}/${feedDate}`;
         try {
-          const raw = await bs.downloadAndParse(url);
+          // v207: data planejada sem arquivo no DOL (404) → usa o arquivo mais próximo pra trás (até 3 dias)
+          const { raw, data: usada } = await baixarFeedComFallback(bs, base, type, { desde: feedDate, dias: 4, onPulo: d => dcLog(`📭 feed ${d} não existe no DOL (404) — tentando o dia anterior`) });
           const recs = Array.isArray(raw) ? raw : (raw.data || raw.results || raw.items || raw.cases || []);
           records.push(...recs); feedsOk++;
-          dcLog(`📥 feed ${feedDate}: ${recs.length} registros brutos`);
+          dcLog(`📥 feed ${feedDate}${usada !== feedDate ? ` (usado o arquivo de ${usada})` : ""}: ${recs.length} registros brutos`);
         } catch (e) { dcLog(`⚠️ feed ${feedDate} falhou (${e.message}) — seguindo com os demais`, "warn"); }
         feedsDone++; dolColeta.progress = Math.round((feedsDone / datas.length) * 70);
         if (datas.length > 1) await new Promise(r => setTimeout(r, process.env.DOL_FEED_BASE ? 50 : 8000)); // educado com o DOL
@@ -607,9 +566,9 @@ function createPlanilhas(deps) {
     try {
       const bs = require("./build-sheets.js");
       const base = (process.env.DOL_FEED_BASE || bs.DOL_BASE).replace(/\/$/, "");
-      const url = `${base}/h2a/${hoje()}`;
       botLog("h2a-novas", "Vagas Novas H-2A", `🌾 Conferindo vagas H-2A novas no DOL (${trigger || "agendado"})`, "info");
-      const raw = await bs.downloadAndParse(url);
+      const { raw, data: dataFeed, pulados } = await baixarFeedComFallback(bs, base, "h2a", { dias: 7, onPulo: d => botLog("h2a-novas", "Vagas Novas H-2A", `📭 O DOL ainda não publicou o arquivo de ${d} — tentando o dia anterior`, "info") });
+      if (pulados) botLog("h2a-novas", "Vagas Novas H-2A", `📅 Usando o arquivo de ${dataFeed} (o mais recente que o DOL publicou)`, "info");
       const records = Array.isArray(raw) ? raw : (raw.data || raw.results || raw.items || raw.cases || []);
       for (const rec of records) rec._cn = String(rec.case_number || rec.case_id || "").trim().toUpperCase();
       const { rows: uniq } = dedupe(records, { caseField: "_cn" });
@@ -652,12 +611,20 @@ function createPlanilhas(deps) {
       } else botLog("h2a-novas", "Vagas Novas H-2A", `💤 Nada mudou desta vez (${jaTinha} do feed já estavam na planilha, ${descartadas} sem e-mail/qualidade).`, "info");
       h2aNovasBot.lastAdded = novas.length; h2aNovasBot.totalAdded += novas.length;
       h2aNovasBot.lastRemoved = removidas; h2aNovasBot.totalRemoved += removidas;
-      h2aNovasBot.runs++; h2aNovasBot.lastRunAt = Date.now();
+      h2aNovasBot.runs++; h2aNovasBot.lastRunAt = Date.now(); h2aNovasBot.retries = 0; h2aNovasBot.proximaTentativa = null;
       return { ok: true, added: novas.length, removidas, atualizadas, jaTinha, descartadas, outroVisto, total: SHEET_H2A.length };
     } catch (e) {
       h2aNovasBot.lastError = e.message; h2aNovasBot.lastRunAt = Date.now();
-      botLog("h2a-novas", "Vagas Novas H-2A", `⚠️ ${e.message} (planilha atual intacta — tenta de novo no próximo ciclo)`, "warn");
-      return { ok: false, error: e.message };
+      // v207: nunca fica preso em "⚠️ Erro" esperando o ciclo de 12h — re-tenta
+      // sozinho em 1 hora (até 3 vezes seguidas; depois volta ao ciclo normal).
+      const tentativa = trigger === "retry" ? (h2aNovasBot.retries || 0) + 1 : 1;
+      h2aNovasBot.retries = tentativa;
+      if (tentativa <= 3) {
+        h2aNovasBot.proximaTentativa = Date.now() + 3600_000;
+        if (!isTest) { const t = setTimeout(() => runH2aNovasCycle("retry").catch(() => { }), 3600_000); if (t.unref) t.unref(); }
+      } else h2aNovasBot.proximaTentativa = null;
+      botLog("h2a-novas", "Vagas Novas H-2A", `⚠️ ${e.message} (planilha atual intacta — ${tentativa <= 3 ? "nova tentativa automática em 1 hora" : "3 tentativas seguidas falharam; volta no ciclo de 12h"})`, "warn");
+      return { ok: false, error: e.message, proximaTentativa: h2aNovasBot.proximaTentativa };
     } finally { h2aNovasBot.running = false; }
   }
 
@@ -674,11 +641,10 @@ function createPlanilhas(deps) {
     // v195 LOTE 14: o I(12h) era redundante — o vigia de 30min já reenfileira
     // sozinho tudo que ficou pendente (e agora sem reperguntar o vazio).
     T(15_000, autoEnrichCycle, "auto-enrich"); I(30 * 60_000, autoEnrichCycle, "auto-enrich-watchdog");
-    T(5 * 60_000, runFreshCycle, "planilha-fresca"); I(6 * 3600_000, runFreshCycle, "planilha-fresca");
     T(2 * 60_000, () => runH2aNovasCycle("boot"), "h2a-novas"); I(12 * 3600_000, () => runH2aNovasCycle("agendado"), "h2a-novas");
     T(8 * 60_000, () => runH2aMensal("boot"), "h2a-mensal"); I(12 * 3600_000, () => runH2aMensal("agendado"), "h2a-mensal");
     T(20 * 60_000, () => runH2bMensal("boot"), "h2b-mensal"); timers.push(setTimeout(() => I(12 * 3600_000, () => runH2bMensal("agendado"), "h2b-mensal"), 20 * 60_000));
-    console.log("[planilhas] ⏰ robôs agendados: enriquecimento (15s, vigia 30min) · frescor (5min, 6h) · vagas novas H-2A (2min, 12h) · H-2A do mês (8min, 12h) · H-2B do mês (20min, 12h)");
+    console.log("[planilhas] ⏰ robôs agendados: enriquecimento (15s, vigia 30min) · vagas novas H-2A (2min, 12h) · H-2A do mês (8min, 12h) · H-2B do mês (20min, 12h) — frescor retirado, v208 (dono, 19/09/2026)");
     return true;
   }
 
@@ -690,7 +656,6 @@ function createPlanilhas(deps) {
       // o robô vai atacá-las (e pela MESMA função que ele usa) — o painel
       // mostrava "100%" pra planilha que não tem cidade nem descrição nenhuma.
       enrichFila: filaEnriquecimento().slice(0, 8),
-      fresh: { ...freshBot },
       h2aNovas: { ...h2aNovasBot, totalPlanilha: (getSheetH2A() || []).length },
       // 🚨 v177-FIX2 (auditoria 14/09/2026): faltava `published` — o admin.html
       // sempre mostrava "em rascunho, publique abaixo" mesmo DEPOIS de clicar
@@ -703,8 +668,8 @@ function createPlanilhas(deps) {
     };
   }
 
-  return { runEnrichBot, autoEnrichCycle, filaEnriquecimento, runFreshCycle, planilhasParaFrescor, freshBot, dolColeta, runDolColeta, runPlanilhaMensal, runH2aMensal, runH2bMensal,
-    getEstadoH2a: () => DB_H2A_BIM, getEstadoH2b: () => DB_H2B_MEN, runH2aNovasCycle, h2aNovasBot, iniciarAgendadores, statusPainel, aplicarDolNaLinha, aplicarFrescor };
+  return { runEnrichBot, autoEnrichCycle, filaEnriquecimento, planilhasPublicadas, dolColeta, runDolColeta, runPlanilhaMensal, runH2aMensal, runH2bMensal,
+    getEstadoH2a: () => DB_H2A_BIM, getEstadoH2b: () => DB_H2B_MEN, runH2aNovasCycle, h2aNovasBot, iniciarAgendadores, statusPainel, aplicarDolNaLinha };
 }
 
 module.exports = { createPlanilhas, CAMPOS_ESSENCIAIS, linhaCompleta, progressoPlanilha, unidadeSalario, mesesExperiencia };

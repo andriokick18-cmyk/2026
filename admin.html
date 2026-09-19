@@ -599,7 +599,7 @@ tbody tr:hover{background:var(--glass2)}
             <div class="panel-actions"><select id="bl-filter" onchange="_plRenderBotLogs()" style="min-width:160px"><option value="">Todos os robôs</option></select></div>
           </div>
           <div class="panel-body">
-            <p class="pl-help">O que cada robô fez, mais recente primeiro — frescor, vagas novas H-2A, planilhas do mês, sentinela e vigias de token. Fica na memória do servidor (últimas 1.500 linhas).</p>
+            <p class="pl-help">O que cada robô fez, mais recente primeiro — enriquecimento, vagas novas H-2A, planilhas do mês, sentinela e vigias de token. Fica na memória do servidor (últimas 1.500 linhas).</p>
             <div class="pl-log" id="bl-log"><div class="pl-log-empty">Sem atividade recente.</div></div>
           </div>
         </div>
@@ -1067,7 +1067,7 @@ var TITULOS={
   overview:{t:"Visão Geral",s:"Números exatos, direto do servidor"},
   usuarios:{t:"Usuários por Dias de VIP",s:"Todos os usuários, ordenados por dias restantes"},
   pendentes:{t:"Pedidos",s:"Pendentes, aprovados e cancelados — com quem aprovou e por quê"},
-  planilhas:{t:"Planilhas & Robôs",s:"As vagas se alimentam sozinhas do DOL — coleta, enriquecimento e frescor"},
+  planilhas:{t:"Planilhas & Robôs",s:"As vagas se alimentam sozinhas do DOL — coleta e enriquecimento, cada vaga só uma vez"},
   notificacoes:{t:"Notificações por e-mail",s:"A conta Google que envia os códigos e avisos do sistema"},
   migracao:{t:"Códigos de migração VIP",s:"Cliente do site antigo resgata os dias que restavam — uso único, preso ao Gmail, sem cobrança nova"}
 };
@@ -1943,8 +1943,7 @@ function _plSheetCard(sh){
     +(sh.builtin?" "+_plBadge("Built-in","gray"):"")+(sh.source==="coleta-feed"?" "+_plBadge("Coleta DOL","purple"):"");
   var meta='<span>🗝️ '+esc(sh.key)+'</span><span><b>'+_plNum(sh.count)+'</b> vagas</span><span>📧 '+_plNum(sh.withEmail)+' com e-mail</span>'
     +(sh.uploaded?'<span>Criada '+esc(fmtData(sh.uploaded))+'</span>':'')
-    +(sh.enrichedAt?'<span>Enriquecida '+esc(_plAgo(sh.enrichedAt))+'</span>':'')
-    +(sh.freshAt?'<span>Frescor '+esc(_plAgo(sh.freshAt))+'</span>':'');
+    +(sh.enrichedAt?'<span>Enriquecida '+esc(_plAgo(sh.enrichedAt))+'</span>':'');
   var cor=pct>=100?"var(--green)":pct>30?"var(--amber)":"var(--blue)";
   var bar='<div class="pl-sheet-m" style="margin-top:8px"><span>🔍 DOL: <b>'+pct+'%</b></span><span>🏙️ '+_plNum(st.withCity)+' cidades</span><span>📞 '+_plNum(st.withPhone)+' telefones</span><span>📅 '+_plNum(st.withDate)+' datas</span><span>📝 '+_plNum(st.withDesc)+' descrições</span></div>'
     +'<div class="pl-progress" style="margin:6px 0 0"><div class="pl-bar" style="width:'+pct+'%;background:'+cor+'"></div></div>';
@@ -1967,7 +1966,7 @@ async function plStatusTick(){
   try{
     var d=await api("/api/admin/planilhas/status");
     _plRenderRobos(d);_plRenderEnrich(d);_plRenderColeta(d);_plBotLogs=d.botLogs||[];_plRenderBotLogs();
-    running=!!(d.enrich.running||d.coleta.running||d.fresh.running||d.h2aNovas.running);
+    running=!!(d.enrich.running||d.coleta.running||d.h2aNovas.running);
   }catch(e){}
   _plStop();_plTimer=setTimeout(plStatusTick,running?2500:15000);
 }
@@ -1996,8 +1995,8 @@ function _plFilaHtml(fila){
     +linhas+'</div>';
 }
 function _plRenderRobos(d){
-  var en=d.enrich||{},fr=d.fresh||{},hn=d.h2aNovas||{},ma=d.mensalH2a||{},mb=d.mensalH2b||{},co=d.coleta||{};
-  var rodando=[en.running&&"enriquecimento",co.running&&"coleta",fr.running&&"frescor",hn.running&&"vagas novas H-2A"].filter(Boolean);
+  var en=d.enrich||{},hn=d.h2aNovas||{},ma=d.mensalH2a||{},mb=d.mensalH2b||{},co=d.coleta||{};
+  var rodando=[en.running&&"enriquecimento",co.running&&"coleta",hn.running&&"vagas novas H-2A"].filter(Boolean);
   _plSet("pl-robos",d.agendado?"Ligados":"Só manual");
   _plSet("pl-robos-sub",rodando.length?"rodando agora: "+rodando.join(", "):d.agendado?"todos agendados, nenhum rodando agora":"agendadores desligados (modo teste)");
   var cards=[
@@ -2005,13 +2004,9 @@ function _plRenderRobos(d){
      desc:"Completa cada vaga pela API do DOL (e-mail, cidade, datas, nº de vagas, telefone, salário, funções, URL). 15s após o boot, a cada 12h e no upload de planilha; vigia a cada 30min.",
      res:(en.running?"Planilha <b>"+esc(en.sheetKey||"?")+"</b> — "+_plNum(en.done)+"/"+_plNum(en.total)+" (ok "+_plNum(en.ok)+" · sem e-mail "+_plNum(en.noEmail)+" · erros "+_plNum(en.errors)+")":"Último salvamento: "+esc(en.savedAt?fmtData(en.savedAt):"nunca")+". Use \"Enriquecer DOL\" de cada planilha pra forçar.")
        +_plFilaHtml(d.enrichFila)},
-    {emoji:"🔄",titulo:"Planilha sempre fresca",badge:_plBadge(fr.running?"⚡ Rodando":"⏹ Parado",fr.running?"green":"gray"),
-     desc:"Confere no DOL status, datas e salário das vagas já completas de TODAS as planilhas publicadas, 120 por ciclo, em rodízio pela reconferida há mais tempo. 5min após o boot e a cada 6h.",
-     res:"Última rodada: "+esc(_plAgo(fr.lastRunAt))+(fr.sheetKey?" em <b>"+esc(fr.sheetKey)+"</b>":"")+" — "+_plNum(fr.checked)+" conferida(s), "+_plNum(fr.changed)+" atualizada(s).",
-     btn:{id:"pl-btn-fresh",fn:"plFreshRun()",ic:"ti-refresh",lbl:"Conferir agora",off:!!(fr.running||en.running)}},
     {emoji:"🌾",titulo:"Vagas novas H-2A",badge:_plBadge(hn.running?"⚡ Rodando":hn.lastError?"⚠️ Erro":"⏹ Parado",hn.running?"green":hn.lastError?"amber":"gray"),
-     desc:"2x/dia sincroniza a planilha H-2A com o feed oficial: ENTRA vaga ativa nova (nunca duplica) e SAI inativa (negada/retirada/temporada encerrada). Trava se mais da metade sumiria de uma vez.",
-     res:"Última rodada: "+esc(_plAgo(hn.lastRunAt))+" — +"+_plNum(hn.lastAdded)+" novas · −"+_plNum(hn.lastRemoved)+" inativas (acumulado +"+_plNum(hn.totalAdded)+" / −"+_plNum(hn.totalRemoved)+", "+_plNum(hn.runs)+" rodadas). Planilha H-2A: <b>"+_plNum(hn.totalPlanilha)+"</b> vagas."+(hn.lastError?"<br>⚠️ "+esc(hn.lastError):""),
+     desc:"2x/dia sincroniza a planilha H-2A com o feed oficial: ENTRA vaga ativa nova (nunca duplica) e SAI inativa (negada/retirada/temporada encerrada). Trava se mais da metade sumiria de uma vez. Se o DOL ainda não publicou o arquivo de hoje, usa o dia anterior; se não houver arquivo nenhum, avisa e tenta de novo em 1 hora.",
+     res:"Última rodada: "+esc(_plAgo(hn.lastRunAt))+" — +"+_plNum(hn.lastAdded)+" novas · −"+_plNum(hn.lastRemoved)+" inativas (acumulado +"+_plNum(hn.totalAdded)+" / −"+_plNum(hn.totalRemoved)+", "+_plNum(hn.runs)+" rodadas). Planilha H-2A: <b>"+_plNum(hn.totalPlanilha)+"</b> vagas."+(hn.lastError?"<br>⚠️ "+esc(hn.lastError)+(hn.proximaTentativa?" — nova tentativa automática às "+esc(fmtData(hn.proximaTentativa))+".":""):""),
      btn:{id:"pl-btn-h2a-novas",fn:"plH2aNovasRun()",ic:"ti-plant-2",lbl:"Buscar novas agora",off:!!hn.running}},
     {emoji:"🌾",titulo:"H-2A do mês (publica sozinha)",badge:_plBadge(ma.lastKey?"Última: "+ma.lastKey:"Nunca rodou",ma.lastKey?"blue":"gray"),
      desc:"Todo mês nasce a \"H-2A <Mês> <Ano>\" com as vagas dos últimos 90 dias (6 feeds do DOL). Publica sozinha se passar na guarda de qualidade; senão fica em rascunho.",
@@ -2099,10 +2094,6 @@ async function plH2aNovasRun(){
     toast((d.added||d.removidas)?"🌾 +"+_plNum(d.added)+" novas · −"+_plNum(d.removidas)+" inativas — total "+_plNum(d.total):"🌾 Nada mudou — "+_plNum(d.jaTinha)+" do feed já estavam (total "+_plNum(d.total)+")","ok");
     loadPlanilhas();
   }catch(e){toast(e.message,"err");if(btn)btn.disabled=false;}
-}
-async function plFreshRun(){
-  try{await api("/api/admin/sheet/fresh-run",{method:"POST",body:{}});toast("🔄 Conferindo status/datas/salário no DOL — acompanhe no card do robô.","ok");_plStop();plStatusTick();}
-  catch(e){toast(e.message,"err");}
 }
 async function plEnrichStart(key){
   if(!confirm("Enriquecer \""+key+"\" pelo DOL agora?\n\n1 vaga por vez, educado com o DOL — pode levar horas numa planilha grande. Salva a cada vaga; dá pra parar e retomar quando quiser."))return;
@@ -2221,6 +2212,10 @@ async function loadNotificacoes(){
     } else {
       html='<div class="pl-robo" style="border-left:3px solid var(--amber)"><div class="pl-robo-t"><span>🔌 Nenhuma conta conectada</span>'+_plBadge("desligado","amber")+'</div><div class="pl-robo-s">Enquanto isso, ninguém consegue receber o código de cadastro nem recuperar a senha — o site avisa "verificação temporariamente indisponível". Conecte a conta SuporteH2bapply@gmail.com abaixo.</div></div>';
     }
+    // 📧 v207: o que precisa estar no Google Cloud Console pra conexão dar certo
+    // — a URL de retorno exata (muda entre h2bapply.com e o domínio do Render)
+    // e a lista de usuários de teste enquanto a tela de permissão não for verificada.
+    if(!con&&d.redirectUri)html+='<div class="pl-help" style="margin-top:10px">Antes de conectar, confira no Google Cloud Console (APIs e serviços → Credenciais → cliente OAuth do site): a URL de retorno <code>'+esc(d.redirectUri)+'</code> precisa estar em "URIs de redirecionamento autorizados". Se a tela de permissão estiver em modo Teste, a conta de suporte precisa estar na lista de usuários de teste. Se o Google recusar, o motivo aparece aqui em cima.</div>';
     box.innerHTML=html;
     _plG("nt-conectar").innerHTML='<i class="ti ti-brand-google"></i> '+(con?'Trocar conta Google':'Conectar conta Google');
     _plG("nt-conectar").disabled=!d.oauthConfigurado;

@@ -100,6 +100,10 @@ const feedSrv = http.createServer((rq, rs) => {
     return rs.end(JSON.stringify({ value: det ? [det] : [] }));
   }
   const h2a = url.includes("/h2a/");
+  // 🗓️ v207: simula o DOL sem o arquivo de HOJE (404 só na data de hoje) ou
+  // sem arquivo nenhum (404 em qualquer data) — caso real de 19/09/2026.
+  const _dataUrl = (url.match(/\/(\d{4}-\d{2}-\d{2})/) || [])[1] || "";
+  if (fs.existsSync(path.join(DATA, "h2a_feed_404_todos.flag")) || (fs.existsSync(path.join(DATA, "h2a_feed_404_hoje.flag")) && _dataUrl === new Date().toISOString().slice(0, 10))) { rs.writeHead(404); return rs.end("not found"); }
   const vagas = [];
   for (let i = 1; i <= 14; i++) vagas.push(h2a ? _mkVagaH2A(i) : _mkVaga(i));
   vagas.push(h2a ? _mkVagaH2A(1) : _mkVaga(1)); // duplicada de propósito
@@ -1784,6 +1788,17 @@ async function drillRestauracaoBackup() {
         _idx206.includes('id="mig-card"') && _idx206.includes("resgatarCodigoMigracao()") && appJs.body.includes("async function resgatarCodigoMigracao") &&
         _adm206.includes('id="view-migracao"') && /function (loadMigracao|migCriar|migImportar|migExcluir|migCopiarMsg)\(/.test(_adm206),
         "resquício de dado hardcoded ou tela ausente");
+      // 📧 v207 — conexão da conta de notificações (caso real do dono na véspera do lançamento)
+      const _ntSt = (await get("/api/admin/notificacoes/status")).json;
+      check("📧 v207: a aba Notificações mostra a URL de retorno EXATA que precisa estar cadastrada no Google Cloud Console (base do OAuth + /oauth/callback)",
+        /\/oauth\/callback$/.test(_ntSt?.redirectUri || ""), JSON.stringify({ redirectUri: _ntSt?.redirectUri }));
+      const _ntState = await req2("POST", "/api/test/notif-state", { token: TEST_TOKEN });
+      const _cbErr = await get("/oauth/callback?error=access_denied&state=" + encodeURIComponent(_ntState.json?.state || "x"));
+      const _cbLoc = decodeURIComponent(String(_cbErr.headers?.location || ""));
+      check("📧 v207: cancelar/recusar no Google durante a conexão da conta de notificações volta pro PAINEL (/admin?notif=erro) com o passo a passo — antes caía na landing como 'Login cancelado.'",
+        _cbErr.status === 302 && /^\/admin\?notif=erro&msg=/.test(_cbLoc) && /Conectar conta Google/.test(_cbLoc), JSON.stringify({ status: _cbErr.status, loc: _cbLoc.slice(0, 160) }));
+      const _cbErr2 = await get("/oauth/callback?error=access_denied&state=nao-existe");
+      check("📧 v207: erro do Google SEM estado de admin continua no caminho de sempre (landing) — a rota não vaza o texto do painel pra estranhos", _cbErr2.status === 302 && /^\/\?err=/.test(String(_cbErr2.headers?.location || "")), String(_cbErr2.headers?.location || ""));
     }
 
 
@@ -3672,8 +3687,8 @@ async function drillRestauracaoBackup() {
     {
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
       const plSt0 = await get("/api/admin/planilhas/status");
-      check("📋 v174: painel dos robôs responde numa chamada só (enrich/fresh/h2aNovas/coleta/mensais) e os agendadores ficam DESLIGADOS no npm test",
-        plSt0.json?.ok === true && plSt0.json.agendado === false && ["enrich", "fresh", "h2aNovas", "coleta", "mensalH2a", "mensalH2b"].every((k) => plSt0.json[k] && typeof plSt0.json[k] === "object"),
+      check("📋 v174+v208: painel dos robôs responde numa chamada só (enrich/h2aNovas/coleta/mensais — frescor saiu, v208) e os agendadores ficam DESLIGADOS no npm test",
+        plSt0.json?.ok === true && plSt0.json.agendado === false && ["enrich", "h2aNovas", "coleta", "mensalH2a", "mensalH2b"].every((k) => plSt0.json[k] && typeof plSt0.json[k] === "object") && plSt0.json.fresh === undefined,
         plSt0.body.slice(0, 200));
       const enSt = await get("/api/admin/enrich/status");
       const enBad = await req2("POST", "/api/admin/enrich/start", { sheetKey: "nao-existe-2099" });
@@ -3739,6 +3754,25 @@ async function drillRestauracaoBackup() {
       const _h2aRow = (slH2aN.json?.sheets || []).find((x) => x.key === "h2a-jun2026");
       check("🌾 v174: vagas novas H-2A já contam como disponíveis pros usuários (planilha H-2A de sempre, sem aba nova)",
         _h2aRow && _h2aRow.count === h2aVivas + 13 && _h2aRow.available >= 13, JSON.stringify(_h2aRow || {}).slice(0, 140));
+
+      // 🗓️ v207 — o arquivo de HOJE ainda não existe no DOL (caso real 19/09/2026, sábado)
+      fs.writeFileSync(path.join(DATA, "h2a_feed_404_hoje.flag"), "1");
+      const hn4 = await req2("POST", "/api/admin/sheet/h2a-novas-run", {});
+      fs.unlinkSync(path.join(DATA, "h2a_feed_404_hoje.flag"));
+      const _stH2a = (await get("/api/admin/planilhas/status")).json;
+      check("🗓️ v207: arquivo de HOJE ausente no DOL (404) NÃO é erro — o robô usa o dia anterior, termina ok, avisa no log e a aba não mostra ⚠️ Erro",
+        hn4.json?.ok === true && !_stH2a?.h2aNovas?.lastError && (_stH2a?.botLogs || []).some((l) => l.bot === "h2a-novas" && /ainda não publicou/.test(l.msg)) && (_stH2a?.botLogs || []).some((l) => l.bot === "h2a-novas" && /Usando o arquivo de/.test(l.msg)),
+        JSON.stringify({ r: hn4.json, lastError: _stH2a?.h2aNovas?.lastError }));
+      fs.writeFileSync(path.join(DATA, "h2a_feed_404_todos.flag"), "1");
+      const hn5 = await req2("POST", "/api/admin/sheet/h2a-novas-run", {});
+      fs.unlinkSync(path.join(DATA, "h2a_feed_404_todos.flag"));
+      const _stH2a2 = (await get("/api/admin/planilhas/status")).json;
+      check("🗓️ v207: DOL sem arquivo nos últimos 7 dias → erro HONESTO (nunca finge sucesso nem inventa vaga), planilha intacta e nova tentativa automática agendada em 1h (nunca preso até o ciclo de 12h)",
+        hn5.json?.ok === false && /não publicou/.test(hn5.json?.error || "") && hn5.json.proximaTentativa > Date.now() && _stH2a2?.h2aNovas?.totalPlanilha === hn4.json.total && _stH2a2?.h2aNovas?.proximaTentativa === hn5.json.proximaTentativa,
+        JSON.stringify(hn5.json));
+      const hn6 = await req2("POST", "/api/admin/sheet/h2a-novas-run", {});
+      const _stH2a3 = (await get("/api/admin/planilhas/status")).json;
+      check("🗓️ v207: o ciclo seguinte com o DOL de volta limpa o erro e a tentativa agendada", hn6.json?.ok === true && !_stH2a3?.h2aNovas?.lastError && !_stH2a3?.h2aNovas?.proximaTentativa, hn6.body.slice(0, 120));
       // 📅 H-2A DO MÊS — publica sozinha (H2A_BIM_MIN_PUBLICAR=10 no env do teste)
       const bim1 = await req2("POST", "/api/admin/sheet/h2a-bimestral-run", {});
       check("🌾 v174: última rodada há 1 mês (fixture) → o disparo MENSAL responde NA HORA (started:true) com a chave do mês",
@@ -3800,16 +3834,18 @@ async function drillRestauracaoBackup() {
         !(_slJan.json?.sheets || []).some((x) => x.key === "teste-janela"),
         JSON.stringify({ erro: (_stJan?.error || "").slice(0, 140) }));
       const _modFresh = fs.readFileSync(path.join(__dirname, "mod-planilhas.js"), "utf8");
-      // ⚠️ ATUALIZADO no v182 LOTE 8: a lista fixa [H-2B mais nova, h2a-jun2026,
-      // H-2A do mês] do v177-FIX7 virou "TODA planilha publicada" — a H-2A do
-      // mês continua coberta (por construção agora, não por um padrão de chave
-      // a mais) e jan2026/jul2025, que nunca eram reconferidas, entraram junto.
-      check("🚨 v177-FIX7 + v182-L8 (estrutural): o frescor cobre TODA planilha publicada em rodízio (rascunho fica de fora) — a planilha H-2A do mês, a H-2B mais nova e as antigas jan2026/jul2025 param de envelhecer sem NENHUMA reconferência de status/data/salário",
-        _modFresh.includes("function planilhasParaFrescor()") &&
-        _modFresh.includes('meta[k]?.published !== false') &&
-        _modFresh.includes("const keys = planilhasParaFrescor();") &&
-        !_modFresh.includes("function latestH2aMensalKey()"),
-        "runFreshCycle voltou a olhar só um punhado de planilhas");
+      // 🗑️ v208 (dono, 19/09/2026): o robô de frescor foi RETIRADO por decisão de
+      // produto — vaga já enriquecida nunca mais é reconsultada no DOL. A guarda
+      // v177-FIX7/v182-L8 media a cobertura do frescor; agora vira uma guarda
+      // NEGATIVA permanente (nunca deixa o robô voltar) + prova que a lista de
+      // planilhas publicadas (renomeada `planilhasPublicadas`, ainda usada pelo
+      // vigia de saúde) continua viva.
+      check("🗑️ v208 (estrutural, guarda permanente): o robô de frescor não existe mais — nenhuma reconferência de vaga já completa (freshBot/runFreshCycle/aplicarFrescor/fresh-run) sobrevive em lugar nenhum",
+        !_modFresh.includes("freshBot") && !_modFresh.includes("runFreshCycle") && !_modFresh.includes("aplicarFrescor") &&
+        !fs.readFileSync(path.join(__dirname, "server.js"), "utf8").includes("fresh-run") &&
+        !fs.readFileSync(path.join(__dirname, "admin.html"), "utf8").includes("plFreshRun") &&
+        _modFresh.includes("function planilhasPublicadas()") && _modFresh.includes('meta[k]?.published !== false'),
+        "resquício do robô de frescor encontrado");
       // 🔒 admin-only + estrutural
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
       const pl403 = await Promise.all([req2("POST", "/api/admin/sheet/h2a-bimestral-run", {}), req2("POST", "/api/admin/sheet/coleta-start", { sheetKey: "x" }), get("/api/admin/planilhas/status"), req2("POST", "/api/admin/sheet/coleta-publish", { key: "teste2099" })]);
@@ -5387,22 +5423,20 @@ async function drillRestauracaoBackup() {
       check("🧩 v182-L8 (32): a vaga paga por peça sai do filtro de salário em vez de entrar com valor falso",
         vfL8.facetas.salario.semSalario >= 1 && (vfL8.facetas.salario.limiares.find((l) => l.v === 12) || {}).n === 2,
         JSON.stringify(vfL8.facetas.salario).slice(0, 160));
-      // (31) frescor em TODAS as planilhas publicadas, em rodízio
-      const _hits1 = DOL_HITS.length;
-      await req2("POST", "/api/admin/sheet/fresh-run", {});
-      let fr1 = null;
-      for (let i = 0; i < 120; i++) { await new Promise((r) => setTimeout(r, 200)); fr1 = (await get("/api/admin/planilhas/status")).json; if (fr1 && fr1.fresh.running === false && fr1.fresh.lastRunAt) break; }
-      const pick1 = fr1 && fr1.fresh.sheetKey;
-      const checados1 = DOL_HITS.length - _hits1;
-      await req2("POST", "/api/admin/sheet/fresh-run", {});
-      let fr2 = null;
-      for (let i = 0; i < 120; i++) { await new Promise((r) => setTimeout(r, 200)); fr2 = (await get("/api/admin/planilhas/status")).json; if (fr2 && fr2.fresh.running === false && fr2.fresh.sheetKey !== pick1) break; }
-      check("🧩 v182-L8 (31): o frescor deixou de olhar só a mais nova — jan2026 (9.240 vagas 'Certified' que nunca eram reconferidas, de onde sai a maior parte dos envios) entra na rotação, com o MESMO teto de 120 linhas por ciclo",
-        pick1 === "jan2026" && checados1 === 120 && fr1.fresh.checked === 120,
-        `pick=${pick1} chamadas=${checados1} checked=${fr1 && fr1.fresh.checked}`);
-      check("🧩 v182-L8 (31): o rodízio é pela planilha reconferida há mais tempo — o ciclo seguinte vai pra OUTRA planilha (carimbo por planilha no meta), nunca fica batendo na mesma",
-        fr2 && fr2.fresh.sheetKey && fr2.fresh.sheetKey !== pick1,
-        `1º=${pick1} 2º=${fr2 && fr2.fresh.sheetKey}`);
+      // (31→v208) o frescor foi RETIRADO por decisão de produto (19/09/2026) —
+      // vaga já completa nunca mais é reconsultada. planilhasPublicadas() (o que
+      // sobrou daquele item, sem a parte de reconferência) continua listando
+      // TODA planilha publicada, rascunho fora — é a mesma lista que o vigia de
+      // saúde usa (v199 LOTE 18) e agora é provada aqui.
+      // createPlanilhas() é uma fábrica por injeção de dependências (padrão do
+      // repo) — não dá pra chamar planilhasPublicadas() direto por require();
+      // provamos pelo efeito visível: a MESMA lista que o vigia de saúde usa
+      // é exatamente o que GET /api/sheets-list mostra pro usuário.
+      const _sheetsL = await get("/api/sheets-list");
+      const _chavesL = (_sheetsL.json?.sheets || []).map((x) => x.key);
+      check("🧩 v208: planilhasPublicadas() (fonte única do vigia de saúde) bate com o que o usuário vê em /api/sheets-list — jan2026/jul2025/h2a-jun2026 publicadas, sem rascunho",
+        ["jan2026", "jul2025", "h2a-jun2026"].every((k) => _chavesL.includes(k)) && !_chavesL.includes("teste-janela"),
+        JSON.stringify(_chavesL));
       // (35) forçar o seed da jul2026 MESCLA — nunca troca a planilha inteira
       const j26antes = await _rowsL8("jul2026");
       const _casoJ26 = j26antes[0] && j26antes[0].c;
@@ -5419,9 +5453,9 @@ async function drillRestauracaoBackup() {
         JSON.stringify({ resp: seedForce.json, linha: { e: _linhaJ26.e, ci: _linhaJ26.ci } }).slice(0, 220));
       // estrutural: produção intocada (mesma URL do DOL, mesmo ritmo) e critério numa lista só
       const _modL8 = fs.readFileSync(path.join(__dirname, "mod-planilhas.js"), "utf8");
-      check("🧩 v182-L8 (estrutural): em produção NADA mudou no trato com o DOL — a base padrão continua sendo api.seasonaljobs.dol.gov/datahub/ e o ritmo educado (800ms no enriquecimento, 1,5s no frescor) só encolhe com base local de teste",
+      check("🧩 v182-L8 (estrutural): em produção NADA mudou no trato com o DOL — a base padrão continua sendo api.seasonaljobs.dol.gov/datahub/ e o ritmo educado do enriquecimento (800ms) só encolhe com base local de teste",
         _modL8.includes('process.env.DOL_API_BASE || "https://api.seasonaljobs.dol.gov/datahub/"') &&
-        _modL8.includes("_dolLocal ? 20 : 800") && _modL8.includes("_dolLocal ? 5 : 1500") &&
+        _modL8.includes("_dolLocal ? 20 : 800") &&
         !/httpsReq\(\{ hostname: "api\.seasonaljobs/.test(_modL8),
         "o ritmo/hostname de produção foi alterado");
       check("🧩 v182-L8 (estrutural): o critério de 'completa' é UMA lista só (CAMPOS_ESSENCIAIS) — fila, ponto de retomada, laço do robô e painel leem dela, nunca cada um do seu jeito",

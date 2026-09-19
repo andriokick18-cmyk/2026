@@ -1,0 +1,25 @@
+# Decisões importantes do H2BApply
+
+> Registro permanente: data, decisão, motivo, impacto, como testar. Uma
+> decisão só sai daqui por outra decisão registrada. Histórico técnico
+> completo (versão a versão) está no `CLAUDE.md`.
+
+| Data | Decisão | Motivo | Impacto | Como testar |
+|---|---|---|---|---|
+| 2026-09-11 | Login e cadastro por usuário + senha; o Google entra só para conectar o Gmail de envio (`gmail.send`). | O login pelo Google prendia o site ao limite de 100 usuários do OAuth não verificado e confundia conta com Gmail de envio. | Cadastro com e-mail verificado por código; Gmail conectado depois, com plano ativo. | Smoke: cadastro, login, senha, connect-send. |
+| 2026-09-12 | Conta grátis não envia nada (0 manual, 0 automático). | Ordem do dono: "nenhum usuário vai ter envio grátis". | Gate 402 em /api/send e /api/auto/start; textos honestos. | Smoke v172. |
+| 2026-09-13 | Gmails de envio por plano: grátis 0 · VIP/VIPro 1 · DoublePro 2 · admin 6. | Ordem do dono. | `getMaxSenders`. | Smoke v172/v206. |
+| 2026-09-13 | Tabela nova de limites (VIP 100/0 · VIPro 100/100 · DoublePro 200/200) carimbada em `vip.limits` na ativação; quem pagou antes mantém o contrato antigo. | Contrato congelado: nenhum pagante perde nada. | `limitesDoPlanoNovo`, `limitsParaAtivacaoAdmin`. | Smoke v187. |
+| 2026-09-13 | Planilhas se alimentam sozinhas do DOL (coleta, enriquecimento, frescor, mensais); H-2B do mês fica sempre em rascunho, H-2A publica sozinha acima do mínimo. | Ordem do dono. | `mod-planilhas.js`. | Smoke v174/v182 com feed falso. |
+| 2026-09-14 | O site é só em português; sem seletor de idioma; dicionários EN/ES ficam guardados mas inativos. | Público 100% brasileiro; conta presa em inglês era bug. | `_curLang = 'pt'`, migração de boot. | Smoke v199. |
+| 2026-09-18 | E-mail do empregador só viaja inteiro para plano ativo ou admin; sem plano vai mascarado com `hasEmail` preservado. | O e-mail é o ativo que o cliente paga; estava aberto a qualquer scraper. | `mascararEmail`, `podeVerEmailVaga`. | Smoke v182 lote 10. |
+| 2026-09-18 | Radar de vagas é filtro salvo que mostra vagas novas ao abrir o site; nenhuma promessa de push. | Não existe canal de push; prometer aviso era mentira. | `registrarVagasNovasNoRadar`. | Smoke v189. |
+| 2026-09-18 | Restaurar backup congela gravações até o reinício; `backup.json` (tokens em claro) nunca mais é escrito. | O restore era desfeito pelo SIGTERM; tokens em texto puro no disco. | `persist()` com freeze, `flushAll` genérico. | Smoke v191 (drill real). |
+| 2026-09-18 | Comprovantes de pedido vivem no disco (`comprovantes/`), nunca na RAM dentro de `pedidos.json`. | Cada persist reserializava todos os comprovantes; risco de OOM. | `saveComprovante`/`loadComprovante`. | Smoke v192. |
+| 2026-09-19 | Códigos de migração VIP do site antigo nascem só pelo painel admin; lista de clientes nunca entra no git. | Repositório público; dado pessoal em git é vazamento permanente. | `/api/admin/migracao-codigos`, `/api/vip/resgatar-codigo`; `vip.source = "migracao"` conta como plano pago para features, zero caixa. | Smoke v206. |
+| 2026-09-19 | Master Command adotado como especificação permanente do produto (regra nº 1: o usuário nunca fica perdido; site não é governo nem afiliado ao SeasonalJobs; nunca prometer resultado; nunca inventar dado ou regra). | Ordem do dono. | `docs/H2BAPPLY_PRODUCT_RULES.md`, `docs/H2BAPPLY_UX_RULES.md`, `docs/H2BAPPLY_WAY.md`. | Auditoria profunda antes de qualquer alteração; plano em lotes aprovado pelo dono. |
+| 2026-09-19 | Testes no site ao vivo (h2bapply-2026.onrender.com) são do dono; a IA trabalha no código e em servidores de teste com dados falsos; nunca envia candidatura real nem altera dado real para testar. | Acesso ao navegador com sessão real é do dono; proteção de dados reais. | Achados do dono entram em `docs/H2BAPPLY_LIVE_SYSTEM_AUDIT.md`. | — |
+| 2026-09-19 | Vaga enriquecida UMA vez pelo ETA Case Number; sem robô de frescor; sem "status ativa/inativa/expirada" para o usuário. Substitui a parte da seção 8 do Master Command sobre reconferir vaga. | Decisão do dono: não reconsultar vaga já completa; o site não é o DOL. | Robô "Planilha sempre fresca" desligado; enriquecimento só em linha incompleta; página da vaga sem status. | Smoke: nenhum agendador chama frescor; enriquecimento nunca toca linha completa. |
+| 2026-09-19 | Mensagem de confiança em destaque: "100% das vagas vêm do site oficial (SeasonalJobs.dol.gov)… viu uma vaga em outro lugar e quer saber se é golpe? pesquise no Envio Manual". | Decisão do dono: diferencial de confiança, no lugar de explicar a importação técnica. | Landing e FAQ (fase de implementação do Master Command). | Texto presente na landing e na FAQ; guarda no smoke. |
+| 2026-09-19 | O arquivo diário do DOL pode não existir para a data de hoje (404): o robô usa o dia anterior, nunca finge sucesso e re-tenta em 1 hora quando não há arquivo. | Caso real no site ao vivo (sábado 19/09): robô H-2A preso em ⚠️ Erro. | `baixarFeedComFallback` em mod-planilhas.js (H-2A novas e coleta mensal). | Smoke v207 (feed falso com 404 de hoje / de todos os dias). |
+
