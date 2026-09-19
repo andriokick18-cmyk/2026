@@ -4,9 +4,15 @@ Plataforma de candidatura automática para vagas **H-2B e H-2A** nos Estados
 Unidos. Este repositório é uma reconstrução enxuta do H2BApply original:
 mantém o motor de envio (manual e automático), login por usuário e senha e
 perfis de currículo (o Google só entra depois, para conectar o Gmail de
-envio quando o plano está pago), mas **remove** ranking, IA/Gemini (incluindo o antigo Cérebro
-Contábil), aba de notícias, chat, e o menu/drawer — trocados por uma
-navegação e um onboarding bem mais simples. O pagamento também mudou: não
+envio quando o plano está pago), mas **remove** ranking, chat com IA, a ABA
+Cérebro Contábil do painel, aba de notícias e o menu/drawer — trocados por
+uma navegação e um onboarding bem mais simples. **Ressalva honesta** (v204
+LOTE 22): o Gemini existe, SÓ pra ler o comprovante de PIX (v177 — sem
+`GEMINI_API_KEY` o comprovante fica pendente de conferência manual, nada
+quebra); e o MOTOR contábil (`computeSocios`/`computeDreMensal`/`_fecharMes`/
+`relatorioExecutivoDre`) existe no servidor, com testes no smoke, só não tem
+tela no painel — decisão pendente do dono. Não confunda "não existe" com
+"não tem tela": apagar essas peças quebraria dinheiro de verdade. O pagamento também mudou: não
 existe mais moeda intermediária (diamante) — o usuário escolhe plano e
 período, paga via Pix e sobe o comprovante diretamente.
 
@@ -37,6 +43,10 @@ período, paga via Pix e sobe o comprovante diretamente.
   plano ativa na hora por 3 dias (janela provisória) enquanto o pedido
   segue pendente — a confirmação humana do admin continua SEMPRE
   obrigatória pro período cheio
+- Aba **Enviadas** (`#v-hist`, na sidebar e no bottom-nav): histórico de
+  candidaturas com busca, filtro e detalhe de cada envio, e o botão de
+  resetar a fila. O mesmo histórico é o que impede o robô de contatar duas
+  vezes o mesmo empregador (regra do "já enviei pra essa empresa")
 - Painel admin (`/admin`) focado em contabilidade: total recebido, gastos por
   sócio, lista de usuários por dias de VIP restantes, aprovação de pedidos
   pendentes
@@ -47,10 +57,10 @@ período, paga via Pix e sobe o comprovante diretamente.
 
 ## O que NÃO existe (removido de propósito nesta reconstrução)
 
-Ranking/gamificação, chat com IA, Cérebro Contábil, aba de Notícias, seletor
-de idioma (o app é só em português), códigos promocionais, Vagas Salvas, aba
-Enviadas (histórico continua existindo internamente pra evitar duplicatas,
-só não tem mais uma tela dedicada de navegação), menu/drawer hambúrguer.
+Ranking/gamificação, chat com IA, a **aba** Cérebro Contábil do painel (o
+motor contábil no servidor continua existindo — ver a ressalva no topo), aba
+de Notícias, seletor de idioma (o app é só em português), códigos
+promocionais, Vagas Salvas, menu/drawer hambúrguer.
 
 ## Stack
 

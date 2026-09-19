@@ -3,11 +3,12 @@
 //  [REESTRUTURADO: calcStreak/last7Days movidas para escopo global;
 //   flushAll completo no shutdown]
 //
-//  PLANOS:
-//    free   → 20 manual + 10 auto /dia
-//    vip    → 400 manual + 10 auto /dia  (R$49,90)
-//    pro    → 300 manual + 200 auto /dia  (R$119,90)
-//    vipro  → 400 manual + 200 auto /dia (R$149,90)
+//  PLANOS: a tabela ÚNICA vive em mod-config.js (PLAN_LIMITS_NEW, com o
+//  comentário certo ao lado) e os preços em PLANO_PRECO_TAB. Aqui não mora
+//  cópia nenhuma — a que morava dizia "free → 20 manual + 10 auto/dia",
+//  o OPOSTO da regra em vigor desde o v172 ("ZERO envio grátis": free é
+//  0/0). Comentário com número de plano desatualizado é armadilha: a
+//  próxima sessão lê, acredita e "corrige" o código pra bater com ele.
 //
 //  NOVIDADES v13:
 //    • Envio automático STREAMING (começa imediatamente)
@@ -258,14 +259,11 @@ const CONFIGURED    = !!(CLIENT_ID && CLIENT_SECRET);
 const CONFIGURADO_OAUTH = () => CONFIGURED; // v175: usado pela aba Notificações (o painel explica o que falta)
 
 // ── Planos ────────────────────────────────────────────────
-//   free      → 20 manual  + 10 auto   /dia (Grátis)
-//   vip       → 200 manual + 10 auto   /dia (só manual pago)
-//   vipro     → 200 manual + 200 auto  /dia (manual + automático)
-//   doublepro → 400 manual + 400 auto  /dia (2 contas Gmail)
-//   pro       → 0 manual   + 200 auto  /dia (só auto — legado)
-//
-//   Os limites de manual e auto são INDEPENDENTES — não se misturam.
-// PLAN_LIMITS: extraído para src/config.js (Fase 1 · Módulo 1)
+// PLAN_LIMITS / PLAN_LIMITS_NEW vivem em mod-config.js — é lá que está a
+// tabela com os números de verdade e a explicação de cada um. A cópia que
+// existia aqui envelheceu 2 gerações de regra (dizia free 20/10 e vip com
+// automático) e contradizia o código logo abaixo; mudar limite de plano é
+// mexer NA TABELA, nunca num comentário ou num `if`.
 // Intervalos base (substituídos pelo cálculo inteligente)
 // (constantes AUTO_INTERVAL_MIN/MAX removidas — o motor usa calcSmartInterval)
 // Horário padrão se usuário não configurar
@@ -1941,15 +1939,21 @@ function exportLogsCSV(userEmail) {
 setInterval(()=>{ try{persistLogs();}catch{} },10*60*1000);
 
 // ── BACKUP COMPLETO AUTOMÁTICO (2026-07-08, a pedido do Andrio) ────────────
-// O backup.json acima é só uma rede de segurança de usuários, sobrescrita a
-// cada 10min — não cobre financeiro/pedidos e não guarda histórico (não dá
-// pra "voltar no tempo"). Já existia um sistema de backup completo (copia
-// TODOS os .json em pastas com data + restauração), só que vivia dentro do
+// (O antigo backup.json de 10 em 10min foi APOSENTADO no v191 LOTE 9 — ele
+// reserializava todos os usuários gravando refresh_token e hash de senha em
+// TEXTO PURO, por fora do DATA_ENC_KEY, num arquivo que ninguém jamais leu;
+// hoje o boot apaga o que sobrou dele.) Já existia um sistema de backup
+// completo (copia TODOS os .json em pastas com data + restauração), só que
+// vivia dentro do
 // painel /admin-v2 — uma URL separada que não é a que o Andrio usa no dia a
 // dia (/admin). Ou seja: existia, mas não "enraizado" — dependia de alguém
 // visitar uma página que ninguém visita. Agora roda sozinho, todo dia, sem
-// precisar de ninguém clicar em nada, e fica visível/restaurável também no
-// painel principal (ver aba Configurações em admin.html).
+// precisar de ninguém clicar em nada. Restaurar é pelas rotas
+// /api/admin/v2/backup/* (mod-admin-v2.js) — ver RESTAURACAO_BACKUP.md, que
+// tem o roteiro ensaiado de verdade. NÃO existe tela de backup no admin.html
+// (o comentário antigo mandava procurar uma "aba Configurações" que nunca
+// existiu — procurar tela que não existe é o pior jeito de descobrir isso no
+// meio de uma emergência).
 // ══ v70 — VIGIA DE DISCO (edição única, sem irmãos pra vigiar) ═══════════
 // Caso real (26/07 de manhã): confirma que o disco não está enchendo antes
 // do ENOSPC derrubar o servidor — checa a cada 15 min; <200MB livres →
@@ -10531,19 +10535,14 @@ filtrar();
         // com ele — zera o provisório deste pedido (cap em "agora", nunca
         // no passado) antes de empilhar os dias pagos, mesmo padrão que a
         // revogação de provisório já usa abaixo.
-        // ⚠️ FRAGILIDADE CONHECIDA (auditoria 12/09/2026, achado adversarial —
-        // hoje inofensivo porque autoAtivarProvisorio só é chamada dentro do
-        // gancho TEST_LOGIN_TOKEN de preCheckComprovante, nunca por tráfego
-        // real nesta reconstrução sem IA/Gemini; documentar ANTES de reativar
-        // verificação automática de comprovante): vip.pedidoId guarda 1 ÚNICO
-        // "dono" do provisório por usuário. Se o mesmo usuário tivesse 2+
-        // pedidos provisoriamente ativados em sequência, o 2º sobrescreveria
-        // pedidoId do 1º — a checagem abaixo (===pd.id) falharia silenciosamente
-        // ao aprovar o pedido "perdido", e addManualVipDays/addAutoVipDays
-        // somariam os dias pagos SEM zerar o provisório de 3 dias antes. Se
-        // reativar auto-ativação por IA, resolver isso primeiro (ex.: só
-        // permitir 1 pedido provisório pendente por vez, ou registrar
-        // pedidoId como um Set em vez de valor único).
+        // ℹ️ ESTADO REAL (v204 LOTE 22 — o comentário que estava aqui dizia
+        // que autoAtivarProvisorio "só roda no gancho TEST_LOGIN_TOKEN", o
+        // que é FALSO desde o v177): a ativação provisória é caminho de
+        // PRODUÇÃO — preCheckComprovante chama o Gemini de verdade e, com
+        // veredito CONFERE, ativa na hora. O risco de 2 provisórios
+        // disputando `vip.pedidoId` foi FECHADO no v177-FIX4: só existe UM
+        // provisório por vez (o 2º pedido espera a confirmação humana), então
+        // a checagem `===pd.id` abaixo nunca mais fica órfã.
         const uProv=getUser(pd.userEmail);
         if(pd.autoAtivado&&uProv?.vip?.source==="auto-provisorio"&&uProv.vip.pedidoId===pd.id){
           const agoraP=Date.now();

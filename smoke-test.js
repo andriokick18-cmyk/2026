@@ -1609,6 +1609,55 @@ async function drillRestauracaoBackup() {
         _fantF.length === 0, "chamadas fantasma: " + _fantF.join(", "));
     }
 
+    // ═══ 📚 v204 LOTE 22 — DOCUMENTAÇÃO QUE NÃO ENGANA A PRÓXIMA SESSÃO ═══
+    // O CLAUDE.md manda ler o README como fonte da verdade, e os dois
+    // mentiam sobre o estado atual: a aba Enviadas estava listada em "o que
+    // NÃO existe" com a view viva na sidebar e no bottom-nav, e o topo dos
+    // dois declarava "IA/Gemini e Cérebro Contábil NÃO existem" mandando
+    // "parar e confirmar" — só que o Gemini É quem lê o comprovante de PIX
+    // (v177) e o motor contábil roda no servidor. Uma sessão obediente
+    // apagaria exatamente a peça que decide ativação de plano: risco direto
+    // sobre dinheiro. Os comentários do server.js tinham o mesmo problema
+    // (tabela de plano de 2 gerações atrás, "só roda no gancho de teste",
+    // tela de backup que nunca existiu).
+    {
+      const _readme22 = fs.readFileSync(path.join(__dirname, "README.md"), "utf8");
+      const _claude22 = fs.readFileSync(path.join(__dirname, "CLAUDE.md"), "utf8");
+      const _idx22 = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+      const _naoExiste22 = _readme22.slice(_readme22.indexOf("## O que NÃO existe"), _readme22.indexOf("## Stack"));
+      check("📚 v204-L22: o README não lista a aba Enviadas em 'o que NÃO existe' enquanto a view existir no HTML — ela está na sidebar, no bottom-nav e em #v-hist, e é o histórico que impede o robô de contatar o mesmo empregador 2 vezes",
+        _idx22.includes('id="v-hist"') && !/aba\s*\n?\s*Enviadas/.test(_naoExiste22) && /Aba \*\*Enviadas\*\*/.test(_readme22),
+        "README e index.html discordam sobre a aba Enviadas");
+      check("📚 v204-L22: README e CLAUDE.md dizem a VERDADE sobre o Gemini e o motor contábil — o Gemini existe SÓ pra ler o comprovante (v177) e o motor contábil existe no servidor sem tela no painel; o que não existe é a ABA. Apagar essas peças por causa do parágrafo antigo quebraria dinheiro.",
+        /Gemini existe/.test(_claude22) && /preCheckComprovante/.test(_claude22) &&
+        /ABA\*{0,2} Cérebro Contábil/.test(_claude22) && /motor contábil existe no servidor/.test(_claude22) &&
+        /Gemini existe, SÓ pra ler o comprovante/.test(_readme22) && /MOTOR contábil/.test(_readme22),
+        "a ressalva honesta sumiu do README ou do CLAUDE.md");
+      const _srv22 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      check("📚 v204-L22: o server.js não guarda mais cópia velha da tabela de planos (dizia 'free → 20 manual + 10 auto/dia', o OPOSTO do ZERO envio grátis do v172), nem afirma que a ativação provisória 'só roda no gancho de teste' (é caminho de produção desde o v177), nem manda procurar uma tela de backup que nunca existiu",
+        // a régua é a LINHA DE TABELA (`//   free → 20 manual…`), nunca a
+        // palavra solta: o comentário novo cita o texto velho de propósito,
+        // pra explicar por que ele saiu — medir texto cru se auto-sabotaria.
+        !/^\s*\/\/\s+free\s+→ 20 manual/m.test(_srv22) &&
+        !/^\s*\/\/\s+vip\s+→ (400|200) manual \+ 10 auto/m.test(_srv22) &&
+        !/só é chamada dentro do\s*\n\s*\/\/ gancho TEST_LOGIN_TOKEN/.test(_srv22) &&
+        !/ver aba Configurações em admin\.html/.test(_srv22) &&
+        _srv22.includes("PLAN_LIMITS_NEW, com o") && _srv22.includes("RESTAURACAO_BACKUP.md"),
+        "algum comentário 'fonte da verdade' do server.js voltou a mentir");
+      // GUARDA PERMANENTE: o .env.example é declarado "fonte da verdade
+      // revisada contra process.env real" — e envelhecia sozinho (faltavam
+      // H2A_BIM_MIN_PUBLICAR, BACKUP_BOOT_MS e as 2 do Render).
+      const _envEx22 = fs.readFileSync(path.join(__dirname, ".env.example"), "utf8");
+      const _jsRepo22 = fs.readdirSync(__dirname).filter((f) => f.endsWith(".js"));
+      const _envsLidas22 = new Set();
+      for (const f of _jsRepo22)
+        for (const m of fs.readFileSync(path.join(__dirname, f), "utf8").matchAll(/process\.env\.([A-Z0-9_]+)/g))
+          _envsLidas22.add(m[1]);
+      const _faltando22 = [..._envsLidas22].filter((e2) => !new RegExp("\\b" + e2 + "\\b").test(_envEx22)).sort();
+      check(`📚 v204-L22 (guarda permanente): TODA env lida por process.env nos .js do repo consta no .env.example (${_envsLidas22.size} envs conferidas) — env de teste entra como linha comentada, com o aviso de nunca definir em produção`,
+        _faltando22.length === 0, "fora do .env.example: " + _faltando22.join(", "));
+    }
+
 
     // Migrações de cura (v20/v21)
     const raw = fs.readFileSync(path.join(DATA, "users.json"), "utf8");

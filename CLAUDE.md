@@ -16,10 +16,25 @@ conectar o Gmail de envio após plano pago, via /oauth/connect-send),
 perfis de currículo, compra direta de plano (Pix → comprovante →
 ativação, sem moeda intermediária), painel admin de contabilidade
 (também por usuário+senha, v172b). **NÃO existe** (removido de propósito nesta
-reconstrução): ranking/gamificação, IA/Gemini, Cérebro Contábil, aba de
-Notícias, chat, seletor de idioma, códigos promocionais, multi-servidor,
-menu/drawer hambúrguer. (Os robôs de coleta/alimentação de planilha VOLTARAM
-por ordem do dono em 13/09/2026 — ver regra 📋 abaixo.)
+reconstrução): ranking/gamificação, chat com IA, a **ABA** Cérebro Contábil do
+painel, aba de Notícias, seletor de idioma, códigos promocionais,
+multi-servidor, menu/drawer hambúrguer. (Os robôs de coleta/alimentação de
+planilha VOLTARAM por ordem do dono em 13/09/2026 — ver regra 📋 abaixo.)
+
+⚠️ **RESSALVA QUE VALE DINHEIRO (v204 LOTE 22)** — este parágrafo já mandou
+"parar e confirmar" sobre duas peças que EXISTEM e são usadas:
+- **O Gemini existe**, só que com um papel único: LER O COMPROVANTE DE PIX
+  (`preCheckComprovante`, v177 — `GEMINI_API_KEY`/`GEMINI_MODEL`). É a IA que
+  decide se a ativação provisória acontece. Sem a chave, o comprovante fica
+  honestamente pendente de conferência manual e nada quebra. Apagar isso
+  desliga exatamente a feature que o dono mandou implementar.
+- **O motor contábil existe no servidor** (`computeSocios`, `computeDreMensal`,
+  `_fecharMes`, `relatorioExecutivoDre`, `/api/admin/dre`, `/api/admin/socios`,
+  fechamento mensal), com testes no smoke — o que NÃO existe é a ABA dele no
+  `admin.html`. Ter rota sem tela é decisão pendente do dono (construir a tela
+  × remover as rotas), não código morto pra apagar por conta própria.
+Regra geral: antes de remover qualquer coisa desta lista, confira no CÓDIGO se
+é "não existe" ou "existe sem tela" — são coisas diferentes.
 
 Se uma tarefa mencionar qualquer uma dessas features removidas, pare e
 confirme com o dono antes de reintroduzir — é bem provável que ele esteja
