@@ -59,11 +59,14 @@ const EXP_TETOS = [0, 3, 6, 12];
 // seasonaljobs.dol.gov ("Begin on or after Date").
 const TEMPORADAS = ["futura", "aberta", "encerrada", "semdata"];
 const VISTOS = ["H-2A", "H-2B"];
-const DIMENSOES = ["q", "estado", "cidade", "categoria", "cargo", "salarioMin", "vagasMin", "inicio", "exp", "temporada", "visa", "status", "grupo", "email"];
+const DIMENSOES = ["q", "estado", "cidade", "categoria", "cargo", "salarioMin", "vagasMin", "inicio", "exp", "temporada", "visa", "grupo", "email"];
 
 // 💎 Dimensões exclusivas do plano Double Pro (decisão de produto do dono,
 // mantida — o gate é do SERVIDOR: pra quem não é DP o parâmetro é ignorado).
-const DIMENSOES_DOUBLEPRO = new Set(["grupo", "status"]);
+// v209/v210: "status" (Certified/Pending/Withdrawn/Denied/Expired) SAIU —
+// regra 0.2 (nenhum status de vaga pro usuário, "expirada" citada
+// nominalmente) cobre esse facet tanto quanto o badge ativa/inativa.
+const DIMENSOES_DOUBLEPRO = new Set(["grupo"]);
 
 // Salário → US$/hora, normalizado por unidade. MESMA régua usada pra ordenar
 // por salário (searchSheet sort=wage) — fonte única: nunca duplicar.
@@ -292,7 +295,6 @@ function createFiltros(deps) {
       ocultarEncerradas: ["1", "true", "yes", "sim"].includes(String(first("ocultarEncerradas", "semEncerradas") || "").toLowerCase()),
       visa: [...new Set(_brutoVisa.map(v => _visaNorm(v)).filter(Boolean))],
 
-      status: _lista(first("status", "dolStatus"), s => s.slice(0, 60), false),
       grupo: _brutoGrupo.filter(g => GRUPOS.includes(g)),
       email: ["1", "true", "yes", "sim"].includes(String(first("email", "hasEmail") || "").toLowerCase()),
     };
@@ -313,7 +315,7 @@ function createFiltros(deps) {
   function ativos(f) {
     let n = 0;
     if (f.q) n++;
-    for (const k of ["estado", "cidade", "categoria", "cargo", "status", "grupo", "exp", "temporada", "visa"]) if (f[k] && f[k].length) n++;
+    for (const k of ["estado", "cidade", "categoria", "cargo", "grupo", "exp", "temporada", "visa"]) if (f[k] && f[k].length) n++;
     if ((f.inicio && f.inicio.length) || (f.inicioAM && f.inicioAM.length)) n++;
     if (f.salarioMin > 0) n++;
     if (f.vagasMin > 0) n++;
@@ -472,11 +474,6 @@ function createFiltros(deps) {
         for (let i = 0; i < n; i++) out[i] = set.has(ix.vi[i]) ? 1 : 0; return out;
       }
 
-      case "status": {
-        if (!f.status.length || !ctx.isDP) return out;
-        const set = new Set(f.status.map(s => s.toLowerCase()));
-        for (let i = 0; i < n; i++) out[i] = set.has(ix.st[i].toLowerCase()) ? 1 : 0; return out;
-      }
       case "grupo": {
         if (!f.grupo.length || !ctx.isDP) return out;
         const set = new Set(f.grupo);
@@ -715,13 +712,6 @@ function createFiltros(deps) {
       for (let i = 0; i < n; i++) if (m[i] && ix.vi[i]) c.set(ix.vi[i], (c.get(ix.vi[i]) || 0) + 1);
       fac.visa = VISTOS.filter(v => c.has(v)).map(v => ({ v, n: c.get(v) })); }
 
-    // status DOL (💎 DoublePro) — só faz sentido com 2+ valores distintos.
-    // 🚨 v177-FIX2 (auditoria 14/09/2026): _maskDim já impedia o FILTRO por
-    // status/grupo de restringir a lista pra quem não é DP, mas a FACETA
-    // (distribuição/contagem) era sempre calculada e devolvida no JSON,
-    // mesmo pra usuário grátis — mesmo gate que o filtro já usa.
-    if (ctx.isDP) { const m = semDim("status"); const c = new Map(); for (let i = 0; i < n; i++) if (m[i] && ix.st[i]) c.set(ix.st[i], (c.get(ix.st[i]) || 0) + 1);
-      fac.status = _top(c, 12).map(([v, q]) => ({ v, n: q })); }
     // grupo A–H (💎 DoublePro)
     if (ctx.isDP) { const m = semDim("grupo"); const c = new Map(); for (let i = 0; i < n; i++) if (m[i] && ix.g[i]) c.set(ix.g[i], (c.get(ix.g[i]) || 0) + 1);
       fac.grupo = GRUPOS.filter(g => c.has(g)).map(g => ({ v: g, n: c.get(g) })); }

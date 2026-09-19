@@ -3022,8 +3022,8 @@ async function drillRestauracaoBackup() {
       const { createFiltros } = require(path.join(__dirname, "mod-filtros.js"));
       const F = createFiltros({ normalizeStateName: s => String(s || "").toUpperCase().trim(), normBusca: s => String(s || "").toLowerCase().trim(), cityMatchNormFn: () => null, regioes: {}, grupoDe: r => r.g || "", searchSheet: (arr) => ({ total: arr.length, items: arr }), categoriaLabel: k => k });
       const leg = F.parse({ state: "FLORIDA,TEXAS", category: "landscape", minWage: "18", titles: ["Cook"], beginMonths: [6, 7], grupos: "A,B", city: "Key West", minWorkers: "5", keyword: "hotel", dolStatus: "Certified" });
-      check("🔍 v173: FILTROS.parse aceita o formato LEGADO do job.filters (state/category/minWage/titles/beginMonths/grupos/city/minWorkers/keyword/dolStatus) — robô que já rodava não perde o refill",
-        leg.estado.join() === "FLORIDA,TEXAS" && leg.categoria[0] === "landscape" && leg.salarioMin === 18 && leg.cargo[0] === "cook" && leg.inicio.join() === "6,7" && leg.grupo.join() === "A,B" && leg.cidade[0] === "Key West" && leg.vagasMin === 5 && leg.q === "hotel" && leg.status[0] === "Certified",
+      check("🔍 v173: FILTROS.parse aceita o formato LEGADO do job.filters (state/category/minWage/titles/beginMonths/grupos/city/minWorkers/keyword) — robô que já rodava não perde o refill; dolStatus legado (v209: dimensão removida) é ACEITO e IGNORADO sem quebrar o parse",
+        leg.estado.join() === "FLORIDA,TEXAS" && leg.categoria[0] === "landscape" && leg.salarioMin === 18 && leg.cargo[0] === "cook" && leg.inicio.join() === "6,7" && leg.grupo.join() === "A,B" && leg.cidade[0] === "Key West" && leg.vagasMin === 5 && leg.q === "hotel" && leg.status === undefined,
         JSON.stringify(leg).slice(0, 160));
       const rowsF = [{ c: "1", s: "FLORIDA", k: "food", w: "20", wunit: "h", e: "a@x.com", wk: 5 }, { c: "2", s: "FLORIDA", k: "food", w: "1500", wunit: "mo", e: "b@x.com", wk: 1 }, { c: "3", s: "TEXAS", k: "farm", w: "22", wunit: "h", e: "", wk: 10 }];
       const facF = F.facetas(rowsF, F.parse(new URLSearchParams({ estado: "FLORIDA" })), {});
@@ -3087,7 +3087,7 @@ async function drillRestauracaoBackup() {
       const { createFiltros: _cfL1 } = require(path.join(__dirname, "mod-filtros.js"));
       const FL1 = _cfL1({ normalizeStateName: (s) => String(s || "").toUpperCase().trim(), normBusca: (s) => String(s || "").toLowerCase().trim(), cityMatchNormFn: (t) => { const q = String(t || "").toLowerCase().trim(); return q ? ((c) => c.includes(q)) : null; }, regioes: {}, grupoDe: (r) => r.g || "", searchSheet: (arr) => ({ total: arr.length, items: arr }), categoriaLabel: (k) => k });
       const divergem = [];
-      for (const [dim, v] of [["cargo", "Cooks, Restaurant"], ["cidade", "Jenison, MI"], ["status", "Certified, Partially"]]) {
+      for (const [dim, v] of [["cargo", "Cooks, Restaurant"], ["cidade", "Jenison, MI"]]) {
         const a = JSON.stringify(FL1.parse(new URLSearchParams([[dim, v]]))[dim]);
         const b = JSON.stringify(FL1.parse({ [dim]: [v] })[dim]);
         if (a !== b || JSON.parse(a).length !== 1) divergem.push(`${dim}: ${a} vs ${b}`);
@@ -3416,11 +3416,11 @@ async function drillRestauracaoBackup() {
       const { createFiltros: _cfL5 } = require(path.join(__dirname, "mod-filtros.js"));
       const FL5 = _cfL5({ normalizeStateName: (s) => String(s || "").toUpperCase().trim(), normBusca: (s) => String(s || "").toLowerCase().trim(), cityMatchNormFn: () => null, regioes: {}, grupoDe: (r) => r.g || "", searchSheet: (arr) => ({ total: arr.length, items: arr }), categoriaLabel: (k) => k });
       // espelho EXATO da vfAtivos(st) do app.js (contexto planilha, não ao vivo)
-      const vfAtivosFront = (st) => { let n = 0; for (const k of ["estado", "cidade", "categoria", "cargo", "inicio", "status", "grupo"]) if ((st[k] || []).length) n++; if (st.salarioMin > 0) n++; if (st.vagasMin > 0) n++; if (st.q) n++; if (st.email) n++; return n; };
+      const vfAtivosFront = (st) => { let n = 0; for (const k of ["estado", "cidade", "categoria", "cargo", "inicio", "grupo"]) if ((st[k] || []).length) n++; if (st.salarioMin > 0) n++; if (st.vagasMin > 0) n++; if (st.q) n++; if (st.email) n++; return n; };
       const estados = [{}, { email: true }, { q: "cook" }, { q: "cook", email: true }, { estado: ["TEXAS"], q: "cook", email: true },
         { estado: ["TEXAS"], categoria: ["food"], salarioMin: 15, email: true }, { cidade: ["ames|IOWA"], vagasMin: 5 },
         { tipo: "agricultural", ativa: true, email: true }];
-      const badge = estados.map((st) => { const p = new URLSearchParams(); for (const k of ["estado", "cidade", "categoria", "cargo", "status", "grupo"]) (st[k] || []).forEach((v) => p.append(k, v)); (st.inicio || []).forEach((m) => p.append("inicio", String(m))); if (st.salarioMin > 0) p.set("salarioMin", String(st.salarioMin)); if (st.vagasMin > 0) p.set("vagasMin", String(st.vagasMin)); if (st.email) p.set("email", "1"); if (st.q) p.set("q", st.q); return { front: vfAtivosFront(st), motor: FL5.ativos(FL5.parse(p)) }; });
+      const badge = estados.map((st) => { const p = new URLSearchParams(); for (const k of ["estado", "cidade", "categoria", "cargo", "grupo"]) (st[k] || []).forEach((v) => p.append(k, v)); (st.inicio || []).forEach((m) => p.append("inicio", String(m))); if (st.salarioMin > 0) p.set("salarioMin", String(st.salarioMin)); if (st.vagasMin > 0) p.set("vagasMin", String(st.vagasMin)); if (st.email) p.set("email", "1"); if (st.q) p.set("q", st.q); return { front: vfAtivosFront(st), motor: FL5.ativos(FL5.parse(p)) }; });
       check("🔍 v181-L5: o badge '🔍 N filtros' espelha EXATAMENTE o ativos() do motor nas 8 combinações — contava tipo/ativa (que a tela nunca envia fora da aba ao vivo) e ignorava o 'só com e-mail', o filtro mais consequente da tela",
         badge.every((b) => b.front === b.motor), JSON.stringify(badge));
       check("🔍 v181-L5 (estrutural): o 'só com e-mail' DESLIGADO virou chip visível ('incluindo vagas sem e-mail — não dá pra se candidatar') e tirar o chip volta ao outro estado",
@@ -3452,16 +3452,23 @@ async function drillRestauracaoBackup() {
         /function _dataISO\(/.test(_srvL5) && /list=list\.map\(\(r,i\)=>\{const d=_dataISO\(r\.d\)/.test(_srvL5) &&
         !/sort\(\(a,b\)=>String\(a\.d\|\|"9999"\)/.test(_srvL5),
         "ordenação por data voltou a parsear dentro do comparador");
-      // (6) rótulos PT do status + painel que não fica mudo
-      const _i18nL5 = ["vf_st_certified", "vf_st_pending", "vf_st_withdrawn", "vf_st_denied", "vf_erro", "vf_erro_btn", "vf_vazio_t", "vf_vazio_sem_email", "vf_vazio_tirando", "vf_chip_sem_email", "vf_grupo_expl"];
+      // (6) painel que não fica mudo. v209/v210: os rótulos PT de "Certified"/
+      // "Pending Processing" e a faceta "status no DOL" foram REMOVIDOS por
+      // completo (regra 0.2 — nenhum status de vaga pro usuário, nem filtro
+      // pago) — a checagem de _vfStatusLabel/vf_st_* saiu daqui de propósito;
+      // ver os 2 checks estruturais v210 mais abaixo que provam a remoção.
+      const _i18nL5 = ["vf_erro", "vf_erro_btn", "vf_vazio_t", "vf_vazio_sem_email", "vf_vazio_tirando", "vf_chip_sem_email", "vf_grupo_expl"];
       const _dictL5 = (lang) => { const i = _appL5.indexOf(`  ${lang}: {`); const e = _appL5.indexOf("\n  }", i); return _appL5.slice(i, e); };
       const _ptL5 = _dictL5("pt"), _enL5 = _dictL5("en"), _esL5 = _dictL5("es");
       const _faltamL5 = _i18nL5.filter((k) => !(_ptL5.includes(`"${k}":`) && _enL5.includes(`"${k}":`) && _esL5.includes(`"${k}":`)));
-      check("🏷️ v181-L5: 'Certified'/'Pending Processing' viraram rótulo em PT (✅ Aprovada pelo governo / ⏳ Em análise no DOL) e o grupo da loteria ganhou explicação — todas as strings novas no LANG_DICT nas 3 línguas",
-        _faltamL5.length === 0 && _appL5.includes("function _vfStatusLabel("), `faltando: ${_faltamL5.join(",")}`);
-      const dpStatus = (await get("/api/sheet-meta?sheet=jan2026&status=Certified&top=1")).json;
-      check("🏷️ v181-L5: o VALOR enviado ao servidor continua o LITERAL do dado (status=Certified → 9.240 em jan2026) — só o rótulo da tela traduz, o filtro não mexe",
-        dpStatus.total === 9240, `${dpStatus.total}`);
+      check("🏷️ v181-L5: strings de erro/vazio/grupo da loteria presentes no LANG_DICT nas 3 línguas",
+        _faltamL5.length === 0, `faltando: ${_faltamL5.join(",")}`);
+      check("🚫 v209/v210 (estrutural): a faceta/filtro 'status no DOL' (Certified/Pending/Withdrawn/Denied/Expired) saiu por completo do app.js — nem _vfStatusLabel, nem vf_st_*, nem seção 'status' no VF_SECS",
+        !_appL5.includes("_vfStatusLabel") && !_appL5.includes("vf_st_certified") && !/\{k:"status"/.test(_appL5),
+        "resquício do facet de status sobrou no app.js");
+      const dpStatusIgnorado = (await get("/api/sheet-meta?sheet=jan2026&status=Certified&top=1")).json;
+      check("🚫 v209/v210: o parâmetro status=Certified agora é IGNORADO pelo servidor (não filtra mais nada) — jan2026 devolve o total INTEIRO da planilha, igual sem o parâmetro",
+        dpStatusIgnorado.total === 9240, `${dpStatusIgnorado.total}`);
       check("🛑 v181-L5: o painel não fica mais mudo com spinner eterno quando a rede falha — erro clicável no corpo (mesmo padrão da lista) e timeout de 8s no fetch das opções; nenhum catch vazio no bloco VF",
         _appL5.includes("function _vfRenderErro(") && _appL5.includes("AbortController") &&
         !/try\{const d=await vfFetch\("manual"\);if\(d\)\{VF\.fac\.manual=d;vfRenderChips\("manual"\);\}\}catch\(e\)\{\}/.test(_appL5),
