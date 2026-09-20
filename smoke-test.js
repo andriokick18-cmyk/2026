@@ -4565,6 +4565,41 @@ async function drillBloqueioComprasNovas() {
     check("🚨 v226 (estrutural, função única): a mesma _comprovanteJaUsado() usada pela aprovação MANUAL agora também é chamada pelos 2 pontos do caminho AUTOMÁTICO (gancho de teste e Gemini real) antes de autoAtivarProvisorio — nunca uma 2ª lógica duplicada",
       (_srvSrc.match(/_comprovanteJaUsado\(/g) || []).length >= 4,
       "chamadas de _comprovanteJaUsado() insuficientes — refactor pode ter perdido algum caminho");
+
+    // ═══ 🚨 v227 (achado de auditoria, 20/09/2026): pauseAuto/resumeAuto/
+    // stopAuto (app.js) ignoravam a resposta do servidor — um 401 (sessão
+    // caiu) ou 404 (job já não existe, ex.: outra aba já parou) ainda assim
+    // marcava "Pausado"/"Retomado"/"Parado" na tela, mentindo pro usuário
+    // sobre o estado real do robô automático. Sem UI em Chromium nesta
+    // suíte, a guarda é ESTRUTURAL: as 3 funções têm que checar `d.ok` (via
+    // jsonSafe, o helper único do site pra resposta não-JSON) antes de
+    // aplicar a mudança otimista — nunca voltar a assumir sucesso do fetch.
+    {
+      const _appSrcV227 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _fnPause = (_appSrcV227.match(/async function pauseAuto\(\)\{[\s\S]*?\n\}/) || [""])[0];
+      const _fnResume = (_appSrcV227.match(/async function resumeAuto\(\)\{[\s\S]*?\n\}/) || [""])[0];
+      const _fnStop = (_appSrcV227.match(/async function stopAuto\(\)\{[\s\S]*?\n\n\/\//) || [""])[0];
+      check("🚨 v227 (estrutural): pauseAuto/resumeAuto/stopAuto usam jsonSafe() + checam d.ok antes de mudar U.autoJob/UI — nenhuma delas mais assume sucesso só porque o fetch não lançou exceção",
+        /jsonSafe\(r\)/.test(_fnPause) && /if\(!d\.ok\)throw/.test(_fnPause) &&
+        /jsonSafe\(r\)/.test(_fnResume) && /if\(!d\.ok\)throw/.test(_fnResume) &&
+        /jsonSafe\(r\)/.test(_fnStop) && /if\(!d\.ok\)throw/.test(_fnStop),
+        JSON.stringify({ pause: _fnPause.length, resume: _fnResume.length, stop: _fnStop.length }));
+    }
+
+    // ═══ 🚨 v227b (achado do dono testando ao vivo, 20/09/2026): loadPlanos()
+    // caía direto no estado de erro ("Não deu pra carregar os planos") numa
+    // falha isolada de fetch/race na 1ª carga da página MAIS importante do
+    // funil de pagamento, sem nenhuma nova tentativa — clicar "Tentar de
+    // novo" carregava na hora, prova de que era falha transiente, não do
+    // servidor. Guarda ESTRUTURAL: loadPlanos() tenta até 3x (com pausa
+    // curta) antes de desistir e mostrar o erro.
+    {
+      const _appSrcV227b = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _fnLoadPlanos = (_appSrcV227b.match(/async function loadPlanos\(\)\{[\s\S]*?\n\}\n/) || [""])[0];
+      check("🚨 v227b (estrutural): loadPlanos() tenta buscar /api/planos até 3x (loop com jsonSafe) antes de cair no estado de erro — nunca mais 1 falha isolada de rede mostra 'Não deu pra carregar' na página de pagamento",
+        /for\(let _t=0;_t<3;_t\+\+\)/.test(_fnLoadPlanos) && /jsonSafe\(r\)/.test(_fnLoadPlanos) && /plan_error_load/.test(_fnLoadPlanos),
+        `loadPlanos() sem retry — ${_fnLoadPlanos.length} chars capturados`);
+    }
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5c@test.com", name: "MC5 C" });
     const mc5d1 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-um").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     const mc5d2 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-dois").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });

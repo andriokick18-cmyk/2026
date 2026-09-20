@@ -4707,13 +4707,18 @@ async function startAuto(overrideStartH, overrideEndH, _mode="now"){
   btn.innerHTML='<i class="ti ti-rocket" style="font-size:22px"></i><span>🤖 Começar Envio Automático</span>';
 }
 
-async function pauseAuto(){try{await fetch("/api/auto/pause",{method:"POST",credentials:"include"});U.autoJob={...U.autoJob,active:false,status:"paused"};updateAutoUI();toast("Pausado","au");}catch(e){toast("Erro","r");}}
-async function resumeAuto(){try{await fetch("/api/auto/resume",{method:"POST",credentials:"include"});U.autoJob={...U.autoJob,active:true,status:"resuming"};updateAutoUI();startAutoPolling();toast("Retomado ✓","g");}catch(e){toast("Erro","r");}}
+// 🚨 v227 (achado de auditoria, 20/09/2026): as 3 funções não olhavam a
+// resposta do servidor — um 401 (sessão caiu) ou 404 (job já não existe
+// mais, ex.: outra aba já parou) ainda assim marcava "Pausado"/"Retomado"
+// na tela e mudava U.autoJob local, mentindo pro usuário sobre o estado
+// real do robô. Agora só aplica a mudança otimista quando d.ok===true.
+async function pauseAuto(){try{const r=await fetch("/api/auto/pause",{method:"POST",credentials:"include"});const d=await jsonSafe(r);if(!d.ok)throw new Error(d.error||"Não foi possível pausar.");U.autoJob={...U.autoJob,active:false,status:"paused"};updateAutoUI();toast("Pausado","au");}catch(e){toast(_sessionDroppedMsg(e)?"Sessão expirada — faça login novamente.":("Erro: "+(e?.message||e)),"r");}}
+async function resumeAuto(){try{const r=await fetch("/api/auto/resume",{method:"POST",credentials:"include"});const d=await jsonSafe(r);if(!d.ok)throw new Error(d.error||"Não foi possível retomar.");U.autoJob={...U.autoJob,active:true,status:"resuming"};updateAutoUI();startAutoPolling();toast("Retomado ✓","g");}catch(e){toast(_sessionDroppedMsg(e)?"Sessão expirada — faça login novamente.":("Erro: "+(e?.message||e)),"r");}}
 async function stopAuto(){
   setTimeout(async function(){await _loadSentIds();loadSheetMeta(true);},600);
-if(!confirm("Parar o envio completamente?"))return;try{await fetch("/api/auto/stop",{method:"POST",credentials:"include"});U.autoJob=null;_autoQueueIds=new Set();_syncAutoQueueVisibility();clearInterval(autoInterval);autoInterval=null;if(_autoCountdown){clearInterval(_autoCountdown);_autoCountdown=null;}updateAutoUI();updateAutoDot(false);toast("Parado","r");// Recarrega perfis do servidor para garantir que não sumiram
+if(!confirm("Parar o envio completamente?"))return;try{const r=await fetch("/api/auto/stop",{method:"POST",credentials:"include"});const d=await jsonSafe(r);if(!d.ok)throw new Error(d.error||"Não foi possível parar.");U.autoJob=null;_autoQueueIds=new Set();_syncAutoQueueVisibility();clearInterval(autoInterval);autoInterval=null;if(_autoCountdown){clearInterval(_autoCountdown);_autoCountdown=null;}updateAutoUI();updateAutoDot(false);toast("Parado","r");// Recarrega perfis do servidor para garantir que não sumiram
 try{const pr=await fetch("/api/profiles",{credentials:"include"}).then(r=>r.json());UPROFILES=pr.profiles||[];if(U)U.profiles=UPROFILES;}catch{}
-}catch(e){toast("Erro","r");}}
+}catch(e){toast(_sessionDroppedMsg(e)?"Sessão expirada — faça login novamente.":("Erro: "+(e?.message||e)),"r");}}
 
 // FIX: oculta/mostra cards de vagas com base em _autoQueueIds (sincroniza UI após auto iniciar/parar)
 function _syncAutoQueueVisibility(){
@@ -7460,16 +7465,32 @@ async function loadPlanos(){
   if(step1)step1.style.display='';
   const box=g('#plan-select'); if(!box)return;
   box.innerHTML=`<div style="text-align:center;padding:20px"><span class="spin"></span></div>`;
-  try{
-    const r=await fetch('/api/planos',{credentials:'include'});
-    const d=await r.json();
-    if(!d.ok)throw new Error(d.error||'?');
-    window._planosData=d;
-    _renderPlanosUI(d);
-    _planStep1Sync();
-  }catch(e){
-    box.innerHTML=`<div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--rl);padding:14px;text-align:center;font-size:12px;color:var(--red)">${esc(t('plan_error_load'))} <span style="text-decoration:underline;cursor:pointer;font-weight:700" onclick="loadPlanos()">${esc(t('plan_try_again'))}</span></div>`;
+  // 🚨 v227b (achado do dono testando ao vivo, 20/09/2026 — "às vezes mostra
+  // erro na 1ª entrada, Tentar de novo carrega na hora"): mesma classe do
+  // bug de login do v225 — um fetch falhando por um atraso/race na carga
+  // inicial (ou o deploy reiniciando) caía direto no estado de erro, sem
+  // nenhuma nova tentativa. Planos é a página mais importante do funil de
+  // pagamento — até 3 tentativas (com pausa curta entre elas) antes de
+  // mostrar o "Não deu pra carregar" pro usuário.
+  let d=null;
+  for(let _t=0;_t<3;_t++){
+    try{
+      const r=await fetch('/api/planos',{credentials:'include'});
+      d=await jsonSafe(r);
+      if(!d.ok)throw new Error(d.error||'?');
+      break;
+    }catch(e){
+      d=null;
+      if(_t<2)await new Promise(res=>setTimeout(res,400+_t*500));
+    }
   }
+  if(!d){
+    box.innerHTML=`<div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--rl);padding:14px;text-align:center;font-size:12px;color:var(--red)">${esc(t('plan_error_load'))} <span style="text-decoration:underline;cursor:pointer;font-weight:700" onclick="loadPlanos()">${esc(t('plan_try_again'))}</span></div>`;
+    return;
+  }
+  window._planosData=d;
+  _renderPlanosUI(d);
+  _planStep1Sync();
 }
 
 // Seletor de plano+período — 3 cards (Manual/Turbo/Máximo), cada um com

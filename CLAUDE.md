@@ -2259,3 +2259,33 @@ que fechou. `npm test` 100% verde, `check-duplicates.js`/
 `check-xss-guard.js` sem achados. Mudança 100% em server.js — sem
 bump de sw.js (nenhum arquivo servido ao cliente mudou).
 
+## v227 — achado Alta da auditoria (envio/automação) + achado do dono ao vivo (Planos) (20/09/2026)
+
+**1) `pauseAuto`/`resumeAuto`/`stopAuto` (app.js) ignoravam a resposta do
+servidor.** As 3 funções só faziam `await fetch(...)` sem nunca olhar
+`r.status`/`d.ok` — um 401 (sessão caiu) ou 404 (job já não existe mais,
+ex.: outra aba já tinha parado) ainda assim marcava "Pausado"/
+"Retomado"/"Parado" na tela e mudava `U.autoJob` local, mentindo pro
+usuário sobre o estado real do robô automático (achado Alta de uma das 3
+auditorias paralelas do v225). Corrigido reusando `jsonSafe()` (helper
+único do site pra resposta não-JSON, já usado em 4 outros pontos) + checagem
+explícita de `d.ok` antes de qualquer mudança otimista de UI; em falha,
+mostra "Sessão expirada" quando é o caso ou o erro real do servidor —
+nunca mais assume sucesso só porque o `fetch` não lançou exceção.
+
+**2) `loadPlanos()` às vezes mostrava "Não deu pra carregar os planos"
+na 1ª entrada da página, mesmo com o servidor saudável** (achado do dono
+testando ao vivo — clicar "Tentar de novo" carregava na hora, prova de
+falha transiente, não do servidor). Mesma classe do bug de login do
+v225: um fetch falhando por atraso/race na carga inicial caía direto no
+estado de erro, sem nenhuma nova tentativa — só que aqui na página MAIS
+importante do funil de pagamento, custando conversão. Corrigido com
+retry automático (até 3 tentativas, pausa curta crescente entre elas,
+usando `jsonSafe`) antes de mostrar o estado de erro pro usuário.
+
+Testes: 2 checks estruturais novos no smoke (pause/resume/stop usam
+`jsonSafe`+`d.ok`; `loadPlanos` tem o loop de retry) — sem UI em
+Chromium nesta suíte, a garantia aqui é de código-fonte, não
+comportamental. `npm test` 100% verde, `check-duplicates.js`/
+`check-xss-guard.js` sem achados. sw.js bumpado (v87→v88).
+
