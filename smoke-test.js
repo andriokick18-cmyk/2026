@@ -1949,6 +1949,19 @@ async function drillBloqueioComprasNovas() {
     check("🔒 v172: /oauth/connect-send SEM plano pago → NUNCA chega no Google (redireciona de volta com erro, location não é accounts.google.com)",
       npConnect.status === 302 && !String(npConnect.headers?.location || "").includes("accounts.google.com") && String(npConnect.headers?.location || "").includes("plano"),
       `status=${npConnect.status} location=${npConnect.headers?.location || ""}`);
+    // 🔒 v237w (dono, 20/09/2026 — "cortar o vínculo do Gmail API até o
+    // usuário pagar"): /oauth/add-sender tinha um furo que /oauth/connect-
+    // send não tinha — `reauth=1` pulava o ÚNICO gate da rota (a quota por
+    // plano). Prova nos 2 caminhos: sem reauth (já bloqueava, mas agora
+    // pela trava explícita de plano) E com reauth=1 (o furo de verdade).
+    const npAddSender = await get("/oauth/add-sender");
+    check("🔒 v237w: /oauth/add-sender SEM plano pago → NUNCA chega no Google (mesma trava do connect-send)",
+      npAddSender.status === 302 && !String(npAddSender.headers?.location || "").includes("accounts.google.com") && String(npAddSender.headers?.location || "").includes("plano"),
+      `status=${npAddSender.status} location=${npAddSender.headers?.location || ""}`);
+    const npAddSenderReauth = await get("/oauth/add-sender?reauth=1");
+    check("🚨 v237w (furo real fechado): /oauth/add-sender?reauth=1 SEM plano pago TAMBÉM não chega no Google — antes reauth=1 pulava a ÚNICA trava da rota (quota por plano) e deixava reconectar um Gmail de envio sem NUNCA ter pago",
+      npAddSenderReauth.status === 302 && !String(npAddSenderReauth.headers?.location || "").includes("accounts.google.com") && String(npAddSenderReauth.headers?.location || "").includes("plano"),
+      `status=${npAddSenderReauth.status} location=${npAddSenderReauth.headers?.location || ""}`);
     // Agora dá plano pago (sem dar Gmail ainda) — outro gate tem que segurar.
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "naopode@test.com", vip: { manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000, active: true, plan: "doublepro" }, plan: "doublepro" });
     const npSend2 = await req2("POST", "/api/send", { to: "empresa2@teste-naopode.com", subject: "Oi", message: "corpo escrito pelo usuário" });
@@ -1964,6 +1977,17 @@ async function drillBloqueioComprasNovas() {
     check("🔒 v172: COM plano pago ATIVO → /oauth/connect-send passa da trava de plano (erro deixa de ser 'plano ativo' — só falta configurar o Google no ambiente)",
       npConnect2.status === 302 && !String(npConnect2.headers?.location || "").includes("plano"),
       `status=${npConnect2.status} location=${(npConnect2.headers?.location || "").slice(0, 160)}`);
+    // v237w (contraste): com plano pago ATIVO, add-sender (sem e COM
+    // reauth=1) passa da trava de plano normalmente — o fix não travou
+    // ninguém que já paga, só fechou o furo de quem nunca pagou.
+    const npAddSender2 = await get("/oauth/add-sender");
+    check("🔒 v237w: COM plano pago ATIVO → /oauth/add-sender passa da trava de plano normalmente",
+      npAddSender2.status === 302 && !String(npAddSender2.headers?.location || "").includes("plano"),
+      `status=${npAddSender2.status} location=${(npAddSender2.headers?.location || "").slice(0, 160)}`);
+    const npAddSenderReauth2 = await get("/oauth/add-sender?reauth=1");
+    check("🔒 v237w: COM plano pago ATIVO → /oauth/add-sender?reauth=1 continua funcionando pra reconectar de verdade (o fix não quebrou o caso legítimo)",
+      npAddSenderReauth2.status === 302 && !String(npAddSenderReauth2.headers?.location || "").includes("plano"),
+      `status=${npAddSenderReauth2.status} location=${(npAddSenderReauth2.headers?.location || "").slice(0, 160)}`);
     // 🐛 v172 BUG REAL (achado em auditoria, 12/09/2026): /api/status dava
     // gmailConnected:true pra QUALQUER admin, mesmo sem refresh_token nenhum
     // — escondia pra sempre o card "Meu Gmail (admin) — não conectado" e
@@ -5208,9 +5232,9 @@ async function drillBloqueioComprasNovas() {
     // (admin.html enxuto não tem a Visão do Dono com cards clicáveis,
     // "📖 Entenda os números" ou o card 🌍 Faturamento Global do painel
     // antigo — as peças reais e vivas são os dados/flags que a API expõe.)
-    check("💼 MC5-P4: pedidos chegam marcados (ehAdmin pela lista real de e-mails de admin) — exclusão de teste de admin também vale no server (mesma régua da Conferência, agora naoEhReceita — v237v generalizou pra também excluir a conta de teste)",
+    check("💼 MC5-P4: pedidos chegam marcados (ehAdmin pela lista real de e-mails de admin) — exclusão de teste de admin também vale no server (mesma régua da Conferência, agora _pedidoNaoEhReceita — v237v-FIX generalizou pra também excluir a conta de teste pelo isTeste do próprio pedido)",
       _rAdm4?.ehAdmin === true && _rUsr4?.ehAdmin === false &&
-      _srvSrc.includes("if(naoEhReceita(pd.userEmail))continue;"),
+      _srvSrc.includes("if(_pedidoNaoEhReceita(pd))continue;"),
       JSON.stringify({ adm: _rAdm4?.ehAdmin, usr: _rUsr4?.ehAdmin }).slice(0, 80));
 
     // ═══ 💼 MC5 — PARTE 5 (29/08): QUEM RECEBEU/GASTOU 100% ════════════════
@@ -7485,6 +7509,82 @@ async function drillBloqueioComprasNovas() {
       check("🔒 v237v: o MESMO comprovante fake NÃO vira CONFERE pra um e-mail comum (fica honestamente sem leitura, como sempre) — a exceção nunca vira padrão geral",
         _pedNormalDetalhe.json?.pedido?.isTeste !== true && _pedNormalDetalhe.json?.pedido?.preCheck == null,
         JSON.stringify({ isTeste: _pedNormalDetalhe.json?.pedido?.isTeste, preCheck: _pedNormalDetalhe.json?.pedido?.preCheck }));
+    }
+
+    // 🎬 v237v-FIX (achado real, revisão pré-gravação do vídeo — o teste
+    // acima usava o override de admin `userEmail`, que grava targetEmail
+    // como o PRÓPRIO e-mail literal e mascarava o bug de verdade): pd.
+    // userEmail é a CHAVE de login — username pra conta NOVA (v172c, nunca
+    // tem @) — nunca o Gmail de contato. Sem resolver emailContato,
+    // isTestAccountEmail(username) NUNCA bate, e um AUTOCADASTRO real com
+    // ndrkick.3@gmail.com como e-mail de contato NUNCA virava isTeste:true
+    // — exatamente o risco que o Andrio (via este chat) apontou antes de
+    // gravar o vídeo. Prova de ponta a ponta pelo fluxo REAL (cadastro →
+    // login automático → autocheckout, sem NENHUM override de admin).
+    {
+      const _outboxPath237v = path.join(DATA, "notif_outbox.json");
+      const _lerOutbox237v = () => { try { return JSON.parse(fs.readFileSync(_outboxPath237v, "utf8")); } catch { return []; } };
+      const _ultimoCodigo237v = (to, tipo) => { const m = _lerOutbox237v().filter((x) => x.to === to && x.tipo === tipo).pop(); const c = m && String(m.text || "").match(/^(\d{6})$/m); return c ? c[1] : null; };
+      const _emailTesteReal = "ndrkick.3@gmail.com";
+
+      const _envCod = await req2("POST", "/api/email/enviar-codigo", { email: _emailTesteReal });
+      const _codigo = _ultimoCodigo237v(_emailTesteReal.toLowerCase(), "codigo_cadastro");
+      const _conf = await req2("POST", "/api/email/confirmar", { email: _emailTesteReal, codigo: _codigo });
+      const _tokenCadastro = _conf.json?.token;
+      check("🎬 v237v-FIX: fluxo de cadastro normal (código por e-mail) funciona pra ndrkick.3@gmail.com igual pra qualquer usuário — a conta de teste NÃO é especial no cadastro, só no comprovante",
+        _envCod.status === 200 && !!_codigo && !!_tokenCadastro,
+        JSON.stringify({ envio: _envCod.status, temCodigo: !!_codigo, temToken: !!_tokenCadastro }));
+
+      const _usernameEscolhido = "contadetestev237v";
+      const _cad = await req2("POST", "/api/cadastro", {
+        username: _usernameEscolhido, password: "12345678", nome: "Conta", sobrenome: "De Teste",
+        dataNascimento: "01/01/1995", cidade: "Recife", estado: "PE", pais: "Brasil",
+        whatsapp: "5581999999999", email: _emailTesteReal, emailToken: _tokenCadastro,
+      });
+      check("🎬 v237v-FIX: cadastro real cria a conta com USERNAME escolhido como identidade de login (nunca o Gmail) — exatamente o cenário que expõe o bug se a resolução por emailContato estiver quebrada",
+        _cad.status === 200 && _cad.json?.username === _usernameEscolhido,
+        JSON.stringify(_cad.json));
+
+      // Autocheckout — SEM userEmail override nenhum: targetEmail vem de
+      // s.user_email (a sessão que o cadastro acabou de logar), exatamente
+      // como vai acontecer quando o Andrio clicar em "Comprar" logado como
+      // essa conta.
+      const _pedReal = await req2("POST", "/api/pedido", {
+        plano: "vip", dias: 30, consentimento: true,
+        userName: "Conta De Teste", userWhatsapp: "5581999999999", userCity: "Recife",
+        comprovante: Buffer.from("print-qualquer-fluxo-real-de-autocheckout").toString("base64"),
+        comprovanteType: "image/jpeg", pagoEm: Date.now(),
+      });
+      check("🎬 v237v-FIX: autocheckout (sem override de admin) cria o pedido normalmente",
+        _pedReal.status === 200 && !!_pedReal.json?.pedidoId,
+        JSON.stringify(_pedReal.json));
+
+      await req2("POST", "/api/admin-panel/login", { user: "andrio", password: "teste-smoke-andrio-2026" });
+      const _pedRealDetalhe = await req2("GET", "/api/pedido/" + _pedReal.json?.pedidoId);
+      check("🚨 v237v-FIX (achado real, corrigido ANTES do vídeo): o pedido do AUTOCHECKOUT sai com userEmail = USERNAME de login (nunca o Gmail) mas isTeste:true mesmo assim — a resolução por emailContato funciona; sem o fix, isTeste ficava false pra SEMPRE nesse fluxo",
+        _pedRealDetalhe.json?.pedido?.userEmail === _usernameEscolhido &&
+        _pedRealDetalhe.json?.pedido?.userEmail !== _emailTesteReal &&
+        _pedRealDetalhe.json?.pedido?.isTeste === true &&
+        _pedRealDetalhe.json?.pedido?.preCheck?.veredito === "CONFERE",
+        JSON.stringify({ userEmail: _pedRealDetalhe.json?.pedido?.userEmail, isTeste: _pedRealDetalhe.json?.pedido?.isTeste, veredito: _pedRealDetalhe.json?.pedido?.preCheck?.veredito }));
+
+      const _memAntesFix = await req2("GET", "/api/admin/memoria");
+      const _donoAntesFix = await req2("GET", "/api/admin/dono-resumo");
+      const _confirmaReal = await req2("PATCH", "/api/pedido/" + _pedReal.json?.pedidoId, { status: "ativo", recebidoPor: "andrio" });
+      check("🎬 v237v-FIX: admin confirma o pedido do autocheckout normalmente",
+        _confirmaReal.status === 200 && _confirmaReal.json?.ok === true,
+        JSON.stringify(_confirmaReal.json));
+      const _memDepoisFix = await req2("GET", "/api/admin/memoria");
+      const _donoDepoisFix = await req2("GET", "/api/admin/dono-resumo");
+      check("🚨 v237v-FIX: confirmar o pedido do AUTOCHECKOUT real também não cria entrada no caixa nem move a receita da Visão do Dono — o isolamento financeiro cobre o fluxo de verdade, não só o override de admin usado no teste anterior",
+        _memDepoisFix.json?.bancos?.pagamentos === _memAntesFix.json?.bancos?.pagamentos &&
+        JSON.stringify(_donoDepoisFix.json?.entradas) === JSON.stringify(_donoAntesFix.json?.entradas),
+        JSON.stringify({ pagAntes: _memAntesFix.json?.bancos?.pagamentos, pagDepois: _memDepoisFix.json?.bancos?.pagamentos, entAntes: _donoAntesFix.json?.entradas, entDepois: _donoDepoisFix.json?.entradas }));
+
+      const _pagREAL = await req2("GET", "/api/admin/pagantes");
+      check("🎬 v237v-FIX: a conta criada pelo cadastro real (username ≠ Gmail) também não aparece em Pagantes",
+        !(_pagREAL.json?.rows || []).some(r => r.email === _usernameEscolhido || r.email === _emailTesteReal),
+        JSON.stringify((_pagREAL.json?.rows || []).find(r => r.email === _usernameEscolhido)));
     }
 
     const disk = fs.readdirSync(path.join(DATA, "cvs"));

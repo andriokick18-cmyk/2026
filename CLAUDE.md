@@ -3496,3 +3496,81 @@ gera CONFERE nenhum. `npm test` 100% verde, `check-duplicates.js`/
 `check-xss-guard.js` sem achados, `.env.example` documenta
 `TEST_ACCOUNT_EMAIL`. Sem bump de sw.js (mudança 100% server-side).
 
+## v237v-FIX — isTeste nunca batia pra conta NOVA (achado real, revisão pré-vídeo) (20/09/2026)
+
+Revisando o v237v antes do Andrio gravar o vídeo de verdade: `TEST_
+ACCOUNT_EMAIL` só bate contra o Gmail de CONTATO real (`emailContato`),
+mas `pedido.userEmail`/a chave de `DB_USERS` é a IDENTIDADE DE LOGIN —
+desde o v172c, conta NOVA usa um USERNAME escolhido (nunca tem `@`), só
+conta LEGADA ou pedido "Regularizar" do admin tem o Gmail como chave
+direto. O v237v original comparava `isTestAccountEmail(targetEmail)`
+contra essa chave crua — bateu no smoke test porque o teste usava o
+override de admin (`userEmail` literal), mas no fluxo REAL (Andrio se
+cadastrando como `ndrkick.3@gmail.com` e escolhendo um username
+qualquer) `isTeste` ficaria `false` PRA SEMPRE, e o pedido de teste
+viraria dinheiro/dado real — exatamente o risco que a pergunta do
+Andrio antes de gravar (junto com o resto deste chat) apontou.
+
+Corrigido na raiz: `_emailContatoReal(loginKey)` (server.js, perto de
+`findAccountByRealGmail` — mesma classe de bug já documentada lá)
+resolve `getUser(loginKey)?.emailContato || loginKey` — cobre os 3
+formatos (conta nova, legada, override de admin) na MESMA função. A
+criação do pedido usa essa resolução UMA VEZ (`isTeste` fica gravado no
+pedido — fonte única, nunca re-derivado numa leitura tardia).
+`preCheckComprovante` passou a ler `pedido.isTeste` direto (não precisa
+resolver de novo). Os loops que precisavam da mesma correção ganharam 2
+helpers: `_pedidoNaoEhReceita(pd)` (pelo `isTeste` do próprio pedido —
+`pedBy` do canônico, Conferência, divergências) e
+`_usuarioNaoEhReceita(em,u)` (pelo `emailContato` do usuário já
+carregado — per-user loop do canônico, pagantes das janelas,
+divergência vip_sem_pedido, vencendo do dono-resumo, Pagantes).
+
+Testes: 7 checks novos pelo fluxo 100% REAL — `/api/email/enviar-
+código` → `/api/cadastro` (username escolhido, e-mail de contato =
+`ndrkick.3@gmail.com`) → autocheckout SEM nenhum override de admin —
+provando que `pedido.userEmail` sai com o USERNAME (nunca o Gmail) mas
+`isTeste:true` mesmo assim, que o comprovante vira CONFERE, que
+confirmar não move nem o caixa nem a receita da Visão do Dono, e que a
+conta não aparece em Pagantes. `npm test` 100% verde, `check-
+duplicates.js`/`check-xss-guard.js` sem achados. Sem bump de sw.js.
+
+## v237w — Gmail extra podia ser conectado sem plano pago via reauth=1 (achado real) (20/09/2026)
+
+Pedido do Andrio (via chat): "cortar o vínculo do Gmail API até o
+usuário pagar". `/oauth/connect-send` (Gmail PRINCIPAL de envio) já
+travava sem plano ativo desde o v172 — mas `/oauth/add-sender` (Gmail
+EXTRA) só travava pela QUOTA por plano (`getMaxSenders`, que dá 0 pra
+quem nunca pagou — travava por acaso, não por regra explícita) e essa
+quota era pulada por completo quando `?reauth=1` (usado pra RECONECTAR
+um sender com token quebrado): `if(totalSenders>=maxSnd && !_reauth)`.
+Resultado real: qualquer conta FREE (ou com plano expirado) conseguia
+chegar na tela de consentimento do Google (pedindo `gmail.send`) via
+`/oauth/add-sender?reauth=1`, sem NUNCA ter pago — o vínculo com a API
+do Gmail nascia antes do pagamento, exatamente o que a ordem proíbe.
+
+Corrigido: `isVipActive(p)` vira gate EXPLÍCITO e incondicional da
+rota (antes de `CONFIGURED`, mesma ordem e mesmo motivo do
+`/oauth/connect-send` — regra de negócio por usuário, não falha
+operacional; o ambiente de teste não tem credencial real do Google, e
+essa ordem é o que permite provar o gate sozinho). Defesa em
+profundidade no callback (`__sender__`): re-confere `isVipActive` antes
+de trocar o `code` por token, cobrindo o plano expirar nos segundos que
+a pessoa leva na tela do Google (mesmo padrão do `connect-send`).
+
+Testes: 4 checks comportamentais reais (sem plano: nem `/oauth/add-
+sender` nem `?reauth=1` chegam no Google — location nunca é
+`accounts.google.com` e sempre cita "plano"; com plano pago ativo: os
+dois continuam funcionando normalmente — o fix não travou quem já
+paga). `npm test` 100% verde, `check-duplicates.js`/`check-xss-
+guard.js` sem achados. Sem bump de sw.js (server-side only).
+
+**Pendente de decisão do dono (não implementado, ação destrutiva
+demais pra decidir sozinho)**: isso fecha só o furo de conexão NOVA.
+Se o Andrio também quiser REVOGAR o vínculo de contas que JÁ conectaram
+Gmail extra num plano que hoje está free/expirado, isso é uma ação
+diferente e bem mais arriscada (chamar `/revoke` de verdade em contas
+reais, com risco de derrubar um automático em andamento de alguém que
+só está no meio de um upgrade) — contraria a regra já estabelecida em
+outro lugar do código (auth nunca cai por iniciativa nossa sem queda
+CONFIRMADA pelo Google) e não foi feita sem confirmação explícita.
+

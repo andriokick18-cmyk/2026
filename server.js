@@ -646,7 +646,7 @@ function computeFinanceCanonico(){
   for(const ped of Object.values(DB_PEDIDOS||{})){
     if(!ped||!ped.userEmail)continue;const st=String(ped.status||"").toLowerCase();
     if(st!=="pago"&&st!=="ativo")continue;const e=String(ped.userEmail).toLowerCase();
-    if(naoEhReceita(e))continue; // 💼 MC5-P3 + 🎬 v237v: admin/teste nunca é receita
+    if(_pedidoNaoEhReceita(ped))continue; // 💼 MC5-P3 + 🎬 v237v-FIX: admin/teste nunca é receita (pelo isTeste do pedido, nunca pela chave crua)
     (pedBy[e]=pedBy[e]||[]).push({valor:pv(ped.valorTotal),date:ts(ped.ativadoEm)||ts(ped.pagoEm)||0});
   }
   const ms=new Date();ms.setDate(1);ms.setHours(0,0,0,0);const monthStart=ms.getTime();
@@ -655,7 +655,7 @@ function computeFinanceCanonico(){
   const topPagantes=[];
   for(const u of Object.values(DB_USERS||{})){
     if(!u||!u.email)continue;const elc=u.email.toLowerCase();const vip=u.vip||{};const src=String(vip.source||"").toLowerCase();
-    if(naoEhReceita(elc))continue; // 💼 MC5-P3 + 🎬 v237v: admin/teste nunca é receita/pagante
+    if(_usuarioNaoEhReceita(elc,u))continue; // 💼 MC5-P3 + 🎬 v237v-FIX: admin/teste nunca é receita/pagante (confere emailContato, não a chave de login)
     if(src==="trial"){ if(isVipActive(u)) trials++; continue; }
     if(src==="code"){ gift++; giftDias+=(vip.days||0); continue; }
     let pags=finBy[elc]||[];if(!pags.length)pags=pedBy[elc]||[];if(!pags.length&&u.paymentAmount)pags=[{valor:pv(u.paymentAmount),date:ts(vip.activatedAt)||0}];
@@ -716,7 +716,7 @@ function computeEntradasJanelas(){
   }
   let pagantes=0;
   for(const[em,u2]of Object.entries(DB_USERS)){
-    if(naoEhReceita(em))continue;
+    if(_usuarioNaoEhReceita(em,u2))continue; // 🎬 v237v-FIX: confere emailContato, não a chave de login
     if(!u2?.vip?.active||u2.vip.source==="trial"||u2.vip.source==="code")continue;
     const exp=Math.max(u2.vip.manualExpires||0,u2.vip.autoExpires||0);
     if(exp>now)pagantes++;
@@ -1337,6 +1337,28 @@ function findAccountByRealGmail(email){
   if(!low)return null;
   return Object.values(DB_USERS||{}).find(u=>u&&String(u.gmailEmail||"").toLowerCase().trim()===low)||null;
 }
+// 🎬 v237v-FIX (achado real, revisão pré-gravação do vídeo com o Andrio —
+// mesma classe do comentário logo acima): pd.userEmail/a CHAVE de
+// DB_USERS é a IDENTIDADE de LOGIN — username pra conta nova (v172c,
+// NUNCA tem @) ou o próprio Gmail em conta legada/pedido "Regularizar" do
+// admin. Comparar TEST_ACCOUNT_EMAIL contra essa chave crua NUNCA
+// reconhece a conta de teste — o Gmail de CONTATO real (confirmado por
+// código no cadastro, ANTES de qualquer Gmail de envio ser conectado)
+// mora em `emailContato`, campo separado. Fonte única de resolução —
+// usada em toda checagem de "é a conta de teste" a partir de uma chave.
+function _emailContatoReal(loginKey){
+  if(!loginKey)return "";
+  const u=getUser(loginKey);
+  return (u&&u.emailContato)||loginKey;
+}
+// naoEhReceita (mod-config.js) pelo PEDIDO — usa o carimbo isTeste gravado
+// na criação (fonte única, nunca re-deriva por e-mail numa leitura tardia,
+// que erraria pra pedido de conta nova por causa do problema acima).
+function _pedidoNaoEhReceita(pd){ return naoEhReceita(pd&&pd.userEmail)||!!(pd&&pd.isTeste); }
+// naoEhReceita pelo USUÁRIO — pra loops que já têm o objeto carregado
+// (Object.entries(DB_USERS) etc.): confere o Gmail de contato real, nunca
+// a chave de login crua.
+function _usuarioNaoEhReceita(em,u){ return naoEhReceita(em)||isTestAccountEmail(u&&u.emailContato); }
 // FIX-CRASH: setUser usa debounce de 3s para evitar escrita excessiva no disco
 // (markOnline chamado em todo /api/status causava persist() a cada request)
 const _setUserPersistDebounce = { tid: null };
@@ -8605,6 +8627,17 @@ filtrar();
       // deixar a pessoa de fora tendo feito tudo certo.
       const _cookiesOut2=[clearFlowCookieStr(),...(_sessOk2?[]:[_oauthReloginCookie(ownerEmail2)])];
       try{
+        // 🔒 v237w (dono, 20/09/2026 — "cortar o vínculo do Gmail API até o
+        // usuário pagar"): defesa em profundidade — o plano pode ter
+        // expirado nos ~segundos que a pessoa levou na tela do Google
+        // (mesmo padrão do /oauth/connect-send). Sem isso, `/oauth/
+        // add-sender` só travava ANTES de ir pro Google (e só quando
+        // reauth≠1 — ver comentário lá); aqui fecha a mesma classe de furo
+        // no momento em que o vínculo de verdade seria criado.
+        const owner2Check=getUser(ownerEmail2);
+        if(!owner2Check||!isVipActive(owner2Check)){
+          return fail2("Seu plano não está mais ativo. Assine um plano pra conectar um Gmail extra.");
+        }
         const tb2=new URLSearchParams({code,client_id:CLIENT_ID,client_secret:CLIENT_SECRET,redirect_uri:_oauthBase(req)+"/oauth/callback",grant_type:"authorization_code"}).toString();
         const{body:tk2}=await httpsReq({hostname:"oauth2.googleapis.com",path:"/token",method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded","Content-Length":Buffer.byteLength(tb2)}},tb2);
         if(tk2.error)return fail2(tk2.error_description||tk2.error);
@@ -8795,8 +8828,20 @@ filtrar();
   // Inicia OAuth do email extra — só para quem já está logado
   if(pathname==="/oauth/add-sender"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    if(!CONFIGURED){res.writeHead(302,{Location:"/?err="+encodeURIComponent("OAuth não configurado.")});return res.end();}
     const p=getUser(s.user_email)||{};
+    // 🔒 v237w (dono, 20/09/2026 — "cortar o vínculo do Gmail API até o
+    // usuário pagar"): `reauth=1` (usado só pra RECONECTAR um sender que já
+    // existia com token quebrado) pulava o ÚNICO gate desta rota — a quota
+    // por plano (getMaxSenders), que só de propósito TAMBÉM barrava quem
+    // nunca pagou (FREE = 0). Sem plano ativo, o Google NUNCA é acionado
+    // por esta rota — nem pra reconectar (getMaxSenders já cobre o caso
+    // normal; isVipActive aqui fecha o furo específico do reauth=1).
+    // ANTES de "servidor configurado" — mesma ordem e mesmo motivo do
+    // /oauth/connect-send (regra de NEGÓCIO por usuário, não falha
+    // operacional; o teste automatizado prova as duas coisas separadas,
+    // já que este ambiente não tem GOOGLE_CLIENT_ID/SECRET reais).
+    if(!isVipActive(p)){res.writeHead(302,{Location:"/?err="+encodeURIComponent(_msgLimiteSenders(0))});return res.end();}
+    if(!CONFIGURED){res.writeHead(302,{Location:"/?err="+encodeURIComponent("OAuth não configurado.")});return res.end();}
     const totalSenders=1+(p.senderEmails||[]).length;
     const maxSnd=getMaxSenders(p);
     const _reauth=String(u.searchParams.get("reauth")||"")==="1";
@@ -10247,8 +10292,11 @@ filtrar();
         ativadoEm:null,
         pagoEm:_pagoEmMs,
         // 🎬 v237v: marca pra sempre poder filtrar/excluir de relatórios reais
-        // depois — a conta de TESTE única (ver mod-config.js), nunca um padrão.
-        isTeste:isTestAccountEmail(targetEmail),
+        // depois — a conta de TESTE única (ver mod-config.js), nunca um
+        // padrão. v237v-FIX: resolve o Gmail de CONTATO real primeiro
+        // (targetEmail é a chave de login — username pra conta nova, nunca
+        // bate direto contra TEST_ACCOUNT_EMAIL — ver _emailContatoReal).
+        isTeste:isTestAccountEmail(_emailContatoReal(targetEmail)),
       };
       if(typeof d.comprovante==="string"&&d.comprovante){
         const _arqC=saveComprovante(pedido.id,d.comprovante);
@@ -10704,10 +10752,12 @@ filtrar();
     // desconsidere"): conta de ADMIN nunca entra na Conferência, nem nas
     // divergências, nem em nenhum total — pedido/código de admin é teste
     // interno, não receita. Fonte da verdade: isAdminEmail (mod-config).
-    // 🎬 v237v: mesma exclusão pra conta de TESTE (naoEhReceita) — o pedido
-    // de demo não pode aparecer como venda de verdade na Conferência.
+    // 🎬 v237v: mesma exclusão pra conta de TESTE — o pedido de demo não
+    // pode aparecer como venda de verdade na Conferência. v237v-FIX: pelo
+    // isTeste do próprio pedido (_pedidoNaoEhReceita), nunca pela chave de
+    // login crua (username de conta nova nunca bate contra TEST_ACCOUNT_EMAIL).
     for(const pd of DB_PEDIDOS){
-      if(naoEhReceita(pd.userEmail))continue;
+      if(_pedidoNaoEhReceita(pd))continue;
       rows.push({tipo:"pedido",id:pd.id,em:pd.createdAt||0,
         email:pd.userEmail,nome:pd.userName||pd.userEmail,
         plano:pd.plano,dias:pd.dias,valor:pd.valorTotal||0,status:pd.status,
@@ -10750,7 +10800,7 @@ filtrar();
       .filter(pd=>["pago","ativo"].includes(String(pd.status||"").toLowerCase()))
       .map(pd=>String(pd.userEmail||"").toLowerCase()));
     for(const [em,usr] of Object.entries(DB_USERS)){
-      if(!usr?.vip||usr.isAdmin||naoEhReceita(em))continue; // v53 + v237v: admin/teste fora das divergências
+      if(!usr?.vip||usr.isAdmin||_usuarioNaoEhReceita(em,usr))continue; // v53 + v237v-FIX: admin/teste fora das divergências (emailContato, não a chave)
       if(!["payment","pago"].includes(String(usr.vip.source||"")))continue;
       const expD=Math.max(usr.vip.manualExpires||0,usr.vip.autoExpires||0);
       if(expD<=nowD)continue;
@@ -10760,7 +10810,7 @@ filtrar();
     }
     const _pagsAut=(DB_FINANCEIRO.pagamentos||[]).filter(pg=>!naoEhReceita(pg.email)); // v53 + v237v: caixa de admin/teste não é divergência
     for(const pd of DB_PEDIDOS){
-      if(naoEhReceita(pd.userEmail))continue; // v53 + v237v
+      if(_pedidoNaoEhReceita(pd))continue; // v53 + v237v-FIX
       if(String(pd.status||"")!=="ativo"||(pd.valorTotal||0)<=0)continue;
       if(!_pagsAut.some(x=>x.pedidoId===pd.id))
         divergencias.push({tipo:"pedido_sem_caixa",email:pd.userEmail,nome:pd.userName||pd.userEmail,pedidoId:pd.id,
@@ -10779,8 +10829,8 @@ filtrar();
     // 💳 v141 — 5ª divergência (caso Cleiton): concessão de dias duplicada
     // (mesmo usuário, 2 ativações de plano em poucos minutos).
     for(const dup of detectarConcessoesDuplicadas(15)){
-      if(naoEhReceita(dup.email))continue; // v53 + v237v
       const u2=getUser(dup.email);
+      if(_usuarioNaoEhReceita(dup.email,u2))continue; // v53 + v237v-FIX
       divergencias.push({tipo:"concessoes_duplicadas",email:dup.email,nome:u2?.name||dup.email,
         msg:`Plano ativado 2x em ${dup.gapMin}min — possível clique duplo (${dup.a1.detail} → ${dup.a2.detail}). Confira em 💳 Pagantes → clique no usuário.`});
     }
@@ -12551,14 +12601,14 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
       // "líquido 30d" virar receita bruta disfarçada.
       let g30=0;for(const g of (DB_FINANCEIRO.gastos||[])){const t=_ts(g.dataGasto||g.data)||g.criadoEm||0;if(t>=now-30*DAY)g30+=parseFloat(g.valor)||0;}
       // Pedidos esperando decisão = dinheiro parado na mesa
-      const pend=DB_PEDIDOS.filter(x=>["pendente","pago"].includes(String(x.status||"").toLowerCase())&&!naoEhReceita(x.userEmail));
+      const pend=DB_PEDIDOS.filter(x=>["pendente","pago"].includes(String(x.status||"").toLowerCase())&&!_pedidoNaoEhReceita(x));
       const pendValor=pend.reduce((a,x)=>a+(parseFloat(x.valorTotal)||0),0);
       // Vencendo em 7 dias (renovação = receita da semana que vem) — a
       // CONTAGEM de pagantes já vem de janelas.pagantes (fonte única);
       // esta lista só monta o detalhe (quem, plano, quantos dias faltam).
       const vencendo=[];
       for(const[em,u2]of Object.entries(DB_USERS)){
-        if(naoEhReceita(em))continue; // v53 + v237v: admin/teste não é pagante
+        if(_usuarioNaoEhReceita(em,u2))continue; // v53 + v237v-FIX: admin/teste não é pagante (emailContato, não a chave)
         if(!u2?.vip?.active||u2.vip.source==="trial"||u2.vip.source==="code")continue;
         const exp=Math.max(u2.vip.manualExpires||0,u2.vip.autoExpires||0);
         if(exp<=now)continue;
@@ -12606,8 +12656,10 @@ if(pathname==="/api/admin/pagantes"&&req.method==="GET"){try{
   for(const u of Object.values(DB_USERS||{})){
     if(!u||!u.email)continue;
     // 🎬 v237v: a conta de TESTE nunca aparece como "quem pagou" — mesma
-    // régua da Conferência/DRE (naoEhReceita), mesmo sem excluir admin antes.
-    if(isTestAccountEmail(u.email))continue;
+    // régua da Conferência/DRE. v237v-FIX: u.email é a CHAVE de login
+    // (username pra conta nova, nunca bate contra TEST_ACCOUNT_EMAIL) —
+    // confere o Gmail de CONTATO real (emailContato).
+    if(isTestAccountEmail(u.emailContato))continue;
     const email=u.email;const elc=email.toLowerCase();const vip=u.vip||{};
     const src=String(vip.source||"").toLowerCase();
     // Pagamentos: Financeiro (primário) -> Pedidos (fallback) -> paymentAmount do usuário (último recurso)
@@ -14478,7 +14530,7 @@ async function preCheckComprovante(pedido, opts){
   // continua exigindo o clique do admin em Pedidos Pendentes). Isolamento
   // financeiro é feito à parte, no PATCH que confirma o pedido (nunca cria
   // entrada em DB_FINANCEIRO.pagamentos pra pedido.isTeste).
-  if(isTestAccountEmail(pedido.userEmail)){
+  if(pedido.isTeste){
     if(!_compB64) return null; // sem arquivo nenhum, fica pendente igual sempre
     const pc={veredito:"CONFERE",valorLido:pedido.valorTotal||0,dataLida:null,horaLida:null,
       pagadorLido:null,recebedorLido:null,instituicaoLida:null,transacaoIdLida:null,
