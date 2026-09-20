@@ -4702,6 +4702,23 @@ async function drillBloqueioComprasNovas() {
     check("🚨 v233: GET /api/debug COM sessão de admin continua funcionando (200) — a trava é só contra acesso público, a rota continua útil pro admin",
       _debugAdmin.status === 200 && typeof _debugAdmin.json?.total_users === "number",
       JSON.stringify(_debugAdmin.json).slice(0, 160));
+
+    // ═══ 🚨 v234 (achado de auditoria — Média): POST /api/pedido/:id/
+    // comprovante (reenvio do comprovante pelo dono do pedido) não tinha
+    // NENHUM rate limit — cada chamada grava até ~8MB no disco E dispara
+    // preCheckComprovante(ativar:true) de novo, que em produção chama a IA
+    // (Gemini) pra reler o comprovante. Um script hostil (ou um bug de
+    // retry em loop no cliente) conseguia martelar a rota e gastar cota de
+    // IA/disco à toa. Mesmo padrão de /api/cadastro e /api/login.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "ratelimit234@test.com", name: "Rate Limit 234" });
+    const _pedRL234 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Rate Limit 234", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("rl234-original").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    let _rl234Last;
+    for (let i = 0; i < 6; i++) {
+      _rl234Last = await req2("POST", "/api/pedido/" + _pedRL234.json?.pedidoId + "/comprovante", { comprovante: Buffer.from("rl234-tentativa-" + i).toString("base64") });
+    }
+    check("🚨 v234: reenviar comprovante tem rate limit (5/hora por usuário) — a 6ª tentativa seguida leva 429, protegendo disco e cota de IA de um script hostil martelando a rota",
+      _rl234Last.status === 429 && /Muitos reenvios/.test(_rl234Last.json?.error || ""),
+      JSON.stringify({ status: _rl234Last.status, err: _rl234Last.json?.error }).slice(0, 160));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5c@test.com", name: "MC5 C" });
     const mc5d1 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-um").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     const mc5d2 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-dois").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });

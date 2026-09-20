@@ -10219,6 +10219,13 @@ filtrar();
   // com trilha do hash anterior; leitura e fingerprint recalculados na hora).
   if(pathname.startsWith("/api/pedido/")&&pathname.endsWith("/comprovante")&&req.method==="POST"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
+    // 🚨 v234 (achado de auditoria — Média): sem rate limit nenhum — cada
+    // chamada grava até ~8MB no disco E dispara preCheckComprovante(ativar:
+    // true), que em produção chama a IA (Gemini) pra ler o comprovante de
+    // novo. Sem trava, um script hostil (ou um bug de retry em loop no
+    // cliente) conseguia martelar a rota e gastar cota de IA/disco à toa.
+    // Mesmo padrão de /api/cadastro e /api/login (rateLimit por identidade).
+    if(rateLimit("comprovante_reenvio_"+s.user_email,5,3_600_000))return json(res,429,{error:"Muitos reenvios de comprovante em pouco tempo. Aguarde um pouco e tente de novo."});
     try{
       const pid=decodeURIComponent(pathname.slice("/api/pedido/".length,-"/comprovante".length));
       const pd=DB_PEDIDOS.find(p2=>p2&&p2.id===pid);

@@ -2486,3 +2486,28 @@ sessão de admin → 200 com os campos esperados). `npm test` 100%
 verde, `check-duplicates.js`/`check-xss-guard.js` sem achados. Mudança
 100% em server.js — sem bump de sw.js.
 
+## v234 — achado Média da auditoria (segurança/confiabilidade UX): reenviar comprovante sem rate limit (20/09/2026)
+
+`POST /api/pedido/:id/comprovante` (o dono do pedido reenvia um
+comprovante melhor quando a leitura da IA saiu ruim) não tinha NENHUM
+rate limit — diferente de `/api/cadastro` e `/api/login`, que já
+usam `rateLimit()` há tempos. Cada chamada bem-sucedida: grava até
+~8MB de arquivo novo no disco (`saveComprovante`) E dispara
+`preCheckComprovante(ativar:true)` de novo, que em produção chama a
+API do Gemini pra reler o comprovante — custo real de cota de IA. Sem
+trava nenhuma, um script hostil (ou até um bug de retry em loop no
+cliente, a mesma classe de erro que este repo já corrigiu várias vezes
+hoje) conseguia martelar a rota e gastar disco/cota à toa.
+
+Corrigido com `rateLimit("comprovante_reenvio_"+s.user_email,5,
+3_600_000)` — 5 tentativas por hora por usuário (autenticado, chave
+por e-mail em vez de IP — evita falso positivo de gente atrás do
+mesmo IP compartilhado), 429 com mensagem clara ao estourar. Generoso
+o bastante pra alguém tentando de verdade uma foto melhor 2-3 vezes,
+curto o bastante pra travar qualquer automação.
+
+Testes: regressão comportamental no smoke (6 chamadas seguidas pro
+mesmo pedido — a 6ª leva 429). `npm test` 100% verde,
+`check-duplicates.js`/`check-xss-guard.js` sem achados. Mudança 100%
+em server.js — sem bump de sw.js.
+
