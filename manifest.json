@@ -53,7 +53,7 @@
       "name": "Vagas H-2B",
       "short_name": "H-2B",
       "description": "Ver vagas H-2B disponíveis",
-      "url": "/?tab=seasonal",
+      "url": "/?tab=jobs",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {

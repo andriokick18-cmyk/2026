@@ -7233,6 +7233,30 @@ async function drillBloqueioComprasNovas() {
       /onclick="selSheetJob\('\$\{esc\(j\.id\)\}'\)"\$\{\(isApplied\|\|_inAutoQ\)\?' style="display:none"':""\}>/.test(_appV209),
       "a tag de abertura do card voltou a ficar sem '>' antes da quebra de linha");
 
+    // 🚨 v237o (achado de auditoria — Média, admin/PWA): o atalho "Vagas H-2B"
+    // do manifest.json apontava pra /?tab=seasonal — "seasonal" nunca existiu
+    // em VIEWS (a aba "ao vivo" saiu no v223) e sv() não validava o valor: o
+    // loop que liga/desliga `.gone` compara "id!==v" pra CADA view conhecida,
+    // e como nenhuma bate com "seasonal" TODAS ganhavam `.gone` — o app
+    // inteiro sumia, tela em branco, sem erro nenhum pro usuário. Corrigido
+    // na raiz em sv() (nunca deixa `v` fora de VIEWS chegar no loop — cai pra
+    // "home") E no manifest.json (o atalho aponta pra "jobs", a aba de vagas
+    // de verdade).
+    const _manifestV237o = fs.readFileSync(path.join(__dirname, "manifest.json"), "utf8");
+    // (a mesma string "VIEWS.forEach(id=>{const ve=g(\"#v-\"+id)" também
+    // aparece no handler de popstate, MAIS CEDO no arquivo — por isso a
+    // busca do loop começa a partir da posição da guarda, não do começo do
+    // arquivo, pra achar o loop de DENTRO de sv(), não o outro.)
+    const _posGuardaV237o = _appV209.indexOf('if(!VIEWS.includes(v))');
+    const _posLoopV237o = _appV209.indexOf('VIEWS.forEach(id=>{const ve=g("#v-"+id)', _posGuardaV237o);
+    check("🚨 v237o: sv() nunca deixa uma view DESCONHECIDA (atalho do manifest.json quebrado, link velho em cache, ?tab= digitado errado) apagar TODAS as views da tela — cai pra 'home' antes do loop que liga/desliga `.gone`",
+      /if\(!VIEWS\.includes\(v\)\)\{[\s\S]{0,120}v="home"/.test(_appV209) &&
+      _posGuardaV237o > -1 && _posLoopV237o > -1 && (_posLoopV237o - _posGuardaV237o) < 700,
+      `guarda em ${_posGuardaV237o}, loop de sv() em ${_posLoopV237o} (distância ${_posLoopV237o - _posGuardaV237o})`);
+    check("🚨 v237o: o atalho \"Vagas H-2B\" do manifest.json (PWA) aponta pra /?tab=jobs (aba real) — não sobrou nenhum /?tab=seasonal (aba que nunca existiu em VIEWS)",
+      _manifestV237o.includes('"url": "/?tab=jobs"') && !_manifestV237o.includes("seasonal"),
+      "manifest.json ainda referencia uma aba inexistente");
+
     // 🔶 v215 (dono, 19/09/2026 — domínio migrado de verdade pra cá):
     // estrutural — o banner "já era assinante VIP?" pro site antigo
     // (h2bapply.onrender.com) é SEMPRE visível (nunca condicionado a

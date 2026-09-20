@@ -984,6 +984,13 @@ const BN_MORE_VIEWS=["plans","tutorial","settings"];
 function sv(v,...args){
   // ── "auto" abre modal em vez da view ──
   if(v==="auto"){if(typeof openAutoModal==="function"){openAutoModal();return;}}
+  // 🚨 v237o (achado de auditoria — Média, admin/PWA): um `v` que não é
+  // nenhuma VIEWS conhecida (atalho do manifest.json apontando pra uma aba
+  // removida/renomeada, link antigo em cache, ?tab= digitado errado) fazia
+  // o loop abaixo comparar "id!==v" pra TODAS as views — nenhuma bate,
+  // TODAS ganham `.gone`, o app inteiro some da tela sem erro nenhum. Cai
+  // pra "home" em vez de deixar a pessoa numa tela em branco.
+  if(!VIEWS.includes(v)){console.warn(`[sv] view desconhecida "${v}" — voltando pra home`);v="home";}
   curView=v;
   // Scroll to top ao mudar de aba
   const appEl=g("#app");if(appEl)appEl.scrollTop=0;window.scrollTo(0,0);

@@ -3173,3 +3173,34 @@ corrida real. `npm test` 100% verde, `check-duplicates.js`/
 `check-xss-guard.js` sem achados. Sem bump de sw.js (mudança 100%
 server-side).
 
+## v237o — atalho do manifest.json (PWA) apontava pra aba que não existe, apagando o app inteiro (achado Média de admin/PWA) (20/09/2026)
+
+O atalho "Vagas H-2B" do `manifest.json` (clique-direito no ícone do
+app instalado, ou segurar no Android — recurso nativo de PWA)
+apontava pra `/?tab=seasonal`. A aba "seasonal" (vagas "ao vivo" do
+DOL, direto da fonte) foi removida no v223 — `VIEWS` (app.js) não
+tem mais esse id. `sv(v)` nunca validava `v` contra `VIEWS` antes de
+usar: o loop que liga/desliga a classe `.gone` em cada view compara
+`id!==v` pra CADA id conhecido — como "seasonal" não bate com
+NENHUM, TODOS ganhavam `.gone` ao mesmo tempo. Resultado: clicar no
+atalho abria o app inteiro em BRANCO, sem erro nenhum no console pro
+usuário reportar — o tipo de bug mais difícil de diagnosticar
+remotamente (regra 14: "site intuitivo e autoexplicativo").
+
+Corrigido nos 2 lados: `sv()` (app.js) ganhou uma guarda — `v` fora
+de `VIEWS` cai pra `"home"` ANTES do loop, nunca mais deixa uma view
+desconhecida (atalho quebrado, link velho em cache do navegador,
+`?tab=` digitado errado à mão) apagar tudo; e o `manifest.json` teve
+a URL corrigida pra `/?tab=jobs` (a aba de vagas de verdade). A
+guarda em `sv()` é a correção NA RAIZ — protege contra QUALQUER
+`v` inválido futuro, não só este atalho específico.
+
+Testes: 2 checks estruturais — a guarda existe em `sv()` e vem ANTES
+do loop `VIEWS.forEach` (não adianta cair pra "home" depois que o
+estrago já foi feito; a mesma string do loop também existe no
+handler de `popstate`, mais cedo no arquivo, então a busca começa a
+partir da posição da guarda pra achar o loop CERTO, de dentro de
+`sv()`); e o `manifest.json` aponta pra `/?tab=jobs` sem nenhum
+resquício de `seasonal`. `npm test` 100% verde,
+`check-duplicates.js`/`check-xss-guard.js` sem achados. sw.js v99→v100.
+
