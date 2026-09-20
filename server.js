@@ -143,12 +143,37 @@ const REDIRECT_URI_SENDER = APP_URL + "/oauth/add-sender/callback";
 // start apontou), então derivar de novo no callback dá o valor idêntico que
 // a troca do code exige. Lembrete operacional: cada host usado precisa estar
 // nos Authorized redirect URIs do Google Console (…/oauth/callback).
+//
+// 🚨 v239 (achado real, 20/09/2026 — Andrio testando "Conectar Gmail" como
+// usuário comum pelo domínio oficial): h2bapply.com virou o domínio custom
+// deste ambiente (v238 — DNS migrado em 19-20/09), mas NUNCA entrou nesta
+// allowlist. O Render NUNCA muda RENDER_EXTERNAL_URL/_HOSTNAME quando um
+// domínio próprio é anexado (continuam sempre o *.onrender.com do serviço),
+// e a env APP_URL no painel do Render seguiu apontando pro *.onrender.com de
+// antes da migração — ninguém tinha atualizado ela. Resultado: quem navegava
+// h2bapply.com iniciava o OAuth, `_oauthBase` não reconhecia o host e caía
+// no FALLBACK (APP_URL = h2bapply-2026.onrender.com); o Google devolvia a
+// pessoa pra esse domínio DIFERENTE de onde os cookies de sessão
+// (h2b_session) e de handshake (h2b_of, v237u) tinham sido gravados —
+// nenhum cookie bate lá, então "Sessão inválida ou expirada" acontecia com
+// TODO usuário tentando conectar o Gmail pelo domínio oficial, quebrando o
+// fluxo principal de Envio Automático/Manual pra quem loga em h2bapply.com.
+// Corrigido hardcodeando o domínio oficial aqui — nunca dependendo só de uma
+// env configurada certa no painel do Render (a MESMA classe de fragilidade
+// que já causou o bug original do v61) — mesmo padrão das ~30 URLs
+// canônicas fixas já espalhadas pelo SEO deste arquivo (robots.txt/sitemap/
+// JSON-LD, sempre "https://h2bapply.com"). Continua host allowlist (nunca
+// confia cegamente no header Host). ⚠️ Operacional: se um dia existir
+// www.h2bapply.com de verdade, adicionar aqui TAMBÉM exige adicionar
+// "https://www.h2bapply.com/oauth/callback" nos Authorized redirect URIs do
+// Google Console — sem isso o Google recusa com redirect_uri_mismatch.
+const CANONICAL_OAUTH_HOSTS = ["h2bapply.com"];
 function _oauthBase(req){
   try{
     const host=String((req.headers&&req.headers.host)||"").toLowerCase().split(",")[0].trim();
     if(!host) return APP_URL;
     const norm=x=>{try{return new URL(x).host.toLowerCase();}catch(e){return "";}};
-    const ok=new Set([norm(APP_URL)]);
+    const ok=new Set([norm(APP_URL),...CANONICAL_OAUTH_HOSTS]);
     if(process.env.RENDER_EXTERNAL_URL) ok.add(norm(process.env.RENDER_EXTERNAL_URL));
     // Cinto e suspensório: o Render também define RENDER_EXTERNAL_HOSTNAME
     // (só o host, sem protocolo) — cobre o caso de a _URL vir vazia/mudada.
@@ -8366,6 +8391,15 @@ filtrar();
     if(String(u.searchParams.get("token")||"")!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});
     const id=String(u.searchParams.get("id")||"");
     return json(res,200,{ok:true,exists:!!sessions[id]});
+  }
+  // 🧪 v239 (só teste): expõe o resultado de _oauthBase(req) direto — prova o
+  // host allowlist (incluindo o domínio oficial h2bapply.com, hardcoded no
+  // v239) sem precisar de GOOGLE_CLIENT_ID/SECRET reais (CONFIGURED=false
+  // neste ambiente, então bater em /oauth/connect-send de verdade nunca
+  // chega a montar a URL do Google pra inspecionar).
+  if(pathname==="/api/test/oauth-base"&&req.method==="GET"&&process.env.TEST_LOGIN_TOKEN){
+    if(String(u.searchParams.get("token")||"")!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});
+    return json(res,200,{ok:true,base:_oauthBase(req)});
   }
   if(pathname==="/api/test/notif-conectar"&&req.method==="POST"&&process.env.TEST_LOGIN_TOKEN){
     try{const d=JSON.parse((await readBody(req))||"{}");if(d.token!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});

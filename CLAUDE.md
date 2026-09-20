@@ -3803,3 +3803,80 @@ negativo do v237v (e-mail comum NÃO recebe o bypass) já cobre a régua
 100% server-side — `mod-config.js`/`server.js`/`smoke-test.js`/
 `.env.example`, nenhum arquivo servido ao cliente mudou).
 
+## v239 — 🚨 URGENTE: "Conectar Gmail" quebrado pra TODO usuário no domínio oficial (achado AO VIVO do dono, 20/09/2026)
+
+Andrio testou o fluxo real de "Conectar Gmail" (OAuth) como usuário
+comum, logado em `h2bapply.com` (domínio custom, oficial desde a
+migração de DNS do v238). Depois de completar o consentimento no
+Google, a tela voltava com "Sessão inválida ou expirada. Faça login e
+clique em Conectar Gmail de novo." — mesmo tendo acabado de fazer tudo
+certo. Ele suspeitou (corretamente) que não era só o teste dele: TODO
+usuário tentando conectar o Gmail pelo domínio oficial cairia na mesma
+tela, quebrando o fluxo principal de Envio Automático/Manual (que
+exige o Gmail conectado — prioridade #1 da casa).
+
+**Causa raiz**: `_oauthBase(req)` (v61) monta o `redirect_uri` mandado
+ao Google pelo HOST da requisição, mas só se esse host estiver numa
+allowlist — que só continha o host de `APP_URL` e os que o Render
+define sozinho (`RENDER_EXTERNAL_URL`/`RENDER_EXTERNAL_HOSTNAME`).
+`h2bapply.com` nunca entrou nessa lista: o Render NUNCA atualiza essas
+2 envs quando um domínio próprio é anexado a um serviço (continuam
+sempre o `*.onrender.com` original), e a env `APP_URL` configurada no
+painel do Render seguiu apontando pro `*.onrender.com` de antes da
+migração de DNS — ninguém tinha atualizado ela lá. Resultado: quem
+navegava `h2bapply.com` iniciava o OAuth, `_oauthBase` não reconhecia
+o host e caía no FALLBACK (`APP_URL` = `h2bapply-2026.onrender.com`);
+o Google devolvia a pessoa pra esse domínio DIFERENTE de onde os
+cookies de sessão (`h2b_session`) e de handshake (`h2b_of`, v237u)
+tinham sido gravados — cookie é por domínio, nenhum bate lá, e os 2
+callbacks (`__sender__`/`__connectsend__`) recusam com "Sessão
+inválida ou expirada" quando nem sessão nem cookie de handshake
+provam quem iniciou (proteção real de login-CSRF, v172c-SEC — não
+dava pra simplesmente ignorar essa checagem).
+
+**Fix**: hardcodeado `h2bapply.com` na allowlist de `_oauthBase`
+(`CANONICAL_OAUTH_HOSTS`) — nunca mais dependendo só de uma env
+configurada certa no painel do Render (a MESMA classe de fragilidade
+que já causou o bug original do v61, achado real por prints do dono
+em 25/07). Mesmo padrão das ~30 URLs canônicas fixas já espalhadas
+pelo SEO deste arquivo (robots.txt/sitemap/JSON-LD, sempre
+`"https://h2bapply.com"`). Continua host allowlist de verdade — nunca
+confia cegamente no header Host (anti open-redirect/host-poisoning).
+Comentário operacional atualizado avisando: se `www.h2bapply.com`
+existir um dia, precisa entrar aqui TAMBÉM E nos Authorized redirect
+URIs do Google Console — sem isso o Google recusa com
+`redirect_uri_mismatch`.
+
+**⚠️ Ação pendente do dono (fora do código, Google Cloud Console)**:
+confirmar que `https://h2bapply.com/oauth/callback` está na lista de
+"URIs de redirecionamento autorizados" do cliente OAuth (Google Cloud
+Console → APIs e serviços → Credenciais). O fix de código garante que
+o SERVIDOR agora pede o redirect certo ao Google; se o Google Console
+não tiver esse URI cadastrado, a tela do Google vai recusar com
+`redirect_uri_mismatch` em vez do erro de sessão — sintoma diferente,
+mesma urgência. (O `*.onrender.com` provavelmente já estava lá desde
+antes — deixar os dois cadastrados não tem custo nem risco.)
+
+**Achado de cobertura de teste**: não existia NENHUM teste
+comportamental pra `_oauthBase`/redirect_uri antes deste bug — só
+existiam testes estruturais pros callbacks (v237u/v172c-SEC). Criada
+a rota só-de-teste `GET /api/test/oauth-base` (gated por
+`TEST_LOGIN_TOKEN`, mesmo padrão de `/api/test/session-exists`) que
+devolve `_oauthBase(req)` direto — necessária porque este ambiente não
+tem `GOOGLE_CLIENT_ID`/`SECRET` reais (`CONFIGURED=false`), então bater
+de verdade em `/oauth/connect-send` nunca chegaria a montar a URL do
+Google pra inspecionar. Testes usam um novo helper `reqHost(path,
+hostHeader)` (smoke-test.js) que manda um `Host` customizado numa
+requisição pro servidor de teste — o Node aceita esse override mesmo
+indo fisicamente pra `127.0.0.1:PORT`, exatamente como o Render entrega
+de verdade (conexão física chega no processo, o header Host preserva o
+domínio que o navegador visitou).
+
+Testes: 3 checks novos (h2bapply.com reconhecido e devolvido igual;
+regressão do v61 — host de APP_URL continua reconhecido; anti
+open-redirect — host desconhecido nunca é refletido, cai no fallback
+de sempre). `npm test` 100% verde (isolado, sem processo concorrente),
+`node --check` nos 2 arquivos, `check-duplicates.js`/
+`check-xss-guard.js` sem achados. Sem bump de sw.js (mudança 100%
+server-side).
+

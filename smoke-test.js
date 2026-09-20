@@ -427,6 +427,19 @@ const reqSlow = (method, p, payload, gapMs) => new Promise((resolve, reject) => 
   setTimeout(() => r.end(body.subarray(meio)), gapMs);
 });
 const get = (p) => req2("GET", p);
+// 🚨 v239: requisição com header Host CUSTOM — simula bater no servidor por
+// um domínio diferente (custom domain, onrender.com, host de ataque), sem
+// precisar subir um 2º servidor nem mexer em DNS. Node aceita override
+// explícito de Host mesmo indo fisicamente pra BASE (127.0.0.1:PORT) —
+// exatamente como o Render entrega: a conexão física chega no processo,
+// mas o header Host preserva o domínio que o navegador visitou.
+const reqHost = (p, hostHeader) => new Promise((resolve, reject) => {
+  const r = http.request(BASE + p, { method: "GET", headers: { Host: hostHeader } }, (res) => {
+    let b = ""; res.on("data", (c) => (b += c));
+    res.on("end", () => { let json = null; try { json = JSON.parse(b); } catch {} resolve({ status: res.statusCode, body: b, json }); });
+  });
+  r.on("error", reject); r.end();
+});
 // 🔒 v182 LOTE 10: requisição ANÔNIMA de verdade — sem cookie nenhum, do jeito
 // que um scraper bate. O req2 mantém um jar de sessão; aqui não vai nada.
 const getSemCookie = (p) => new Promise((resolve, reject) => {
@@ -4447,6 +4460,32 @@ async function drillBloqueioComprasNovas() {
       _srvSrc.includes('const _cookiesOutCS=[clearFlowCookieStr(),...(_sessOkCS?[]:[_oauthReloginCookie(ownerEmailCS)])];') &&
       _srvSrc.includes('const _cookiesOutN=[clearFlowCookieStr(),...(_sessOkN?[]:[_oauthReloginCookie(pn.ownerEmail)])];'),
       "reconstrução de sessão pós-cookie não encontrada nos 3 callbacks");
+
+    // 🚨 v239 (achado real AO VIVO, 20/09/2026 — Andrio testando "Conectar
+    // Gmail" como usuário comum pelo domínio oficial h2bapply.com): o
+    // callback do Google voltava pra h2bapply-2026.onrender.com em vez de
+    // h2bapply.com — domínio DIFERENTE de onde os cookies de sessão/
+    // handshake tinham sido gravados, "Sessão inválida ou expirada" pra
+    // TODO usuário conectando Gmail pelo domínio custom. Raiz: h2bapply.com
+    // nunca esteve na allowlist de _oauthBase (só entrava o host de
+    // APP_URL/RENDER_EXTERNAL_*, e o Render NUNCA muda essas envs quando um
+    // domínio próprio é anexado). Testado direto por /api/test/oauth-base
+    // (rota só de teste — CONFIGURED=false neste ambiente nunca deixaria
+    // bater de verdade em /oauth/connect-send pra inspecionar a URL).
+    const _obH2b = await reqHost("/api/test/oauth-base?token=" + TEST_TOKEN, "h2bapply.com");
+    check("🚨 v239: _oauthBase reconhece h2bapply.com (domínio oficial, hardcoded na allowlist) e devolve o MESMO domínio — o redirect_uri do Google volta pra onde os cookies de sessão/handshake vivem",
+      _obH2b.status === 200 && _obH2b.json?.base === "https://h2bapply.com",
+      JSON.stringify(_obH2b.json));
+
+    const _obApp = await reqHost("/api/test/oauth-base?token=" + TEST_TOKEN, "localhost:3000");
+    check("🔒 v239 (regressão v61): host que bate com APP_URL (localhost:3000, valor de fábrica sem a env definida) continua reconhecido — o fix não tirou o comportamento original",
+      _obApp.status === 200 && _obApp.json?.base === "http://localhost:3000",
+      JSON.stringify(_obApp.json));
+
+    const _obAtk = await reqHost("/api/test/oauth-base?token=" + TEST_TOKEN, "evil-attacker.example.com");
+    check("🔒 v239 (anti open-redirect, continua valendo): host DESCONHECIDO (nunca visto no allowlist) NUNCA é refletido de volta — cai no fallback de APP_URL, exatamente como antes do fix",
+      _obAtk.status === 200 && _obAtk.json?.base === "http://localhost:3000" && _obAtk.json?.base !== "https://evil-attacker.example.com",
+      JSON.stringify(_obAtk.json));
     // v172c: cadastro/login por usuário+senha — nunca senha em texto puro
     // (scrypt), nunca @ no username (impossível colidir com e-mail de admin),
     // e as 2 rotas têm rate limit (força-bruta de senha/username).
