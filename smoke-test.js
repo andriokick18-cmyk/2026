@@ -851,7 +851,10 @@ async function drillBloqueioComprasNovas() {
     // só então o /api/cadastro aceita. Pipeline inteiro provado, sem rede.
     const OUTBOX = path.join(DATA, "notif_outbox.json");
     const lerOutbox = () => { try { return JSON.parse(fs.readFileSync(OUTBOX, "utf8")); } catch { return []; } };
-    const ultimoCodigo = (to, tipo) => { const m = lerOutbox().filter((x) => x.to === to && x.tipo === tipo).pop(); const c = m && String(m.text || "").match(/▶\s+(\d{6})\s+◀/); return c ? c[1] : null; };
+    // v237q: o texto do e-mail encurtou (removeu as setas ▶ ◀ — texto curto
+    // demais cai menos em spam) — o código agora vive sozinho na própria
+    // linha, entre quebras de linha.
+    const ultimoCodigo = (to, tipo) => { const m = lerOutbox().filter((x) => x.to === to && x.tipo === tipo).pop(); const c = m && String(m.text || "").match(/^(\d{6})$/m); return c ? c[1] : null; };
     const verificar = async (email) => { const r = await req2("POST", "/api/email/enviar-codigo", { email }); if (r.status !== 200) throw new Error("enviar-codigo " + r.status + " " + r.body.slice(0, 80)); const c = ultimoCodigo(email.toLowerCase(), "codigo_cadastro"); const k = await req2("POST", "/api/email/confirmar", { email, codigo: c }); return k.json?.token; };
     // 🔐 v176 (dono, 13/09/2026 — "quando o sistema identificar meu e-mail
     // que é de adm ele não pede verificação"): e-mail de admin pula reto pro
@@ -876,8 +879,12 @@ async function drillBloqueioComprasNovas() {
     const _env1 = await req2("POST", "/api/email/enviar-codigo", { email: "Fulano.V175@gmail.com" });
     const _cod1 = ultimoCodigo("fulano.v175@gmail.com", "codigo_cadastro");
     const _mail1 = lerOutbox().find((x) => x.to === "fulano.v175@gmail.com");
-    check("📧 v175: Enviar verificação → e-mail com código de 6 dígitos sai pela conta de suporte (outbox), vale 5 min, reenvio em 60s, texto avisa que é o mesmo Gmail que vai enviar as candidaturas",
-      _env1.status === 200 && _env1.json?.expiraEm === 300 && _env1.json?.reenvioEm === 60 && /^\d{6}$/.test(_cod1 || "") && _mail1?.from === "suporteh2bapply@gmail.com" && /5 minutos/.test(_mail1?.text || "") && /ENVIAR suas candidaturas/.test(_mail1?.text || "") && String(_mail1?.subject || "").includes(_cod1 || "x"),
+    // v237q (URGENTE, ordem do dono, 20/09/2026): texto do e-mail encurtado
+    // pra reduzir risco de cair em spam — o aviso "este e-mail vai ser o
+    // mesmo que você vai conectar pra ENVIAR candidaturas" saiu do corpo do
+    // e-mail (o cadastro já deixa isso claro na própria tela).
+    check("📧 v175: Enviar verificação → e-mail com código de 6 dígitos sai pela conta de suporte (outbox), vale 5 min, reenvio em 60s, texto curto (anti-spam) com o código na própria linha",
+      _env1.status === 200 && _env1.json?.expiraEm === 300 && _env1.json?.reenvioEm === 60 && /^\d{6}$/.test(_cod1 || "") && _mail1?.from === "suporteh2bapply@gmail.com" && /5 minutos/.test(_mail1?.text || "") && String(_mail1?.subject || "").includes(_cod1 || "x"),
       `status=${_env1.status} codigo=${_cod1} from=${_mail1?.from}`);
     check("🔐 v176: e-mail COMUM (não-admin) nunca pula o código — o bootstrap é só pra e-mail de admin, todo o resto continua exigindo o código de 6 dígitos", !_env1.json?.autoVerificado, JSON.stringify(_env1.json));
     const _env2 = await req2("POST", "/api/email/enviar-codigo", { email: "fulano.v175@gmail.com" });
@@ -964,11 +971,26 @@ async function drillBloqueioComprasNovas() {
     // pra quem não tem, a rota nunca chega no rate-limit por e-mail (cai
     // direto no `else`, sempre 200). Um status diferente aqui já entregava
     // se o e-mail tem conta, sem precisar medir tempo nenhum.
+    //
+    // 🚨🚨 v237q (URGENTE, ordem do dono, 20/09/2026 — usuário real sem
+    // receber código): o v237m (fire-and-forget, sem cooldown NENHUM
+    // aparecendo na resposta) resolveu a enumeração mas criou um bug pior —
+    // reenviar rápido demais (usuário ansioso clicando de novo) SEMPRE via
+    // "o código foi enviado", mesmo quando NADA foi gerado/mandado de
+    // verdade, deixando a pessoa esperando um e-mail que nunca chega, sem
+    // nenhum aviso pra esperar. Agora existe um cooldown UNIFORME (por
+    // e-mail DIGITADO, nunca por conta — roda ANTES de checar se existe
+    // conta, então é idêntico com ou sem conta real) que avisa "já pedi,
+    // espera" de verdade, sem reabrir a enumeração: os 2 e-mails (com conta
+    // e sem conta) batem no MESMO cooldown com a MESMA resposta.
     const _recDup = await req2("POST", "/api/senha/enviar-codigo", { email: "fulano.v175@gmail.com" });
-    check("🚨 v237m: pedir um 2º código pro MESMO e-mail dentro da janela de reenvio (antes um 429 só pra quem TEM conta) continua devolvendo 200 com a MESMA mensagem genérica — o rate-limit por e-mail ainda vale (nenhum código novo é gerado/enviado), só não aparece mais na resposta HTTP",
-      _recDup.status === 200 && _recDup.body === _recOk.body &&
+    const _recDupNo = await req2("POST", "/api/senha/enviar-codigo", { email: "ninguem.v175@gmail.com" });
+    check("🚨 v237q: pedir um 2º código pro MESMO e-mail dentro de 60s AVISA que precisa esperar (cooldown:true) em vez de fingir sucesso mudo — nenhum código novo é gerado — e a resposta é IDÊNTICA pra e-mail com conta e sem conta (sem reabrir a enumeração que o v237m fechou)",
+      _recDup.status === 200 && _recDup.json?.cooldown === true &&
+      _recDupNo.status === 200 && _recDupNo.json?.cooldown === true &&
+      _recDup.body === _recDupNo.body &&
       ultimoCodigo("fulano.v175@gmail.com", "codigo_senha") === _codRec,
-      `status=${_recDup.status} corpoIgual=${_recDup.body === _recOk.body} codigoMudou=${ultimoCodigo("fulano.v175@gmail.com", "codigo_senha") !== _codRec}`);
+      `dup=${JSON.stringify({ status: _recDup.status, cd: _recDup.json?.cooldown })} dupNo=${JSON.stringify({ status: _recDupNo.status, cd: _recDupNo.json?.cooldown })} corpoIgual=${_recDup.body === _recDupNo.body} codigoMudou=${ultimoCodigo("fulano.v175@gmail.com", "codigo_senha") !== _codRec}`);
     const _redefBad = await req2("POST", "/api/senha/redefinir", { email: "fulano.v175@gmail.com", codigo: "111111", novaSenha: "novasenha123" });
     const _redefCurta = await req2("POST", "/api/senha/redefinir", { email: "fulano.v175@gmail.com", codigo: _codRec, novaSenha: "123" });
     const _redefOk = await req2("POST", "/api/senha/redefinir", { email: "fulano.v175@gmail.com", codigo: _codRec, novaSenha: "novasenha123" });

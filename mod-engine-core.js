@@ -107,4 +107,22 @@ function warmupCapForSender(addedAtTsOrIso) {
   return null;             // dia 15+: sem teto extra, vale o limite do plano
 }
 
-module.exports = { createCalcSmartInterval, nowBRT, todayStrBRT, toLocaleBRT, daysSince, warmupCapForSender };
+// 📅 v237p (achado de auditoria — Média, admin): "dias restantes"/"vencido
+// há Xd" espalhado pelo painel usava Math.ceil((expira-agora)/86400000) —
+// como vip.manualExpires/autoExpires guarda a HORA exata da ativação, uma
+// fração de dia (ex.: ativou às 20h, admin olha às 9h) arredondava PRA CIMA
+// e mostrava +1 dia fantasma, mudando de valor conforme a HORA do dia em
+// que alguém olha, não só a data. Fonte ÚNICA: diferença de DATAS DE
+// CALENDÁRIO em BRT (UTC-3 fixo — Brasil não tem mais horário de verão
+// desde 2019), nunca divisão bruta de milissegundos. Positivo = dias que
+// faltam; negativo = dias vencido; 0 = vence hoje. Espelhada em app.js
+// (daysLeft) com o MESMO algoritmo — nunca reintroduzir Math.ceil de
+// milissegundos pra dias em lugar nenhum novo.
+function diasRestantesCanonico(expiraMs, agoraMs) {
+  if (!expiraMs) return null;
+  const agora = agoraMs == null ? Date.now() : agoraMs;
+  const diaCivilBRT = (ms) => Math.floor((ms - 3 * 60 * 60 * 1000) / 86400_000);
+  return diaCivilBRT(expiraMs) - diaCivilBRT(agora);
+}
+
+module.exports = { createCalcSmartInterval, nowBRT, todayStrBRT, toLocaleBRT, daysSince, warmupCapForSender, diasRestantesCanonico };

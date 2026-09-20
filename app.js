@@ -587,6 +587,11 @@ async function agRecEnviar(){
     const d=await _agReadJson(r);
     if(!r.ok)throw new Error(d.error||"Não foi possível enviar o código agora.");
     agRender("recuperar",{fase:"codigo"});
+    // 🚨 v237q (URGENTE, 20/09/2026): antes, pedir de novo rápido demais
+    // mostrava a MESMA tela de "enviado" sem avisar que nada novo foi
+    // mandado — a pessoa ficava esperando um e-mail que não vinha, achando
+    // o site quebrado. Servidor agora avisa (cooldown:true) — mostra aqui.
+    if(d.cooldown&&d.msg)setTimeout(()=>toast(d.msg),300);
   }catch(e){showErr("⚠️ "+e.message);if(btn){btn.disabled=false;btn.innerHTML='Enviar código <i class="ti ti-send"></i>';}}
 }
 async function agRecRedefinir(){
@@ -742,7 +747,18 @@ function dismissAdminMsg(){g("#admin-msg-bar")?.classList.add("gone");}
 // ═══════════════════════════════════════════
 
 // ── Dias restantes a partir de um timestamp ──────
-function daysLeft(ts){if(!ts)return-1;const d=Math.ceil((ts-Date.now())/86400000);return Math.max(0,d);}
+// 📅 v237p (achado de auditoria — Média, admin): Math.ceil((ts-Date.now())/
+// 86400000) mudava de valor conforme a HORA em que a pessoa olhava a tela
+// (ts guarda a hora exata da ativação — uma fração de dia arredondava PRA
+// CIMA, +1 dia fantasma). Espelho do diasRestantesCanonico() do servidor
+// (mod-engine-core.js) — MESMA conta: diferença de DATAS de calendário em
+// BRT (UTC-3 fixo), nunca divisão bruta de milissegundos. Público 100%
+// brasileiro (regra 6f) — usa BRT sempre, não o fuso do navegador.
+function daysLeft(ts){
+  if(!ts)return-1;
+  const diaCivilBRT=ms=>Math.floor((ms-3*60*60*1000)/86400000);
+  return Math.max(0,diaCivilBRT(ts)-diaCivilBRT(Date.now()));
+}
 
 // 🏷️ v198 LOTE 16 — NOME DE PLANO: UMA CONSTANTE SÓ.
 // Havia 8 grafias divergentes espalhadas ("⭐ VIP"/"⭐VIP"/"VIP Manual",

@@ -277,7 +277,7 @@ const CONFIGURADO_OAUTH = () => CONFIGURED; // v175: usado pela aba Notificaçõ
 // Admins podem configurar intervalo menor.
 // adminIntervalSecs: número de segundos entre envios (mín 30s para admins)
 // calcSmartInterval: corpo em src/engine/core.js (Fase 1 · Módulo 6)
-const { createCalcSmartInterval, nowBRT: _nowBRTMod, todayStrBRT: _todayStrBRTMod, toLocaleBRT: _toLocaleBRTMod, warmupCapForSender } = require("./mod-engine-core.js");
+const { createCalcSmartInterval, nowBRT: _nowBRTMod, todayStrBRT: _todayStrBRTMod, toLocaleBRT: _toLocaleBRTMod, warmupCapForSender, diasRestantesCanonico } = require("./mod-engine-core.js");
 // 🔒 Integridade de vagas — 1 vaga = 1 ETA Case Number único (KB-076).
 // Mesmo módulo usado pelo build-sheets.js standalone, pra nunca divergir a
 // regra de dedupe/merge entre o cron oficial e o bot de coleta do admin.
@@ -669,7 +669,7 @@ function computeFinanceCanonico(){
     for(const x of pags){if((x.date||0)>=monthStart)receitaMes+=x.valor;}
     const plan=vip.plan||getPlan(u); if(porPlano[plan]!==undefined){porPlano[plan]+=tot;porPlanoQtd[plan]++;}
     const nextExp=Math.max(vip.manualExpires||0,vip.autoExpires||0);
-    if(nextExp>0){const dleft=Math.ceil((nextExp-now)/86400000); if(dleft<=0)vencidos++; else if(dleft<=7){vencendo7++;vencendo7Valor+=(PRICE[plan]||100);}}
+    if(nextExp>0){const dleft=diasRestantesCanonico(nextExp,now); if(dleft<=0)vencidos++; else if(dleft<=7){vencendo7++;vencendo7Valor+=(PRICE[plan]||100);}}
   }
   topPagantes.sort((a,b)=>b.valor-a.valor);
   let receitaAvulsa=0; const avulsas=[];
@@ -2206,8 +2206,8 @@ function reconciliarPlanosComPedidos(apply){
     const item={email,name:u.name||"",plano:planoPed,pedidos:peds.length,
       antes:{plan:u.plan||"free",manualExpires:curM,autoExpires:curA},
       depois:{plan:planFinal,manualExpires:novoM,autoExpires:novoA},
-      diasManualDevolvidos:needM?Math.max(0,Math.ceil((novoM-Math.max(curM,Date.now()))/86400_000)):0,
-      diasAutoDevolvidos:needA?Math.max(0,Math.ceil((novoA-Math.max(curA,Date.now()))/86400_000)):0};
+      diasManualDevolvidos:needM?Math.max(0,diasRestantesCanonico(novoM,Math.max(curM,Date.now()))):0,
+      diasAutoDevolvidos:needA?Math.max(0,diasRestantesCanonico(novoA,Math.max(curA,Date.now()))):0};
     relatorio.push(item);
     if(apply){
       setUser(email,{plan:planFinal,
@@ -8170,12 +8170,41 @@ filtrar();
     // um 429 visível). TODO caminho cai no MESMO floor de 400ms e na MESMA
     // resposta genérica — sem conta, com conta, ou rate-limitado, é tudo
     // idêntico pra quem está do outro lado da rede.
+    //
+    // 🚨🚨 v237q (URGENTE, ordem do dono, 20/09/2026 — usuário real sem
+    // receber o código): o v237m criou um efeito colateral sério. O
+    // rate-limit por e-mail (NOTIF.podeEnviar — só existe pra conta REAL,
+    // porque só é alimentado dentro do `if(u&&...)`) ficou 100% silencioso.
+    // Se a pessoa clicasse "reenviar" antes de passar o cooldown (60s) ou
+    // depois de esgotar as 3 tentativas em 15min — o MAIS PROVÁVEL de
+    // acontecer com alguém ansioso porque o 1º e-mail está demorando —
+    // NENHUM código novo era gerado/enviado, mas a tela seguia dizendo
+    // "o código chegou lá" toda vez, sem avisar "espera, já mandei um".
+    // A pessoa via a MESMA mensagem de sucesso indefinidamente e nunca
+    // recebia nada, achando o site quebrado.
+    // Correção: um cooldown por E-MAIL DIGITADO (nunca por conta — aplicado
+    // ANTES de checar se a conta existe, então é idêntico pra e-mail real
+    // ou inventado, sem reabrir a enumeração) usa o `rateLimit()` genérico
+    // (2 janelas: 1/60s e 3/15min, mesmos números de sempre) pra decidir se
+    // ESTE pedido é um reenvio rápido demais — e, se for, a resposta diz
+    // isso com clareza (mesma resposta pra QUALQUER e-mail, exista conta ou
+    // não) em vez de fingir sucesso mudo.
     const _t0=Date.now();
     try{
       const d=JSON.parse((await readBody(req))||"{}");
       const email=String(d.email||"").trim().toLowerCase();
       if(!email.includes("@"))return json(res,400,{error:"Informe o e-mail cadastrado."});
       if(!NOTIF.conectada())return json(res,503,{error:"A recuperação por e-mail está temporariamente indisponível. Chame o suporte no WhatsApp."});
+      // v237q: cooldown UNIFORME por e-mail digitado — roda pra QUALQUER
+      // e-mail (com conta ou sem), então nunca vira sinal de enumeração.
+      const _cd60=rateLimit("senhacd60_"+email,1,60_000);
+      const _cd15=rateLimit("senhacd15_"+email,3,900_000);
+      if(_cd60||_cd15){
+        const _falta0=400-(Date.now()-_t0);
+        if(_falta0>0)await new Promise(r=>setTimeout(r,_falta0));
+        return json(res,200,{ok:true,cooldown:true,
+          msg:_cd15?"Muitos pedidos de código pra esse e-mail. Aguarde alguns minutos antes de tentar de novo (confira também o spam).":"Se você já pediu um código pra esse e-mail, aguarde 1 minuto antes de pedir outro (confira também o spam)."});
+      }
       const u=_findUserByEmail(email);
       // 🚨 v177-FIX (auditoria 14/09/2026, ALTA): isAdminEmail(u.email) só
       // protege conta admin do formato ANTIGO (chave = Gmail real). Uma
@@ -8186,15 +8215,10 @@ filtrar();
       // comum, sem nunca precisar da senha do painel /admin dedicado.
       // isAdminVip(u) cobre os 2 formatos (checa u.isAdmin OU isAdminEmail).
       if(u&&!isAdminVip(u)){
-        const pode=NOTIF.podeEnviar("senha",email);
-        if(pode.ok){
-          const c=NOTIF.gerarCodigo("senha",email);
-          const tpl=NOTIF.templateCodigoSenha({codigo:c.codigo});
-          NOTIF.sendMail({to:email,subject:tpl.subject,text:tpl.text,tipo:"codigo_senha"})
-            .catch(e=>console.warn("[senha/enviar-codigo] falha no envio (resposta segue genérica, anti-enumeração):",e.message));
-        } else {
-          console.warn(`[senha/enviar-codigo] rate-limit por e-mail atingido (${email}) — resposta segue genérica (anti-enumeração)`);
-        }
+        const c=NOTIF.gerarCodigo("senha",email);
+        const tpl=NOTIF.templateCodigoSenha({codigo:c.codigo});
+        NOTIF.sendMail({to:email,subject:tpl.subject,text:tpl.text,tipo:"codigo_senha"})
+          .catch(e=>console.warn("[senha/enviar-codigo] falha no envio (resposta segue genérica, anti-enumeração):",e.message));
       }
       const _falta=400-(Date.now()-_t0);
       if(_falta>0)await new Promise(r=>setTimeout(r,_falta));
@@ -10376,7 +10400,7 @@ filtrar();
         autoExpires:tu.vip?.autoExpires||0,
         source:tu.vip?.source||null,
         manualAtivo:!!(tu.vip?.manualExpires&&tu.vip.manualExpires>_now)&&tu.vip?.source!=="trial",
-        diasRestantes:Math.max(0,Math.ceil(((Math.max(tu.vip?.manualExpires||0,tu.vip?.autoExpires||0))-_now)/86400000)),
+        diasRestantes:Math.max(0,diasRestantesCanonico(Math.max(tu.vip?.manualExpires||0,tu.vip?.autoExpires||0),_now)),
         creditos:Array.isArray(tu.vip?.creditos)?tu.vip.creditos.slice(-30).reverse():[],
         totalPago:(tu.vip?.creditos||[]).filter(c=>c.tipo==="pago").reduce((a,c)=>a+(c.dias||0),0),
         totalGratis:(tu.vip?.creditos||[]).filter(c=>c.tipo==="gratis").reduce((a,c)=>a+(c.dias||0),0),
@@ -12524,7 +12548,7 @@ if(pathname==="/api/admin/pagantes"&&req.method==="GET"){try{
     if(!isPayer)continue;
     const plan=vip.plan||getPlan(u);
     const nextExp=Math.max(vip.manualExpires||0,vip.autoExpires||0);
-    const daysLeft = nextExp>0 ? Math.ceil((nextExp-now)/86400000) : null;
+    const daysLeft = diasRestantesCanonico(nextExp,now);
     const manualActive=isManualVipActive(u);const autoActive=isAutoVipActive(u);
     const status = daysLeft===null?"sem_data":(daysLeft<=0?"vencido":(daysLeft<=3?"vencendo":"ativo"));
     const totalPago=pagamentos.reduce((acc,p)=>acc+p.valor,0);
@@ -12600,7 +12624,7 @@ if(pathname==="/api/admin/contabilidade"&&req.method==="GET"){
       if(!u||!u.email)continue;
       const vip=u.vip||{};
       const nextExp=Math.max(vip.manualExpires||0,vip.autoExpires||0);
-      const daysLeft=nextExp>0?Math.ceil((nextExp-now)/86400000):null;
+      const daysLeft=diasRestantesCanonico(nextExp,now);
       const diasCreditadosPagos=(Array.isArray(vip.creditos)?vip.creditos:[])
         .filter(c=>c&&c.tipo==="pago").reduce((a,c)=>a+(parseInt(c.dias,10)||0),0);
       // 🤖 v188 LOTE 6: dia PAGO e dia DADO são coisas diferentes e a régua do
@@ -12808,7 +12832,7 @@ if(pathname.startsWith("/api/admin/financeiro-usuario/")&&req.method==="GET"){tr
   const now=Date.now();
   const vip=u.vip||{};
   const hist=getHist(email);
-  const daysLeftOf=ts=>ts&&ts>now?Math.ceil((ts-now)/86400_000):(ts?0:null);
+  const daysLeftOf=ts=>ts?diasRestantesCanonico(ts,now):null;
 
   // Pedidos deste usuário — completo (comprovante fica como flag; o admin
   // abre o comprovante inteiro clicando, via GET /api/pedido/:id já existente).

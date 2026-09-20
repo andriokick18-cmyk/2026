@@ -3204,3 +3204,85 @@ partir da posição da guarda pra achar o loop CERTO, de dentro de
 resquício de `seasonal`. `npm test` 100% verde,
 `check-duplicates.js`/`check-xss-guard.js` sem achados. sw.js v99→v100.
 
+## v237p — "dias restantes" por Math.ceil de milissegundos, não por dia civil (achado Média de admin) (20/09/2026)
+
+7 lugares (6 em server.js, 1 em app.js) calculavam "dias restantes"/
+"vencido há Xd" com `Math.ceil((expira-agora)/86400000)` — como
+`vip.manualExpires`/`autoExpires` guarda a HORA EXATA da ativação, uma
+fração de dia arredondava PRA CIMA e mudava de valor conforme a HORA
+do dia em que alguém olhava a tela (não só a data) — a mesma classe
+de bug já corrigida no site-fonte (rule 13r3 do histórico da casa),
+que nunca tinha sido portada pra este repo reconstruído do zero.
+
+Corrigido com fonte ÚNICA `diasRestantesCanonico(expira,agora)`
+(mod-engine-core.js, ao lado de `nowBRT`/`daysSince`) — diferença de
+DATAS DE CALENDÁRIO em BRT (UTC-3 fixo, Brasil não tem mais horário
+de verão desde 2019), nunca divisão bruta de milissegundos. Positivo
+= dias que faltam; negativo = dias vencido; 0 = vence hoje. Aplicada
+nos 6 lugares do server.js (`computeFinanceCanonico`'s vencendo7,
+reconciliação de plano/dias devolvidos, `/api/admin/financeiro-usuario`'s
+diasRestantes e daysLeftOf, `/api/admin/pagantes` e o resumo do dono —
+os 2 últimos já tinham o comentário "fórmula EXATA de /api/admin/
+pagantes", confirmando que era pra ser a MESMA conta em todo lugar) e
+espelhada em `daysLeft()` (app.js, MESMO algoritmo, comentado como
+espelho) — público 100% brasileiro (regra 6f), sempre BRT, nunca o
+fuso do navegador. `daysLeftOf` (rota de auditoria por usuário, sem
+consumidor no admin.html hoje — só usada em testes) passou a devolver
+o valor SIGNED de verdade (negativo quando vencido) em vez de
+clampar em 0, ficando consistente com as rotas irmãs.
+
+Testes: confirmado que nenhum `Math.ceil((...)/86400000)` sobrou em
+server.js/app.js/admin.html/index.html. `npm test` 100% verde,
+`check-duplicates.js`/`check-xss-guard.js` sem achados. sw.js
+v100→v101 (app.js mudou).
+
+## v237q — 🚨 URGENTE: código de verificação por e-mail não chegava em reenvio rápido (ordem direta do dono, 20/09/2026)
+
+Print real do dono: um usuário (jormunch@gmail.com) tentando
+"Esqueci minha senha" via a tela dizendo "o código chegou lá" sem
+NUNCA receber nada — e a caixa de Enviados da conta de notificações
+não tinha NENHUM e-mail pra esse endereço. Causa raiz: efeito
+colateral do PRÓPRIO v237m (fechado mais cedo no mesmo dia). Antes do
+v237m, pedir um 2º código antes de 60s (ou depois de 3 em 15min) dava
+429 "aguarde" — só pra quem TINHA conta (o rate-limit interno do
+NOTIF só existe pra conta real), o que era em si um vazamento de
+enumeração. O v237m fechou a enumeração corretamente (fire-and-forget,
+nunca mais um 429 visível) mas, ao fazer isso, tornou o cooldown
+100% MUDO: reenviar rápido demais (o comportamento NATURAL de alguém
+ansioso porque o 1º e-mail está demorando ou foi pro spam) sempre
+mostrava "o código foi enviado" — mesmo quando NADA era gerado/
+mandado de verdade — e a pessoa ficava esperando pra sempre um e-mail
+que nunca chegaria.
+
+Corrigido SEM reabrir a enumeração: cooldown UNIFORME por E-MAIL
+DIGITADO (nunca por conta) — roda ANTES de checar se a conta existe
+(`rateLimit("senhacd60_"+email,1,60_000)` +
+`rateLimit("senhacd15_"+email,3,900_000)`, reusando o limitador
+genérico de sempre), então é IDÊNTICO pra e-mail real ou inventado —
+sem reabrir o vazamento que o v237m fechou. Quando o cooldown pega,
+a resposta agora AVISA de verdade (`cooldown:true` + mensagem clara
+pra esperar) em vez de fingir sucesso mudo; o front (`agRecEnviar`,
+app.js) mostra esse aviso num toast. Aproveitado pra atender o 2º
+pedido do dono no mesmo print: os textos de `templateCodigoCadastro`/
+`templateCodigoSenha` (mod-notif.js) foram DRASTICAMENTE encurtados
+(sem ALL CAPS, sem boilerplate de segurança tipo "nunca vai pedir por
+telefone" — exatamente o tipo de frase que filtro de spam pontua mal)
+— só código + validade + "se não foi você, ignore"; o código continua
+no assunto (bom pra abertura rápida).
+
+Achado no caminho: `ultimoCodigo()` (smoke-test.js) extraía o código
+via regex `/▶\s+(\d{6})\s+◀/` — casada com as setas do template
+ANTIGO. Encurtar o texto quebrou esse extrator e cascateou ~19 testes
+que dependiam dele (toda a suíte v175 de cadastro/senha, que cria
+contas usadas por MUITOS testes depois). Corrigido pra `/^(\d{6})$/m`
+(código sozinho na própria linha, formato do texto novo) — sem isso
+o `npm test` teria ficado vermelho.
+
+Testes: 1 check reescrito (`v237q`, era `v237m`) provando que o 2º
+pedido rápido devolve `cooldown:true` com a MESMA resposta pra e-mail
+com conta e sem conta (nenhuma enumeração nova), e que nenhum código
+novo é gerado. Toda a suíte v175 (cadastro/senha/recuperação, ~30
+checks) confirmada verde depois do fix do extrator. `npm test` 100%
+verde, `check-duplicates.js`/`check-xss-guard.js` sem achados. sw.js
+v101→v102 (app.js mudou).
+

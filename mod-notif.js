@@ -181,17 +181,22 @@ function createNotif(deps) {
   }
 
   // ── templates (PT-BR, texto puro — chega em qualquer cliente de e-mail) ──
-  const rodape = `\n\n—\n${APP_NAME} · ${appUrl || "https://h2bapply.com"}\nEste e-mail foi enviado automaticamente pelo sistema. Se você não pediu este código, pode ignorar esta mensagem com segurança — nada acontece na sua conta sem ele.`;
+  // 🚨 v237q (URGENTE, ordem do dono, 20/09/2026 — "diminua o texto da msg
+  // pra não cair em spam"): os textos antigos eram longos, com ALL CAPS
+  // ("IMPORTANTE") e boilerplate de segurança ("nunca vai pedir por telefone
+  // ou WhatsApp") — exatamente o tipo de frase que filtro de spam pontua mal.
+  // Curtos, sem caixa alta, só o essencial: código + validade + "se não foi
+  // você, ignore". O código já vai no ASSUNTO (bom pra abertura rápida).
   function templateCodigoCadastro({ codigo }) {
     return {
       subject: `${codigo} é o seu código de confirmação — ${APP_NAME}`,
-      text: `Olá!\n\nVocê está criando sua conta no ${APP_NAME}. Use o código abaixo pra confirmar que este e-mail é seu:\n\n    ▶  ${codigo}  ◀\n\nO código vale por 5 minutos e só funciona no cadastro que você está fazendo agora.\n\nIMPORTANTE: este e-mail vai ser o mesmo que você vai conectar depois pra ENVIAR suas candidaturas (envio manual e automático). Guarde bem o acesso a ele.\n\nNão compartilhe este código com ninguém — a equipe do ${APP_NAME} nunca vai pedir ele por telefone ou WhatsApp.${rodape}`,
+      text: `Seu código de confirmação do ${APP_NAME}:\n\n${codigo}\n\nVale 5 minutos. Se você não pediu, ignore este e-mail.`,
     };
   }
   function templateCodigoSenha({ codigo }) {
     return {
       subject: `${codigo} é o seu código pra redefinir a senha — ${APP_NAME}`,
-      text: `Olá!\n\nRecebemos um pedido pra redefinir a senha da sua conta no ${APP_NAME}. Use o código abaixo:\n\n    ▶  ${codigo}  ◀\n\nEle vale por 5 minutos. Se você NÃO pediu pra trocar a senha, ignore este e-mail: sua senha continua a mesma e ninguém consegue entrar só com este código sem estar na tela de recuperação.\n\nNão compartilhe este código com ninguém.${rodape}`,
+      text: `Seu código pra redefinir a senha do ${APP_NAME}:\n\n${codigo}\n\nVale 5 minutos. Se você não pediu, ignore este e-mail.`,
     };
   }
 
