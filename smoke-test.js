@@ -4311,6 +4311,25 @@ async function drillBloqueioComprasNovas() {
     check("🔓 v153: desbanir pela rota funciona (lista fica vazia)",
       unb.json?.ok === true && (banLs2.json?.emails || []).length === 0,
       JSON.stringify({ unb: unb.json, depois: banLs2.json?.emails }).slice(0, 120));
+
+    // ═══ 🚨 v228 (achado de auditoria — Alta): DB_BLOCKED só existia de
+    // decoração — nenhuma rota de cadastro/login olhava a lista, então
+    // banir um Gmail não impedia a MESMA pessoa recriar conta na hora só
+    // trocando o username. Regressão ponta a ponta: banir → código de
+    // verificação confirmado → cadastro é RECUSADO mesmo assim → desbanir
+    // → o MESMO e-mail volta a cadastrar normal.
+    const banV228 = await req2("POST", "/api/admin/ban-email", { email: "banido.v228@gmail.com" });
+    const tokV228 = await verificar("banido.v228@gmail.com");
+    const cadV228 = await cadastroCompleto({ username: "user_v228_banido", email: "banido.v228@gmail.com", emailToken: tokV228 });
+    check("🚫 v228: e-mail banido é RECUSADO no cadastro (403) mesmo com o código de verificação já confirmado — banir de verdade impede recadastro, não é mais só decorativo",
+      banV228.json?.ok === true && cadV228.status === 403 && /banido permanentemente/i.test(cadV228.json?.error || ""),
+      JSON.stringify({ ban: banV228.json, cad: cadV228.status, err: cadV228.json?.error }).slice(0, 200));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "andrio.usa2026@gmail.com", name: "Dono", isAdmin: true });
+    await req2("POST", "/api/admin/unban-email", { email: "banido.v228@gmail.com" });
+    const cadV228b = await cadastroCompleto({ username: "user_v228_ok", email: "banido.v228@gmail.com", emailToken: tokV228 });
+    check("🔓 v228: desbanindo, o MESMO e-mail volta a cadastrar normalmente — o bloqueio é só enquanto banido, nunca permanente por engano",
+      cadV228b.status === 200 && cadV228b.json?.ok === true,
+      JSON.stringify(cadV228b.json).slice(0, 160));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
 
     // ═══ 💼 MC4 — PARTE 3 (28/08): DRE MENSAL + RELATÓRIO EXECUTIVO ════════

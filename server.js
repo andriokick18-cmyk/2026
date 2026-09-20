@@ -8300,6 +8300,14 @@ filtrar();
       if(!cidade||!estado||!pais)return json(res,400,{error:"Cidade, estado e país são obrigatórios."});
       if(whatsapp.replace(/\D/g,"").length<10)return json(res,400,{error:"Informe seu WhatsApp com DDD (só números, ex.: 5511999999999)."});
       if(!_isGmail(email))return json(res,400,{error:"Informe um Gmail válido (…@gmail.com) — é por ele que o site envia suas candidaturas."});
+      // 🚨 v228 (achado de auditoria — Alta): DB_BLOCKED.emails era escrito
+      // por /api/admin/ban-email e pelo banir:true do delete-user, mas
+      // NENHUMA rota de cadastro/login olhava essa lista — banir um Gmail
+      // não impedia a MESMA pessoa recriar conta na hora com o MESMO Gmail
+      // de contato (só trocando o username, que é livre). Checado aqui,
+      // ANTES do fluxo de verificação de código, pra não fazer alguém
+      // banido gastar um código de e-mail à toa.
+      if(DB_BLOCKED.emails.includes(email))return json(res,403,{error:"Esse e-mail está banido permanentemente do H2BApply. Se você acredita que isso é um engano, chame o suporte no WhatsApp +55 53 98145-3496."});
       // 🚨 v177-FIX7: o token "e-mail verificado" é assinado com um segredo que
       // NASCE JUNTO COM O PROCESSO — um deploy entre o "confirmar código" e o
       // "criar conta" invalida um token legítimo. A mensagem agora explica.

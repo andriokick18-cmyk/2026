@@ -2289,3 +2289,39 @@ Chromium nesta suíte, a garantia aqui é de código-fonte, não
 comportamental. `npm test` 100% verde, `check-duplicates.js`/
 `check-xss-guard.js` sem achados. sw.js bumpado (v87→v88).
 
+## v228 — achado Alta da auditoria (pagamento/admin): banir e-mail era decorativo (20/09/2026)
+
+`DB_BLOCKED.emails` é gravado por `/api/admin/ban-email` e pelo
+`banir:true` de `/api/admin/delete-user` — mas até aqui NENHUMA rota de
+cadastro ou login olhava essa lista pra valer. Na prática, um admin
+banir um Gmail não impedia nada: a mesma pessoa recriava conta na hora,
+com o MESMO Gmail de contato, só trocando o username (que é livre e
+sem relação com o e-mail). O único consumo real da lista era um aviso
+de diagnóstico dentro de uma rota de revisão de usuários — nunca uma
+recusa de verdade em cadastro/login.
+
+Corrigido no `/api/cadastro`: checagem explícita de
+`DB_BLOCKED.emails.includes(email)` logo após validar que o e-mail é um
+Gmail (antes até de gastar o código de verificação da pessoa à toa) —
+403 com mensagem clara e o WhatsApp de suporte pra quem acha que foi
+engano. Escopo deliberadamente contido: não mexi em `/api/login` (a
+identidade de login é o `username`, não o e-mail de contato — o desvio
+real que a auditoria descreveu é "recriar conta com o mesmo e-mail",
+que é exatamente o caminho fechado aqui) nem no fluxo de conectar Gmail
+de envio via OAuth (feature mais ampla, fora do achado original — fica
+pra uma auditoria futura se o dono quiser essa camada extra).
+
+O achado irmão da mesma auditoria ("não existe UI de ban/delete no
+admin.html") **não foi tratado como bug**: o próprio smoke-test.js já
+documentava isso de propósito desde o v153 ("admin.html enxuto não tem
+UI de Auditoria/ban... a rota real é a parte que importa aqui") — é uma
+decisão de produto da reconstrução deste repo (admin mais enxuto), não
+um esquecimento. Fica registrado aqui caso o dono queira essa UI de
+volta no futuro.
+
+Testes: regressão ponta a ponta no smoke (banir → código de verificação
+confirmado → cadastro é recusado mesmo assim com 403 → desbanir → o
+MESMO e-mail volta a cadastrar normal). `npm test` 100% verde,
+`check-duplicates.js`/`check-xss-guard.js` sem achados. Mudança 100%
+em server.js — sem bump de sw.js.
+
