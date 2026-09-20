@@ -3749,3 +3749,57 @@ sem achados, revisão visual real no Chromium (hero + carrossel,
 desktop e mobile) confirmando que nada quebrou. sw.js v104→v105
 (index.html mudou).
 
+## v238c — 2º e-mail de conta de TESTE (andrio.kick18@gmail.com), mesma régua do v237v (dono, 20/09/2026)
+
+O dono trocou de conta na hora de gravar o vídeo de verificação do
+Google: em vez de `ndrkick.3@gmail.com` (v237v), decidiu usar a
+própria conta real dele, `andrio.kick18@gmail.com`, que ele acabou de
+começar a cadastrar no site de verdade. Pedido explícito: marcar essa
+conta com "a mesma lógica de conta de teste que já existe pro
+ndrkick.3@gmail.com (isTeste/naoEhReceita)" — comprovante fake aceito
+e pedido isolado de toda tela financeira real (Indicadores, Sócios,
+DRE mensal, Conferência/divergências, export CSV, resumo do dono,
+Pagantes) — sem remover a conta antiga, só somar uma nova.
+
+**Implementação**: generalizado o mecanismo ÚNICO já existente em vez
+de duplicar a lógica em cada tela (regra "fonte única" do CLAUDE.md).
+`mod-config.js` ganhou `TEST_ACCOUNT_EMAIL_2` (env/hardcoded,
+`andrio.kick18@gmail.com` por padrão) e `isTestAccountEmail(e)` passou
+a comparar contra os 2 e-mails exatos — nunca um padrão/regex, só os 2
+literais. Como `naoEhReceita`, `_usuarioNaoEhReceita`,
+`_pedidoNaoEhReceita` e o bypass de OCR em `preCheckComprovante` já
+roteavam TODOS por `isTestAccountEmail`, a mudança de uma função só
+propagou automaticamente pra todo o site (nenhuma tela precisou de
+edição própria). O link mágico `/entrar-conta-teste`/`/entrar-teste`
+ficou de propósito só no 1º e-mail — o Andrio está cadastrando a conta
+nova com usuário+senha próprios (cadastro normal), então não precisa
+de acesso sem senha a ela.
+
+**Achado de segurança verificado, não-bloqueante**: `andrio.kick18@
+gmail.com` JÁ está em `ADMIN_EMAILS_EXTRA` (o e-mail antigo do dono,
+mantido lá desde sempre "pra nenhuma trilha/registro antigo virar
+não-admin"). Isso NÃO dá privilégio de admin à marca de teste nova
+(`naoEhReceita` já cobria essa conta pelo lado admin, redundante com o
+lado teste) nem interfere no cadastro comum: uma conta nova só nasce
+admin quando o USERNAME escolhido está em `ADMIN_RESERVED_USERNAMES`
+("andrio"/"andrew"/"diego") E o e-mail bate — com qualquer outro
+username, a conta segue 100% comum e passa pelo fluxo real de plano
+pago + OAuth que o vídeo precisa mostrar (confirmado lendo o cadastro
+em server.js e `isAdminVip`/`isAdminEmail`, que comparam contra a
+CHAVE de login — o username da conta nova — nunca contra
+`emailContato`).
+
+Testes: 7 checks novos espelhando cada verificação já feita pro 1º
+e-mail (pedido criado, isTeste:true + PENDENTE, comprovante fake vira
+CONFERE, confirmação manual do admin ativa o plano, receita/pendentes
+da Visão do Dono intocados, nunca aparece em Pagantes, nunca aparece
+na Conferência) + 1 check de regressão provando que o 1º e-mail
+(`ndrkick.3@gmail.com`) continua funcionando junto com o 2º —
+generalizar a função não quebrou o comportamento original; o teste
+negativo do v237v (e-mail comum NÃO recebe o bypass) já cobre a régua
+"nunca vira padrão geral" e segue passando sem alteração. `npm test`
+100% verde (suíte inteira, isolada — sem processo concorrente),
+`node --check` nos 3 arquivos alterados. Sem bump de sw.js (mudança
+100% server-side — `mod-config.js`/`server.js`/`smoke-test.js`/
+`.env.example`, nenhum arquivo servido ao cliente mudou).
+

@@ -43,7 +43,22 @@ const isAdminEmail  = (e) => ADMIN_EMAILS.has((e||"").trim().toLowerCase());
 // padrão — só esse e-mail exato entra na exceção (ver preCheckComprovante,
 // server.js), e ele nunca ganha privilégio nenhum de admin.
 const TEST_ACCOUNT_EMAIL = (process.env.TEST_ACCOUNT_EMAIL || "ndrkick.3@gmail.com").trim().toLowerCase();
-const isTestAccountEmail = (e) => !!e && String(e).trim().toLowerCase() === TEST_ACCOUNT_EMAIL;
+// 🎬 v238c (dono, 20/09/2026 — trocou de conta na hora de gravar: "decidiu
+// gravar o vídeo... usando a própria conta real dele (andrio.kick18@gmail.com)
+// em vez da conta ndrkick.3@gmail.com"): 2º e-mail de teste, MESMA régua
+// exata da 1ª — nunca um padrão, só os 2 e-mails exatos abaixo. A conta
+// antiga não foi removida (só ganhou companhia): se algum pedido de teste
+// dela já existir, continua isolado igual sempre foi.
+// ⚠️ andrio.kick18@gmail.com JÁ está em ADMIN_EMAILS_EXTRA (linha acima) —
+// isso NÃO dá privilégio de admin pra essa marca de teste (naoEhReceita já
+// cobria essa conta pelo lado admin) nem interfere no cadastro normal: um
+// cadastro novo só nasce admin com USERNAME reservado (ADMIN_RESERVED_
+// USERNAMES, server.js) — usando um username qualquer, a conta segue 100%
+// comum e passa pelo fluxo real de plano pago + OAuth que o vídeo precisa
+// mostrar. isAdminEmail só compara contra a CHAVE de login (username em
+// conta nova), nunca contra emailContato — não colide com isso aqui.
+const TEST_ACCOUNT_EMAIL_2 = (process.env.TEST_ACCOUNT_EMAIL_2 || "andrio.kick18@gmail.com").trim().toLowerCase();
+const isTestAccountEmail = (e) => { const v = String(e || "").trim().toLowerCase(); return !!v && (v === TEST_ACCOUNT_EMAIL || v === TEST_ACCOUNT_EMAIL_2); };
 // Dinheiro que NUNCA conta como receita/venda real: conta de ADMIN (v53 —
 // "não pagamos pra usar o programa") OU a conta de TESTE acima. Fonte ÚNICA
 // pras telas financeiras (Indicadores, Sócios, DRE, Conferência, Pagantes,

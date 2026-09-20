@@ -7536,6 +7536,72 @@ async function drillBloqueioComprasNovas() {
         JSON.stringify({ isTeste: _pedNormalDetalhe.json?.pedido?.isTeste, preCheck: _pedNormalDetalhe.json?.pedido?.preCheck }));
     }
 
+    // 🎬 v238c (dono, 20/09/2026 — trocou de conta na hora de gravar o vídeo:
+    // "decidiu gravar... usando a própria conta real dele
+    // (andrio.kick18@gmail.com)"): 2º e-mail de teste (TEST_ACCOUNT_EMAIL_2,
+    // mod-config.js) — MESMA régua exata do v237v acima, provando que
+    // isTestAccountEmail generalizado cobre os 2 e-mails ao mesmo tempo
+    // (não é um "trocou de 1 pra outro" — os 2 continuam valendo juntos).
+    {
+      const _teste2Email = "andrio.kick18@gmail.com";
+      const _donoAntes2 = await req2("GET", "/api/admin/dono-resumo");
+      const _pagAntes2 = await req2("GET", "/api/admin/pagantes");
+      const _pagAntes2N = (_pagAntes2.json?.rows || []).filter(r => r.email === _teste2Email).length;
+
+      const _pedTeste2 = await req2("POST", "/api/pedido", {
+        userEmail: _teste2Email, plano: "vip", dias: 30,
+        userName: "Conta de Teste 2 (vídeo)", userWhatsapp: "11 90000-0001", userCity: "SP",
+        comprovante: Buffer.from("segundo-print-fake-conta-de-teste-v238c").toString("base64"),
+        comprovanteType: "image/jpeg", pagoEm: Date.now(),
+      });
+      check("🎬 v238c: pedido do 2º e-mail de teste (andrio.kick18@gmail.com) é criado normalmente",
+        _pedTeste2.status === 200 && !!_pedTeste2.json?.pedidoId,
+        JSON.stringify(_pedTeste2.json));
+      const _pedTeste2Id = _pedTeste2.json?.pedidoId;
+
+      const _pedTeste2Detalhe = await req2("GET", "/api/pedido/" + _pedTeste2Id);
+      check("🎬 v238c: o pedido do 2º e-mail sai isTeste:true, PENDENTE, e o comprovante fake vira CONFERE sem OCR — exatamente a régua do 1º e-mail",
+        _pedTeste2Detalhe.json?.pedido?.isTeste === true &&
+        _pedTeste2Detalhe.json?.pedido?.status === "pendente" &&
+        _pedTeste2Detalhe.json?.pedido?.preCheck?.veredito === "CONFERE",
+        JSON.stringify({ isTeste: _pedTeste2Detalhe.json?.pedido?.isTeste, status: _pedTeste2Detalhe.json?.pedido?.status, veredito: _pedTeste2Detalhe.json?.pedido?.preCheck?.veredito }));
+
+      const _confirmaTeste2 = await req2("PATCH", "/api/pedido/" + _pedTeste2Id, { status: "ativo", recebidoPor: "andrio" });
+      check("🎬 v238c: admin confirma manualmente o pedido do 2º e-mail de teste (confirmação humana nunca pulada)",
+        _confirmaTeste2.status === 200 && _confirmaTeste2.json?.ok === true,
+        JSON.stringify(_confirmaTeste2.json));
+
+      const _donoDepois2 = await req2("GET", "/api/admin/dono-resumo");
+      check("🎬 v238c: confirmar o pedido do 2º e-mail de teste NÃO move a receita/pendentes da Visão do Dono — isolamento financeiro idêntico ao 1º e-mail",
+        JSON.stringify(_donoDepois2.json?.entradas) === JSON.stringify(_donoAntes2.json?.entradas) &&
+        _donoDepois2.json?.pendentes?.valor === _donoAntes2.json?.pendentes?.valor,
+        JSON.stringify({ antes: _donoAntes2.json?.entradas, depois: _donoDepois2.json?.entradas }));
+
+      const _pagDepois2 = await req2("GET", "/api/admin/pagantes");
+      const _pagDepois2N = (_pagDepois2.json?.rows || []).filter(r => r.email === _teste2Email).length;
+      check("🎬 v238c: o 2º e-mail de teste NUNCA aparece em Pagantes, mesmo com plano ativo de verdade",
+        _pagAntes2N === 0 && _pagDepois2N === 0,
+        `antes=${_pagAntes2N} depois=${_pagDepois2N}`);
+
+      const _confConf2 = await req2("GET", "/api/admin/conferencia");
+      const _naConferencia2 = (_confConf2.json?.rows || []).some(r => r.id === _pedTeste2Id);
+      check("🎬 v238c: o pedido do 2º e-mail de teste NÃO aparece na Conferência",
+        !_naConferencia2,
+        JSON.stringify((_confConf2.json?.rows || []).find(r => r.email === _teste2Email)));
+
+      const _pedTeste1Regressao = await req2("POST", "/api/pedido", {
+        userEmail: "ndrkick.3@gmail.com", plano: "vip", dias: 30,
+        userName: "Conta de Teste 1 (regressão)", userWhatsapp: "11 90000-0000", userCity: "SP",
+        comprovante: Buffer.from("terceiro-print-fake-regressao-v238c").toString("base64"),
+        comprovanteType: "image/jpeg", pagoEm: Date.now(),
+      });
+      const _pedTeste1RegressaoDetalhe = await req2("GET", "/api/pedido/" + _pedTeste1Regressao.json?.pedidoId);
+      check("🎬 v238c: o 1º e-mail de teste (ndrkick.3@gmail.com) continua funcionando junto com o 2º — generalizar isTestAccountEmail não quebrou o original",
+        _pedTeste1RegressaoDetalhe.json?.pedido?.isTeste === true &&
+        _pedTeste1RegressaoDetalhe.json?.pedido?.preCheck?.veredito === "CONFERE",
+        JSON.stringify(_pedTeste1RegressaoDetalhe.json?.pedido?.preCheck));
+    }
+
     // 🎬 v237v-FIX (achado real, revisão pré-gravação do vídeo — o teste
     // acima usava o override de admin `userEmail`, que grava targetEmail
     // como o PRÓPRIO e-mail literal e mascarava o bug de verdade): pd.

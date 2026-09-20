@@ -14650,13 +14650,15 @@ async function preCheckComprovante(pedido, opts){
     }
   }catch(eH){console.warn("[precheck] fingerprint:",eH.message);}
   // 🎬 v237v (dono, 20/09/2026 — vídeo de verificação do Google/gmail.send +
-  // demo de compra pro Andrio): a conta de TESTE única (TEST_ACCOUNT_EMAIL,
-  // mod-config.js) pula a leitura REAL do comprovante — qualquer arquivo
-  // vira um "CONFERE" sintético batendo com o valor do próprio pedido, sem
-  // OCR nenhum. Roda ANTES do gancho TEST_LOGIN_TOKEN (que só existe em
-  // npm test — NUNCA em produção) pra funcionar no site AO VIVO, que é
-  // onde esse vídeo precisa ser gravado. Isso NÃO pula a confirmação
-  // manual do admin: o pedido continua "pendente" igual a qualquer outro
+  // demo de compra pro Andrio) + v238c (20/09/2026 — trocou de conta na
+  // hora de gravar): as contas de TESTE (TEST_ACCOUNT_EMAIL/
+  // TEST_ACCOUNT_EMAIL_2, mod-config.js — isTestAccountEmail cobre as 2)
+  // pulam a leitura REAL do comprovante — qualquer arquivo vira um
+  // "CONFERE" sintético batendo com o valor do próprio pedido, sem OCR
+  // nenhum. Roda ANTES do gancho TEST_LOGIN_TOKEN (que só existe em npm
+  // test — NUNCA em produção) pra funcionar no site AO VIVO, que é onde
+  // esse vídeo precisa ser gravado. Isso NÃO pula a confirmação manual do
+  // admin: o pedido continua "pendente" igual a qualquer outro
   // (autoAtivarProvisorio só dá acesso PROVISÓRIO de 3 dias, a MESMA régua
   // de sempre pra comprovante real que bate — a ativação definitiva
   // continua exigindo o clique do admin em Pedidos Pendentes). Isolamento
