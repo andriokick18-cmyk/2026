@@ -2353,3 +2353,37 @@ sem catch vazio no fetch; `doResetAuto` condicionado ao retorno) — sem
 UI em Chromium nesta suíte. `npm test` 100% verde, `check-duplicates.js`/
 `check-xss-guard.js` sem achados. sw.js bumpado (v88→v89).
 
+## v230 — achado Média da auditoria (envio/automação): remetente manual bloqueado caía pro principal em silêncio (20/09/2026)
+
+O round-robin do envio AUTOMÁTICO já filtrava contas com `blocked:true`
+(suspensas pelo Google, regra 13a3) do seu pool — mas o envio MANUAL
+com remetente ESCOLHIDO explicitamente pelo usuário (`getSenderToken`,
+ramo `requestedSender`) nunca checava esse campo: tentava renovar o
+token de uma conta suspensa, a renovação falhava, e o `catch` genérico
+do `/api/send` trocava pro Gmail principal SEM avisar — o usuário via
+"candidatura enviada" achando que saiu pela conta que ele escolheu.
+Some com isso duas frentes do mesmo achado: (1) o dropdown "Enviar
+por" do modal de envio manual (app.js) filtrava `tokenExpired` mas
+esquecia `blocked` — diferente das outras 3 telas do site que já
+listam remetentes elegíveis corretamente com os 2 filtros juntos — e
+deixava a pessoa ESCOLHER uma conta suspensa; (2) mesmo se a tela
+mostrasse (cache velho, outro aparelho), o servidor aceitava a escolha
+e substituía em silêncio.
+
+Corrigido nas duas pontas: `getSenderToken` agora lança uma sentinela
+própria (`SENDER_BLOCKED`, mesmo padrão já usado por
+`WARMUP_CAP_REACHED`) assim que encontra `s.blocked===true`, ANTES de
+tentar qualquer renovação de token; a rota `/api/send` reconhece essa
+sentinela e devolve 409 com uma mensagem clara ("conta bloqueada pelo
+Google, escolha outro remetente ou reconecte") em vez de mandar pelo
+principal sem avisar. O dropdown do modal ganhou `&&!x.blocked` no
+filtro, igual às outras telas.
+
+Testes: 1 check estrutural (filtro do dropdown) + 1 comportamental
+ponta a ponta usando o Gmail falso da suíte (usuário com plano pago +
+remetente extra `blocked:true` → escolhe esse remetente no envio manual
+→ recebe 409 `senderBlocked:true` → **zero** e-mails saíram pelo Gmail
+falso, provando que não caiu pro principal em silêncio). `npm test`
+100% verde, `check-duplicates.js`/`check-xss-guard.js` sem achados.
+sw.js bumpado (v89→v90).
+

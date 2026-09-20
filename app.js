@@ -2438,7 +2438,11 @@ async function openModal(jobId){
   // Popular seletor "Enviar por" (só aparece se houver 2+ e-mails conectados)
   try{
     const sBox=g("#m-sender-box"),sSel=g("#m-sender");
-    const extras=(U.senderEmails||[]).filter(x=>x.active!==false&&!x.tokenExpired);
+    // 🚨 v230 (achado de auditoria — Média): faltava &&!x.blocked aqui — as
+    // outras 3 telas que listam remetentes elegíveis (app.js ~4391/4404/4440)
+    // já excluem conta bloqueada pelo Google, só o dropdown "Enviar por" do
+    // modal de envio manual deixava escolher uma conta suspensa.
+    const extras=(U.senderEmails||[]).filter(x=>x.active!==false&&!x.tokenExpired&&!x.blocked);
     if(sBox&&sSel){
       if(extras.length){
         const saved=(()=>{try{return localStorage.getItem("h2b_manual_sender")}catch(e){return null}})();

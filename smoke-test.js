@@ -4641,6 +4641,13 @@ async function drillBloqueioComprasNovas() {
       check("🚨 v229b (estrutural): doResetAuto() só mostra a dica de próximo passo quando doClearHist() de fato retornou sucesso — nunca mais 2 mensagens contraditórias (reset falhou + 'comece o automático')",
         /if\(await doClearHist\(ovEl\)\)/.test(_fnResetAuto),
         _fnResetAuto.slice(0, 200));
+      // 🚨 v230 (achado de auditoria — Média): o dropdown "Enviar por" do
+      // modal de envio manual filtrava tokenExpired mas ESQUECIA blocked —
+      // as outras 3 telas que listam remetentes elegíveis já filtram os 2.
+      const _fnPopSender = (_appSrcV229.match(/const extras=\(U\.senderEmails\|\|\[\]\)\.filter\(x=>x\.active!==false&&!x\.tokenExpired&&!x\.blocked\);/) || [""])[0];
+      check("🚨 v230 (estrutural): o dropdown 'Enviar por' do modal de envio manual (openSendModal) também exclui remetente blocked, igual às outras telas que listam remetentes elegíveis — nunca mais deixa escolher uma conta suspensa pelo Google",
+        !!_fnPopSender,
+        "filtro de 'Enviar por' sem &&!x.blocked");
     }
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5c@test.com", name: "MC5 C" });
     const mc5d1 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-um").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
@@ -6299,6 +6306,21 @@ async function drillBloqueioComprasNovas() {
         GOOGLE.envios.length === 1 && GOOGLE.envios[0].para === "rh@empresa-posenvio20.com" &&
         (_sentPos?.sent || []).includes("rh@empresa-posenvio20.com"),
         JSON.stringify({ status: _pos20.status, json: _pos20.json, marcados: (_sentPos?.sent || []).length }).slice(0, 300));
+
+      // ── 2b) 🚨 v230 (achado de auditoria — Média): REMETENTE MANUAL
+      // BLOQUEADO pelo Google (blocked:true, 13a3) ────────────────────────
+      // getSenderToken já filtrava `blocked` no pool do round-robin
+      // automático, mas o envio MANUAL com remetente ESCOLHIDO pelo usuário
+      // nunca checava — tentava renovar o token de uma conta suspensa,
+      // falhava, e caía no catch genérico que manda pelo principal EM
+      // SILÊNCIO (o usuário via "enviado" achando que saiu pela conta que
+      // ele escolheu). Prova: nada sai pelo principal, resposta é 409 clara.
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "envio20@test.com", senderEmails: [{ email: "blocked230@gmail.com", active: true, blocked: true, addedAt: Date.now() - 30 * 86400_000 }] });
+      GOOGLE.limpar();
+      const _blk230 = await req2("POST", "/api/send", { to: "rh@empresa-blk230.com", subject: "Candidatura", message: "Olá, gostaria de me candidatar.", senderEmail: "blocked230@gmail.com", jobTitle: "Cook", company: "Empresa 230", caseNum: "H-400-BLK230" });
+      check("🚨 v230: escolher explicitamente um remetente BLOQUEADO pelo Google (blocked:true) é RECUSADO (409, senderBlocked:true) em vez de mandar em silêncio pelo Gmail principal — o usuário sabe na hora que precisa trocar de conta",
+        _blk230.status === 409 && _blk230.json?.senderBlocked === true && GOOGLE.envios.length === 0,
+        JSON.stringify({ status: _blk230.status, body: (_blk230.body || "").slice(0, 160), envios: GOOGLE.envios.length }));
 
       // ── 3) FILA AUTOMÁTICA DE 3 VAGAS: envia de verdade e a fila diminui ─
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "auto20@test.com", name: "Auto 20", refreshToken: "rt-auto20", plan: "doublepro", vip: { active: true, plan: "doublepro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 } });

@@ -5918,6 +5918,16 @@ async function getSenderToken(ownerEmail, requestedSender, allowedSenders) {
   if (requestedSender && requestedSender !== ownerEmail) {
     const s = extras.find(x => x.email === requestedSender);
     if (!s) throw new Error("Email de envio não encontrado ou removido.");
+    // 🚨 v230 (achado de auditoria — Média): o round-robin automático (mais
+    // abaixo) já filtrava `s.blocked` (conta suspensa pelo Google, 13a3) do
+    // seu pool — mas o envio MANUAL com remetente explícito nunca checava:
+    // uma conta bloqueada ainda tentava refreshSenderToken, falhava, e caía
+    // no catch genérico que troca pro principal EM SILÊNCIO (o usuário via
+    // "enviado" sem saber que não saiu pela conta que ele escolheu). Agora
+    // recusa na hora, com sentinela própria (mesmo padrão do
+    // WARMUP_CAP_REACHED) pro chamador devolver um erro claro e acionável
+    // em vez de substituir o remetente sem avisar.
+    if (s.blocked) throw new Error("SENDER_BLOCKED");
     // 🚨 v177-FIX5: mesma régua do rodízio — sem plano que dê direito a Gmail
     // extra (downgrade ou plano vencido), o extra não envia. Nada é apagado:
     // é só o teto do plano valendo também na hora do envio manual.
@@ -11012,6 +11022,14 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
             // num reenvio rápido com outra conta/vaga dentro da janela de 60s.
             if(_reservedManualSlot){_releaseManualSlot(s.user_email);_reservedManualSlot=false;}
             return json(res,429,{error:"Essa conta Gmail atingiu o limite de segurança de hoje (proteção contra bloqueio pelo Google — ela é nova aqui e ainda está em aquecimento). Tente outra conta ou volte em algumas horas.",warmup:true});
+          }
+          // 🚨 v230: mesma filosofia do WARMUP_CAP_REACHED acima — a conta
+          // ESCOLHIDA está bloqueada pelo Google; avisar com clareza é mais
+          // seguro que trocar pro principal em silêncio (o usuário podia ter
+          // motivo pra não usar o principal nesse envio específico).
+          if(e2.message==="SENDER_BLOCKED"){
+            if(_reservedManualSlot){_releaseManualSlot(s.user_email);_reservedManualSlot=false;}
+            return json(res,409,{error:"Essa conta Gmail está bloqueada pelo Google e não pode enviar. Escolha outro remetente em Perfil → Gmail Extra, ou reconecte essa conta.",senderBlocked:true});
           }
           console.warn("[send] Sender extra falhou, usando principal:",e2.message);
           actualSenderEmail=s.user_email;
