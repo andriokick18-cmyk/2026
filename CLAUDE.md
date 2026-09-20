@@ -2915,3 +2915,38 @@ com a mesma senha → confere `accountDeleted:false`. `npm test` 100%
 verde, `check-duplicates.js`/`check-xss-guard.js` sem achados. Sem
 bump de sw.js (server.js/smoke-test.js only).
 
+## v237i — 3 watchdogs sem try/catch por iteração (achado Alta de gmail-envio) (20/09/2026)
+
+3 dos 4 watchdogs de recuperação do envio automático (`orphan_recovery`,
+o guard de status `"sending"` preso >30min, e o daily-reset guardian)
+iteravam `Object.entries(DB_AUTO)` sem NENHUM try/catch por iteração —
+diferente do loop de `diagnoseJob()`, logo acima no mesmo arquivo, que
+já protegia cada usuário individualmente desde sempre.
+
+O risco: se para QUALQUER usuário o objeto job em `DB_AUTO` estivesse
+com um formato que fizesse `scheduleAuto`/`getHealth`/`addLog` (ou
+qualquer função que eles chamam) lançar uma exceção SÍNCRONA — a mesma
+classe de corrupção que o próprio código já reconhece existir em
+comentários antigos (`FIX-BUG13`, "erro inesperado" no catch genérico
+do `doAutoSend`) — o `for`-loop desse watchdog seria interrompido
+NAQUELE ponto exato: nenhum usuário processado DEPOIS do registro
+corrompido (na ordem estável de `Object.entries`) seria
+verificado/recuperado NESSE ciclo. Como o `setInterval` chama a MESMA
+função a cada 2/5min e a ordem nunca muda, o MESMO usuário corrompido
+quebraria o loop EM TODO CICLO SEGUINTE, pra sempre — silenciosamente
+(só um `console.error` no log, sem `addLog` nem push pra ninguém).
+Na prática, isso transformava exatamente a rede de segurança desenhada
+pra evitar "fila travada sem avisar ninguém" num ponto único de falha
+capaz de travar a recuperação automática de TODOS os usuários do site
+por causa de UMA conta com dado malformado.
+
+Corrigido: os 3 loops ganharam `try{...}catch(e){console.error(...)}`
+por iteração, no MESMO padrão do `diagnoseJob()` — um job corrompido
+agora só afeta a si mesmo (logado, pulado), nunca os usuários
+seguintes na lista.
+
+Testes: 1 check estrutural no smoke (os 3 try/catch presentes, com o
+prefixo de log de cada watchdog). `npm test` 100% verde,
+`check-duplicates.js`/`check-xss-guard.js` sem achados. Sem bump de
+sw.js (server-side only).
+

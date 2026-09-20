@@ -986,6 +986,29 @@ async function drillBloqueioComprasNovas() {
     check("🚨 v237h: relogar com a MESMA senha depois de excluir a conta FUNCIONA (200) e LIMPA accountDeleted de verdade — nunca mais o automático fica quebrado em silêncio pra quem voltou",
       _logDepoisDelete.status === 200 && _logDepoisDelete.json?.ok === true && _uLiveAposRelogin?.accountDeleted === false,
       JSON.stringify({ login: _logDepoisDelete.status, accountDeleted: _uLiveAposRelogin?.accountDeleted }));
+    // ═══ 🚨 v237i (achado de auditoria — Alta, 3ª rodada, área gmail-envio):
+    // 3 dos 4 watchdogs de recuperação do automático (orphan_recovery, o
+    // guard de status "sending" preso e o daily-reset guardian) iteravam
+    // Object.entries(DB_AUTO) SEM try/catch por iteração — diferente do
+    // loop de diagnoseJob() (já protegido). 1 job com formato que fizesse
+    // scheduleAuto/getHealth/addLog lançar exceção síncrona interrompia o
+    // for-loop NAQUELE ponto — nenhum usuário DEPOIS do registro corrompido
+    // era verificado/recuperado nesse ciclo, e como a ordem de
+    // Object.entries é estável, o MESMO usuário quebrava o loop em TODO
+    // ciclo seguinte, pra sempre — transformando a própria rede de
+    // segurança num ponto único de falha capaz de travar a recuperação
+    // automática de TODOS os usuários do site.
+    {
+      const _srvV237i = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      const _wdStart = _srvV237i.indexOf("// Watchdog global: roda a cada 2min");
+      const _wdEnd = _srvV237i.indexOf("// Heartbeat: atualiza lastSent quando auto envia com sucesso");
+      const _wdRegion = (_wdStart >= 0 && _wdEnd > _wdStart) ? _srvV237i.slice(_wdStart, _wdEnd) : "";
+      check("🚨 v237i (estrutural): os 3 watchdogs (orphan_recovery, stuck-guard, daily-reset) ganham try/catch por iteração — 1 job corrompido nunca mais trava a recuperação dos outros usuários no mesmo ciclo",
+        /catch\(e\) \{ console\.error\(`\[watchdog:orphan_recovery\] erro em \$\{email\}:`, e\.message\); \}/.test(_wdRegion) &&
+        /catch\(e\) \{ console\.error\(`\[stuck-guard\] erro em \$\{email\}:`, e\.message\); \}/.test(_wdRegion) &&
+        /catch\(e\) \{ console\.error\(`\[daily-reset\] erro em \$\{email\}:`, e\.message\); \}/.test(_wdRegion),
+        `região dos watchdogs sem os 3 try/catch — ${_wdRegion.length} chars capturados`);
+    }
     // 📧 v175: aba Notificações do admin (status/teste/config/desconectar)
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
     const _ntSt = await get("/api/admin/notificacoes/status");

@@ -13921,36 +13921,53 @@ setInterval(async () => {
   }
   // Detecta jobs marcados active=true mas sem timer E sem nextSendAt — orphans pós-crash
   const now = Date.now();
+  // 🚨 v237 (achado de auditoria — Alta, gmail-envio): este loop (e os 2
+  // setInterval logo abaixo, stuck-guard e daily-reset) não tinham try/catch
+  // por iteração — diferente do loop de diagnoseJob() acima, que já protegia
+  // cada usuário. Um único job em DB_AUTO com formato que faça scheduleAuto
+  // (ou getHealth/getAutoJob/addLog) lançar exceção síncrona interrompia o
+  // for-loop NAQUELE ponto: nenhum usuário processado DEPOIS do registro
+  // corrompido (na ordem de Object.entries) era verificado/recuperado NESSE
+  // ciclo — e como a ordem é estável, o MESMO usuário corrompido quebrava o
+  // loop em TODO ciclo seguinte, pra sempre, transformando a própria rede de
+  // segurança contra "fila travada sem avisar ninguém" num ponto único de
+  // falha capaz de travar a recuperação automática de TODOS os usuários.
   for (const [email, job] of Object.entries(DB_AUTO)) {
-    // v184 LOTE 2: job ativo com fila VAZIA (esperando o refill de ~7min) é
-    // estado normal — e era justamente quem ficava órfão pra sempre depois de
-    // um restart. Quem decide é o nextOk abaixo, como já era pro resto.
-    if (!job.active) continue;
-    if (!autoTimers.has(email)) {
-      const nextOk = job.nextSendAt && job.nextSendAt > now && (job.nextSendAt - now) < 6*3600_000;
-      if (!nextOk) {
-        const h = getHealth(email);
-        h.restarts++;
-        pushGlobalEvent("orphan_recovery", email, `Job órfão pós-crash recuperado (restart #${h.restarts})`, "info");
-        addLog(email, { status:"sistema", jobTitle:"✅ Queue restaurada após crash", company:"Watchdog recovery pós-reinício" });
-        scheduleAuto(email);
+    try {
+      // v184 LOTE 2: job ativo com fila VAZIA (esperando o refill de ~7min) é
+      // estado normal — e era justamente quem ficava órfão pra sempre depois de
+      // um restart. Quem decide é o nextOk abaixo, como já era pro resto.
+      if (!job.active) continue;
+      if (!autoTimers.has(email)) {
+        const nextOk = job.nextSendAt && job.nextSendAt > now && (job.nextSendAt - now) < 6*3600_000;
+        if (!nextOk) {
+          const h = getHealth(email);
+          h.restarts++;
+          pushGlobalEvent("orphan_recovery", email, `Job órfão pós-crash recuperado (restart #${h.restarts})`, "info");
+          addLog(email, { status:"sistema", jobTitle:"✅ Queue restaurada após crash", company:"Watchdog recovery pós-reinício" });
+          scheduleAuto(email);
+        }
       }
-    }
+    } catch(e) { console.error(`[watchdog:orphan_recovery] erro em ${email}:`, e.message); }
   }
 }, WATCHDOG_INTERVAL);
 
 // Detecta status "sending" preso por >30min (lock liberado mas status não atualizado)
 setInterval(()=>{
   const now=Date.now();
+  // 🚨 v237: mesma proteção do orphan_recovery acima — try/catch por
+  // iteração, nunca deixar 1 job corrompido travar a recuperação dos outros.
   for(const[email,job] of Object.entries(DB_AUTO)){
-    if(!job.active||job.status!=="sending") continue;
-    const lastAct=job.lastSentAt||job.startedAt||0;
-    if(lastAct>0&&(now-lastAct)>30*60*1000&&!autoSendLock.has(email)){
-      console.warn(`[stuck-guard] ${email}: sending preso ${Math.round((now-lastAct)/60000)}min — reiniciando`);
-      addLog(email,{status:"sistema",jobTitle:"🔄 Status 'sending' travado — reiniciando",company:"Stuck guardian"});
-      if(autoTimers.has(email)){clearTimeout(autoTimers.get(email));autoTimers.delete(email);}
-      scheduleAuto(email);
-    }
+    try {
+      if(!job.active||job.status!=="sending") continue;
+      const lastAct=job.lastSentAt||job.startedAt||0;
+      if(lastAct>0&&(now-lastAct)>30*60*1000&&!autoSendLock.has(email)){
+        console.warn(`[stuck-guard] ${email}: sending preso ${Math.round((now-lastAct)/60000)}min — reiniciando`);
+        addLog(email,{status:"sistema",jobTitle:"🔄 Status 'sending' travado — reiniciando",company:"Stuck guardian"});
+        if(autoTimers.has(email)){clearTimeout(autoTimers.get(email));autoTimers.delete(email);}
+        scheduleAuto(email);
+      }
+    } catch(e) { console.error(`[stuck-guard] erro em ${email}:`, e.message); }
   }
 },5*60*1000);
 
@@ -13962,20 +13979,23 @@ setInterval(()=>{
 setInterval(() => {
   const now = Date.now();
   let resumed = 0;
+  // 🚨 v237: mesma proteção dos 2 watchdogs acima.
   for (const [email, job] of Object.entries(DB_AUTO)) {
-    if (!job.active || !job.queue?.length) continue;
-    if (job.status !== "waiting_limit") continue;
-    // Se nextSendAt já passou e não há timer ativo, retoma imediatamente
-    const nextPassed = !job.nextSendAt || job.nextSendAt <= now;
-    const noTimer = !autoTimers.has(email);
-    if (nextPassed && noTimer) {
-      const h = getHealth(email);
-      h.restarts++;
-      console.log(`[daily-reset] ${email} — limite expirou, retomando envios (restart #${h.restarts})`);
-      addLog(email, { status:"sistema", jobTitle:"🔄 Novo dia — retomando envios automáticos", company:`Fila: ${job.queue.length} vagas restantes` });
-      scheduleAuto(email);
-      resumed++;
-    }
+    try {
+      if (!job.active || !job.queue?.length) continue;
+      if (job.status !== "waiting_limit") continue;
+      // Se nextSendAt já passou e não há timer ativo, retoma imediatamente
+      const nextPassed = !job.nextSendAt || job.nextSendAt <= now;
+      const noTimer = !autoTimers.has(email);
+      if (nextPassed && noTimer) {
+        const h = getHealth(email);
+        h.restarts++;
+        console.log(`[daily-reset] ${email} — limite expirou, retomando envios (restart #${h.restarts})`);
+        addLog(email, { status:"sistema", jobTitle:"🔄 Novo dia — retomando envios automáticos", company:`Fila: ${job.queue.length} vagas restantes` });
+        scheduleAuto(email);
+        resumed++;
+      }
+    } catch(e) { console.error(`[daily-reset] erro em ${email}:`, e.message); }
   }
   if (resumed > 0) console.log(`[daily-reset] ${resumed} job(s) retomados após reset diário`);
 }, 5 * 60 * 1000); // checa a cada 5min
