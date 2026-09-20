@@ -4863,6 +4863,22 @@ async function drillBloqueioComprasNovas() {
         `deleteCvFromAccount() sem a varredura de perfis órfãos — ${_fnDeleteCv.length} chars capturados`);
     }
 
+    // ═══ 🚨 v237 (achado de auditoria — Média, perfil/onboarding): DOCS só
+    // era populado no boot (fetch inicial de /api/cv) — um upload novo feito
+    // DENTRO do editor de perfil (saveProfileFromEditor) atualizava o
+    // PERFIL (UPROFILES) mas nunca DOCS. Reabrir o editor logo em seguida
+    // (mesmo perfil ou outro) pra vincular esse PDF recém-subido não achava
+    // a opção em _pePopulateResumeSlots()/_pePopulateCoverSlots() (leem DOCS
+    // direto) até um reload da página.
+    {
+      const _appSrcV237e = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _fnSaveFromEditor = (_appSrcV237e.match(/async function saveProfileFromEditor\(\)\{[\s\S]*?\n\}\n/) || [""])[0];
+      check("🚨 v237 (estrutural): saveProfileFromEditor() injeta o PDF/cover recém-enviado em DOCS na hora (mesmo dado que o servidor acabou de devolver) — nunca mais precisa de reload pra escolher esse arquivo de novo em outro perfil",
+        /if\(!DOCS\.some\(c=>c\.idx===d\.cv\.idx\)\)DOCS\.push\(\{idx:d\.cv\.idx,name:d\.cv\.name,size:d\.cv\.size,cvType:"resume"\}\);/.test(_fnSaveFromEditor) &&
+        /if\(!DOCS\.some\(c=>c\.idx===d\.cv\.idx\)\)DOCS\.push\(\{idx:d\.cv\.idx,name:d\.cv\.name,size:d\.cv\.size,cvType:"cover"\}\);/.test(_fnSaveFromEditor),
+        `saveProfileFromEditor() sem o push em DOCS — ${_fnSaveFromEditor.length} chars capturados`);
+    }
+
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5c@test.com", name: "MC5 C" });
     const mc5d1 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-um").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     const mc5d2 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-dois").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });

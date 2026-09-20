@@ -2760,3 +2760,37 @@ novo). `npm test` 100% verde, `check-duplicates.js`/
 `check-xss-guard.js` sem achados. Sem bump de sw.js (`mod-filtros.js`
 é server-side, não servido ao cliente).
 
+## v237e — DOCS não atualizava depois de upload no editor de perfil (achado Média de perfil/onboarding) (20/09/2026)
+
+Achado Média que tinha sobrado sem investigar da 2ª rodada de
+auditorias. `DOCS` (a lista de PDFs/covers disponíveis pro usuário —
+lida por `_pePopulateResumeSlots()`/`_pePopulateCoverSlots()` no
+editor de perfil e pelo `buildCvSlots()` do modal de envio) só era
+populada no boot (`/api/cv` inicial). `saveProfileFromEditor()`, ao
+subir um PDF/cover NOVO, atualizava `UPROFILES` (o perfil em si) mas
+nunca `DOCS`.
+
+Efeito prático: subir um currículo novo pro perfil H-2B e, em seguida
+(sem reload), abrir o editor do perfil H-2A pra vincular ESSE MESMO
+arquivo — a opção simplesmente não aparecia na lista, porque
+`_pePopulateResumeSlots()` lê `DOCS` direto, e `DOCS` ainda não sabia
+que o arquivo existia. (A injeção de "DOCS fantasma" do `openModal`,
+que cobre o MESMO tipo de dessincronia em outro contexto, só é
+acionada quando se abre o modal de envio pra UM perfil específico —
+não ajuda o editor de OUTRO perfil.)
+
+Corrigido: assim que `/api/cv/upload` responde `ok:true`,
+`saveProfileFromEditor()` injeta o documento em `DOCS` na hora, com os
+MESMOS dados que o servidor acabou de devolver (`idx`/`name`/`size`) —
+nunca dado velho ou inventado, e com guarda contra duplicata
+(`!DOCS.some(c=>c.idx===...)`).
+
+Testes: 1 check estrutural no smoke (o push em `DOCS` presente nos 2
+uploads — resume e cover). `npm test` 100% verde,
+`check-duplicates.js`/`check-xss-guard.js` sem achados. sw.js bumpado
+(v96→v97).
+
+Com este, todos os achados Alta e Média das 3 auditorias paralelas da
+2ª rodada estão fechados. Só sobram os 2 itens Baixa/decisão-de-produto
+já registrados no v237c/v237d.
+

@@ -3897,7 +3897,16 @@ async function saveProfileFromEditor(){
       const r=await fetch("/api/cv/upload",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({base64:profilePdfBase64,name:profilePdfName,cvType:"resume"})});
       const d=await jsonSafe(r);
-      if(d.ok){prf.resumeIdx=d.cv.idx;prf.pdfName=d.cv.name;prf.pdfSize=d.cv.size;}
+      if(d.ok){
+        prf.resumeIdx=d.cv.idx;prf.pdfName=d.cv.name;prf.pdfSize=d.cv.size;
+        // 🚨 v237 (achado de auditoria — Média, perfil/onboarding): DOCS só
+        // era populado no boot — um upload novo aqui nunca entrava em DOCS
+        // até um reload. Reabrir o editor pra OUTRO perfil (ou o mesmo) logo
+        // em seguida, pra vincular esse mesmo PDF, não achava a opção em
+        // _pePopulateResumeSlots() (lê DOCS direto). Injeta na hora, igual o
+        // servidor já devolveu (nunca dado velho/fantasma).
+        if(!DOCS.some(c=>c.idx===d.cv.idx))DOCS.push({idx:d.cv.idx,name:d.cv.name,size:d.cv.size,cvType:"resume"});
+      }
       else throw new Error(d.error);
     }catch(e){_peResetSaveBtn();toast(_peSessionMsg("Erro upload PDF",e),"r");return;}
   }else if(profilePdfBase64==="__existing__"&&editingProfileId){
@@ -3911,7 +3920,12 @@ async function saveProfileFromEditor(){
       const r=await fetch("/api/cv/upload",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({base64:profileCoverBase64,name:profileCoverName,cvType:"cover"})});
       const d=await jsonSafe(r);
-      if(d.ok){prf.coverIdx=d.cv.idx;prf.coverName=d.cv.name;prf.coverSize=d.cv.size;}
+      if(d.ok){
+        prf.coverIdx=d.cv.idx;prf.coverName=d.cv.name;prf.coverSize=d.cv.size;
+        // 🚨 v237: mesma lacuna do resumeIdx logo acima — injeta em DOCS na
+        // hora, nunca esperando um reload.
+        if(!DOCS.some(c=>c.idx===d.cv.idx))DOCS.push({idx:d.cv.idx,name:d.cv.name,size:d.cv.size,cvType:"cover"});
+      }
       else throw new Error(d.error);
     }catch(e){_peResetSaveBtn();toast(_peSessionMsg("Erro upload Cover Letter",e),"r");return;}
   }else if(profileCoverBase64==="__existing__"&&editingProfileId){
