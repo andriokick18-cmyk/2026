@@ -77,6 +77,14 @@ let selJob=null,curJob=null;
 let _currentModalJob=null; // alias para curJob — atualizado por openModal
 let tab="jan2026"; // v223: aba "Vagas ao Vivo" removida (ordem do dono) — só planilhas
 let sJobs=[],sTotal=0,sTrueTotal=0,sSkip=0,sDone=false,sLoading=false;
+// 🚨 v237 (achado de auditoria — Alta, race de loadSheetMeta): contador de
+// contexto — toda troca de aba/busca/ordenação/filtro que reseta sJobs deve
+// chamar loadSheetMeta(true), que incrementa sCtxSeq. Um fetch antigo ainda
+// em voo, ao resolver, compara sua cópia do contador com o atual: se mudou,
+// descarta a resposta em silêncio em vez de misturar vagas da aba/filtro
+// ERRADO na lista da aba/filtro atual (mesma classe do bug já corrigido em
+// vfFetch no v224, só que aqui não tinha proteção nenhuma).
+let sCtxSeq=0;
 let sCache={};
 let fQ="",fSort="random"; // v173: todo o resto dos filtros vive em VF.st (bloco "FILTROS DE VAGAS")
 let autoSelectedProfileId=null; // perfil/currículo escolhido no Passo 3
@@ -2108,14 +2116,25 @@ function _vfVazioHtml(d){
 // ═══════════════════════════════════════════
 
 async function loadSheetMeta(reset=false){
-  if(sLoading)return;sLoading=true;if(!reset)g("#lmore").innerHTML=`<div style="padding:14px;text-align:center"><span class="spin"></span></div>`;
+  // 🚨 v237: reset=true (trocar aba/busca/ordenação/filtro) SEMPRE passa —
+  // nunca fica preso atrás de um "carregar mais" antigo ainda em voo — e
+  // invalida esse fetch antigo bumpando sCtxSeq ANTES de checar sLoading;
+  // só "carregar mais" (reset=false, scroll infinito) respeita o gate.
+  if(sLoading&&!reset)return;
+  if(reset)sCtxSeq++;
+  const mySeq=sCtxSeq;
+  sLoading=true;if(!reset)g("#lmore").innerHTML=`<div style="padding:14px;text-align:center"><span class="spin"></span></div>`;
   try{
     // v173: TODOS os filtros vêm do VF — a MESMA query da contagem ao vivo
     // (/api/vagas/filtros), então "Ver N vagas" bate com a lista
     // v181: `q` já vai dentro do vfParams (a MESMA query da contagem ao vivo)
     const p=vfParams("manual");p.set("sheet",tab);p.set("skip",String(sSkip));p.set("top",String(PAGE));p.set("sort",fSort);p.set("hideSent","1");
 
-    const r=await fetch("/api/sheet-meta?"+p,{credentials:"include"});const d=await r.json();
+    const r=await fetch("/api/sheet-meta?"+p,{credentials:"include"});const d=await jsonSafe(r);
+    // 🚨 v237: uma troca de aba/busca/filtro MAIS NOVA já rodou enquanto esse
+    // fetch estava em voo — descarta a resposta velha em silêncio (nunca
+    // mistura vagas da aba/filtro ERRADO na lista da aba/filtro atual).
+    if(mySeq!==sCtxSeq)return;
     if(reset)g("#jlist").innerHTML="";
     // 🕳️ v181 LOTE 5: o "de Y vagas" (última pista de que a planilha TEM
     // conteúdo) só era atribuído dentro do else — com zero resultados ficava
@@ -2179,10 +2198,14 @@ async function loadSheetMeta(reset=false){
       cnt.innerHTML=`<strong>${remaining.toLocaleString("pt-BR")}</strong> restantes · <span style="font-size:11px;color:var(--t3)">${sentInSheet>0?`<span style="color:var(--green)">✅ ${sentInSheet} enviadas</span> de ${sTrueTotal.toLocaleString("pt-BR")}`:sTrueTotal.toLocaleString("pt-BR")+` vagas`}</span> · <span style="font-size:11px;color:var(--blue)">${esc(sheetLabel)}</span>${filtrosLbl}`;
     }
     const sib=g("#sib-jobs");if(sib){sib.style.display="";sib.textContent=sTotal>999?"999+":String(sTotal);}
-  }catch(e){g("#lmore").innerHTML=`<div style="padding:14px;text-align:center;font-size:13px;color:var(--red)">Erro. <span style="cursor:pointer;text-decoration:underline" onclick="loadSheetMeta()">Tentar novamente</span></div>`;}
+  }catch(e){if(mySeq===sCtxSeq)g("#lmore").innerHTML=`<div style="padding:14px;text-align:center;font-size:13px;color:var(--red)">Erro. <span style="cursor:pointer;text-decoration:underline" onclick="loadSheetMeta()">Tentar novamente</span></div>`;}
   finally{
     // FIX: always libera o lock — evita loading infinito em caso de erro ou timeout
-    sLoading=false;
+    // 🚨 v237: só libera se AINDA for o contexto atual — um fetch velho que
+    // termina depois de já ter sido superado não pode destravar o gate por
+    // cima do fetch novo que está rodando de verdade (deixaria passar um 2º
+    // "carregar mais" concorrente usando o mesmo sSkip do que já está em voo).
+    if(mySeq===sCtxSeq)sLoading=false;
   }
 }
 

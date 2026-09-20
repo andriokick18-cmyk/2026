@@ -4805,6 +4805,29 @@ async function drillBloqueioComprasNovas() {
     check("🚨 v237: 2º clique em SEGUIDA no MESMO usuário é BLOQUEADO (409, mesma trava do set-plan/v141) — nunca mais duplica addCredito()/logAdminAction() por duplo-clique",
       v237se2.status === 409 && v237se2.json?.duplicate === true, `status=${v237se2.status} body=${v237se2.body.slice(0, 140)}`);
 
+    // ═══ 🚨 v237 (achado de auditoria — Alta, vagas/filtros): loadSheetMeta()
+    // (a busca manual de vagas, aba planilha) não tinha NENHUMA proteção
+    // contra resposta de um fetch antigo chegando depois de uma troca de
+    // aba/busca/ordenação — mesma classe do bug já corrigido em vfFetch no
+    // v224 (contadores de sequência), só que aqui não existia proteção
+    // nenhuma: trocar de aba rápido enquanto a 1ª busca ainda carregava podia
+    // misturar vagas da aba ERRADA na lista da aba atual, ou deixar o
+    // skeleton de carregamento preso pra sempre (a troca de contexto ficava
+    // bloqueada atrás do `if(sLoading)return` do fetch antigo).
+    {
+      const _appSrcV237b = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _fnLoadSheetMeta = (_appSrcV237b.match(/async function loadSheetMeta\(reset=false\)\{[\s\S]*?\n\}\n/) || [""])[0];
+      check("🚨 v237 (estrutural): loadSheetMeta() ganha contador de contexto (sCtxSeq) — reset=true NUNCA fica preso atrás de um fetch antigo (bypassa o gate de sLoading), invalida esse fetch antigo, e a resposta velha é descartada em silêncio (mySeq!==sCtxSeq) tanto no sucesso quanto no catch/finally",
+        /if\(sLoading&&!reset\)return;/.test(_fnLoadSheetMeta) &&
+        /if\(reset\)sCtxSeq\+\+;/.test(_fnLoadSheetMeta) &&
+        /const mySeq=sCtxSeq;/.test(_fnLoadSheetMeta) &&
+        /if\(mySeq!==sCtxSeq\)return;/.test(_fnLoadSheetMeta) &&
+        /if\(mySeq===sCtxSeq\)g\("#lmore"\)\.innerHTML/.test(_fnLoadSheetMeta) &&
+        /if\(mySeq===sCtxSeq\)sLoading=false;/.test(_fnLoadSheetMeta) &&
+        /jsonSafe\(r\)/.test(_fnLoadSheetMeta),
+        `loadSheetMeta() sem a guarda de contexto — ${_fnLoadSheetMeta.length} chars capturados`);
+    }
+
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5c@test.com", name: "MC5 C" });
     const mc5d1 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-um").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     const mc5d2 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-dois").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });

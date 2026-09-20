@@ -2647,3 +2647,46 @@ funciona; 2º clique em seguida no mesmo usuário é bloqueado com 409).
 `npm test` 100% verde (751 checks), `check-duplicates.js`/
 `check-xss-guard.js` sem achados. sw.js bumpado (v93→v94).
 
+## v237b — loadSheetMeta() ganha guarda de contexto (última peça da 2ª rodada, achado Alta de vagas/filtros) (20/09/2026)
+
+Último achado da 2ª rodada de 3 auditorias paralelas: `loadSheetMeta()`
+(a busca manual de vagas, aba planilha) não tinha NENHUMA proteção
+contra resposta de um fetch antigo chegando depois de uma troca de
+aba/busca/ordenação/filtro — mesma classe do bug que o v224 já tinha
+corrigido no `vfFetch` (contadores de sequência separados pro painel e
+pro já-aplicado), mas aqui não existia proteção nenhuma.
+
+Cenário real: usuário troca de aba (ex.: jan2026 → jul2025) enquanto a
+busca da aba anterior ainda está carregando. O código que troca de aba
+já reseta `sJobs`/`sSkip` e mostra um skeleton, mas o guard antigo
+(`if(sLoading)return;`) bloqueava o NOVO fetch de sequer começar
+enquanto o antigo ainda estivesse em voo — a tela ficava com o
+skeleton preso até o fetch VELHO (da aba errada) finalmente resolver
+e, aí sim, injetar vagas da aba ERRADA na lista da aba atual (pior:
+somava ao `sJobs`/`sSkip`/`sTotal` da aba nova como se fossem dela).
+
+Corrigido com um contador de contexto (`sCtxSeq`): toda chamada com
+`reset=true` (trocar aba, buscar, ordenar, aplicar filtro) NUNCA mais
+fica presa atrás de um fetch antigo — ela incrementa `sCtxSeq` e
+prossegue imediatamente, invalidando qualquer fetch anterior ainda em
+voo (só "carregar mais"/scroll infinito, que não reseta o contexto,
+continua respeitando o `sLoading` original — evita 2 páginas
+simultâneas). Quando o fetch VELHO finalmente resolve, ele compara sua
+cópia do contador (`mySeq`) com o atual: se mudou, descarta a resposta
+em silêncio — no sucesso, no erro (catch) e ao liberar o lock
+(finally), pra nunca um fetch obsoleto destravar o gate por cima do
+fetch novo que está rodando de verdade. De brinde, `loadSheetMeta()`
+passou a usar `jsonSafe` (era um dos poucos `r.json()` cru que sobrou
+no motor de busca de vagas).
+
+Testes: 1 check estrutural no smoke (todos os 7 elementos do padrão
+presentes: bypass do gate por `reset`, incremento condicional,
+captura de `mySeq`, descarte no sucesso/erro/finally, `jsonSafe`).
+`npm test` 100% verde, `check-duplicates.js`/`check-xss-guard.js` sem
+achados. sw.js bumpado (v94→v95). Fecha a 2ª rodada de 3 auditorias
+paralelas por completo (painel-admin/dinheiro: v236(parte)+v237;
+perfil/onboarding: v236; vagas/filtros: v237b) — restam só 2 achados
+Baixa (duplicação de código em add_pagamento/add_gasto) e a lacuna de
+UI pra Sócios & Acerto/DRE/Fechamento, que é decisão de produto, não
+bug — levados ao dono separadamente.
+
