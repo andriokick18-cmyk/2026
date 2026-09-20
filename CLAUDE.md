@@ -3318,3 +3318,54 @@ um 2º logout disfarçado de "voltar"). `npm test` 100% verde,
 `check-duplicates.js`/`check-xss-guard.js` sem achados. sw.js
 v102→v103 (index.html e admin.html mudaram).
 
+## v237s — /api/admin/set-auto-limit era rota morta (achado Média/Baixa de admin) (20/09/2026)
+
+`POST /api/admin/set-auto-limit` gravava `u.customAutoLimit` e
+`job.lockedAutoLimit`, mas NENHUM dos 2 campos tinha leitor em lugar
+nenhum: `getAutoLimit()` (a função que de fato decide o teto diário
+do automático) tem um comentário próprio dizendo explicitamente "usa
+o atual do plano (não o `lockedAutoLimit`)"; `customAutoLimit` não
+aparecia em nenhuma outra linha do arquivo. E NENHUMA tela do
+`admin.html` chamava essa rota — nem botão, nem formulário. Um admin
+que a chamasse diretamente (ou se algum dia existisse um botão pra
+ela) teria a falsa impressão de que mudou o limite de alguém, sem
+efeito nenhum de verdade.
+
+Removida por completo — rota código morto, nunca chamada por
+ninguém, escrevendo em campos que ninguém lê (mesma família de
+limpeza do v199-L18, "5 rotas sem dono respondem 404").
+
+Testes: 2 checks — a rota responde 404 de verdade; e `server.js` não
+tem mais nenhum resquício de `customAutoLimit`. `npm test` 100%
+verde, `check-duplicates.js`/`check-xss-guard.js` sem achados. Sem
+bump de sw.js (server-side only).
+
+## v237t — /api/disconnect sem trava de método (achado Baixa de auth) (20/09/2026)
+
+`/api/disconnect` não exigia `req.method==="POST"` — QUALQUER método
+HTTP (inclusive GET) destruía a sessão. O cookie de sessão é
+`SameSite=Lax` (necessário pra sobreviver ao retorno do OAuth do
+Google), o que significa que ele VAI numa navegação de TOPO mesmo
+vinda de outro site — uma página maliciosa com só um
+`<a href="https://h2bapply.com/api/disconnect">` (ou um
+`window.location` automático) deslogava qualquer usuário logado em
+silêncio, sem nenhum clique em botão do próprio H2BApply.
+
+Corrigido: a rota agora exige `req.method==="POST"`. Os 2 únicos
+chamadores do front (`doLogout` em app.js, `fazerLogout` em
+admin.html) já mandavam a requisição via `fetch()` SEM `method`
+explícito — que por padrão é GET! — então os 2 foram ajustados pra
+`method:"POST"` explícito NO MESMO commit, senão a correção do
+backend quebraria o logout de verdade pra todo mundo.
+
+Testes: 2 checks comportamentais reais — login de teste, GET em
+`/api/disconnect` é recusado e a sessão CONTINUA logada
+(`/api/status` confirma); POST na sequência desloga normalmente
+(prova que a trava é só de método, o logout real não quebrou).
+`npm test` 100% verde, `check-duplicates.js`/`check-xss-guard.js`
+sem achados. sw.js v103→v104 (app.js e admin.html mudaram).
+
+**3ª rodada de auditoria (v237g–v237t) 100% FECHADA** — todos os
+achados Alta/Média/Baixa dos 3 workflows paralelos (auth,
+gmail-envio, admin-planos-pwa) corrigidos, testados e no ar.
+

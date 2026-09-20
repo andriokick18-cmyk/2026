@@ -7305,6 +7305,47 @@ async function drillBloqueioComprasNovas() {
       (() => { const m = _admV237r.match(/function voltarSiteNormal\(\)\{[^}]*\}/); return !!m && !m[0].includes("disconnect"); })(),
       "voltarSiteNormal() ganhou uma chamada a /api/disconnect — deixaria de ser 'voltar sem deslogar'");
 
+    // 🧹 v237s (achado de auditoria — Média/Baixa, admin): /api/admin/set-
+    // auto-limit gravava u.customAutoLimit e job.lockedAutoLimit, mas NENHUM
+    // dos 2 campos era lido em lugar nenhum (getAutoLimit() explicitamente
+    // NÃO usa lockedAutoLimit — comentário próprio já dizia isso — e
+    // customAutoLimit não aparecia em nenhuma outra linha do arquivo) e
+    // NENHUMA tela do admin.html chamava essa rota — o admin clicando
+    // "definir limite" (se algum dia existisse botão) teria a falsa
+    // impressão de que mudou algo, sem efeito nenhum de verdade. Removida
+    // por completo (rota código morto, nunca chamada por ninguém).
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "andrio.usa2026@gmail.com", name: "Dono", isAdmin: true });
+    const _v237sDel = await req2("POST", "/api/admin/set-auto-limit", { email: "v237alvo@test.com", limit: 999 });
+    check("🧹 v237s: /api/admin/set-auto-limit foi removida (404) — código morto que gravava campos que nada lia (getAutoLimit() nunca usa lockedAutoLimit/customAutoLimit)",
+      _v237sDel.status === 404,
+      `status=${_v237sDel.status} body=${_v237sDel.body.slice(0, 120)}`);
+    check("🧹 v237s (estrutural): server.js não tem mais nenhum resquício de customAutoLimit (campo morto, sem leitor em lugar nenhum)",
+      !fs.readFileSync(path.join(__dirname, "server.js"), "utf8").includes("customAutoLimit"),
+      "customAutoLimit ainda aparece em server.js");
+
+    // 🚨 v237t (achado de auditoria — Baixa, auth): /api/disconnect não
+    // exigia POST — o cookie é SameSite=Lax (vai numa navegação de TOPO
+    // mesmo vinda de outro site), então uma página maliciosa com só um
+    // <a href="…/api/disconnect"> deslogava qualquer usuário em silêncio,
+    // sem clique em botão nenhum do H2BApply. Prova real: login de teste,
+    // confirma sessão viva (/api/status), tenta GET em /api/disconnect
+    // (deve ser recusado, sessão continua viva), depois POST de verdade
+    // (aí sim desloga) — as 2 chamadas do front (doLogout/fazerLogout) já
+    // mandam method:"POST" explicitamente desde este mesmo lote.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "v237t@test.com", name: "V237T" });
+    const _v237tAntes = await get("/api/status");
+    const _v237tGet = await req2("GET", "/api/disconnect");
+    const _v237tDepoisGet = await get("/api/status");
+    const _v237tPost = await req2("POST", "/api/disconnect");
+    const _v237tDepoisPost = await get("/api/status");
+    check("🚨 v237t: GET em /api/disconnect é RECUSADO (nunca 200) e a sessão continua logada — antes qualquer método deslogava, inclusive uma navegação de topo vinda de outro site (cookie SameSite=Lax)",
+      _v237tAntes.json?.connected === true && _v237tGet.status !== 200 &&
+      _v237tDepoisGet.json?.connected === true,
+      `antes=${_v237tAntes.json?.connected} getStatus=${_v237tGet.status} depoisGet=${_v237tDepoisGet.json?.connected}`);
+    check("🚨 v237t: POST em /api/disconnect continua funcionando normalmente (desloga de verdade) — a trava é só de MÉTODO, o logout real não quebrou",
+      _v237tPost.status === 200 && _v237tPost.json?.ok === true && _v237tDepoisPost.json?.connected !== true,
+      `post=${_v237tPost.status} depoisPost=${_v237tDepoisPost.json?.connected}`);
+
     // 🔶 v215 (dono, 19/09/2026 — domínio migrado de verdade pra cá):
     // estrutural — o banner "já era assinante VIP?" pro site antigo
     // (h2bapply.onrender.com) é SEMPRE visível (nunca condicionado a

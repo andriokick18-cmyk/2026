@@ -883,7 +883,7 @@ function mostrarErro(){mostrarTela("gate-error");}
 // navegar pra "/" sem tocar na sessão nenhuma.
 function voltarSiteNormal(){ location.href="/"; }
 async function fazerLogout(){
-  try{await fetch("/api/disconnect",{credentials:"include"});}catch(e){}
+  try{await fetch("/api/disconnect",{method:"POST",credentials:"include"});}catch(e){}
   location.href="/";
 }
 

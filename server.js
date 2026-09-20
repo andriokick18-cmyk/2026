@@ -9965,20 +9965,6 @@ filtrar();
       return json(res,200,{ok:true});
     }catch(e){return json(res,500,{error:e.message});}
   }
-  // ── Admin: definir limite auto de usuário ──────────────────
-  if(pathname==="/api/admin/set-auto-limit"&&req.method==="POST"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Acesso negado."});
-    try{
-      const d=JSON.parse(await readBody(req));
-      const {email,limit}=d;if(!email||!limit)return json(res,400,{error:"obrigatórios: email, limit"});
-      const job=getAutoJob(email);
-      if(job)setAutoJob(email,{...job,lockedAutoLimit:parseInt(limit)});
-      setUser(email,{customAutoLimit:parseInt(limit)});
-      return json(res,200,{ok:true});
-    }catch(e){return json(res,500,{error:e.message});}
-  }
-
   if(pathname==="/api/admin/my-settings"&&req.method==="POST"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
     const p=getUser(s.user_email);if(!p||!isAdminVip(p))return json(res,403,{error:"Acesso negado. Apenas admins."});
@@ -11585,7 +11571,14 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
       return json(res,200,{ok:true,jobs:out});
     }catch(e){return json(res,500,{ok:false,error:e.message});}
   }
-  if(pathname==="/api/disconnect"){const id=getSessId(req);if(id&&sessions[id]){delete sessions[id];persistSessionsDebounced(500);}res.writeHead(200,{"Content-Type":"application/json","Set-Cookie":clearCookieStr()});return res.end('{"ok":true}');}
+  // 🚨 v237t (achado de auditoria — Baixa, auth): faltava a trava
+  // req.method==="POST" — o cookie é SameSite=Lax (sempre vai numa
+  // navegação de topo, mesmo vinda de outro site), então uma página
+  // maliciosa com só um <a href="…/api/disconnect"> ou um window.location
+  // deslogava qualquer usuário logado em silêncio. Os 2 chamadores do
+  // front (doLogout em app.js, fazerLogout em admin.html) já foram
+  // ajustados pra mandar method:"POST" explicitamente.
+  if(pathname==="/api/disconnect"&&req.method==="POST"){const id=getSessId(req);if(id&&sessions[id]){delete sessions[id];persistSessionsDebounced(500);}res.writeHead(200,{"Content-Type":"application/json","Set-Cookie":clearCookieStr()});return res.end('{"ok":true}');}
 
   // ── POST /api/account/delete — usuário deleta a própria conta ──────────
   // Soft-delete: NADA é apagado (histórico, financeiro, pedidos — tudo fica).

@@ -5407,7 +5407,7 @@ async function doLogout(){
   // compartilhado, a Conta B herdava o "já pulei o convite de currículo" da
   // Conta A e nunca via o convite, mesmo com zero perfil.
   try{["h2b_cv_prompt_pulado","h2b_terms_session","h2bNovaConta"].forEach(k=>{try{sessionStorage.removeItem(k);}catch(e){}});}catch(e){}
-  await fetch("/api/disconnect",{credentials:"include"});U={connected:false};clearInterval(autoInterval);showLanding();
+  await fetch("/api/disconnect",{method:"POST",credentials:"include"});U={connected:false};clearInterval(autoInterval);showLanding();
 }
 // v167: achado E2E CRÍTICO — depois da reestruturação v166 (nav reduzida a
 // 3 destinos) nenhum botão da interface chamava mais doLogout(); usuário
