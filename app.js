@@ -185,9 +185,29 @@ function applyStatus(d){
 async function checkStatus(){
   // Esconde landing enquanto verifica sessão (evita flash para usuário já logado)
   const _land=g("#landing");if(_land)_land.style.visibility="hidden";
+  // 🚨 v236 (achado de auditoria — Crítica): esta é a PRIMEIRA coisa que roda
+  // ao abrir/recarregar o site inteiro — diferente das 6 funções do portão de
+  // autenticação (_agReadJson, v225) e de loadPlanos() (retry, v227b), ela
+  // nunca tratava resposta não-JSON (deploy reiniciando: o proxy devolve HTML
+  // de erro) como uma falha TRANSIENTE. Um usuário PAGANTE com sessão válida
+  // que desse F5 bem nessa janela via a tela de cadastro/login como se nunca
+  // tivesse tido conta — sem nenhum aviso de "servidor reiniciando". Agora
+  // tenta até 3x (mesmo padrão do v227b) ANTES de desistir e mostrar a
+  // landing — uma resposta de verdade dizendo "não logado" não é retentada.
+  let d=null;
+  for(let _t=0;_t<3;_t++){
+    try{
+      const r=await fetch("/api/status",{credentials:"include"});
+      d=await jsonSafe(r);
+      break;
+    }catch(e){
+      d=null;
+      if(_t<2)await new Promise(res=>setTimeout(res,400+_t*500));
+    }
+  }
+  if(_land)_land.style.visibility="";
+  if(!d){showLanding();return;}
   try{
-    const r=await fetch("/api/status",{credentials:"include"});const d=await r.json();
-    if(_land)_land.style.visibility="";
     if(d.connected){
       applyStatus(d);
       // 🌐 v149c (dono, 20/08: "tira aquele negócio de qual servidor você

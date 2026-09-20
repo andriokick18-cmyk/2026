@@ -2540,3 +2540,36 @@ v235 (Baixa). Junto com os 4 achados do dono testando ao vivo (v225
 login+tutorial, v227b Planos, v231 badge de Currículos), são 14
 correções reais entregues nesta sessão, todas testadas e no ar.
 
+## v236 — achado Crítica de uma 2ª rodada de 3 auditorias (perfil/onboarding): boot do site inteiro deslogava usuário pagante em falha isolada (20/09/2026)
+
+Depois de fechar os 10 achados da 1ª rodada de auditorias, o dono
+pediu pra investigar a tarefa "Varredura total" (#113) — que já estava
+100% concluída (22 lotes, v183-v205, "fim da varredura" registrado) —
+e continuar corrigindo o que fosse real. Abrimos uma 2ª rodada de 3
+auditorias paralelas em áreas ainda não cobertas (painel admin/
+dinheiro, perfil/onboarding, vagas/filtros/planilhas). O primeiro
+achado, e o mais grave de todos os achados de hoje: `checkStatus()` —
+a PRIMEIRA função que roda ao abrir ou recarregar o site inteiro —
+fazia `const d=await r.json();` cru em `/api/status`, sem nenhuma
+proteção contra resposta não-JSON (deploy reiniciando: o proxy devolve
+HTML de erro, exatamente o cenário que motivou os fixes do v225/v227).
+A exceção caía no `catch` da função inteira, que chamava
+`showLanding()` incondicionalmente — um usuário PAGANTE, com sessão
+válida, que desse F5 bem nessa janela de alguns segundos, via a tela
+de cadastro/login como se nunca tivesse tido conta. Diferente das 6
+funções do portão de autenticação (já protegidas desde o v225) e do
+`loadPlanos()` (retry desde o v227b), esta — o ÚNICO ponto de entrada
+de TODO o app, muito mais exposto que qualquer uma delas — nunca tinha
+sido tocada.
+
+Corrigido com o mesmo padrão já validado hoje: até 3 tentativas (com
+pausa curta crescente) usando `jsonSafe`, ANTES de desistir e mostrar
+a landing. Uma resposta de verdade dizendo "não conectado" continua
+mostrando a landing imediatamente, sem retry nenhum — só falha real de
+rede/parse é retentada.
+
+Testes: 1 check estrutural no smoke (loop de retry presente, com
+`jsonSafe` e o `return` antecipado quando todas as tentativas falham).
+`npm test` 100% verde, `check-duplicates.js`/`check-xss-guard.js` sem
+achados. sw.js bumpado (v92→v93).
+

@@ -4727,6 +4727,20 @@ async function drillBloqueioComprasNovas() {
     check("🧹 v235 (estrutural): 'SEM_COMPROVANTE' não existe mais em lugar nenhum do server.js — era um veredito que nunca era produzido (código morto no allowlist de leitura ruim)",
       !_srvSrc.includes("SEM_COMPROVANTE"),
       "achado 'SEM_COMPROVANTE' de volta no server.js — confirmar se virou um veredito real antes de reintroduzir");
+
+    // ═══ 🚨 v236 (achado de auditoria — Crítica): checkStatus() é a PRIMEIRA
+    // coisa que roda ao abrir/recarregar o site — antes tratava QUALQUER
+    // resposta não-JSON de /api/status (deploy reiniciando: proxy devolve
+    // HTML) exatamente como "sessão inexistente", mostrando a landing pra
+    // um usuário PAGANTE com sessão válida. Guarda ESTRUTURAL: agora tenta
+    // até 3x (mesmo padrão do loadPlanos, v227b) antes de desistir.
+    {
+      const _appSrcV236 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _fnCheckStatus = (_appSrcV236.match(/async function checkStatus\(\)\{[\s\S]*?\n\}\n/) || [""])[0];
+      check("🚨 v236 (estrutural): checkStatus() tenta buscar /api/status até 3x (loop com jsonSafe) antes de mostrar a landing — nunca mais 1 falha isolada de rede desloga um usuário com sessão válida",
+        /for\(let _t=0;_t<3;_t\+\+\)/.test(_fnCheckStatus) && /jsonSafe\(r\)/.test(_fnCheckStatus) && /if\(!d\)\{showLanding\(\);return;\}/.test(_fnCheckStatus),
+        `checkStatus() sem retry — ${_fnCheckStatus.length} chars capturados`);
+    }
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5c@test.com", name: "MC5 C" });
     const mc5d1 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-um").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     const mc5d2 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-dois").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
