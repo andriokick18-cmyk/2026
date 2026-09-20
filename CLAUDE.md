@@ -1881,3 +1881,66 @@ Verificação visual real com Playwright (desktop 1440px e mobile 390px)
 confirmou o diamante, a tabela, o selo "MAIS POPULAR", os selos de
 economia e o FAQ renderizando corretamente nos dois formatos.
 
+## v219 — Refoto dos prints reais da landing pós-rename de planos (dono, 20/09/2026)
+
+Achado do dono revisando o site AO VIVO após o v218: `landing-4-
+automatico.jpg` e `landing-5-painel.jpg` (as 2 das 5 capturas reais do
+hero/"Veja o site por dentro" mais afetadas pelo rename) mostravam
+"VIPro — 200 envios/dia automático" e "VIP 21 dias" — nomes/números
+de ANTES do v218 (as fotos foram tiradas antes do rename, no mesmo
+dia). Refotografadas com Playwright (TEST_LOGIN_TOKEN + fixtures reais,
+mesmo padrão das outras 5 capturas), mesmas dimensões exatas de antes
+(860×1168 e 804×1974, sem mexer no layout do carrossel). Publicado
+DIRETO por autorização explícita do dono no chat ("é só troca de
+imagem estática, não mexe em preço/lógica... pode publicar direto, sem
+esperar minha confirmação") — única exceção ao protocolo padrão de
+aguardar confirmação escrita antes de dar push.
+
+Nota permanente: o badge "🤖 Pro" ao lado dos dias do automático NÃO é
+um dos 3 nomes de plano renomeados — é rótulo genérico e deliberado de
+"automático ativo" (`planBadgeHTML()`, independente do plano), então
+continua aparecendo do mesmo jeito depois do v218 e não deve ser
+confundido com resíduo do nome antigo.
+
+## v220 — Remoção total do sistema de código de migração VIP (dono, 20/09/2026)
+
+**Ordem do dono** (texto exato): *"delete o sistema de codigo de
+imigração de todo site, nao vai ter mais isso"*. O sistema de códigos
+de migração VIP do site antigo (implementado no v206, 19/09/2026— ver
+seção acima, preservada como registro histórico) foi removido por
+completo — não existe mais em NENHUM lugar do site.
+
+**O que saiu** (server.js): rota `POST /api/vip/resgatar-codigo`
+(resgate pelo usuário), `GET/POST /api/admin/migracao-codigos` e
+`POST /api/admin/migracao-codigos/excluir` (painel admin); `DB_MIGRACAO_
+CODES`, `MIGRACAO_CODES_FILE` (`migration_codes.json`) e todo o load
+de boot; os helpers `_migGerarCodigo`, `_migNormCodigo`,
+`_migEmailDaConta`, `MIG_PLANOS`, `_migVisao`, `_migCriarCodigo`; o
+hook de teste `d.emailContato` em `/api/test/login` (só existia pra
+testar essa identidade — `emailContato` em si, o campo de verdade do
+cadastro v175, continua intocado e usado em vários outros lugares).
+
+**Front** (app.js): função `resgatarCodigoMigracao()` e as 8 chaves
+`mig_*` do `LANG_DICT` nas 3 línguas. **Landing** (index.html): o
+`<details id="mig-card">` inteiro (resumo, input, botão, mensagem) que
+ficava na aba Planos, logo abaixo do card de status do plano. **Admin**
+(admin.html): o item da sidebar "Códigos de migração", a view
+`#view-migracao` inteira (3 painéis: criar código, importar em lote,
+lista com busca), o CSS `.mig-grid`, e as funções `loadMigracao`/
+`renderMigracao`/`_migLerForm`/`migCriar`/`migImportar`/`migExcluir`/
+`migMensagem`/`migCopiarMsg` — `NOME_PLANO_ADM` (dicionário de nomes do
+v218) ficou, porque outras 6 telas do admin dependem dele.
+
+**PROIBIDO**: reintroduzir qualquer parte deste sistema (rota, tela,
+banco `migration_codes.json`, texto "código de migração") sem ordem
+EXPRESSA e NOVA do dono — a seção v206 acima descreve a implementação
+ORIGINAL, histórico, não o comportamento atual.
+
+Testes: os ~20 checks do v206 no smoke saíram junto com o código que
+testavam (nunca faz sentido manter teste de feature que não existe
+mais). Varredura de repositório inteiro (grep por `migracao`,
+`migração`, `mig_`, `resgatarCodigoMigracao`, `DB_MIGRACAO`) confirmou
+ZERO referência restante em qualquer arquivo `.js`/`.html`. `npm test`
+100% verde (mesma contagem de checks estruturais menos os removidos).
+sw.js bumpado (v82→v83).
+

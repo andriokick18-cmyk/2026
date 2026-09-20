@@ -109,7 +109,6 @@ a{color:inherit;text-decoration:none}
 .field{margin-bottom:13px}
 .field label{display:block;font-size:12.5px;font-weight:700;color:var(--t2);margin-bottom:6px}
 .field .hint{font-size:11px;color:var(--t3);margin-top:5px}
-.mig-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 14px}
 input[type=text],input[type=email],input[type=number],input[type=date],input[type=search],textarea,select{
   width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:7px;padding:9px 11px;font-size:14px;color:var(--text);outline:none;transition:border-color .12s}
 input:focus,textarea:focus,select:focus{border-color:var(--blueb)}
@@ -286,7 +285,6 @@ tbody tr:hover{background:var(--glass2)}
       <button class="sb-item active" data-view="overview" onclick="switchTab('overview')"><i class="ti ti-layout-dashboard"></i> Visão Geral</button>
       <button class="sb-item" data-view="usuarios" onclick="switchTab('usuarios')"><i class="ti ti-users"></i> Usuários</button>
       <button class="sb-item" data-view="pendentes" onclick="switchTab('pendentes')"><i class="ti ti-hourglass"></i> Pedidos Pendentes <span class="pill" id="pill-pendentes" style="display:none">0</span></button>
-      <button class="sb-item" data-view="migracao" onclick="switchTab('migracao')"><i class="ti ti-ticket"></i> Códigos de migração</button>
       <div class="sb-section">Vagas</div>
       <button class="sb-item" data-view="planilhas" onclick="switchTab('planilhas')"><i class="ti ti-table-import"></i> Planilhas &amp; Robôs</button>
       <div class="sb-section">Sistema</div>
@@ -429,50 +427,6 @@ tbody tr:hover{background:var(--glass2)}
         </div>
       </div>
 
-      <!-- ═══ 🎟️ v206 — CÓDIGOS DE MIGRAÇÃO VIP (ordem do dono, 19/09/2026):
-           cliente que ainda tinha dias de VIP no site antigo recebe um código de
-           uso único, preso ao Gmail dele, e resgata os dias no site novo pela
-           aba Planos — sem cobrança nova. Os códigos nascem SÓ aqui: o
-           repositório é público e dado de cliente nunca vai pro git. ═══ -->
-      <div class="view" id="view-migracao">
-        <div class="panel">
-          <div class="panel-head">
-            <div class="panel-title"><i class="ti ti-ticket"></i>Novo código</div>
-            <div class="panel-actions"><button class="btn btn-sm" onclick="loadMigracao()"><i class="ti ti-refresh"></i> Atualizar</button></div>
-          </div>
-          <div class="panel-body">
-            <div class="mig-grid">
-              <div class="field"><label>Nome do cliente</label><input id="mig-nome" type="text" maxlength="80" placeholder="Como aparece no site antigo"></div>
-              <div class="field"><label>Gmail do site antigo</label><input id="mig-email" type="email" maxlength="120" placeholder="cliente@gmail.com"><div class="hint">O código só funciona na conta nova cadastrada com ESTE Gmail.</div></div>
-              <div class="field"><label>Plano</label><select id="mig-plano"><option value="vipro">Turbo (100 manual + 100 auto/dia)</option><option value="doublepro">Máximo (50 manual + 300 auto/dia)</option><option value="vip">Manual (100 manual/dia)</option></select></div>
-              <div class="field"><label>Dias restantes</label><input id="mig-dias" type="number" min="1" max="365" placeholder="ex.: 25"></div>
-              <div class="field"><label>Código (opcional)</label><input id="mig-cod" type="text" maxlength="24" placeholder="vazio = o sistema gera" style="text-transform:uppercase"><div class="hint">Só preencha se o cliente JÁ recebeu um código específico.</div></div>
-            </div>
-            <div class="pl-actions"><button class="btn btn-primary" onclick="migCriar()"><i class="ti ti-plus"></i> Criar código</button></div>
-            <div id="mig-form-msg" class="pl-help" style="margin-top:10px"></div>
-          </div>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><div class="panel-title"><i class="ti ti-file-import"></i>Importar vários de uma vez</div></div>
-          <div class="panel-body">
-            <div class="field"><label>Uma linha por cliente: <code>nome;gmail;plano;dias</code> (5º campo opcional: código)</label>
-              <textarea id="mig-lote" rows="6" placeholder="Maria Silva;maria@gmail.com;vipro;25&#10;João Souza;joao@gmail.com;doublepro;7;H2B26-ABCD-EFGH"></textarea>
-              <div class="hint">Plano: vip, vipro ou doublepro. Linha com erro é recusada e explicada — as certas entram.</div></div>
-            <div class="pl-actions"><button class="btn" onclick="migImportar()"><i class="ti ti-upload"></i> Importar lista</button></div>
-            <div id="mig-lote-msg" class="pl-help" style="margin-top:10px"></div>
-          </div>
-        </div>
-        <div class="panel">
-          <div class="panel-head">
-            <div class="panel-title"><i class="ti ti-list"></i>Códigos <span class="badge gray" id="mig-count" style="margin-left:8px">0</span></div>
-            <div class="panel-actions"><div class="search-wrap"><i class="ti ti-search"></i><input type="search" id="mig-search" placeholder="Nome, e-mail ou código…" oninput="renderMigracao()"></div></div>
-          </div>
-          <div class="panel-body">
-            <div class="tbl-wrap"><table><thead><tr><th>Código</th><th>Cliente</th><th>Plano</th><th>Dias</th><th>Status</th><th>Ações</th></tr></thead><tbody id="tbl-migracao"><tr><td colspan="6"><div class="spin"></div></td></tr></tbody></table></div>
-            <div class="empty" id="mig-empty" style="display:none"><i class="ti ti-ticket-off"></i>Nenhum código criado ainda.</div>
-          </div>
-        </div>
-      </div>
 
       <!-- ═══ 📋 v174 — PLANILHAS & ROBÔS (ordem do dono, 13/09/2026: "as planilhas
            devem ser alimentadas, igual elas já são hoje, com todas as informações
@@ -852,84 +806,6 @@ function toast(msg,tipo){
 // plano no painel admin (mensagens ao cliente, listas, confirmações). Chave
 // interna (vip/vipro/doublepro) nunca muda — só o texto que a pessoa lê.
 var NOME_PLANO_ADM={vip:"Manual",vipro:"Turbo",doublepro:"Máximo"};
-var MIG_PLANO_TXT=NOME_PLANO_ADM; // nome antigo mantido como alias — mesmos usos
-async function loadMigracao(){
-  var tbody=document.getElementById("tbl-migracao");
-  try{
-    var d=await api("/api/admin/migracao-codigos");
-    STATE.migracao=d.codigos||[];
-    renderMigracao();
-  }catch(e){
-    tbody.innerHTML=`<tr><td colspan="6" style="color:var(--red)">${esc(e.message||String(e))}</td></tr>`;
-  }
-}
-function renderMigracao(){
-  var tbody=document.getElementById("tbl-migracao"),empty=document.getElementById("mig-empty"),count=document.getElementById("mig-count");
-  var todos=STATE.migracao||[],lista=todos;
-  var termo=((document.getElementById("mig-search")||{}).value||"").trim().toLowerCase();
-  if(termo)lista=todos.filter(function(c){return String(c.nome||"").toLowerCase().indexOf(termo)>=0||String(c.email||"").toLowerCase().indexOf(termo)>=0||String(c.codigo||"").toLowerCase().indexOf(termo)>=0;});
-  count.textContent=todos.length+" · "+todos.filter(function(c){return c.usado;}).length+" usado(s)";
-  if(!lista.length){tbody.innerHTML="";empty.style.display="block";return;}
-  empty.style.display="none";
-  // Cada ${} passa por esc() (guarda de XSS por expressão, v205) — o código
-  // vai pro onclick só depois de escapado, e o formato dele é [A-Z0-9-].
-  tbody.innerHTML=lista.map(function(c){
-    return `<tr>
-      <td><code>${esc(c.codigo)}</code></td>
-      <td><div class="cell-main">${esc(c.nome||"—")}</div><div class="cell-sub">${esc(c.email)}</div></td>
-      <td>${esc(MIG_PLANO_TXT[c.plano]||c.plano)}</td>
-      <td>${esc(String(c.dias))}</td>
-      <td>${c.usado?`<span class="badge green">✅ usado</span><div class="cell-sub">${esc(c.usadoPor||"")} · ${esc(fmtData(c.usadoEm))}</div>`:`<span class="badge amber">⏳ aguardando</span>`}</td>
-      <td><button class="btn btn-sm" onclick="migCopiarMsg('${esc(c.codigo)}')" title="Copiar a mensagem pronta pro WhatsApp"><i class="ti ti-brand-whatsapp"></i> Mensagem</button>${c.usado?"":` <button class="btn btn-sm btn-red" onclick="migExcluir('${esc(c.codigo)}')" title="Excluir (só código sem uso)"><i class="ti ti-trash"></i></button>`}</td>
-    </tr>`;
-  }).join("");
-}
-function _migLerForm(){
-  var v=function(id){return (document.getElementById(id).value||"").trim();};
-  return {nome:v("mig-nome"),email:v("mig-email"),plano:document.getElementById("mig-plano").value,dias:parseInt(v("mig-dias"),10),codigo:v("mig-cod")};
-}
-async function migCriar(){
-  var msg=document.getElementById("mig-form-msg");var it=_migLerForm();
-  if(!it.email||!it.dias){msg.textContent="Preencha pelo menos o Gmail e os dias.";return;}
-  try{
-    var d=await api("/api/admin/migracao-codigos",{method:"POST",body:it});
-    if(d.erros&&d.erros.length){msg.textContent="❌ "+d.erros[0].erro;return;}
-    var c=d.criados[0];
-    msg.textContent="✅ Código "+c.codigo+" criado pra "+c.email+" ("+(MIG_PLANO_TXT[c.plano]||c.plano)+", "+c.dias+" dias). Na lista, clique em Mensagem pra copiar o texto do WhatsApp.";
-    ["mig-nome","mig-email","mig-dias","mig-cod"].forEach(function(id){document.getElementById(id).value="";});
-    toast("Código criado","ok");loadMigracao();
-  }catch(e){msg.textContent="❌ "+(e.message||String(e));}
-}
-async function migImportar(){
-  var msg=document.getElementById("mig-lote-msg");
-  var linhas=(document.getElementById("mig-lote").value||"").split(/\r?\n/).map(function(l){return l.trim();}).filter(Boolean);
-  if(!linhas.length){msg.textContent="Cole pelo menos uma linha.";return;}
-  var itens=linhas.map(function(l){var p=l.split(";").map(function(x){return x.trim();});return {nome:p[0]||"",email:p[1]||"",plano:(p[2]||"vipro").toLowerCase(),dias:parseInt(p[3],10),codigo:p[4]||""};});
-  try{
-    var d=await api("/api/admin/migracao-codigos",{method:"POST",body:{itens:itens}});
-    var txt="✅ "+(d.criados||[]).length+" código(s) criado(s).";
-    if(d.erros&&d.erros.length)txt+=" ❌ "+d.erros.length+" linha(s) recusada(s): "+d.erros.map(function(e){return "linha "+e.linha+" ("+(e.email||"?")+"): "+e.erro;}).join(" · ");
-    msg.textContent=txt;
-    if((d.criados||[]).length){document.getElementById("mig-lote").value="";loadMigracao();}
-  }catch(e){msg.textContent="❌ "+(e.message||String(e));}
-}
-async function migExcluir(codigo){
-  if(!confirm("Excluir o código "+codigo+"? Só dá pra excluir código que ninguém usou."))return;
-  try{await api("/api/admin/migracao-codigos/excluir",{method:"POST",body:{codigo:codigo}});toast("Código excluído","ok");loadMigracao();}
-  catch(e){toast(e.message||String(e),"err");}
-}
-function migMensagem(c){
-  return "Oi, "+(c.nome||"")+"! Vamos migrar pro site novo do H2BApply 🚀\n"
-    +"1. Cadastre-se de novo em h2bapply.com com o MESMO Gmail de antes: "+c.email+"\n"
-    +"2. Depois de entrar, abra a aba Planos → \"Tenho um código de migração do site antigo\" e cole este código: "+c.codigo+"\n"
-    +"Isso libera os "+c.dias+" dias de "+(MIG_PLANO_TXT[c.plano]||c.plano)+" que ainda restavam pra você, sem cobrar nada de novo. Qualquer dúvida me chama!";
-}
-async function migCopiarMsg(codigo){
-  var c=(STATE.migracao||[]).find(function(x){return x.codigo===codigo;});if(!c)return;
-  var txt=migMensagem(c);
-  try{await navigator.clipboard.writeText(txt);toast("Mensagem copiada — é só colar no WhatsApp","ok");}
-  catch(e){window.prompt("Copie a mensagem:",txt);}
-}
 
 async function api(path,opts){
   opts=opts||{};
@@ -1071,8 +947,7 @@ var TITULOS={
   usuarios:{t:"Usuários por Dias de VIP",s:"Todos os usuários, ordenados por dias restantes"},
   pendentes:{t:"Pedidos",s:"Pendentes, aprovados e cancelados — com quem aprovou e por quê"},
   planilhas:{t:"Planilhas & Robôs",s:"Coleta e enriquecimento do DOL — 100% manual, clique quando sair temporada nova"},
-  notificacoes:{t:"Notificações por e-mail",s:"A conta Google que envia os códigos e avisos do sistema"},
-  migracao:{t:"Códigos de migração VIP",s:"Cliente do site antigo resgata os dias que restavam — uso único, preso ao Gmail, sem cobrança nova"}
+  notificacoes:{t:"Notificações por e-mail",s:"A conta Google que envia os códigos e avisos do sistema"}
 };
 
 function switchTab(nome){
@@ -1088,7 +963,6 @@ function switchTab(nome){
   toggleSidebar(false);
   if(nome==="planilhas")loadPlanilhas();else _plStop();
   if(nome==="notificacoes")loadNotificacoes();
-  if(nome==="migracao")loadMigracao();
   // 🩺 v188 LOTE 6: o vigia é lido quando a aba abre (nunca no boot — o
   // relatório vive em memória do servidor e a varredura sozinha já roda).
   if(nome==="usuarios")carregarSentinela();
