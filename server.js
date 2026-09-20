@@ -11089,6 +11089,21 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
             if(_reservedManualSlot){_releaseManualSlot(s.user_email);_reservedManualSlot=false;}
             return json(res,409,{error:"Essa conta Gmail está bloqueada pelo Google e não pode enviar. Escolha outro remetente em Perfil → Gmail Extra, ou reconecte essa conta.",senderBlocked:true});
           }
+          // 🚨 v237l (achado de auditoria — Alta, gmail-envio): até aqui, QUALQUER
+          // exceção do sender extra (incluindo timeout de rede — httpsReq dá 15s
+          // e pode cair sem NUNCA saber se o Gmail já processou o envio) caía
+          // direto no reenvio pelo principal, abaixo. Num timeout ambíguo, isso
+          // podia mandar a MESMA candidatura 2x pro empregador (1x pela conta
+          // extra que talvez tenha saído mesmo com erro local, 1x pelo
+          // principal) — sem o usuário nem o sistema saberem. e2.noResponse
+          // (marcado em httpsReq/mod-gmail.js) é só true quando a rejeição
+          // aconteceu SEM nenhuma resposta HTTP do Gmail — recusa o reenvio
+          // automático nesse caso específico, em vez de arriscar duplicar.
+          if(e2.noResponse){
+            if(_reservedManualSlot){_releaseManualSlot(s.user_email);_reservedManualSlot=false;}
+            console.warn("[send] ⚠️ Timeout AMBÍGUO no sender extra — NÃO reenviando pelo principal (risco de duplicar):",e2.message);
+            return json(res,502,{error:"Não deu pra confirmar se a candidatura saiu — a conexão com o Google caiu antes da resposta chegar (pode ter saído ou não). Confira em Enviadas antes de tentar de novo: reenviar agora pode duplicar o e-mail pro empregador se o primeiro já tiver saído.",ambiguousSend:true});
+          }
           console.warn("[send] Sender extra falhou, usando principal:",e2.message);
           actualSenderEmail=s.user_email;
           r=await gmailSendWithThread(sid,{to:toEmail,subject:d.subject,text:d.message,fromName:d.fromName||p.name||s.user_name||"H2BApply",attachments});
@@ -11116,6 +11131,15 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
           // v76: WARMUP_CAP_REACHED não é mais lançado pelo round-robin (ver
           // getSenderToken) — envio manual sem sender específico nunca mais
           // é recusado por aquecimento, só cai pro principal em erro real.
+          // 🚨 v237l (achado de auditoria — Alta, gmail-envio): mesmo risco do
+          // sender extra explícito, acima — um timeout AMBÍGUO no candidato do
+          // round-robin (sem resposta do Gmail) não pode virar reenvio cego
+          // pelo principal (arrisca mandar a mesma candidatura 2x).
+          if(e3.noResponse){
+            if(_reservedManualSlot){_releaseManualSlot(s.user_email);_reservedManualSlot=false;}
+            console.warn("[send/manual] ⚠️ Timeout AMBÍGUO no round-robin — NÃO reenviando pelo principal (risco de duplicar):",e3.message);
+            return json(res,502,{error:"Não deu pra confirmar se a candidatura saiu — a conexão com o Google caiu antes da resposta chegar (pode ter saído ou não). Confira em Enviadas antes de tentar de novo: reenviar agora pode duplicar o e-mail pro empregador se o primeiro já tiver saído.",ambiguousSend:true});
+          }
           console.warn("[send/manual] Round-robin falhou, usando principal:",e3.message);
           actualSenderEmail=s.user_email;
           r=await gmailSendWithThread(sid,{to:toEmail,subject:d.subject,text:d.message,fromName:d.fromName||p.name||s.user_name||"H2BApply",attachments});

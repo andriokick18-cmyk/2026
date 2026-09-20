@@ -161,7 +161,15 @@ const googleSrv = http.createServer((rq, rs) => {
     // ── Gmail: enviar mensagem ──────────────────────────────────────────
     if (url === "/gmail/v1/users/me/messages/send") {
       const forcado = GOOGLE.falhasEnvio.shift();
-      if (forcado) return resp(forcado.status, forcado.body);
+      if (forcado) {
+        // 🚨 v237l: simula o "timeout ambíguo" — a conexão cai SEM nenhuma
+        // resposta HTTP (destrói o socket em vez de responder), do jeito que
+        // um timeout de rede de verdade se parece pro cliente (httpsReq,
+        // mod-gmail.js). Diferente de {status,body} — aquilo é uma resposta
+        // CONFIRMADA do Gmail (mesmo sendo um erro), nunca ambígua.
+        if (forcado.networkError) { rq.socket.destroy(); return; }
+        return resp(forcado.status, forcado.body);
+      }
       let payload = {}; try { payload = JSON.parse(b || "{}"); } catch {}
       GOOGLE.n++;
       GOOGLE.envios.push({
@@ -6662,6 +6670,54 @@ async function drillBloqueioComprasNovas() {
       check("🚨 v230: escolher explicitamente um remetente BLOQUEADO pelo Google (blocked:true) é RECUSADO (409, senderBlocked:true) em vez de mandar em silêncio pelo Gmail principal — o usuário sabe na hora que precisa trocar de conta",
         _blk230.status === 409 && _blk230.json?.senderBlocked === true && GOOGLE.envios.length === 0,
         JSON.stringify({ status: _blk230.status, body: (_blk230.body || "").slice(0, 160), envios: GOOGLE.envios.length }));
+
+      // ── 2c) 🚨 v237l (achado de auditoria — Alta, gmail-envio): TIMEOUT
+      // AMBÍGUO no sender extra escolhido não pode virar reenvio cego pelo
+      // principal — antes, QUALQUER exceção (incluindo a conexão caindo sem
+      // nenhuma resposta do Gmail — httpsReq pode rejeitar sem saber se o
+      // envio já foi processado do outro lado) caía direto no fallback que
+      // mandava a MESMA candidatura de novo, por OUTRA conta, arriscando 2
+      // e-mails pro mesmo empregador. GOOGLE.falhasEnvio com networkError
+      // simula exatamente isso: o fake Gmail destrói a conexão sem responder.
+      // v101: só DoublePro permite e-mail extra de verdade (VIP/VIPro = 0
+      // extras) — precisa do plano certo pra chegar no httpsReq do sender.
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "envio20@test.com", plan: "doublepro", vip: { active: true, plan: "doublepro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 }, senderEmails: [{ email: "ambig237l@gmail.com", active: true, access_token: "at-ambig237l", token_expiry: Date.now() + 3600_000, addedAt: Date.now() - 30 * 86400_000 }] });
+      GOOGLE.limpar();
+      GOOGLE.falhasEnvio.push({ networkError: true });
+      const _amb237l = await req2("POST", "/api/send", { to: "rh@empresa-ambig237l.com", subject: "Candidatura", message: "Olá, gostaria de me candidatar.", senderEmail: "ambig237l@gmail.com", jobTitle: "Cook", company: "Empresa Ambig", caseNum: "H-400-AMBIG237L" });
+      check("🚨 v237l: timeout AMBÍGUO (conexão cai sem NENHUMA resposta do Gmail) no sender extra escolhido NÃO reenvia pelo principal em silêncio — 502 claro com ambiguousSend:true, e ZERO e-mails saem (nem pelo extra, nem por um reenvio pelo principal)",
+        _amb237l.status === 502 && _amb237l.json?.ambiguousSend === true && GOOGLE.envios.length === 0,
+        JSON.stringify({ status: _amb237l.status, body: (_amb237l.body || "").slice(0, 200), envios: GOOGLE.envios.length }));
+
+      // ── 2d) v237l (contraste): erro CONFIRMADO do Gmail (resposta HTTP de
+      // verdade, não ambíguo) no sender extra CONTINUA caindo pro principal
+      // normalmente — a proteção nova é só pra quando a resposta nunca
+      // chega; nunca pode travar o fallback seguro que já existia pra
+      // quando o Google efetivamente respondeu com um erro.
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "envio20@test.com", plan: "doublepro", vip: { active: true, plan: "doublepro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 }, senderEmails: [{ email: "confirm237l@gmail.com", active: true, access_token: "at-confirm237l", token_expiry: Date.now() + 3600_000, addedAt: Date.now() - 30 * 86400_000 }] });
+      GOOGLE.limpar();
+      GOOGLE.falhasEnvio.push({ status: 500, body: { error: { message: "Internal error" } } });
+      const _conf237l = await req2("POST", "/api/send", { to: "rh@empresa-confirm237l.com", subject: "Candidatura", message: "Olá, gostaria de me candidatar.", senderEmail: "confirm237l@gmail.com", jobTitle: "Cook", company: "Empresa Confirm", caseNum: "H-400-CONFIRM237L" });
+      check("v237l (contraste): erro CONFIRMADO do Gmail (HTTP 500 de verdade, resposta chegou) no sender extra continua caindo pro principal e ENVIANDO normalmente — a trava nova não é geral, é só pra ambiguidade real",
+        _conf237l.status === 200 && _conf237l.json?.ok === true && GOOGLE.envios.length === 1 &&
+        GOOGLE.envios[0].para === "rh@empresa-confirm237l.com" && GOOGLE.envios[0].de.includes("envio20@test.com"),
+        JSON.stringify({ status: _conf237l.status, body: (_conf237l.body || "").slice(0, 160), envios: GOOGLE.envios }).slice(0, 320));
+
+      // ── 2e) v237l (estrutural): o MESMO padrão de guarda existe no
+      // round-robin manual (sem senderEmail explícito) — a fragilidade de
+      // orquestrar contagem/ordem do round-robin numa vaga só pra provar de
+      // novo o comportamento já provado acima não vale o risco; aqui só
+      // confere que a mesma trava foi aplicada nos DOIS lugares que fazem
+      // fallback-pra-principal no envio manual.
+      {
+        const _srvSrcV237l = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+        const _e2Block = _srvSrcV237l.slice(_srvSrcV237l.indexOf("}catch(e2){"), _srvSrcV237l.indexOf("}else if(!requestedSender){"));
+        const _e3Block = _srvSrcV237l.slice(_srvSrcV237l.indexOf("}catch(e3){"), _srvSrcV237l.indexOf("}else{\n        // v194 LOTE 12"));
+        check("v237l (estrutural): os DOIS catches do fallback manual (sender extra explícito `e2` e round-robin `e3`) checam `.noResponse` e devolvem 502 ambiguousSend antes de qualquer reenvio pelo principal",
+          /if\(e2\.noResponse\)/.test(_e2Block) && /ambiguousSend:true/.test(_e2Block) &&
+          /if\(e3\.noResponse\)/.test(_e3Block) && /ambiguousSend:true/.test(_e3Block),
+          `e2 tem=${/if\(e2\.noResponse\)/.test(_e2Block)} e3 tem=${/if\(e3\.noResponse\)/.test(_e3Block)}`);
+      }
 
       // ── 3) FILA AUTOMÁTICA DE 3 VAGAS: envia de verdade e a fila diminui ─
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "auto20@test.com", name: "Auto 20", refreshToken: "rt-auto20", plan: "doublepro", vip: { active: true, plan: "doublepro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 } });

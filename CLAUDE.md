@@ -3022,3 +3022,63 @@ auditável e reversível, antes era invisível fora do log de console.
 `npm test` 100% verde, `check-duplicates.js`/`check-xss-guard.js` sem
 achados. Sem bump de sw.js (server-side only).
 
+## v237l — envio manual: reenvio cego pelo principal num timeout AMBÍGUO do sender extra (achado Alta de gmail-envio) (20/09/2026)
+
+`/api/send` (envio manual) tem 2 lugares onde, se o sender ESCOLHIDO
+(extra explícito, ou o candidato do round-robin quando não há
+`senderEmail` no pedido) falhar, o código cai automaticamente pro
+Gmail principal — `catch(e2){...console.warn("Sender extra
+falhou, usando principal")...}` e o equivalente `catch(e3)` do
+round-robin. Até este achado, isso rodava pra QUALQUER exceção, sem
+distinguir a CAUSA: um erro que o Gmail respondeu de verdade (ex.
+HTTP 500, ou `{error:...}` no corpo — o Google confirmou que não
+processou o envio, seguro reenviar) é tratado exatamente igual a um
+TIMEOUT — `httpsReq` (mod-gmail.js) dá 15s e pode rejeitar (timeout
+ou erro de socket) SEM NENHUMA resposta HTTP nunca ter voltado do
+Gmail. Nesse 2º caso não dá pra saber se o Google já recebeu e
+processou o envio antes da conexão cair — e o código, sem
+distinguir, reenviava a MESMA candidatura por OUTRA conta Gmail,
+arriscando mandar 2 e-mails pro MESMO empregador pra 1 candidatura só
+(a classe de bug mais grave que existe neste sistema — regra 8 do
+CLAUDE.md existe exatamente pra isso nunca acontecer).
+
+Como a régua PERMANENTE 13d/13e proíbe o app de LER a caixa de
+`gmail.send`-only (nunca existe um jeito de perguntar ao Google "esse
+envio já saiu?"), a única correção segura é NUNCA reenviar
+automaticamente quando a falha é ambígua — melhor devolver um erro
+honesto e deixar o usuário decidir (conferir Enviadas) do que
+arriscar duplicar.
+
+Corrigido na raiz, em `httpsReq` (mod-gmail.js): as 2 rejeições que
+acontecem SEM resposta HTTP (erro de socket e o timeout de 15s) agora
+marcam `err.noResponse=true` antes de rejeitar — o ÚNICO lugar que
+sabe se uma resposta chegou ou não é o próprio `httpsReq`, então a
+marca nasce ali e viaja com o erro por qualquer chamador (o envio
+manual com sender extra, o round-robin manual, e dentro de
+`gmailSendWithThread`/`gmailSend`, que também passam por `httpsReq`).
+Nos 2 pontos do `/api/send` que decidem reenviar pelo principal,
+`e2.noResponse`/`e3.noResponse` agora é checado ANTES do reenvio: se
+`true`, a rota recusa o reenvio automático e devolve 502 com
+`ambiguousSend:true` e uma mensagem clara pedindo pra conferir
+Enviadas antes de tentar de novo. Quando a resposta CHEGOU (mesmo um
+erro do Gmail) não há ambiguidade nenhuma — o reenvio pelo principal
+continua exatamente como sempre foi, seguro.
+
+Testes: 2 checks comportamentais reais no smoke — um `networkError`
+forçado no fake Gmail (destrói a conexão sem responder, simulando o
+timeout ambíguo de verdade) no sender extra escolhido devolve 502
+`ambiguousSend:true` com ZERO e-mails saindo (nem pelo extra, nem
+por um reenvio pelo principal); e, de contraste, um erro CONFIRMADO
+(HTTP 500 de verdade, resposta chegou) no mesmo sender extra continua
+caindo pro principal e ENVIANDO normalmente — prova que a trava nova
+é só pra ambiguidade real, nunca trava o fallback seguro que já
+existia. Mais 1 check estrutural confirmando que o MESMO padrão
+(`.noResponse` + `ambiguousSend:true`) foi aplicado nos 2 catches
+(sender extra explícito `e2` e round-robin `e3`) — orquestrar a
+ordem do round-robin numa vaga só pra repetir o teste comportamental
+não valia o risco de fragilidade, dado que os 2 pontos chamam o
+MESMO `httpsReq` com a MESMA marca. `npm test` 100% verde,
+`check-duplicates.js`/`check-xss-guard.js` sem achados. Sem bump de
+sw.js (mudança 100% server-side — `httpsReq` é usado só pelo
+back-end).
+

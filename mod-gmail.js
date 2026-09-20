@@ -46,7 +46,44 @@ function _googleFakeTarget(hostname){
 // 💸 v140 (conta do Render): agora entende resposta COMPRIMIDA (gzip/deflate/
 // br) — quem pedir "Accept-Encoding: gzip" recebe ~80% menos bytes do DOL e
 // dos servidores irmãos. Falha na descompressão cai no corpo cru (fail-open).
-function httpsReq(opts,body){return new Promise((res,rej)=>{const p=body?(typeof body==="string"?body:JSON.stringify(body)):null;const fake=_googleFakeTarget(opts&&opts.hostname);const mod=fake?require("http"):https;const finalOpts=fake?{...opts,agent:undefined,hostname:fake.hostname,port:fake.port,headers:{...(opts.headers||{}),"x-google-host":String(opts.hostname)}}:(opts.agent?opts:{...opts,agent:_keepAliveAgent});const r=mod.request(finalOpts,resp=>{const ch=[];resp.on("data",c=>ch.push(c));resp.on("end",()=>{let buf=Buffer.concat(ch);const enc=String(resp.headers["content-encoding"]||"").toLowerCase();try{if(enc.includes("gzip"))buf=zlib.gunzipSync(buf);else if(enc.includes("deflate"))buf=zlib.inflateSync(buf);else if(enc.includes("br"))buf=zlib.brotliDecompressSync(buf);}catch(e){}const raw=buf.toString();try{res({status:resp.statusCode,body:JSON.parse(raw)});}catch{res({status:resp.statusCode,body:raw});}});});r.on("error",rej);r.setTimeout(15000,()=>{r.destroy();rej(new Error("Timeout"));});if(p)r.write(p);r.end();});}
+//
+// 🚨 v237l (achado de auditoria — Alta, gmail-envio): as duas rejeições
+// abaixo (erro de socket / timeout de 15s) acontecem SEM nenhuma resposta
+// HTTP ter voltado — pro caso do Gmail (messages/send), isso significa que
+// NÃO DÁ PRA SABER se o Google já recebeu e processou o envio antes da
+// conexão cair (o "timeout ambíguo"). `err.noResponse=true` marca essa
+// ambiguidade pro chamador: os pontos em server.js que decidem reenviar a
+// MESMA candidatura por outra conta Gmail depois de uma falha (envio manual
+// com sender extra e round-robin manual) checam essa marca e RECUSAM o
+// reenvio automático quando ela está presente — nunca arriscar mandar a
+// mesma candidatura 2x pro mesmo empregador só porque a resposta sumiu no
+// caminho. Quando a resposta CHEGA (mesmo um erro do Gmail, ex. HTTP 500 ou
+// {error:...} no corpo), não há ambiguidade — o Google confirmou que não
+// processou, e cair pro remetente principal continua seguro.
+function httpsReq(opts,body){
+  return new Promise((res,rej)=>{
+    const p=body?(typeof body==="string"?body:JSON.stringify(body)):null;
+    const fake=_googleFakeTarget(opts&&opts.hostname);
+    const mod=fake?require("http"):https;
+    const finalOpts=fake?{...opts,agent:undefined,hostname:fake.hostname,port:fake.port,headers:{...(opts.headers||{}),"x-google-host":String(opts.hostname)}}:(opts.agent?opts:{...opts,agent:_keepAliveAgent});
+    const rejNoResponse=(err)=>{ err.noResponse=true; rej(err); };
+    const r=mod.request(finalOpts,resp=>{
+      const ch=[];
+      resp.on("data",c=>ch.push(c));
+      resp.on("end",()=>{
+        let buf=Buffer.concat(ch);
+        const enc=String(resp.headers["content-encoding"]||"").toLowerCase();
+        try{if(enc.includes("gzip"))buf=zlib.gunzipSync(buf);else if(enc.includes("deflate"))buf=zlib.inflateSync(buf);else if(enc.includes("br"))buf=zlib.brotliDecompressSync(buf);}catch(e){}
+        const raw=buf.toString();
+        try{res({status:resp.statusCode,body:JSON.parse(raw)});}catch{res({status:resp.statusCode,body:raw});}
+      });
+    });
+    r.on("error",rejNoResponse);
+    r.setTimeout(15000,()=>{r.destroy();rejNoResponse(new Error("Timeout"));});
+    if(p)r.write(p);
+    r.end();
+  });
+}
 
 function normalizeEmail(raw) {
   if (!raw) return "";
