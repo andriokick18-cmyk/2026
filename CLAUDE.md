@@ -2171,3 +2171,43 @@ ignorada e busca-com-letra-real-sem-match continua zerando de
 verdade). `npm test` 100% verde, `check-duplicates.js`/
 `check-xss-guard.js` sem achados. sw.js bumpado (v85→v86).
 
+## v225 — 2 achados do dono testando ao vivo (20/09/2026)
+
+**1) Erro técnico cru na tela de login logo depois de um deploy.**
+Causa raiz: das 6 funções do portão de autenticação (login, cadastro,
+enviar código de e-mail, confirmar código, enviar código de
+recuperação, redefinir senha), só `agSubmitLogin` e a submissão do
+cadastro (`agSubmitSignup`) faziam `await r.json()` sem nenhuma
+proteção — as outras 4 já tratavam isso com `.catch(()=>({}))`. Num
+restart do Render (deploy em andamento), a API pode responder com a
+página de erro HTML do proxy em vez de JSON, e `r.json()` cru lança
+`SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid
+JSON` — esse erro técnico aparecia direto pro usuário. Criada função
+única `_agReadJson(r)` (app.js), usada pelas 6 funções: se a
+resposta não é JSON de verdade, lança uma mensagem honesta ("O
+servidor está reiniciando... espere alguns segundos e tente de
+novo.") em vez do erro cru; se é JSON de erro normal (senha errada,
+código inválido), segue pro `d.error` de sempre.
+
+**2) Central de Tutoriais prometia foto em todo item, mas só 6 de 20
+têm.** O cabeçalho dizia "20 passo a passos **com fotos reais**" —
+mas só 6 dos 20 itens (`tutorial-conteudo.html`) têm captura de tela
+de verdade (9 imagens reais, todas confirmadas existindo em disco);
+os outros 14 são só texto — um comentário no próprio index.html já
+registrava "fotos reais entram numa tarefa futura". Texto corrigido
+nas 3 línguas (dicionários) + no fallback estático do index.html:
+"20 passo a passos — tudo o que dá pra fazer no H2BApply, explicado
+tela por tela (vários já com fotos reais)" — verdade tanto hoje
+quanto depois que mais fotos forem adicionadas.
+
+**3 auditorias em paralelo** (subagentes normais — o dono negou o
+Workflow orquestrado por ser pesado demais pra esta rodada) varreram
+o site inteiro por dimensão (envio/automação, pagamento/painel admin,
+segurança/confiabilidade) e voltaram com 10 achados reais. Cada um
+será verificado individualmente antes de virar correção — registro
+deles entra nas próprias seções de correção, à medida que forem
+aplicados.
+
+Testes: `npm test` 100% verde, `check-duplicates.js`/
+`check-xss-guard.js` sem achados. sw.js bumpado (v86→v87).
+
