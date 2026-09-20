@@ -4828,6 +4828,27 @@ async function drillBloqueioComprasNovas() {
         `loadSheetMeta() sem a guarda de contexto — ${_fnLoadSheetMeta.length} chars capturados`);
     }
 
+    // ═══ 🚨 v237 (achado de auditoria — Alta, perfil/onboarding): PDF órfão
+    // sobrevivia em OUTROS perfis depois de excluído. O servidor (/api/cv/
+    // delete) já limpava resumeIdx/coverIdx de TODO perfil que apontava pro
+    // arquivo apagado; o cliente só limpava DOCS/U.cvs e o perfil que
+    // estava sendo EDITADO no momento — um perfil diferente (H-2A enquanto
+    // se mexe no H-2B, por exemplo) ficava com a referência órfã em
+    // UPROFILES/U.profiles até o próximo reload, e a injeção de "DOCS
+    // fantasma" do openModal fabricava uma entrada usando o pdfName/
+    // coverName ainda em cache — mostrando currículo "disponível" que o
+    // servidor já tinha apagado.
+    {
+      const _appSrcV237c = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _fnDeleteCv = (_appSrcV237c.match(/async function deleteCvFromAccount\(idx, cvType\)\{[\s\S]*?\n\}\n/) || [""])[0];
+      check("🚨 v237 (estrutural): deleteCvFromAccount() varre UPROFILES e U.profiles limpando resumeIdx/coverIdx/pdfName/coverName de QUALQUER perfil que apontava pro PDF apagado — mesma limpeza que o servidor já faz, nunca mais um perfil diferente do que estava sendo editado fica com currículo fantasma",
+        /jsonSafe\(r\)/.test(_fnDeleteCv) &&
+        (_fnDeleteCv.match(/if\(pr\.resumeIdx===idx\)\{delete pr\.resumeIdx;delete pr\.pdfName;pr\.pdfSize=0;\}/g) || []).length === 2 &&
+        (_fnDeleteCv.match(/if\(pr\.coverIdx===idx\)\{delete pr\.coverIdx;delete pr\.coverName;pr\.coverSize=0;\}/g) || []).length === 2 &&
+        /\(UPROFILES\|\|\[\]\)\.forEach/.test(_fnDeleteCv) && /U\.profiles\)\(U\.profiles\)\.forEach/.test(_fnDeleteCv),
+        `deleteCvFromAccount() sem a varredura de perfis órfãos — ${_fnDeleteCv.length} chars capturados`);
+    }
+
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5c@test.com", name: "MC5 C" });
     const mc5d1 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-um").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     const mc5d2 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-dois").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });

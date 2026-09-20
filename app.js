@@ -3750,7 +3750,7 @@ async function deleteCvFromAccount(idx, cvType){
     var r=await fetch("/api/cv/delete",{method:"POST",credentials:"include",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({idx:idx})});
-    var d=await r.json();
+    var d=await jsonSafe(r);
     if(d.ok){
       toast("PDF excluído com sucesso","g");
       // Recarregar lista de PDFs
@@ -3759,6 +3759,25 @@ async function deleteCvFromAccount(idx, cvType){
       DOCS=DOCS.filter(function(c){return c.idx!==idx;});
       if(_peResIdx===idx)_peResIdx=null;
       if(_peCoverIdx===idx)_peCoverIdx=null;
+      // 🚨 v237 (achado de auditoria — Alta, perfil/onboarding): o servidor
+      // (/api/cv/delete) já limpa resumeIdx/coverIdx de TODOS os perfis que
+      // apontavam pro PDF apagado (server.js) — o cliente só limpava DOCS/
+      // U.cvs e o perfil sendo EDITADO agora (_peResIdx/_peCoverIdx). Um
+      // OUTRO perfil (ex.: o H-2A enquanto se edita o H-2B) ficava com
+      // resumeIdx/coverIdx ÓRFÃO em UPROFILES/U.profiles até o próximo
+      // reload — e a injeção de "DOCS fantasma" (openModal, linha ~2592)
+      // usava o pdfName/coverName ainda em cache pra fabricar uma entrada
+      // em DOCS como se o arquivo ainda existisse, mostrando um currículo
+      // "disponível" que o servidor já apagou. Mesma limpeza do servidor,
+      // espelhada nos dois lugares onde o perfil vive.
+      (UPROFILES||[]).forEach(function(pr){
+        if(pr.resumeIdx===idx){delete pr.resumeIdx;delete pr.pdfName;pr.pdfSize=0;}
+        if(pr.coverIdx===idx){delete pr.coverIdx;delete pr.coverName;pr.coverSize=0;}
+      });
+      if(U.profiles)(U.profiles).forEach(function(pr){
+        if(pr.resumeIdx===idx){delete pr.resumeIdx;delete pr.pdfName;pr.pdfSize=0;}
+        if(pr.coverIdx===idx){delete pr.coverIdx;delete pr.coverName;pr.coverSize=0;}
+      });
       _pePopulateResumeSlots();
       _pePopulateCoverSlots();
     } else {

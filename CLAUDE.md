@@ -2683,10 +2683,45 @@ Testes: 1 check estrutural no smoke (todos os 7 elementos do padrão
 presentes: bypass do gate por `reset`, incremento condicional,
 captura de `mySeq`, descarte no sucesso/erro/finally, `jsonSafe`).
 `npm test` 100% verde, `check-duplicates.js`/`check-xss-guard.js` sem
-achados. sw.js bumpado (v94→v95). Fecha a 2ª rodada de 3 auditorias
-paralelas por completo (painel-admin/dinheiro: v236(parte)+v237;
-perfil/onboarding: v236; vagas/filtros: v237b) — restam só 2 achados
-Baixa (duplicação de código em add_pagamento/add_gasto) e a lacuna de
-UI pra Sócios & Acerto/DRE/Fechamento, que é decisão de produto, não
-bug — levados ao dono separadamente.
+achados. sw.js bumpado (v94→v95).
+
+## v237c — PDF órfão sobrevivia em OUTROS perfis depois de excluído (achado Alta de perfil/onboarding) (20/09/2026)
+
+Último achado Alta da 2ª rodada de auditorias (perfil/onboarding).
+`/api/cv/delete` (server.js) já limpava `resumeIdx`/`coverIdx` de
+TODOS os perfis que apontavam pro PDF apagado — mas
+`deleteCvFromAccount()` (app.js) só espelhava `DOCS`/`U.cvs` e o
+perfil que estava sendo EDITADO no momento (`_peResIdx`/`_peCoverIdx`)
+no cliente. Um perfil DIFERENTE (ex.: o H-2A enquanto se mexe no
+H-2B) ficava com a referência órfã em `UPROFILES`/`U.profiles` até o
+próximo reload da página.
+
+O efeito prático: a injeção de "DOCS fantasma" que já existia no
+`openModal` (pra cobrir cache dessincronizado — linha ~2592) usava o
+`pdfName`/`coverName` ainda em cache do perfil órfão pra FABRICAR uma
+entrada em `DOCS`, fazendo a tela mostrar um currículo "disponível"
+que o servidor já tinha apagado de verdade. O envio real tem um
+fallback server-side que evita quebrar de vez (pega qualquer CV
+disponível se o `resumeIdx` configurado não existir mais), mas o
+usuário via informação errada na tela até recarregar.
+
+Corrigido: `deleteCvFromAccount()` agora varre `UPROFILES` e
+`U.profiles`, limpando `resumeIdx`/`pdfName`/`pdfSize` (e o
+equivalente de cover) de QUALQUER perfil que apontava pro idx
+apagado — a MESMA limpeza que o servidor já faz, espelhada no
+cliente. De brinde, a função passou a usar `jsonSafe`.
+
+Testes: 1 check estrutural no smoke (varredura dos 2 arrays presente,
+`jsonSafe` presente). `npm test` 100% verde, `check-duplicates.js`/
+`check-xss-guard.js` sem achados. sw.js bumpado (v95→v96).
+
+Fecha por completo a 2ª rodada de 3 auditorias paralelas
+(painel-admin/dinheiro: v236(parte)+v237; perfil/onboarding: v236+
+v237c; vagas/filtros: v237b). Restam só 2 itens de baixa prioridade
+que ficam pra depois por decisão do dono: duplicação de código em
+`add_pagamento`/`add_gasto` (Baixa) e a UI pra Sócios & Acerto — o
+backend (`/api/admin/financeiro`, split andrio/diego, comprovante com
+hash antifraude, conversão USD) é 100% funcional e testado por HTTP
+direto, mas não tem NENHUMA tela no painel admin; o dono prefere
+decidir os detalhes dessa tela quando revisar pessoalmente.
 
