@@ -1768,8 +1768,8 @@ async function drillBloqueioComprasNovas() {
       // As 31 ocorrências que carregavam DADO e ganharam esc() nesta revisão
       // (amostra das mais caras: vaga do DOL, planilha, chave Pix, limite
       // digitado pelo admin, hora do log, nome do plano do pedido).
-      check("🛡️ v205-L23: o que é DADO passou a ser escapado de verdade — vaga do DOL (workers), nome/emoji/visto de planilha, chave Pix e titular, limite por Gmail digitado pelo admin, hora do log e o nome do plano do pedido chegam por esc() no innerHTML",
-        _app23.includes("${esc(job.workers)}") && _app23.includes("<strong>${esc(s.name)}</strong>") &&
+      check("🛡️ v205-L23: o que é DADO passou a ser escapado de verdade — nome/emoji/visto de planilha, chave Pix e titular, limite por Gmail digitado pelo admin, hora do log e o nome do plano do pedido chegam por esc() no innerHTML (v223: o card de vaga do DOL em tempo real (job.workers) saiu junto com a aba Vagas ao Vivo)",
+        _app23.includes("<strong>${esc(s.name)}</strong>") &&
         _app23.includes("${esc(s.emoji||'📋')}") && _app23.includes("${esc(PIX_KEY)}") && _app23.includes("${esc(PIX_NAME)}") &&
         _app23.includes("${esc(currentLimits[em]||'')}") && _app23.includes("${esc(hora)}") &&
         _app23.includes("${esc(PLAN_NAMES[plano]||plano)}") && _app23.includes("${esc(sheetLabel)}") &&
@@ -3417,7 +3417,7 @@ async function drillBloqueioComprasNovas() {
       check("🔍 v181-L5: o badge '🔍 N filtros' espelha EXATAMENTE o ativos() do motor nas 8 combinações — contava tipo/ativa (que a tela nunca envia fora da aba ao vivo) e ignorava o 'só com e-mail', o filtro mais consequente da tela",
         badge.every((b) => b.front === b.motor), JSON.stringify(badge));
       check("🔍 v181-L5 (estrutural): o 'só com e-mail' DESLIGADO virou chip visível ('incluindo vagas sem e-mail — não dá pra se candidatar') e tirar o chip volta ao outro estado",
-        /else if\(st\.email\)n\+\+;/.test(_appL5) && _appL5.includes("vf_chip_sem_email") &&
+        /if\(st\.email\)n\+\+;/.test(_appL5) && _appL5.includes("vf_chip_sem_email") &&
         /!st\.email\)push\("email"/.test(_appL5) && /else if\(dim==="email"\)st\.email=!st\.email;/.test(_appL5),
 
         "chip do e-mail desligado ausente");
@@ -4093,9 +4093,14 @@ async function drillBloqueioComprasNovas() {
     // a única requisição de streaming cru do servidor era o /proxy aberto pro
     // site do DOL, removido naquele lote. Exigir identity agora obrigaria a
     // manter (ou recriar) justamente o que foi apagado de propósito.
-    check("💸 v140: toda conversa com o DOL pede gzip (o httpsReq descomprime sozinho) — o único identity que existia era o do /proxy aberto, removido no v195 LOTE 14",
-      (_srvSrc.match(/"Accept-Encoding":"gzip"/g) || []).length >= 2 && !_srvSrc.includes('"Accept-Encoding":"identity"'),
-      `gzip=${(_srvSrc.match(/"Accept-Encoding":"gzip"/g) || []).length} identity=${(_srvSrc.match(/"Accept-Encoding":"identity"/g) || []).length}`);
+    // v223: server.js parou de conversar com o DOL (busca ao vivo saiu de
+    // vez) — a conversa mora inteira em mod-planilhas.js, atrás de UM header
+    // só (DOL_HDR) reaproveitado por todo robô de coleta, nunca mais inline.
+    const _planSrcV140 = fs.readFileSync(path.join(__dirname, "mod-planilhas.js"), "utf8");
+    check("💸 v140: toda conversa com o DOL pede gzip (o httpsReq descomprime sozinho) — desde o v223 essa conversa mora só em mod-planilhas.js (server.js não fala mais com o DOL); o único identity que existia era o do /proxy aberto, removido no v195 LOTE 14",
+      _planSrcV140.includes('"Accept-Encoding": "gzip"') && !_planSrcV140.includes('"Accept-Encoding": "identity"') &&
+      !_srvSrc.includes('"Accept-Encoding":"identity"') && !_srvSrc.includes('"Accept-Encoding":"gzip"'),
+      `planilhas_gzip=${_planSrcV140.includes('"Accept-Encoding": "gzip"')} srv_gzip=${_srvSrc.includes('"Accept-Encoding":"gzip"')}`);
 
     // ═══ 🎯 v139: VAGAS PRA VOCÊ — prateleira do match na Home (regra 13m) ═══
     // O ranking é cacheado 10min por usuário, mas o corte da regra 8
@@ -5487,7 +5492,11 @@ async function drillBloqueioComprasNovas() {
     // ══════════════════════════════════════════════════════════════════════
     // 🕊️ v195 — LOTE 14: EDUCADO COM O DOL
     // O IP do servidor no DOL é recurso COMPARTILHADO: se ele levar 403/429,
-    // os 5 robôs de planilha e as "Vagas ao Vivo" morrem pra todo mundo.
+    // os 5 robôs de planilha morrem pra todo mundo.
+    // 🚫 v223: as rotas de busca ao vivo (/api/jobs, /api/sheet-detail,
+    // /api/sheet-batch) saíram do site (ordem do dono — "só planilhas a
+    // partir de agora") — os testes delas saíram junto. O que fica aqui é
+    // só o que protege o robô de ENRIQUECIMENTO periódico (mod-planilhas.js).
     // ══════════════════════════════════════════════════════════════════════
     {
       // (1) o proxy aberto morreu — qualquer método/corpo ia pro DOL com o
@@ -5497,39 +5506,6 @@ async function drillBloqueioComprasNovas() {
       check("🕊️ v195-L14: o proxy aberto pro DOL (/proxy) NÃO existe mais — era um repasse sem sessão, sem rate-limit e com CORS *, usando o IP que os 5 robôs de planilha compartilham, e nenhuma tela do site chamava",
         _px.status === 404 && _px2.status === 404,
         `status=${_px.status}/${_px2.status}`);
-
-      // (2) 2 buscas iguais = 1 pergunta ao DOL (o cache é o que de fato corta
-      // a amplificação — 429 sozinho só castigaria o visitante).
-      const _f0 = DOL_FILTERS.length;
-      const _j1 = await get("/api/jobs?state=ZZTESTECACHE&top=5");
-      const _j2 = await get("/api/jobs?state=ZZTESTECACHE&top=5");
-      const _fsCache = DOL_FILTERS.slice(_f0).filter((f) => f.includes("ZZTESTECACHE"));
-      check("🕊️ v195-L14: 2 chamadas seguidas a /api/jobs com os MESMOS filtros fazem 1 pergunta só ao DOL (cache de minutos por combinação de filtros) — a 2ª volta marcada from_cache",
-        _j1.status === 200 && _j2.status === 200 && _fsCache.length === 1 &&
-        _j1.json?.from_cache === false && _j2.json?.from_cache === true,
-        `perguntas=${_fsCache.length} from_cache=${_j1.json?.from_cache}/${_j2.json?.from_cache}`);
-
-      // (3) sanitizar PRESERVANDO: a aspa do estado é ESCAPADA no padrão OData
-      // (um /^[A-Z]{2}$/ cego quebraria a chamada legada com o nome por
-      // extenso, que este endpoint aceita desde sempre).
-      const _f1 = DOL_FILTERS.length;
-      await get("/api/jobs?state=" + encodeURIComponent("NORTH CAROLINA'--") + "&top=5");
-      const _fEsc = DOL_FILTERS.slice(_f1).find((f) => f.includes("NORTH CAROLINA"));
-      check("🕊️ v195-L14: o estado vai pro $filter do DOL com a aspa ESCAPADA (dobrada), preservando o valor legado por extenso — nunca interpolado cru nem recusado por um regex de 2 letras",
-        !!_fEsc && _fEsc.includes("employer_state eq 'NORTH CAROLINA''--'") && !/eq 'NORTH CAROLINA'-/.test(_fEsc),
-        String(_fEsc).slice(0, 140));
-
-      // (4) case number do cliente: o que NÃO é case number é descartado, o
-      // legítimo continua passando (e a query enviada não muda de forma).
-      const _f2 = DOL_FILTERS.length, _h2 = DOL_HITS.length;
-      const _bat = await req2("POST", "/api/sheet-batch", { cases: ["H-400-L14-9999", "H-400-L14-9999' or case_number ne '"] });
-      const _fBat = DOL_FILTERS.slice(_f2).map((f) => f.split("|")[0]).filter(Boolean);
-      const _hBat = DOL_HITS.slice(_h2);
-      check("🕊️ v195-L14: /api/sheet-batch com injeção OData no case number DESCARTA o valor inválido e manda ao DOL só o caso legítimo — a query continua com UM `case_number eq` e nenhum `ne`",
-        _bat.status === 200 && _hBat.includes("H-400-L14-9999") &&
-        _fBat.some((f) => f === "case_number eq 'H-400-L14-9999'") &&
-        _fBat.every((f) => !/case_number ne /.test(f) && (f.match(/case_number eq /g) || []).length <= 1),
-        JSON.stringify(_fBat).slice(0, 200));
 
       // (5) parar de reconsultar o vazio: linha que o DOL já respondeu sem ter
       // o que dar sai da fila por 60h — antes o vigia de 30min reperguntava a
@@ -5568,29 +5544,17 @@ async function drillBloqueioComprasNovas() {
         JSON.stringify({ eq: _eq1.eq, prog: _pgL14 }).slice(0, 200));
       await req2("DELETE", "/api/admin/sheet/eq-l14");
 
-      // (6) estrutural: as 3 rotas públicas continuam SEM exigir login (a busca
-      // de SEO e o app dependem disso) mas passam pelo limite generoso, o
-      // I(12h) redundante do enriquecimento saiu e o "SEM EMAIL" virou resumo.
+      // (6) estrutural: o /proxy sumiu de vez e o enriquecimento perdeu o
+      // I(12h) redundante do vigia de 30min — o "SEM EMAIL" virou resumo.
       const _srvL14 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
       const _modL14 = fs.readFileSync(path.join(__dirname, "mod-planilhas.js"), "utf8");
       const _swL14 = fs.readFileSync(path.join(__dirname, "sw.js"), "utf8");
-      check("🕊️ v195-L14 (estrutural): /api/jobs, /api/sheet-detail e /api/sheet-batch passam pelo limite por IP (preferindo o e-mail da sessão) e continuam PÚBLICAS — exigir login aí quebraria a busca de SEO e o carregamento em background do app",
-        _srvL14.includes('_dolRateLimited(req,res,"dol_jobs",120)') &&
-        _srvL14.includes('_dolRateLimited(req,res,"dol_detail",60)') &&
-        _srvL14.includes('_dolRateLimited(req,res,"dol_batch",60)') &&
-        _srvL14.includes('s?.user_email ? ("u:"+s.user_email) : ("ip:"+_clientIp(req))') &&
-        !/if\(pathname==="\/api\/jobs"\)\{\s*const s=getSess\(req\);if\(!s\?\.user_email\)/.test(_srvL14),
-        "faltou o limite em alguma rota, ou alguma delas passou a exigir sessão");
       check("🕊️ v195-L14 (estrutural): o /proxy sumiu do servidor E do service worker, e o enriquecimento perdeu o I(12h) redundante (o vigia de 30min já cobre) — o 'SEM EMAIL' agora é resumo por ciclo, não uma linha de log por vaga",
         !_srvL14.includes('pathname.startsWith("/proxy")') && !_swL14.includes('url.pathname.startsWith("/proxy")') &&
         !_modL14.includes('I(12 * 3600_000, autoEnrichCycle, "auto-enrich")') &&
         _modL14.includes("vaga(s) continuam SEM E-MAIL no DOL nesta rodada") &&
         !_modL14.includes("SEM EMAIL | ${(row.t"),
         "algum resquício do /proxy, do I(12h) ou do log por vaga continua vivo");
-      check("🕊️ v195-L14 (estrutural): em produção o host do DOL não mudou — DOL_API_BASE é o mesmo padrão do mod-planilhas (v182) e nenhuma rota pública interpola mais o hostname fixo",
-        _srvL14.includes('process.env.DOL_API_BASE || "https://api.seasonaljobs.dol.gov/datahub/"') &&
-        !_srvL14.includes('hostname:"api.seasonaljobs.dol.gov"'),
-        "o host do DOL saiu do padrão ou voltou a ser interpolado direto na rota");
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -5686,10 +5650,8 @@ async function drillBloqueioComprasNovas() {
       const anon = (await getSemCookie(URL10)).json;
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "gratis10@test.com", name: "Gratis Dez" });
       const gratis = (await get(URL10)).json;
-      const detGratis = (await get("/api/sheet-detail?case=" + encodeURIComponent(anon.jobs[0].caseNum))).json;
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "pagante10@test.com", name: "Pagante Dez", refreshToken: "rt-pagante10", plan: "vipro", vip: { manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000, active: true, plan: "vipro" } });
       const pagante = (await get(URL10)).json;
-      const detPagante = (await get("/api/sheet-detail?case=" + encodeURIComponent(anon.jobs[0].caseNum))).json;
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
       const admin = (await get(URL10)).json;
       const mascararEmailLocal = (e) => { const x = String(e || "").toLowerCase(); const i = x.indexOf("@"); return i < 1 ? "" : x[0] + "••••" + x.slice(i); };
@@ -5698,12 +5660,11 @@ async function drillBloqueioComprasNovas() {
         anon && anon.jobs.length === 3 && anon.jobs.every((j) => _mascarado(j.email) && j.hasEmail === true && j.emailBloqueado === true),
         JSON.stringify(anon && anon.jobs.map((j) => j.email)));
       check("🔒 v182-L10: sessão GRÁTIS também recebe mascarado (é o mesmo ativo que o cliente paga pra ter) — na aba, o card mostra '🔒 liberado com plano ativo' em vez do texto mascarado cru",
-        gratis.jobs.every((j) => _mascarado(j.email) && j.hasEmail === true) && _mascarado(detGratis.job.email) && detGratis.job.emailBloqueado === true,
-        JSON.stringify({ lista: gratis.jobs[0].email, detalhe: detGratis.job.email }));
-      check("🔒 v182-L10: sessão com PLANO ATIVO recebe o endereço COMPLETO — na lista e no detalhe da vaga (é com ele que o modal de envio manual é preenchido)",
-        pagante.jobs.every((j) => j.email && !j.email.includes("•") && j.email.includes("@") && !j.emailBloqueado) &&
-        detPagante.job.email === pagante.jobs[0].email,
-        JSON.stringify({ lista: pagante.jobs[0].email, detalhe: detPagante.job.email }));
+        gratis.jobs.every((j) => _mascarado(j.email) && j.hasEmail === true),
+        JSON.stringify({ lista: gratis.jobs[0].email }));
+      check("🔒 v182-L10: sessão com PLANO ATIVO recebe o endereço COMPLETO na lista (é com ele que o modal de envio manual é preenchido)",
+        pagante.jobs.every((j) => j.email && !j.email.includes("•") && j.email.includes("@") && !j.emailBloqueado),
+        JSON.stringify({ lista: pagante.jobs[0].email }));
       check("🔒 v182-L10: admin recebe completo (opera o site) e o CONJUNTO devolvido é idêntico nos 4 casos — mascarar não muda a contagem, nem a ordem, nem quem entra na lista",
         admin.jobs.every((j) => j.email && !j.email.includes("•")) &&
         anon.total === gratis.total && gratis.total === pagante.total && pagante.total === admin.total &&
@@ -5732,9 +5693,9 @@ async function drillBloqueioComprasNovas() {
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
       const _srvL10 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
       const _appL10 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
-      check("🔒 v182-L10 (estrutural): a máscara é função ÚNICA (mascararEmail + podeVerEmailVaga) e está em TODA rota que devolve vaga com e-mail — lista, detalhe, lote, vagas ao vivo e 'pra você'",
+      check("🔒 v182-L10 (estrutural): a máscara é função ÚNICA (mascararEmail + podeVerEmailVaga) e está em TODA rota que devolve vaga com e-mail — lista e 'pra você' (v223: detalhe/lote/vagas ao vivo saíram do site — só planilhas a partir de agora)",
         _srvL10.includes("function mascararEmail(") && _srvL10.includes("function podeVerEmailVaga(") && _srvL10.includes("function jobComEmailVisivel(") &&
-        (_srvL10.match(/podeVerEmailVaga\(req\)/g) || []).length >= 4 && _srvL10.includes("isAdminVip(u) || isVipActive(u)") &&
+        (_srvL10.match(/podeVerEmailVaga\(req\)/g) || []).length >= 2 && _srvL10.includes("isAdminVip(u) || isVipActive(u)") &&
         !/email:emailVal\|\|null/.test(_srvL10),
         "alguma rota voltou a devolver o e-mail cru");
       check("🔒 v182-L10 (estrutural): a fila do robô é montada com a LINHA REAL do servidor (não com o JSON da tela) e endereço mascarado nunca entra nela",
@@ -6424,6 +6385,17 @@ async function drillBloqueioComprasNovas() {
     // evento 'exit' — sem isso o próximo spawn bateria em porta ocupada e a
     // suíte falharia pelo motivo errado) e sobe de novo no MESMO DATA_DIR.
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    // 🩹 v221: título de vaga com código SOC cortado NA FONTE do DOL (achado
+    // real do dono, 60 caracteres — largura clássica de campo antigo) só é
+    // curado quando a planilha passa pelo BOOT (loadSheets), nunca no upload
+    // em si — mesmo padrão do _selfHealCidades. Sobe a planilha ANTES do
+    // restart (upload não cura) e confere DEPOIS (2º boot cura).
+    await req2("POST", "/api/admin/sheet/upload", {
+      name: "Titulo Teste", key: "titulo-teste", data: [
+        { c: "H-400-TIT-0001", n: "Titulo LLC", s: "FLORIDA", e: "rh@titulo-teste.com", t: "49-9098: Helpers—Installation, Maintenance, and Repair Worke" },
+        { c: "H-400-TIT-0002", n: "Titulo LLC 2", s: "TEXAS", e: "rh@titulo-teste2.com", t: "99-9999: Trabalhador Agricola de Colheita e Producao Sazonal" },
+      ],
+    });
     // Estado "no meio do caminho" ANTES do restart: um robô mandando (o caso
     // perigoso: o processo morre entre escolher a vaga e gravar) e outro
     // dormindo no limite diário.
@@ -6486,6 +6458,22 @@ async function drillBloqueioComprasNovas() {
     ].filter(([re]) => re.test(_log2)).map(([, nome]) => nome);
     check("🔁 v199-L19: NENHUMA migração de boot reaplica no 2º boot — todas as ~15 são idempotentes de verdade (uma que reaplicasse mexeria de novo em dado de gente pagante a cada deploy)",
       _reaplicou.length === 0, `reaplicaram: ${_reaplicou.join(", ")}`);
+    // 🩹 v221: o 2º boot é exatamente o que cura o título cortado — confere
+    // AGORA, com a planilha lida do disco de verdade (loadSheets real, não o
+    // upload em memória de antes do restart).
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const _tRows = (await get("/api/admin/sheet/download/titulo-teste")).json || [];
+    const _t1 = _tRows.find((r) => r.c === "H-400-TIT-0001") || {};
+    const _t2 = _tRows.find((r) => r.c === "H-400-TIT-0002") || {};
+    check("🩹 v221: título de vaga com código SOC VERIFICADO (49-9098) e cortado na fonte do DOL é completado no boot com a grafia oficial BLS/O*NET — 'Worke' vira 'Workers', sem mexer no resto da linha",
+      _t1.t === "49-9098: Helpers--Installation, Maintenance, and Repair Workers" && _t1.n === "Titulo LLC" && _t1.e === "rh@titulo-teste.com",
+      JSON.stringify(_t1));
+    check("🩹 v221: título com a MESMA assinatura de corte (60 caracteres, prefixo SOC) mas código SEM grafia oficial verificada NUNCA é adivinhado — fica exatamente como veio, só vira aviso no log pro admin conferir",
+      _t2.t === "99-9999: Trabalhador Agricola de Colheita e Producao Sazonal",
+      JSON.stringify(_t2));
+    check("🩹 v221 (estrutural): o boot registra os 2 casos no log — 1 completado de verdade e 1 sinalizado pra revisão manual (nunca em silêncio)",
+      /\[sheet\] 🩹 .*1 título\(s\) de vaga completado\(s\)/.test(_log2) && /\[sheet\] 🔎 .*prefixo SOC 99-9999/.test(_log2),
+      _log2.split("\n").filter((l) => l.includes("[sheet]") && (l.includes("🩹") || l.includes("🔎"))).slice(0, 5).join(" | "));
     // O robô no meio do caminho não pode sumir nem perder fila.
     const _b2A = await req2("POST", "/api/test/auto-job", { token: TEST_TOKEN, email: "boot2sending@test.com" });
     const _b2B = await req2("POST", "/api/test/auto-job", { token: TEST_TOKEN, email: "boot2limite@test.com" });
@@ -6607,12 +6595,11 @@ async function drillBloqueioComprasNovas() {
     // PRÉ-EXISTENTE (não veio do v209/v210 — confirmado no histórico da
     // sessão que já lia essa linha quebrada antes de qualquer edição de
     // hoje), só ficou perto o bastante do trecho tocado pro dono desconfiar.
-    // Guarda genérica: as duas funções que montam card de vaga (mkCard,
-    // mkSheetCard) têm que fechar a tag <div class="jcard"...> com `>` ANTES
-    // da 1ª quebra de linha do template — nunca deixar o `>` cair pro meio
-    // dos atributos seguintes.
-    check("🚨 v213 (estrutural): mkCard()/mkSheetCard() fecham a tag <div class=\"jcard\"...> com '>' antes da 1ª quebra de linha — nunca mais um card de vaga nasce sem fechar a tag de abertura (bug real: clique nunca abria o detalhe, filhos viravam irmãos soltos em #jlist)",
-      /onclick="selJob2\('\$\{j\.id\}'\)"\$\{\(ap\|\|_inAQ\)\?' style="display:none"':""\}>/.test(_appV209) &&
+    // Guarda genérica: mkSheetCard() tem que fechar a tag <div class="jcard"...>
+    // com `>` ANTES da 1ª quebra de linha do template — nunca deixar o `>`
+    // cair pro meio dos atributos seguintes. (v223: mkCard()/selJob2() da aba
+    // ao vivo saíram do site — só mkSheetCard() continua existindo.)
+    check("🚨 v213 (estrutural): mkSheetCard() fecha a tag <div class=\"jcard\"...> com '>' antes da 1ª quebra de linha — nunca mais um card de vaga nasce sem fechar a tag de abertura (bug real: clique nunca abria o detalhe, filhos viravam irmãos soltos em #jlist)",
       /onclick="selSheetJob\('\$\{esc\(j\.id\)\}'\)"\$\{\(isApplied\|\|_inAutoQ\)\?' style="display:none"':""\}>/.test(_appV209),
       "a tag de abertura do card voltou a ficar sem '>' antes da quebra de linha");
 

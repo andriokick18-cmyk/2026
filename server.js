@@ -2697,9 +2697,6 @@ function _enrichLog(msg, type='info'){
   botLog('enrich','Enriquecimento de Planilha',msg,type);
 }
 
-const sheetCache = new Map();
-const SHEET_TTL  = 60*60*1000;
-
 // Mapa de categorias para labels em português
 // v166 (Ordem 6f — público 100% brasileiro): label limpo pra emoji + termo
 // SÓ em português (o "/ EnglishWord" bilíngue poluía o chip de filtro). O
@@ -2812,6 +2809,41 @@ function _selfHealCidades(label, rows){
   return n;
 }
 
+// 🩹 v221 (achado ao vivo do dono, 20/09/2026): quando o empregador não dá um
+// título próprio, o DOL publica "CÓDIGO SOC: nome oficial da ocupação" como
+// job_title — e pelo menos 1 vaga real chegou com esse campo cortado NA FONTE
+// (60 caracteres, largura clássica de campo antigo do sistema do DOL: "49-9098:
+// Helpers—Installation, Maintenance, and Repair Worke", faltando "rs"). Só
+// completa o título quando a grafia oficial do código está VERIFICADA aqui
+// (fonte: BLS OES / O*NET — nunca inventa nome de ocupação); pra qualquer
+// outro código com a MESMA assinatura de corte (60 caracteres, prefixo SOC),
+// só REGISTRA no log pro admin conferir manualmente — nunca adivinha. Nunca
+// toca o histórico de candidaturas já enviadas (só o texto da vaga na
+// planilha).
+const _SOC_TITULOS_OFICIAIS = {
+  // BLS: https://www.bls.gov/oes/current/oes499098.htm · O*NET: 49-9098.00
+  "49-9098": "Helpers--Installation, Maintenance, and Repair Workers",
+};
+function _selfHealTitulosTruncados(label, rows){
+  if(!Array.isArray(rows)||!rows.length)return 0;
+  let n=0;
+  for(const r of rows){
+    if(!r||!r.t)continue;
+    const m=/^(\d{2}-\d{4}):\s/.exec(r.t);
+    if(!m)continue;
+    const codigo=m[1];
+    const oficial=_SOC_TITULOS_OFICIAIS[codigo];
+    if(oficial){
+      const corrigido=`${codigo}: ${oficial}`;
+      if(r.t!==corrigido){ r.t=corrigido; n++; }
+    } else if(r.t.length===60){
+      console.warn(`[sheet] 🔎 ${label}: título de vaga com a MESMA assinatura do corte real (60 caracteres, prefixo SOC ${codigo}) — confira/complete manualmente: "${r.t}" (case ${r.c||"?"})`);
+    }
+  }
+  if(n)console.log(`[sheet] 🩹 ${label}: ${n} título(s) de vaga completado(s) (código SOC truncado na FONTE do DOL, corrigido com a grafia oficial BLS/O*NET) — histórico de candidaturas intocado`);
+  return n;
+}
+
 // 🔒 Auto-cura de integridade (KB-076): toda vez que uma planilha é lida do
 // disco, confere se tem case number duplicado. Se tiver (arquivo antigo,
 // gerado antes desta correção — ex.: h2a_jun2026_compact.json tinha 36
@@ -2910,6 +2942,7 @@ function loadSheets() {
       if(key==="jan") SHEET_JAN=d; else if(key==="jul") SHEET_JUL=d; else SHEET_H2A=d;
       (key==="jan"?SHEET_JAN:key==="jul"?SHEET_JUL:SHEET_H2A).forEach(r=>{if(!r.k)r.k=detectCategory(r.t,r.n);});
       _selfHealCidades(key, d); // v182: sujeira de cidade nunca vira opção de filtro
+      _selfHealTitulosTruncados(key, d); // v221: título com código SOC cortado na fonte do DOL
       console.log(`[sheet] ✅ ${key}: ${d.length} vagas (ETA case numbers únicos)`);
       anyLoaded = true;
     } catch(e) {
@@ -2935,6 +2968,7 @@ function loadSheets() {
         d = _selfHealSheetIntegrity(`extra:${metaKey}`, d, fp);
         d.forEach(r=>{if(!r.k)r.k=detectCategory(r.t,r.n);r._sheet=metaKey;});
         _selfHealCidades(`extra:${metaKey}`, d); // v182: mesma régua única de limpeza
+        _selfHealTitulosTruncados(`extra:${metaKey}`, d); // v221: título com código SOC cortado na fonte do DOL
         SHEET_EXTRAS[metaKey] = d;
         extrasLoaded++;
         console.log(`[sheet] ✅ extra ${metaKey}: ${d.length} vagas (ETA case numbers únicos)`);
@@ -3914,28 +3948,6 @@ function _cityMatchNorm(filtro){
 // até o próximo boot e o e-mail/cidade/data descobertos não valiam em filtro
 // nenhum. Todo save passa por _saveEnrichedSheet, que incrementa aqui.
 const _VF_CACHE = new Map(); // cache curto da contagem ao vivo (5s) — v179
-// ── 🕊️ v195 LOTE 14: ser educado com o DOL é proteger TODO MUNDO ────────────
-// /api/jobs, /api/sheet-detail e /api/sheet-batch são públicas de propósito (a
-// busca de SEO usa /api/jobs e o app chama as outras em background — exigir
-// login quebraria tela pública), mas cada chamada podia virar uma ida ao DOL
-// com o IP do servidor, e o batch podia virar 11 requisições de uma vez.
-// Duas travas, nesta ordem de importância:
-//  (1) CACHE por combinação de filtros — é ele que de fato corta a
-//      amplificação: 100 visitantes na mesma busca = 1 pergunta ao DOL.
-//  (2) Rate-limit GENEROSO por IP, preferindo o e-mail da sessão quando
-//      existir: boa parte do público brasileiro está atrás de CGNAT, e um 429
-//      no meio de um fluxo humano é pior que o problema que resolve.
-const _JOBS_CACHE = new Map();          // /api/jobs: resposta CRUA do DOL por filtro
-const _JOBS_CACHE_TTL = 5 * 60_000;     // minutos, não segundos — vitrine pode atrasar
-function _dolRlKey(req){
-  const s=getSess(req);
-  return s?.user_email ? ("u:"+s.user_email) : ("ip:"+_clientIp(req));
-}
-function _dolRateLimited(req,res,nome,max){
-  if(!rateLimit(nome+"_"+_dolRlKey(req),max,60_000))return false;
-  json(res,429,{error:"Muitas buscas em pouco tempo. Espere alguns segundos e tente de novo.",rateLimited:true});
-  return true;
-}
 const _sheetVerMap = new WeakMap();
 function _bumpSheetVersion(arr){ if(Array.isArray(arr)) _sheetVerMap.set(arr,(_sheetVerMap.get(arr)||0)+1); }
 function _sheetVersionOf(arr){ return (Array.isArray(arr) && _sheetVerMap.get(arr)) || 0; }
@@ -4202,151 +4214,6 @@ function searchSheet(arr, q, state, category, skip, top, sort, matchCtx) {
   }
   // sort="asc", "random", "" → ordem estável para paginação correta
   return { total:list.length, items:list.slice(skip,skip+top), sugestao };
-}
-
-// ══════════════════════════════════════════════════════════
-//  DOL API
-// ══════════════════════════════════════════════════════════
-let jobsCache=[], jobsTotal=0, lastFetch=0;
-const CACHE_TTL=30*60*1000;
-
-const FALLBACK_JOBS = [
-  {id:"f01",title:"Excavation Laborer",company:"Diversified Underground Services",city:"Lake Mary",state:"FLORIDA",wage:"$21.66/h",workers:16,start:"2026-05-03",end:"2026-11-30",email:"ftorres@diversified-undergroundinc.com",phone:"+1 (863) 441-0823",url:"",active:true,visa:"H-2B",desc:"Excavation, trenches.",hasEmail:true,category:"construction"},
-  {id:"f02",title:"Landscaping Laborer",company:"Woehler Landscaping",city:"Pittsburgh",state:"PENNSYLVANIA",wage:"$18.69/h",workers:6,start:"2026-05-03",end:"2026-11-30",email:"landscapePSU@hotmail.com",phone:"",url:"",active:true,visa:"H-2B",desc:"Maintain plants, trees.",hasEmail:true,category:"landscape"},
-  {id:"f03",title:"Housekeeper",company:"CBV Partners LLC",city:"Jackson",state:"WYOMING",wage:"$16.58/h",workers:11,start:"2026-05-03",end:"2026-10-15",email:"cbvjobs@gmail.com",phone:"",url:"",active:true,visa:"H-2B",desc:"Clean rooms.",hasEmail:true,category:"housekeeper"},
-  {id:"f04",title:"Landscape Laborer",company:"Fitzpatrick Lawn & Landscape",city:"Charlotte",state:"NORTH CAROLINA",wage:"$18.72/h",workers:18,start:"2026-05-03",end:"2026-12-15",email:"liam@fitzpatricklandscape.com",phone:"",url:"",active:true,visa:"H-2B",desc:"Mow, trim.",hasEmail:true,category:"landscape"},
-  {id:"f05",title:"Farmworker",company:"The Earley Farm",city:"Wales",state:"MAINE",wage:"$15.10/h",workers:4,start:"2026-05-03",end:"2026-10-16",email:"info@theearleyfarm.com",phone:"",url:"",active:true,visa:"H-2A",desc:"Harvest.",hasEmail:true,category:"farm"},
-];
-
-function normJob(j,i) {
-  const em=(j.apply_email&&j.apply_email!=="N/A")?j.apply_email:(j.employer_email&&j.employer_email!=="N/A")?j.employer_email:"";
-  const ph=(j.apply_phone&&j.apply_phone!=="N/A")?j.apply_phone:(j.employer_phone||"");
-  const ur=(j.apply_url&&j.apply_url!=="N/A")?j.apply_url:(j.employer_website||"");
-  const wg=j.basic_rate_from?`$${parseFloat(j.basic_rate_from).toFixed(2)}/${j.pay_range_desc==="Month"?"mês":"h"}`:"–";
-  const title=j.job_title||"Position";
-  return{id:String(j.case_number||j.case_id||("j"+i)),caseNum:String(j.case_number||j.case_id||""),title,company:j.employer_business_name||j.employer_trade_name||"–",city:j.employer_city||j.worksite_city||"–",state:j.employer_state||j.worksite_state||"–",wage:wg,workers:parseInt(j.total_positions||1),start:(j.begin_date||"–").slice(0,10),end:(j.end_date||"–").slice(0,10),email:em,phone:ph,url:ur,active:j.active===true,visa:j.visa_class||"H-2B",jobType:j.visa_class==="H-2A"?"agricultural":"non-agricultural",soc:j.soc_title||"",desc:(j.job_duties||"").replace(/\*\*[^*]+\*\*\n?/g,"").trim(),hasEmail:!!em,category:detectCategory(`${title} ${j.soc_title||""}`.trim(),j.employer_business_name||j.employer_trade_name||"")};
-}
-
-// 🌐 v195 LOTE 14: a base da API do DOL numa constante só — MESMA régua que o
-// mod-planilhas já usa desde o v182 ("DOL_API_BASE/DOL_FEED_BASE são só de
-// teste: o padrão é o host real"). Antes as rotas públicas batiam no hostname
-// fixo, o que as deixava inexercitáveis no npm test — e é justamente a
-// amplificação delas contra o IP do servidor que o cache desta leva precisa
-// provar. Em produção nada muda: mesmo caminho, mesmos headers, mesmo ritmo.
-const DOL_API_BASE_SRV = String(process.env.DOL_API_BASE || "https://api.seasonaljobs.dol.gov/datahub/");
-function _dolApiGet(params, headers){
-  let uo; try{ uo = new URL(DOL_API_BASE_SRV); }catch{ uo = new URL("https://api.seasonaljobs.dol.gov/datahub/"); }
-  const caminho = (uo.pathname || "/") + "?" + params.toString();
-  // Base http:// (só local/teste) usa o http nativo — httpsReq é https puro.
-  if(uo.protocol === "http:"){
-    return new Promise((resolve,reject)=>{
-      const r = http.request({hostname:uo.hostname,port:uo.port||80,path:caminho,method:"GET",headers},(resp)=>{
-        let b=""; resp.on("data",c=>b+=c);
-        resp.on("end",()=>{ let body=b; try{ body=JSON.parse(b); }catch{} resolve({status:resp.statusCode,body}); });
-      });
-      r.on("error",reject);
-      r.setTimeout(15000,()=>{ r.destroy(); reject(new Error("Timeout")); });
-      r.end();
-    });
-  }
-  return httpsReq({hostname:uo.hostname,path:caminho,method:"GET",headers});
-}
-async function fetchDOL(skip,top,opts={}) {
-  const{query="",state="",jobType="all",jobStatus="all",beginDate="",sort="desc"}=opts;
-  const p=new URLSearchParams({"api-version":"2020-06-30"});
-  // 🧼 v195 LOTE 14: sanitizar PRESERVANDO — o texto do usuário continua
-  // valendo, só perde o que quebraria a query OData (aspas) e ganha teto.
-  if(query)p.append("$search",'"'+String(query).slice(0,120).replace(/"/g,"")+'"');
-  const f=[];
-  if(jobStatus==="active")f.push("active eq true");if(jobStatus==="inactive")f.push("active eq false");
-  if(jobType==="agricultural")f.push("visa_class eq 'H-2A'");if(jobType==="non-agricultural")f.push("visa_class eq 'H-2B'");
-  // Aspa simples é ESCAPADA no padrão do OData (dobrada), nunca recusada: um
-  // /^[A-Z]{2}$/ cego quebraria a chamada legada com o nome do estado por
-  // extenso ("NORTH CAROLINA"), que este endpoint aceita desde sempre.
-  if(state){const _st=String(state).slice(0,40).replace(/'/g,"''");f.push(`(employer_state eq '${_st}' or worksite_state eq '${_st}')`);}
-  if(beginDate)f.push(`begin_date ge ${beginDate}T00:00:00Z`);
-  if(f.length)p.append("$filter",f.join(" and "));
-  p.append("$orderby","dhTimestamp "+(sort==="asc"?"asc":"desc"));
-  p.append("$top",String(top));p.append("$skip",String(skip));
-  const{status,body}=await _dolApiGet(p,{"Accept":"application/json","Accept-Encoding":"gzip","User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36","Cache-Control":"no-cache","Referer":"https://seasonaljobs.dol.gov/"});
-  if(status!==200)throw new Error("DOL "+status);
-  const raw=body.value||body.results||body.data||(Array.isArray(body)?body:[]);
-  return{jobs:raw.map((j,i)=>normJob(j,skip+i)),total:body["@odata.count"]||body.count||raw.length};
-}
-
-// Formato do ETA case number (H-400-25123-456789 e variantes históricas).
-// 🧼 v195 LOTE 14: o valor vinha do cliente e era interpolado CRU no $filter
-// do OData. Aqui a régua é aceitar o que É um case number e descartar o resto
-// — nunca "escapar e mandar mesmo assim" um valor que não é identificador.
-const _CASE_NUM_RE = /^[A-Z0-9-]{5,24}$/;
-async function fetchByCase(cases) {
-  cases=(Array.isArray(cases)?cases:[]).filter(c=>_CASE_NUM_RE.test(String(c||"")));
-  if(!cases.length)return{};
-  const results={};
-
-  // ── PASSO 1: cache em memória ──────────────────────────
-  const toFetch=cases.filter(c=>{
-    const cc=sheetCache.get(c);
-    if(cc&&Date.now()-cc.ts<SHEET_TTL){results[c]=cc.job;return false;}
-    return true;
-  });
-  if(!toFetch.length)return results;
-
-  // ── PASSO 2: planilha local (SEMPRE, sem depender do DOL) ──
-  // Constrói um mapa case→row de todos os sheets carregados
-  const allSheets = getAllSheets(); // jan2026 + jul2025 + todas as extras
-  const sheetByCase=new Map(allSheets.map(r=>[String(r.c||"").toUpperCase(),r]));
-  const stillMissing=[];
-  for(const c of toFetch){
-    const row=sheetByCase.get(c.toUpperCase());
-    if(row&&row.e&&row.e.includes("@")){
-      // Monta job no mesmo formato que normJob() retorna
-      const job={
-        id:row.c,caseNum:row.c,title:row.t||"Seasonal Worker",
-        company:row.n||"–",city:row.ci||"–",state:row.s||"–",
-        wage:row.w?`$${row.w}/${row.wunit||"h"}`:"–",
-        workers:row.wk||null,start:row.d||"–",end:row.de||"–",
-        email:row.e,phone:row.ph||"",
-        url:row.c&&row.c.startsWith("H-")?`https://seasonaljobs.dol.gov/jobs/${row.c}`:"",
-        active:true,
-        visa:row.visa||"H-2B",jobType:"non-agricultural",
-        soc:"",desc:"",hasEmail:true,category:row.k||"other",
-        fromSheet:true
-      };
-      results[c]=job;
-      sheetCache.set(c,{job,ts:Date.now()});
-    } else {
-      stillMissing.push(c);
-    }
-  }
-
-  // ── PASSO 3: DOL só para o que não está na planilha local ──
-  // Se o DOL estiver fora do ar, simplesmente ignora — não trava nada
-  if(stillMissing.length){
-    const HDR={"Accept":"application/json","Accept-Encoding":"gzip","User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36","Cache-Control":"no-cache","Referer":"https://seasonaljobs.dol.gov/"};
-    for(let i=0;i<stillMissing.length;i+=10){
-      const batch=stillMissing.slice(i,i+10);
-      try{
-        const p=new URLSearchParams({"api-version":"2020-06-30"});
-        p.append("$filter",batch.map(c=>`case_number eq '${c}'`).join(" or "));
-        p.append("$top",String(batch.length));
-        const{status,body}=await _dolApiGet(p,HDR);
-        if(status===200){const raw=body.value||body.results||body.data||(Array.isArray(body)?body:[]);for(const r of raw){const job=normJob(r,0);const cn=(r.case_number||r.case_id||"").toUpperCase();if(cn){results[cn]=job;sheetCache.set(cn,{job,ts:Date.now()});}}}
-      }catch(e){console.warn("[fetchByCase/DOL offline]",e.message);}
-      // Fallback individual (só tenta se DOL responder)
-      const miss2=batch.filter(c=>!results[c]);
-      for(const c of miss2){
-        try{const p2=new URLSearchParams({"api-version":"2020-06-30"});p2.append("$search",`"${c}"`);p2.append("$top","1");const{status,body}=await _dolApiGet(p2,HDR);if(status===200){const raw=body.value||body.results||body.data||(Array.isArray(body)?body:[]);if(raw.length>0){const job=normJob(raw[0],0);results[c]=job;sheetCache.set(c,{job,ts:Date.now()});}}}catch{}
-      }
-    }
-  }
-
-  return results;
-}
-
-async function refreshCache(){
-  try{const{jobs,total}=await fetchDOL(0,100,{});if(jobs.length){jobsCache=jobs;jobsTotal=total;lastFetch=Date.now();console.log(`[cache] ${jobs.length} vagas`);}}
-  catch(e){console.warn("[cache]",e.message);if(!jobsCache.length){jobsCache=FALLBACK_JOBS;jobsTotal=FALLBACK_JOBS.length;}}
 }
 
 // ══════════════════════════════════════════════════════════
@@ -6499,7 +6366,7 @@ const server=http.createServer(async(req,res)=>{
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://unpkg.com",
     "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://unpkg.com",
     "img-src 'self' data: https:",
-    "connect-src 'self' https://oauth2.googleapis.com https://gmail.googleapis.com https://api.seasonaljobs.dol.gov https://fcm.googleapis.com https://www.google-analytics.com https://*.google-analytics.com https://www.googletagmanager.com",
+    "connect-src 'self' https://oauth2.googleapis.com https://gmail.googleapis.com https://fcm.googleapis.com https://www.google-analytics.com https://*.google-analytics.com https://www.googletagmanager.com",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -7911,63 +7778,6 @@ filtrar();
     }catch(e){ return json(res,500,{error:"Erro ao gerar o arquivo: "+e.message}); }
   }
 
-  // ── /api/jobs ─────────────────────────────────────────
-  if(pathname==="/api/jobs"){
-    if(_dolRateLimited(req,res,"dol_jobs",120))return;
-    const opts={query:(u.searchParams.get("q")||"").trim(),state:(u.searchParams.get("state")||"").trim(),jobType:(u.searchParams.get("jobType")||"all"),jobStatus:(u.searchParams.get("jobStatus")||"all"),beginDate:(u.searchParams.get("beginDate")||""),sort:(u.searchParams.get("sort")||"desc")};
-    const _minWageJobs=parseFloat(u.searchParams.get("minWage")||"0")||0;
-    const skip=Math.max(0,parseInt(u.searchParams.get("skip")||"0",10));const top=Math.min(50,Math.max(1,parseInt(u.searchParams.get("top")||"25",10)));
-    if(Date.now()-lastFetch>CACHE_TTL)refreshCache().catch(()=>{});
-    // 🕊️ v195 LOTE 14: o cache guarda a resposta CRUA do DOL (nunca a já
-    // mascarada) — a máscara de e-mail do v182 LOTE 10 depende do PLANO de
-    // quem perguntou e continua sendo aplicada por requisição, sempre.
-    const _jKey=[opts.query,opts.state,opts.jobType,opts.jobStatus,opts.beginDate,opts.sort,skip,top].join("\u0000");
-    try{
-      const _jHit=_JOBS_CACHE.get(_jKey);
-      const _doCache=!!(_jHit&&Date.now()-_jHit.t<_JOBS_CACHE_TTL);
-      let _dolRes=_doCache?_jHit.v:null;
-      if(!_dolRes){
-        _dolRes=await fetchDOL(skip,top,opts);
-        if(_JOBS_CACHE.size>300)_JOBS_CACHE.clear();
-        _JOBS_CACHE.set(_jKey,{t:Date.now(),v:_dolRes});
-      }
-      const{jobs,total}=_dolRes;const _verDol=podeVerEmailVaga(req);
-      return json(res,200,{jobs:(jobs||[]).map(j2=>jobComEmailVisivel(j2,_verDol)),total,skip,from_cache:_doCache});}
-    catch(e){
-      // DOL offline → planilha local como fallback principal
-      const _shRows=getAllSheets().filter(r=>r.e&&r.e.includes("@"));
-      // FIX: usar todos os campos enriquecidos (ci, de, ph, desc, url) — não hardcoded
-      const _verEmailJobs=podeVerEmailVaga(req); // 🔒 v182 LOTE 10
-      const _shJobs=_shRows.map(r=>({id:r.c,caseNum:r.c,title:r.t||"Seasonal Worker",company:r.n||"–",city:r.ci||"–",state:r.s||"–",wage:r.w?`$${r.w}/${r.wunit||"h"}`:"–",workers:r.wk||null,start:r.d||"–",end:r.de||"–",email:_verEmailJobs?r.e:mascararEmail(r.e),emailBloqueado:!_verEmailJobs,phone:r.ph||"",phone2:r.ph2||"",url:r.c&&r.c.startsWith("H-")?`https://seasonaljobs.dol.gov/jobs/${r.c}`:"",desc:r.desc||"",soc:r.soc||"",active:true,visa:r.visa||"H-2B",hasEmail:true,category:r.k||"other",fromSheet:true}));
-      let src=_shJobs.length?_shJobs:jobsCache.length?[...jobsCache]:[...FALLBACK_JOBS];
-      const{query:q,state,jobType,jobStatus,beginDate}=opts;
-      // v112b: MESMA régua de busca do searchSheet — normaliza apóstrofo/
-      // acento ("Marthas"=="Martha's") e expande REGIÃO turística em
-      // cidades-membro (v111b). Antes esta aba usava includes cru e ficava
-      // atrás das planilhas.
-      if(q){
-        const _n=s=>String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/["'‘’`´]/g,"");
-        const ql=_n(q);
-        let _rc=null;
-        for(const[reg,cities] of Object.entries(REGIOES_EUA)){if(ql===reg||ql.includes(reg)||(ql.length>=4&&reg.startsWith(ql))){_rc=cities;break;}}
-        src=src.filter(j=>{const h=_n([j.title,j.company,j.state,j.city,j.desc,j.phone].filter(Boolean).join(" "));return h.includes(ql)||(_rc&&_rc.some(c=>h.includes(c)));});
-      }
-      if(state)src=src.filter(j=>j.state.toUpperCase()===state.toUpperCase());
-      if(jobType==="agricultural")src=src.filter(j=>j.visa==="H-2A");if(jobType==="non-agricultural")src=src.filter(j=>j.visa==="H-2B");
-      if(jobStatus==="active")src=src.filter(j=>j.active);if(jobStatus==="inactive")src=src.filter(j=>!j.active);
-      if(beginDate)src=src.filter(j=>j.start>=beginDate);
-      if(_minWageJobs>0){const _pw=w=>{if(!w)return 0;const m=String(w).replace(/[$,/hrday\s]/gi,"");return parseFloat(m)||0;};src=src.filter(j=>_pw(j.wage)>=_minWageJobs);}
-      // 🎯 v82: mesmo score de match do /api/sheet-meta, pro fallback local não ficar sem.
-      const _sJobsMatch=getSess(req);
-      const _mCtxJobs=_sJobsMatch?.user_email?buildMatchCtx(getUser(_sJobsMatch.user_email)):null;
-      const _page=src.slice(skip,skip+top).map(j=>{
-        const _m=_mCtxJobs?computeJobMatchScore(_matchSignalFromJob(j),_mCtxJobs):null;
-        return{...j,matchScore:_m?_m.score:null,matchWhy:_m?_m.why:null};
-      });
-      return json(res,200,{jobs:_page,total:src.length,skip,from_cache:true});
-    }
-  }
-
   // ── Sheet routes com categorias dinâmicas ─────────────
   if(pathname==="/api/sheet-meta"){
     const sheet=u.searchParams.get("sheet")||"";const arr=getSheet(sheet);
@@ -8106,25 +7916,6 @@ filtrar();
     _VF_CACHE.set(_cKey,{t:Date.now(),body:_body});
     return json(res,200,_body);
   }
-  if(pathname==="/api/sheet-detail"){if(_dolRateLimited(req,res,"dol_detail",60))return;const c=(u.searchParams.get("case")||"").trim().toUpperCase();if(!c)return json(res,400,{error:"case obrigatório"});try{const r=await fetchByCase([c]);
-    // v38 (dono, 22/07): e-mail descoberto AQUI é persistido na planilha — a
-    // vaga sem e-mail passava pelo corte hideSent (sem e-mail não há como
-    // casar com os enviados) e vazava pra lista; agora CADA clique que
-    // descobre o e-mail conserta a linha pra TODOS os usuários, e a próxima
-    // listagem já corta certo. (O bot de enriquecimento faz o mesmo em massa.)
-    try{
-      const _job=r[c];
-      if(_job&&_job.email&&_job.email.includes("@")){
-        const _keys=[...new Set(["jan2026","jul2025","h2a-jun2026",...Object.keys(DB_SHEETS_META)])];
-        for(const _k of _keys){
-          const _arr=getSheet(_k);if(!Array.isArray(_arr))continue;
-          const _row=_arr.find(x=>String(x.c||"").toUpperCase()===c);
-          if(_row){ if(!_row.e||!_row.e.includes("@")){ _row.e=_job.email; _saveEnrichedSheet(_k,_arr); console.log(`[sheet-detail] 💾 e-mail de ${c} persistido em ${_k} (descoberto no clique)`);} break; }
-        }
-      }
-    }catch(eP){ console.warn("[sheet-detail] persist:",eP.message); }
-    return json(res,200,{job:jobComEmailVisivel(r[c],podeVerEmailVaga(req))||null,notFound:!r[c]});}catch(e){return json(res,500,{error:e.message});}}
-  if(pathname==="/api/sheet-batch"&&req.method==="POST"){if(_dolRateLimited(req,res,"dol_batch",60))return;try{const d=JSON.parse(await readBody(req));const cases=(d.cases||[]).slice(0,10).map(c=>String(c).trim().toUpperCase());const jobs=await fetchByCase(cases);const _ver=podeVerEmailVaga(req);const _out={};for(const k of Object.keys(jobs||{}))_out[k]=jobComEmailVisivel(jobs[k],_ver);return json(res,200,{jobs:_out});}catch(e){return json(res,500,{error:e.message});}}
 
   // ── Generate cover ────────────────────────────────────
   // v22 (ORDEM DO DONO): /api/generate-cover removido — o "IA gera" era um
@@ -12246,7 +12037,7 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
     // do sistema — 2 definições de "é admin" divergindo no MAIOR portão da
     // API. Nunca reintroduzir a checagem crua; sempre isAdminVip(p).
     const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Acesso negado."});
-    if(pathname==="/api/admin/stats"&&req.method==="GET"){const tu=Object.keys(DB_USERS).length;const ts=Object.values(DB_HIST).reduce((n,a)=>n+a.length,0);const ds=todayStr();const tt=Object.values(DB_HIST).reduce((n,a)=>n+a.filter(h=>h.dateStr===ds).length,0);const vu=Object.values(DB_USERS).filter(u=>isVipActive(u)).length;const au=Object.values(DB_AUTO).filter(j=>j.active).length;return json(res,200,{totalUsers:tu,totalSent:ts,todayTotal:tt,vipUsers:vu,activeAutoJobs:au,freeUsers:tu-vu,jobsCached:jobsCache.length,jobsTotal,activeSessions:Object.keys(sessions).filter(k=>!k.startsWith("__")).length,dataDir:DATA_DIR,disk:fs.existsSync("/data"),sheetJan:SHEET_JAN.length,sheetJul:SHEET_JUL.length});}
+    if(pathname==="/api/admin/stats"&&req.method==="GET"){const tu=Object.keys(DB_USERS).length;const ts=Object.values(DB_HIST).reduce((n,a)=>n+a.length,0);const ds=todayStr();const tt=Object.values(DB_HIST).reduce((n,a)=>n+a.filter(h=>h.dateStr===ds).length,0);const vu=Object.values(DB_USERS).filter(u=>isVipActive(u)).length;const au=Object.values(DB_AUTO).filter(j=>j.active).length;return json(res,200,{totalUsers:tu,totalSent:ts,todayTotal:tt,vipUsers:vu,activeAutoJobs:au,freeUsers:tu-vu,activeSessions:Object.keys(sessions).filter(k=>!k.startsWith("__")).length,dataDir:DATA_DIR,disk:fs.existsSync("/data"),sheetJan:SHEET_JAN.length,sheetJul:SHEET_JUL.length});}
     if(pathname==="/api/admin/users"&&req.method==="GET"){const list=Object.values(DB_USERS).map(u=>{const vok=isVipActive(u);const h=getHist(u.email);const autoJob=getAutoJob(u.email);return{email:u.email,name:u.name,picture:u.picture,country:u.country,phone:u.phone,created_at:u.created_at,cvCount:(u.cvs||[]).length,histCount:h.length,todaySent:countManualToday(h)+countAutoToday(h),plan:getPlan(u),isAdmin:!!u.isAdmin,vip:u.vip?{active:vok,expiresAt:u.vip.expiresAt,activatedAt:u.vip.activatedAt,days:u.vip.days||30,plan:u.vip.plan||"vip",manualExpires:u.vip.manualExpires||0,autoExpires:u.vip.autoExpires||0,source:u.vip.source||"admin",usedCode:u.vip.usedCode||null,codeNote:u.vip.codeNote||null,activatedBy:u.vip.activatedBy||null,note:u.vip.note||null}:null,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0}:null};}).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));return json(res,200,{users:list,total:list.length});}
     // ── 🎁 DIAS GRÁTIS (cortesia) — dono, 18/07/2026 ─────────────────────
     // Caso de uso: "o site ficou 2 dias com problema, quero dar 2 dias a mais
@@ -13440,7 +13231,6 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}return json(res,200,{ok:true})
         serverUptime:Math.round(process.uptime()),
         memMB:Math.round(process.memoryUsage().rss/1048576),
         sheetJan:SHEET_JAN.length,sheetJul:SHEET_JUL.length,
-        jobsCache:jobsCache.length,
         diskOk,dataDir:DATA_DIR,
       });
     }
@@ -13637,7 +13427,8 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}return json(res,200,{ok:true})
 
   // ── /api/public-wage-stats — GET, sem login (SEO: página "quanto ganha quem
   // trabalha H-2B/H-2A"). Calcula médias de salário/hora REAIS a partir das
-  // planilhas de vagas já carregadas em memória (mesma fonte que /api/jobs) —
+  // planilhas de vagas já carregadas em memória (v223: única fonte de vaga do
+  // site, desde que o /api/jobs de busca ao vivo do DOL saiu) —
   // nunca número inventado. Só considera vagas com salário por HORA (r.wunit
   // === "h", ~98% do total); as poucas vagas mensais (ex.: pastores de ovelha)
   // ficam de fora pra não misturar unidade e distorcer a média. ─────────────
@@ -13654,17 +13445,20 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}return json(res,200,{ok:true})
   }
 
 
-  if(pathname==="/api/debug")return json(res,200,{version:"13.1",app_url:APP_URL,configured:CONFIGURED,jobs_cached:jobsCache.length,sessions:Object.keys(sessions).filter(k=>!k.startsWith("__")).length,disk:fs.existsSync("/data"),data_dir:DATA_DIR,total_users:Object.keys(DB_USERS).length,sheet_jan:SHEET_JAN.length,sheet_jul:SHEET_JUL.length,active_auto:Object.values(DB_AUTO).filter(j=>j.active).length,is_prod:IS_PROD});
+  if(pathname==="/api/debug")return json(res,200,{version:"13.1",app_url:APP_URL,configured:CONFIGURED,sessions:Object.keys(sessions).filter(k=>!k.startsWith("__")).length,disk:fs.existsSync("/data"),data_dir:DATA_DIR,total_users:Object.keys(DB_USERS).length,sheet_jan:SHEET_JAN.length,sheet_jul:SHEET_JUL.length,active_auto:Object.values(DB_AUTO).filter(j=>j.active).length,is_prod:IS_PROD});
 
   if(pathname==="/api/my-message"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});const p=getUser(s.user_email)||{};if(p.adminMessage){const m=p.adminMessage;setUser(s.user_email,{adminMessage:null});return json(res,200,{message:m});}return json(res,200,{message:null});}
 
   // 🚫 v195 LOTE 14: o /proxy foi REMOVIDO. Era um proxy ABERTO pra
   // seasonaljobs.dol.gov — qualquer método, qualquer corpo, sem sessão, sem
   // rate-limit e com access-control-allow-origin:* —, usando o IP do NOSSO
-  // servidor. Nenhuma tela do site chamava. Se aquele IP levar 403/429 do DOL,
-  // os 5 robôs de planilha e as "Vagas ao Vivo" morrem pra TODO MUNDO.
-  // Não recriar: o que o site precisa do DOL passa pelas rotas próprias
-  // (/api/jobs, /api/sheet-detail, /api/sheet-batch), com cache e limite.
+  // servidor. Nenhuma tela do site chamava. Não recriar.
+  // 🚫 v223 (ordem do dono, 20/09/2026 — "não quero mais dados ao vivo do
+  // dol, a partir de agora só planilhas"): as rotas que substituíam o proxy
+  // (/api/jobs, /api/sheet-detail, /api/sheet-batch) saíram JUNTO — o site
+  // não faz mais NENHUMA consulta em tempo real à API do DOL. O que ele
+  // precisa do DOL vem só dos robôs de coleta periódica de planilha
+  // (mod-planilhas.js, feed ZIP — mecanismo separado, continua existindo).
 
   // ── AVALIAÇÕES REAIS DE USUÁRIOS (landing page) ─────────────────────────
   // Substitui os depoimentos fixos/fictícios da landing por avaliações reais,
@@ -13882,7 +13676,6 @@ setInterval(()=>{
   });
   if(n){persist(USERS_FILE,DB_USERS);console.log(`[vip] ${n} expirado(s) total`);}
 },3600_000);
-setInterval(refreshCache,CACHE_TTL);
 
 // FIX-CRASH: Monitor de memória — loga a cada 10min e alerta se estiver alto
 setInterval(() => {
@@ -14701,7 +14494,6 @@ server.listen(PORT,"0.0.0.0",()=>{
   console.log(`    📋 Jan/2026: ${SHEET_JAN.length} | Jul/2025: ${SHEET_JUL.length}`);
   console.log(`    🍪 Cookie: SameSite=Lax | IS_PROD: ${IS_PROD}`);
   if(!CONFIGURED)console.log("\n⚠️  Configure GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET!\n");
-  setTimeout(refreshCache,3000);
   setTimeout(()=>reactivateAutoJobs().catch(e=>console.error("[boot] reactivate error:",e.message)),6000);
 
   // ══════════════════════════════════════════════════════════════════════

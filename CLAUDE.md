@@ -1993,3 +1993,120 @@ código feita aqui; registrado pra não reinvestigar à toa.
 Testes: `npm test` 100% verde, `check-duplicates.js` e
 `check-xss-guard.js` sem achados. sw.js bumpado (v83→v84).
 
+## v222 — Título de vaga com código SOC cortado na fonte do DOL (dono, 20/09/2026)
+
+Continuando a mesma varredura ao vivo do v221, o dono achou 8
+candidaturas já enviadas (aba Enviadas > Automático) com o MESMO
+título cortado no meio da palavra: `"49-9098: Helpers—Installation,
+Maintenance, and Repair Worke"` (faltando "rs").
+
+**Causa raiz**: quando o empregador não dá um título próprio, o DOL
+publica o `job_title` como "CÓDIGO SOC: nome oficial da ocupação" — e
+esse registro específico chegou assim JÁ CORTADO na fonte (exatos 60
+caracteres, largura clássica de campo antigo do sistema do DOL). Não é
+bug do nosso import: `row.t = String(dol.job_title).trim()`
+(mod-planilhas.js) só copia o que o DOL manda, sem truncar nada.
+Verificado o código SOC 49-9098 contra fontes oficiais — [BLS
+OES](https://www.bls.gov/oes/current/oes499098.htm) e [O*NET
+OnLine](https://www.onetonline.org/link/summary/49-9098.00) — ambas
+confirmam "Helpers--Installation, Maintenance, and Repair Workers".
+
+**Correção** (server.js): `_selfHealTitulosTruncados(label, rows)`,
+chamada de `loadSheets()` logo depois de `_selfHealCidades` (mesmo
+padrão, mesmo ponto — jan2026/jul2025/H-2A e cada planilha extra) —
+roda no BOOT, nunca no upload. Detecta título com prefixo `CÓDIGO
+SOC: ` e: (a) se o código está no mapa `_SOC_TITULOS_OFICIAIS`
+(verificado contra fonte oficial), completa com a grafia oficial; (b)
+se o título tem exatamente 60 caracteres mas o código NÃO está
+verificado, só REGISTRA no log (`[sheet] 🔎 ...`) pro admin conferir —
+nunca inventa nome de ocupação. Só toca o campo `t` da vaga na
+planilha; histórico de candidaturas já enviadas (`h`/`DB_HIST`) fica
+100% intocado, como pedido.
+
+**Escopo desta entrega**: só o código 49-9098 (o único achado ao vivo)
+tem correção automática; qualquer outro título com a mesma assinatura
+de corte (60 caracteres, prefixo SOC) vai aparecer no log do boot pra
+o admin decidir — adicionar o código verificado ao mapa quando
+aparecer um novo caso é a forma de estender.
+
+Testes: 3 checks novos no smoke (v199-L19, dentro do ciclo de 2º boot
+já existente — sobe a planilha "titulo-teste" com 1 caso verificado e
+1 não-verificado, mata o servidor, sobe de novo e confere que só o
+verificado foi completado, o outro ficou intocado e os dois aparecem
+no log). `npm test` 100% verde, `check-duplicates.js`/
+`check-xss-guard.js` sem achados. Sem bump de sw.js (só server.js e
+smoke-test.js mudaram — nenhum arquivo servido ao cliente).
+
+## v223 — Aba "Vagas ao Vivo" removida por completo: site só usa planilhas (dono, 20/09/2026)
+
+Ordem expressa do dono: *"faz melhor, aba ao vivo exclui, não quero
+mais dados ao vivo do dol. exclui tudo que tem haver com ela, a partir
+de agora só planilhas ok?"*. Isso substitui de vez a tentativa de
+corrigir o bug de ordenação (`$orderby` do DOL sempre devolvia por
+`dhTimestamp`, ignorando o modo pedido) — em vez de consertar a
+ordenação da busca ao vivo, a busca ao vivo inteira deixou de existir.
+**Não afeta** os robôs periódicos de coleta de planilha
+(mod-planilhas.js, feed ZIP via `DOL_FEED_BASE`) — esses continuam
+existindo normalmente e são a ÚNICA fonte de vaga do site a partir de
+agora.
+
+**Removido do servidor (server.js)**: o bloco inteiro da "DOL API"
+(`jobsCache`/`jobsTotal`/`lastFetch`/`CACHE_TTL`/`refreshCache`,
+`FALLBACK_JOBS`, `normJob`, `DOL_API_BASE_SRV`, `_dolApiGet`,
+`fetchDOL`, `fetchByCase`, `sheetCache`/`SHEET_TTL`, o bloco de rate
+limit `_dolRateLimited`); as rotas `/api/jobs`, `/api/sheet-detail` e
+`/api/sheet-batch` inteiras (a última incluía o efeito colateral de
+"e-mail descoberto no clique" gravado na planilha — sem consulta ao
+vivo, esse caminho não existe mais); os 2 `setInterval`/`setTimeout`
+que chamavam `refreshCache`; os campos `jobsCached`/`jobsTotal`/
+`jobs_cached` de `/api/admin/stats`, do status ao vivo do admin e de
+`/api/debug`; `https://api.seasonaljobs.dol.gov` saiu do `connect-src`
+do CSP (nenhum JS de navegador chamava mais). Servidor não faz mais
+NENHUMA chamada HTTPS direta ao DOL — essa conversa mora só em
+mod-planilhas.js.
+
+**Removido do front (app.js)**: a aba inteira (`JOBS`, `skip`/`total`/
+`loading`/`done`, `mkCard(j)`, `selJob2(id)`, `loadJobs()`,
+`enrichSheet()`/`updSheetCard()` — o enriquecimento em lote que
+rodava depois de carregar a lista de planilha morreu junto, já que
+não tinha mais pra onde mandar), `_sentSeasonal`/`_isSentSeasonal` e
+todo o sistema `_vfLive()` (~15 pontos do motor de filtros que tinham
+um branch "aba ao vivo": `vfAtivos`, `vfFetch`, `vfRefresh`, `vfSet`,
+`_vfBuildSecs`, `_vfRenderSecs`, `_vfSyncSortBtns`, `vfRenderChips`,
+`vfCountManual`), as 2 seções de filtro exclusivas da aba ao vivo
+("Tipo de visto"/"Status da vaga") e as chaves de tradução mortas
+(`vf_live_note`, `vf_sec_tipo`, `vf_sec_ativa`, `vf_ativas_lbl`,
+`seasonal_jobs`) nas 3 línguas. `selSheetJob(cn)` (detalhe de vaga da
+planilha) deixou de ser assíncrono — antes ele fazia round-trip pro
+servidor pra "enriquecer" a linha; agora é 100% síncrono, lendo só o
+que já está em `sCache`/`sJobs` (cache local + o que `/api/sheet-meta`
+já trouxe), porque não existe mais nenhuma fonte de vaga fora da
+planilha carregada. Aba inicial default trocou de `"seasonal"` pra
+`"jan2026"`. Achado e corrigido no meio da remoção: `limitUpsell()`
+lia o global `total` (exclusivo da aba removida, ia ficar travado em
+0 pra sempre) — redirecionado pra `sTotal`, o total real da planilha,
+senão a mensagem de "ainda restam N vagas hoje" ficaria sempre no
+texto genérico.
+
+**Removido do HTML (index.html)**: o botão-aba `#stab-seasonal`
+("Vagas ao Vivo"); a aba `Jan 2026` virou a primeira/ativa por padrão.
+
+**Testes (smoke-test.js)**: removidos os testes exclusivos da busca ao
+vivo (dedup de cache do `/api/jobs`, escaping de aspas no `$orderby`
+OData, descarte de injeção no `/api/sheet-batch`, as leituras de
+`/api/sheet-detail` no teste de mascaramento de e-mail v182-L10) —
+mantidos os testes que usam a MESMA infraestrutura de DOL falso do
+harness mas para os robôs de planilha que continuam vivos (`/proxy`
+404, fila educada do robô de enriquecimento). 4 checks corrigidos por
+ficarem stale com a remoção (não apontavam bug nenhum, só citavam
+código/trecho que mudou de forma ao ficar mais simples): a guarda de
+XSS v205-L23 não exige mais `${esc(job.workers)}` (era do card da
+aba removida); o contador de filtros ativos v181-L5 casava
+`else if(st.email)n++` e virou `if(st.email)n++` (a única razão pro
+`else` existir era o branch da aba ao vivo, que sumiu); o teste de
+gzip v140 passou a ler `mod-planilhas.js` em vez de `server.js`,
+porque é lá que mora agora — e só lá — toda conversa HTTP com o DOL.
+
+Testes: `npm test` 100% verde (722 checks), `check-duplicates.js`/
+`check-xss-guard.js` sem achados. sw.js bumpado (v84→v85).
+
