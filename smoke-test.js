@@ -4685,6 +4685,23 @@ async function drillBloqueioComprasNovas() {
         _fnDeleteProfile.indexOf("if(!d.ok)throw") < _fnDeleteProfile.indexOf("UPROFILES=UPROFILES.filter"),
         _fnDeleteProfile.slice(0, 220));
     }
+
+    // ═══ 🚨 v233 (achado de auditoria — Média): GET /api/debug era PÚBLICO,
+    // sem nenhuma checagem de sessão/admin — vazava total de usuários,
+    // sessões ativas, jobs automáticos rodando e o caminho do disco de
+    // dados pra QUALQUER um na internet. Zero telas do site chamam essa
+    // rota (achado confirmado por varredura em app.js/admin.html/index.html)
+    // — agora exige admin, mesma trava da rota irmã /api/debug/export.
+    COOKIE = "";
+    const _debugSemSessao = await get("/api/debug");
+    check("🚨 v233: GET /api/debug SEM sessão é RECUSADO (403) — antes vazava total de usuários, sessões ativas e caminho do disco pra qualquer um na internet, sem nenhuma tela do site usar essa rota",
+      _debugSemSessao.status === 403,
+      `status=${_debugSemSessao.status} body=${(_debugSemSessao.body || "").slice(0, 120)}`);
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "andrio.usa2026@gmail.com", name: "Dono", isAdmin: true });
+    const _debugAdmin = await get("/api/debug");
+    check("🚨 v233: GET /api/debug COM sessão de admin continua funcionando (200) — a trava é só contra acesso público, a rota continua útil pro admin",
+      _debugAdmin.status === 200 && typeof _debugAdmin.json?.total_users === "number",
+      JSON.stringify(_debugAdmin.json).slice(0, 160));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5c@test.com", name: "MC5 C" });
     const mc5d1 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-um").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     const mc5d2 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-dois").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });

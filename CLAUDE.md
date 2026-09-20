@@ -2461,3 +2461,28 @@ Testes: 1 check estrutural no smoke confirmando a ordem correta
 100% verde, `check-duplicates.js`/`check-xss-guard.js` sem achados.
 sw.js bumpado (v91→v92).
 
+## v233 — achado Média da auditoria (segurança/confiabilidade UX): /api/debug era público (20/09/2026)
+
+`GET /api/debug` não tinha NENHUMA checagem de sessão/admin — qualquer
+pessoa na internet, sem estar logada, conseguia consultar: total de
+usuários cadastrados, quantas sessões estão ativas agora, quantos jobs
+do envio automático estão rodando neste instante, o tamanho das
+planilhas carregadas, o caminho do disco de dados (`DATA_DIR`) e se o
+ambiente é produção ou não. Nada disso é catastrófico sozinho, mas é
+inteligência de negócio/operação (crescimento de usuários ao longo do
+tempo, volume real de envio) exposta de graça pra concorrente ou bot
+curioso — e a varredura confirmou ZERO telas do site chamando essa
+rota (nem app.js, nem admin.html, nem index.html): não existe nenhum
+uso legítimo público pra justificar deixá-la aberta.
+
+Corrigido com a MESMA trava já usada pela rota irmã `/api/debug/export`
+(que já era admin-only) — `getSes`+`isAdminEmail(_sessAdminEmail(s))`,
+o padrão mais comum do arquivo pra "admin hardcoded" (25 outras rotas
+já usam exatamente essa checagem). A rota continua existindo e útil
+pro admin, só parou de ser pública.
+
+Testes: 2 checks comportamentais no smoke (sem sessão → 403; com
+sessão de admin → 200 com os campos esperados). `npm test` 100%
+verde, `check-duplicates.js`/`check-xss-guard.js` sem achados. Mudança
+100% em server.js — sem bump de sw.js.
+

@@ -13474,7 +13474,16 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}return json(res,200,{ok:true})
   }
 
 
-  if(pathname==="/api/debug")return json(res,200,{version:"13.1",app_url:APP_URL,configured:CONFIGURED,sessions:Object.keys(sessions).filter(k=>!k.startsWith("__")).length,disk:fs.existsSync("/data"),data_dir:DATA_DIR,total_users:Object.keys(DB_USERS).length,sheet_jan:SHEET_JAN.length,sheet_jul:SHEET_JUL.length,active_auto:Object.values(DB_AUTO).filter(j=>j.active).length,is_prod:IS_PROD});
+  // 🚨 v233 (achado de auditoria — Média): rota PÚBLICA sem nenhuma checagem
+  // de sessão/admin — vazava total de usuários, sessões ativas, contagem de
+  // jobs automáticos rodando, caminho do disco de dados e se é produção pra
+  // QUALQUER um na internet (zero telas do site chamam essa rota — achado
+  // confirmado: nenhuma referência em app.js/admin.html/index.html). Mesma
+  // trava da irmã /api/debug/export (admin hardcoded).
+  if(pathname==="/api/debug"){
+    const s=getSess(req);if(!s?.user_email||!isAdminEmail(_sessAdminEmail(s)))return json(res,403,{error:"Acesso negado."});
+    return json(res,200,{version:"13.1",app_url:APP_URL,configured:CONFIGURED,sessions:Object.keys(sessions).filter(k=>!k.startsWith("__")).length,disk:fs.existsSync("/data"),data_dir:DATA_DIR,total_users:Object.keys(DB_USERS).length,sheet_jan:SHEET_JAN.length,sheet_jul:SHEET_JUL.length,active_auto:Object.values(DB_AUTO).filter(j=>j.active).length,is_prod:IS_PROD});
+  }
 
   if(pathname==="/api/my-message"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});const p=getUser(s.user_email)||{};if(p.adminMessage){const m=p.adminMessage;setUser(s.user_email,{adminMessage:null});return json(res,200,{message:m});}return json(res,200,{message:null});}
 
