@@ -5721,6 +5721,34 @@ function _clientIp(req){
 const makeCookieStr=id=>{const b=`h2b_session=${id}; Path=/; HttpOnly; Max-Age=${30*86400}`;return IS_PROD?b+"; Secure; SameSite=Lax":b+"; SameSite=Lax";};
 const clearCookieStr=()=>{const b="h2b_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT";return IS_PROD?b+"; Secure; SameSite=Lax":b;};
 const getSessId=req=>{const m=(req.headers.cookie||"").match(/(?:^|;\s*)h2b_session=([^;]+)/);return m?m[1]:null;};
+// 🔌 v237u (bug real ao vivo, 20/09/2026 — Andrio testando "Conectar Gmail
+// Extra" com ndrkick.3@gmail.com: passou pela tela do Google e voltou
+// DESLOGADO, "Sessão inválida ou expirada", em vez de cair no perfil com o
+// Gmail conectado). Causa raiz: KB-078 derruba TODA sessão de LOGIN a cada
+// deploy/restart, de propósito (07/07/2026) — mas os handshakes de OAuth
+// (__sender__/__connectsend__/__notif__) sobrevivem à parte (v209), porque o
+// Google pode levar bastante tempo (avisos de "app não verificado" →
+// Avançado → Continuar) até a pessoa voltar. Se um deploy caiu bem nessa
+// janela — e este servidor publica a cada commit — a sessão de login sumia
+// enquanto o handshake persistido continuava vivo, e a trava anti-CSRF
+// v172c-SEC (que exige a sessão de login atual == quem iniciou) barrava a
+// pessoa mesmo sem culpa nenhuma dela.
+// Fix: cookie de handshake PRÓPRIO (h2b_of), independente de `sessions` — mora
+// no NAVEGADOR, então sobrevive ao restart do processo. Ele prova "é o MESMO
+// navegador que iniciou este state" sem depender da sessão de login continuar
+// viva, e mantém a MESMA proteção contra o ataque de verdade (vítima clicando
+// o link de consentimento que o atacante mandou): o navegador da vítima nunca
+// recebeu esse cookie (Set-Cookie nunca viaja por link, só na resposta pro
+// navegador que fez a requisição), então nem sessão nem cookie batem lá.
+const FLOW_COOKIE="h2b_of";
+const makeFlowCookieStr=val=>{const b=`${FLOW_COOKIE}=${val}; Path=/oauth; HttpOnly; Max-Age=600`;return IS_PROD?b+"; Secure; SameSite=Lax":b+"; SameSite=Lax";};
+const clearFlowCookieStr=()=>{const b=`${FLOW_COOKIE}=; Path=/oauth; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;return IS_PROD?b+"; Secure; SameSite=Lax":b;};
+const _oauthFlowSameBrowser=(req,expectedSt)=>{const m=(req.headers.cookie||"").match(new RegExp("(?:^|;\\s*)"+FLOW_COOKIE+"=([^;]+)"));return!!m&&m[1]===expectedSt;};
+// Reconstrói a sessão de login (mesmo formato usado em /api/login) quando ela
+// sumiu no meio do handshake mas o cookie acima já provou que é o MESMO
+// navegador que iniciou logado — a pessoa volta pro perfil JÁ logada, com o
+// Gmail conectado, em vez de ter que entrar de novo pra repetir o fluxo.
+const _oauthReloginCookie=ownerEmail=>{const sid="usr_"+crypto.randomBytes(16).toString("hex");sessions[sid]={user_email:ownerEmail,user_name:(getUser(ownerEmail)||{}).name||ownerEmail,created_at:Date.now()};persistSessionsDebounced(500);return makeCookieStr(sid);};
 // 🚨 v177-FIX2 (auditoria 14/09/2026): antes, uma sessão vencida (>24h admin
 // / >7d usuário) continuava sendo ACEITA por toda requisição até a próxima
 // varredura periódica do setInterval (a cada 5min) apagá-la — janela real de
@@ -8558,10 +8586,20 @@ filtrar();
       // do atacante (login-CSRF/state-fixation, CWE-352). Exige que quem
       // está navegando AGORA seja a MESMA pessoa que iniciou o fluxo.
       const _sess2=getSess(req);
-      if(!_sess2?.user_email||_sess2.user_email!==ownerEmail2){
+      const _sessOk2=_sess2?.user_email===ownerEmail2;
+      const _sessOutro2=!!_sess2?.user_email&&_sess2.user_email!==ownerEmail2;
+      // v237u: sessão sumiu (deploy no meio do caminho) mas o cookie do
+      // handshake (h2b_of, vive no navegador) prova que é o MESMO navegador
+      // que iniciou — aceita. Sessão de OUTRA pessoa nunca é sobrescrita pelo
+      // cookie (continua negando sempre, igual antes).
+      if(!_sessOk2&&(_sessOutro2||!_oauthFlowSameBrowser(req,_st))){
         _authEvent(ownerEmail2,"oauth_state_sessao_diferente","Callback de add-sender chegou sem sessão ou com sessão diferente de quem iniciou — bloqueado (possível login-CSRF)");
         return fail2("Sessão inválida ou expirada. Faça login e clique em Conectar Gmail Extra de novo.");
       }
+      // Sessão sumiu no meio do caminho (deploy) mas o cookie provou o mesmo
+      // navegador — devolve já logada, com o Gmail conectado, em vez de
+      // deixar a pessoa de fora tendo feito tudo certo.
+      const _cookiesOut2=[clearFlowCookieStr(),...(_sessOk2?[]:[_oauthReloginCookie(ownerEmail2)])];
       try{
         const tb2=new URLSearchParams({code,client_id:CLIENT_ID,client_secret:CLIENT_SECRET,redirect_uri:_oauthBase(req)+"/oauth/callback",grant_type:"authorization_code"}).toString();
         const{body:tk2}=await httpsReq({hostname:"oauth2.googleapis.com",path:"/token",method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded","Content-Length":Buffer.byteLength(tb2)}},tb2);
@@ -8588,7 +8626,7 @@ filtrar();
           trackJourney(ownerEmail2,'sender_reauthed',{detail:`Sender reautenticado: ${newEmail2}`});
           const _safeRe2=JSON.stringify(newEmail2);
           const pageRe2=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Gmail reativado!</title></head><body><script>sessionStorage.setItem('senderReauthed',${_safeRe2});window.location.href='/';<\/script></body></html>`;
-          res.writeHead(200,{"Content-Type":"text/html; charset=utf-8","Content-Length":Buffer.byteLength(pageRe2),"Cache-Control":"no-cache"});return res.end(pageRe2);
+          res.writeHead(200,{"Content-Type":"text/html; charset=utf-8","Content-Length":Buffer.byteLength(pageRe2),"Cache-Control":"no-cache","Set-Cookie":_cookiesOut2});return res.end(pageRe2);
         }
         const maxSnd3=getMaxSenders(getUser(ownerEmail2)||{});
         if(1+existing2.length>=maxSnd3)return fail2(_msgLimiteSenders(maxSnd3));
@@ -8599,7 +8637,7 @@ filtrar();
         trackJourney(ownerEmail2,'sender_added',{detail:`Sender adicionado: ${newEmail2}`});
         const _safeEmail2=JSON.stringify(newEmail2);
         const page2=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Gmail adicionado!</title></head><body><script>sessionStorage.setItem('senderAdded',${_safeEmail2});window.location.href='/';<\/script></body></html>`;
-        res.writeHead(200,{"Content-Type":"text/html; charset=utf-8","Content-Length":Buffer.byteLength(page2),"Cache-Control":"no-cache"});return res.end(page2);
+        res.writeHead(200,{"Content-Type":"text/html; charset=utf-8","Content-Length":Buffer.byteLength(page2),"Cache-Control":"no-cache","Set-Cookie":_cookiesOut2});return res.end(page2);
       }catch(e2){return fail2("Erro ao adicionar email: "+e2.message);}
     }
     // ── CONECTAR GMAIL PRA ENVIAR (v172) — callback ──────────────────────
@@ -8616,10 +8654,16 @@ filtrar();
       // vítima à conta do atacante (gmail.send — escopo sensível de
       // verdade). Exige sessão atual = quem iniciou o fluxo.
       const _sessCS=getSess(req);
-      if(!_sessCS?.user_email||_sessCS.user_email!==ownerEmailCS){
+      const _sessOkCS=_sessCS?.user_email===ownerEmailCS;
+      const _sessOutroCS=!!_sessCS?.user_email&&_sessCS.user_email!==ownerEmailCS;
+      // v237u: mesma resiliência do bloco __sender__ acima — sessão sumida
+      // por deploy no meio do caminho é aceita se o cookie do handshake
+      // provar o mesmo navegador; sessão de OUTRA pessoa continua negando.
+      if(!_sessOkCS&&(_sessOutroCS||!_oauthFlowSameBrowser(req,_st))){
         _authEvent(ownerEmailCS,"oauth_state_sessao_diferente","Callback de connect-send chegou sem sessão ou com sessão diferente de quem iniciou — bloqueado (possível login-CSRF)");
         return failCS("Sessão inválida ou expirada. Faça login e clique em Conectar Gmail de novo.");
       }
+      const _cookiesOutCS=[clearFlowCookieStr(),...(_sessOkCS?[]:[_oauthReloginCookie(ownerEmailCS)])];
       try{
         // Defesa em profundidade: o plano pode ter expirado nos ~segundos
         // que a pessoa levou na tela do Google — confere de novo, igual a
@@ -8700,7 +8744,7 @@ filtrar();
         // `retomarAutoAposReconexao` relê o usuário (o setUser acima já
         // gravou o refresh_token novo) e só religa com automático ativo.
         const _retomado = retomarAutoAposReconexao(ownerEmailCS)==="retomado";
-        res.writeHead(302,{Location:"/?gmailConnected=1"+(_retomado?"&autoRetomado=1":"")+"&tab="+encodeURIComponent(pendingCS.fromTab||"plans")});return res.end();
+        res.writeHead(302,{Location:"/?gmailConnected=1"+(_retomado?"&autoRetomado=1":"")+"&tab="+encodeURIComponent(pendingCS.fromTab||"plans"),"Set-Cookie":_cookiesOutCS});return res.end();
       }catch(eCS){return failCS("Erro ao conectar o Gmail: "+eCS.message);}
     }
     // ── 📧 v175: CONTA DE NOTIFICAÇÕES (admin) — callback ────────────────
@@ -8709,7 +8753,15 @@ filtrar();
       const failN=m=>{res.writeHead(302,{Location:"/admin?notif=erro&msg="+encodeURIComponent(m)});res.end();};
       if(Date.now()-pn.created>600_000)return failN("Sessão expirada. Tente conectar de novo.");
       const _sN=getSess(req);const _pN=_sN?.user_email?getUser(_sN.user_email):null;
-      if(!_sN?.user_email||_sN.user_email!==pn.ownerEmail||!isAdminVip(_pN))return failN("Sessão inválida — entre no painel e clique em Conectar de novo.");
+      const _sessOkN=_sN?.user_email===pn.ownerEmail&&isAdminVip(_pN);
+      const _sessOutroN=!!_sN?.user_email&&_sN.user_email!==pn.ownerEmail;
+      const _pOwnerN=getUser(pn.ownerEmail);
+      // v237u: mesma resiliência dos outros 2 handshakes — sessão sumida por
+      // deploy é aceita com o cookie provando o mesmo navegador, contanto que
+      // o dono do handshake continue admin (relido fresco, sem depender da
+      // sessão morta).
+      if(!_sessOkN&&(_sessOutroN||!(_oauthFlowSameBrowser(req,_st)&&isAdminVip(_pOwnerN))))return failN("Sessão inválida — entre no painel e clique em Conectar de novo.");
+      const _cookiesOutN=[clearFlowCookieStr(),...(_sessOkN?[]:[_oauthReloginCookie(pn.ownerEmail)])];
       try{
         const tbN=new URLSearchParams({code,client_id:CLIENT_ID,client_secret:CLIENT_SECRET,redirect_uri:_oauthBase(req)+"/oauth/callback",grant_type:"authorization_code"}).toString();
         const{body:tkN}=await httpsReq({hostname:"oauth2.googleapis.com",path:"/token",method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded","Content-Length":Buffer.byteLength(tbN)}},tbN);
@@ -8719,9 +8771,9 @@ filtrar();
         const _emailN=String(uiN.email||"").toLowerCase().trim();
         if(!_emailN)return failN("E-mail da conta não obtido.");
         if(!tkN.refresh_token)return failN("O Google não devolveu a permissão permanente (refresh token). Em myaccount.google.com → Segurança → Apps com acesso, remova o H2BApply e conecte de novo.");
-        NOTIF.conectar({email:_emailN,refresh_token:tkN.refresh_token,connectedBy:_sN.user_email});
-        try{logAdminAction(_sN.user_email,"notif_connect","(config)",null,{email:_emailN},"Conectou a conta Google de notificações: "+_emailN);}catch(e){}
-        res.writeHead(302,{Location:"/admin?notif=ok&email="+encodeURIComponent(_emailN)});return res.end();
+        NOTIF.conectar({email:_emailN,refresh_token:tkN.refresh_token,connectedBy:pn.ownerEmail});
+        try{logAdminAction(pn.ownerEmail,"notif_connect","(config)",null,{email:_emailN},"Conectou a conta Google de notificações: "+_emailN);}catch(e){}
+        res.writeHead(302,{Location:"/admin?notif=ok&email="+encodeURIComponent(_emailN),"Set-Cookie":_cookiesOutN});return res.end();
       }catch(eN){return failN("Erro ao conectar a conta: "+eN.message);}
     }
     // v172c (ORDEM DO DONO, 12/09/2026): login normal virou usuário+senha
@@ -8750,7 +8802,10 @@ filtrar();
     sessions["__sender__"+st]={ownerEmail:s.user_email,created:Date.now()};
     persistSessions(); // grava no disco (ver ajuste em persistSessions: __sender__ agora sobrevive a restart)
     const qs=new URLSearchParams({client_id:CLIENT_ID,redirect_uri:_oauthBase(req)+"/oauth/callback",response_type:"code",scope:OAUTH_SCOPES,access_type:"offline",prompt:"consent select_account",state:st});
-    res.writeHead(302,{Location:"https://accounts.google.com/o/oauth2/v2/auth?"+qs});return res.end();
+    // v237u: cookie de handshake (independente de `sessions`) pra sobreviver
+    // a um deploy que caia no meio da ida-e-volta do Google — ver comentário
+    // completo junto de makeFlowCookieStr().
+    res.writeHead(302,{Location:"https://accounts.google.com/o/oauth2/v2/auth?"+qs,"Set-Cookie":makeFlowCookieStr(st)});return res.end();
   }
 
   // ══════════════════════════════════════════════════════════
@@ -8789,7 +8844,10 @@ filtrar();
     // vai de login_hint pro Google já cravar a conta certa na tela.
     const _hintCS=p.emailContato||resolveSendGmail(p);
     const qs=new URLSearchParams({client_id:CLIENT_ID,redirect_uri:_oauthBase(req)+"/oauth/callback",response_type:"code",scope:OAUTH_SCOPES,access_type:"offline",prompt:"consent",state:st,...(_hintCS?{login_hint:_hintCS}:{})});
-    res.writeHead(302,{Location:"https://accounts.google.com/o/oauth2/v2/auth?"+qs});return res.end();
+    // v237u: mesmo cookie de handshake do add-sender — este fluxo é o gate
+    // pra poder ENVIAR (v172), então uma sessão derrubada por deploy no meio
+    // do caminho aqui é ainda mais crítica (bloqueia candidaturas).
+    res.writeHead(302,{Location:"https://accounts.google.com/o/oauth2/v2/auth?"+qs,"Set-Cookie":makeFlowCookieStr(st)});return res.end();
   }
 
   // 📧 v175: inicia a conexão da CONTA DE NOTIFICAÇÕES (Admin → Notificações).
@@ -8804,7 +8862,8 @@ filtrar();
     persistSessions();
     const _hintN=NOTIF.status().email||"";
     const qs=new URLSearchParams({client_id:CLIENT_ID,redirect_uri:_oauthBase(req)+"/oauth/callback",response_type:"code",scope:OAUTH_SCOPES,access_type:"offline",prompt:"consent select_account",state:st,...(_hintN?{login_hint:_hintN}:{})});
-    res.writeHead(302,{Location:"https://accounts.google.com/o/oauth2/v2/auth?"+qs});return res.end();
+    // v237u: mesmo cookie de handshake dos outros 2 fluxos.
+    res.writeHead(302,{Location:"https://accounts.google.com/o/oauth2/v2/auth?"+qs,"Set-Cookie":makeFlowCookieStr(st)});return res.end();
   }
 
   // [FIX] Alias legado — redireciona para /oauth/callback (unificado)

@@ -4374,12 +4374,30 @@ async function drillBloqueioComprasNovas() {
     // dependem disso de propósito); prova estrutural: os 2 branches
     // (__sender__ e __connectsend__) exigem getSess(req) batendo com quem
     // iniciou ANTES de qualquer troca de código com o Google.
-    check("🚨 v172c-SEC: /oauth/callback (branch __sender__) exige que a sessão ATUAL seja quem iniciou o fluxo — login-CSRF fechado",
-      /const _sess2=getSess\(req\);\s*\n\s*if\(!_sess2\?\.user_email\|\|_sess2\.user_email!==ownerEmail2\)/.test(_srvSrc),
-      "callback de add-sender não confere mais a sessão atual contra quem iniciou o fluxo");
-    check("🚨 v172c-SEC: /oauth/callback (branch __connectsend__) exige que a sessão ATUAL seja quem iniciou o fluxo — login-CSRF fechado",
-      /const _sessCS=getSess\(req\);\s*\n\s*if\(!_sessCS\?\.user_email\|\|_sessCS\.user_email!==ownerEmailCS\)/.test(_srvSrc),
-      "callback de connect-send não confere mais a sessão atual contra quem iniciou o fluxo");
+    // v237u (bug real ao vivo, 20/09/2026 — Andrio deslogado no meio de
+    // "Conectar Gmail Extra"): a checagem de sessão pura quebrava sempre que
+    // um deploy caía durante a ida-e-volta do Google (KB-078 derruba TODA
+    // sessão de login de propósito a cada restart). Agora aceita sessão de
+    // quem iniciou OU o cookie de handshake (h2b_of, vive no navegador,
+    // sobrevive a restart) provando o MESMO navegador — mas sessão de OUTRA
+    // pessoa (_sessOutro*) nunca é sobrescrita pelo cookie, mantendo o
+    // login-CSRF fechado.
+    check("🚨 v172c-SEC/v237u: /oauth/callback (branch __sender__) exige sessão de quem iniciou OU cookie de handshake provando o mesmo navegador — sessão de OUTRA pessoa nunca é aceita — login-CSRF fechado",
+      _srvSrc.includes("const _sessOutro2=!!_sess2?.user_email&&_sess2.user_email!==ownerEmail2;") &&
+      _srvSrc.includes("if(!_sessOk2&&(_sessOutro2||!_oauthFlowSameBrowser(req,_st))){"),
+      "callback de add-sender não confere mais a sessão/cookie de quem iniciou");
+    check("🚨 v172c-SEC/v237u: /oauth/callback (branch __connectsend__) exige sessão de quem iniciou OU cookie de handshake provando o mesmo navegador — sessão de OUTRA pessoa nunca é aceita — login-CSRF fechado",
+      _srvSrc.includes("const _sessOutroCS=!!_sessCS?.user_email&&_sessCS.user_email!==ownerEmailCS;") &&
+      _srvSrc.includes("if(!_sessOkCS&&(_sessOutroCS||!_oauthFlowSameBrowser(req,_st))){"),
+      "callback de connect-send não confere mais a sessão/cookie de quem iniciou");
+    check("🔌 v237u: /oauth/add-sender, /oauth/connect-send e /oauth/notif-connect gravam o cookie de handshake (h2b_of) ANTES de redirecionar pro Google — sobrevive a deploy no meio do caminho, diferente da sessão de login",
+      (_srvSrc.match(/Set-Cookie":makeFlowCookieStr\(st\)/g) || []).length === 3,
+      "cookie de handshake (h2b_of) não está sendo gravado nas 3 rotas de início do fluxo");
+    check("🔌 v237u: sessão reconstruída (_oauthReloginCookie) e cookie de handshake limpo (clearFlowCookieStr) só quando a sessão original não bateu — nos 3 callbacks",
+      _srvSrc.includes('const _cookiesOut2=[clearFlowCookieStr(),...(_sessOk2?[]:[_oauthReloginCookie(ownerEmail2)])];') &&
+      _srvSrc.includes('const _cookiesOutCS=[clearFlowCookieStr(),...(_sessOkCS?[]:[_oauthReloginCookie(ownerEmailCS)])];') &&
+      _srvSrc.includes('const _cookiesOutN=[clearFlowCookieStr(),...(_sessOkN?[]:[_oauthReloginCookie(pn.ownerEmail)])];'),
+      "reconstrução de sessão pós-cookie não encontrada nos 3 callbacks");
     // v172c: cadastro/login por usuário+senha — nunca senha em texto puro
     // (scrypt), nunca @ no username (impossível colidir com e-mail de admin),
     // e as 2 rotas têm rate limit (força-bruta de senha/username).

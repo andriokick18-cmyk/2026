@@ -3369,3 +3369,63 @@ sem achados. sw.js v103→v104 (app.js e admin.html mudaram).
 achados Alta/Média/Baixa dos 3 workflows paralelos (auth,
 gmail-envio, admin-planos-pwa) corrigidos, testados e no ar.
 
+## v237u — "Conectar Gmail Extra" deslogava o usuário no meio do OAuth (achado AO VIVO, prioridade Alta, 20/09/2026)
+
+Andrio testou ao vivo, logado como admin: completou o fluxo real de
+"Conectar Gmail Extra" no Perfil com `ndrkick.3@gmail.com`, passou
+pela tela "app não verificado" do Google (Avançado → Continuar) e
+clicou Continuar na tela de permissão. Ao voltar pro h2bapply.com,
+foi DESLOGADO — "Sessão inválida ou expirada. Faça login e clique em
+Conectar Gmail Extra de novo." — em vez de cair no perfil com o Gmail
+extra conectado.
+
+Causa raiz: KB-078 derruba TODA sessão de LOGIN a cada deploy/restart
+do processo Node, de propósito (07/07/2026, comentário "LOGOUT
+FORÇADO A CADA DEPLOY" em server.js) — o envio automático não é
+afetado (token mora em `DB_USERS`), só quem está com o navegador
+aberto. Os handshakes de OAuth em andamento (`__sender__`/
+`__connectsend__`/`__notif__`) sobrevivem à parte, persistidos em
+disco (v209), porque o Google pode levar bastante tempo (avisos de
+"app não verificado" → Avançado → Continuar) até a pessoa voltar.
+Este servidor publica a CADA commit — e temos publicado com muita
+frequência. Se um deploy caiu bem nessa janela, a sessão de login do
+Andrio sumiu enquanto o handshake (persistido à parte) continuou
+vivo — e a trava anti-CSRF v172c-SEC (que exige a sessão de login
+ATUAL == quem iniciou o fluxo, contra um ataque real de
+login-CSRF/CWE-352) barrou a pessoa mesmo sem culpa nenhuma dela.
+
+**NÃO revertemos v172c-SEC nem KB-078** — os dois continuam
+protegendo o que sempre protegeram. Fix: cookie de handshake PRÓPRIO
+(`h2b_of`, `makeFlowCookieStr`/`_oauthFlowSameBrowser`, server.js,
+perto de `makeCookieStr`) — independente de `sessions`, mora no
+NAVEGADOR (`Path=/oauth`, `HttpOnly`, `Max-Age=600`), então sobrevive
+a um restart que caia no meio do caminho. Ele prova "é o MESMO
+navegador que iniciou este `state`" sem depender da sessão de login
+continuar viva, e mantém a MESMA proteção contra o ataque de verdade
+(vítima clicando o link de consentimento que um atacante mandou): o
+navegador da vítima NUNCA recebeu esse cookie — `Set-Cookie` só viaja
+na resposta pro navegador que fez a requisição original, nunca por
+link compartilhado — então nem sessão nem cookie batem lá, e o
+callback continua negando. Regra mantida à risca: sessão de OUTRA
+pessoa logada no mesmo navegador NUNCA é sobrescrita pelo cookie —
+só a ausência total de sessão (o caso do deploy) cai no fallback.
+
+Quando o cookie prova o mesmo navegador mas a sessão sumiu, o
+callback reconstrói a sessão de login na hora (`_oauthReloginCookie`)
+— a pessoa volta pro perfil JÁ LOGADA, com o Gmail conectado, em vez
+de precisar entrar de novo pra repetir o fluxo inteiro. Aplicado nos
+3 fluxos que compartilham exatamente o mesmo padrão (`__sender__` /
+`__connectsend__` — o gate de ENVIO, v172, ainda mais crítico por
+bloquear candidaturas / `__notif__` — admin), nunca só em 2 dos 3.
+
+Testes: como o ambiente de teste não tem `GOOGLE_CLIENT_ID/SECRET`
+reais (`CONFIGURED=false`, mesma limitação documentada do v172c-SEC
+original — as 3 rotas de início do fluxo nem chegam a criar o
+handshake sem credencial real), a prova é estrutural: os 2 checks
+antigos do v172c-SEC foram reescritos pra provar a NOVA condição
+(sessão de outra pessoa nunca é aceita; cookie só socorre a ausência
+de sessão) + 2 checks novos confirmando o cookie gravado nas 3 rotas
+de início e a reconstrução de sessão nos 3 callbacks. `npm test`
+100% verde, `check-duplicates.js`/`check-xss-guard.js` sem achados.
+Sem bump de sw.js (mudança 100% server-side).
+
