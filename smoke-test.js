@@ -4619,6 +4619,29 @@ async function drillBloqueioComprasNovas() {
         /for\(let _t=0;_t<3;_t\+\+\)/.test(_fnLoadPlanos) && /jsonSafe\(r\)/.test(_fnLoadPlanos) && /plan_error_load/.test(_fnLoadPlanos),
         `loadPlanos() sem retry — ${_fnLoadPlanos.length} chars capturados`);
     }
+
+    // ═══ 🚨 v229 (achado de auditoria — Alta): doClearHist() (reset de
+    // "Enviadas") mostrava "Resetado ✓" e já reescrevia a tela inteira
+    // ANTES de chamar o servidor, com o fetch real escondido num catch{}
+    // vazio — uma falha de verdade deixava a pessoa convencida de que
+    // resetou enquanto o servidor continuava intocado por baixo. Guarda
+    // ESTRUTURAL: o fetch+jsonSafe+d.ok tem que vir ANTES de qualquer
+    // mutação local (APPLIED.clear()), sem catch{} vazio sobrando.
+    {
+      const _appSrcV229 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _fnClearHist = (_appSrcV229.match(/async function doClearHist\(ovEl\)\{[\s\S]*?\n\}\n/) || [""])[0];
+      const _idxFetch = _fnClearHist.indexOf('fetch("/api/history/clear"');
+      const _idxApplied = _fnClearHist.indexOf("APPLIED.clear()");
+      check("🚨 v229 (estrutural): doClearHist() confirma com o servidor (jsonSafe + d.ok) ANTES de zerar APPLIED/HIST e mostrar 'Resetado ✓' — nunca mais um catch{} vazio no fetch de /api/history/clear deixa a tela mentir que resetou quando o servidor falhou",
+        _idxFetch >= 0 && _idxApplied >= 0 && _idxFetch < _idxApplied &&
+        /if\(!d\.ok\)throw/.test(_fnClearHist) &&
+        !/fetch\("\/api\/history\/clear",\{method:"POST",credentials:"include"\}\);\}catch\{\}/.test(_fnClearHist),
+        JSON.stringify({ idxFetch: _idxFetch, idxApplied: _idxApplied, len: _fnClearHist.length }));
+      const _fnResetAuto = (_appSrcV229.match(/async function doResetAuto\(ovEl\)\{[\s\S]*?\n\}\n/) || [""])[0];
+      check("🚨 v229b (estrutural): doResetAuto() só mostra a dica de próximo passo quando doClearHist() de fato retornou sucesso — nunca mais 2 mensagens contraditórias (reset falhou + 'comece o automático')",
+        /if\(await doClearHist\(ovEl\)\)/.test(_fnResetAuto),
+        _fnResetAuto.slice(0, 200));
+    }
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5c@test.com", name: "MC5 C" });
     const mc5d1 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-um").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     const mc5d2 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-dois").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });

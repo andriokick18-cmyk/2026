@@ -2325,3 +2325,31 @@ MESMO e-mail volta a cadastrar normal). `npm test` 100% verde,
 `check-duplicates.js`/`check-xss-guard.js` sem achados. Mudança 100%
 em server.js — sem bump de sw.js.
 
+## v229 — achado Alta da auditoria (segurança/confiabilidade UX): reset de Enviadas mentia sobre o resultado (20/09/2026)
+
+`doClearHist()` (botão "Resetar" da aba Enviadas e do atalho dentro do
+Automático — mesmo motor, `/api/history/clear`) fazia tudo isso ANTES
+de chamar o servidor: zerava `APPLIED`/`HIST` locais, fazia todas as
+vagas reaparecerem na lista e mostrava "Resetado ✓". O `fetch` de
+verdade só vinha DEPOIS, dentro de um `catch{}` vazio — uma falha real
+(sessão caída, rede, erro 500) deixava a pessoa convencida de que
+resetou, com o histórico do servidor intocado por baixo. Cenário
+concreto: a próxima tentativa de reenviar manualmente pra uma empresa
+"liberada" na tela batia no bloqueio de duplicata de verdade (regra 8,
+servidor-autoritativo) sem explicação nenhuma pro usuário.
+
+Corrigido invertendo a ordem: o servidor confirma PRIMEIRO (`jsonSafe`
++ checagem de `d.ok`, mesmo padrão do v227/v228) — só em caso de
+sucesso a tela muda e o toast de sucesso aparece; em falha, mostra o
+erro real (ou "sessão expirada") e não mexe em nada local, deixando o
+usuário tentar de novo com o estado real intacto. Como a função agora
+pode "não resetar" de verdade, ela passou a devolver `true`/`false`;
+`doResetAuto()` (o atalho da aba Automático) só mostra a dica de
+próximo passo ("toque em Começar") quando o reset realmente aconteceu
+— antes ela aparecia mesmo em cima de uma falha silenciosa.
+
+Testes: 2 checks estruturais novos no smoke (ordem fetch-antes-mutação
+sem catch vazio no fetch; `doResetAuto` condicionado ao retorno) — sem
+UI em Chromium nesta suíte. `npm test` 100% verde, `check-duplicates.js`/
+`check-xss-guard.js` sem achados. sw.js bumpado (v88→v89).
+

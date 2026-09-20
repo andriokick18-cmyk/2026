@@ -3881,8 +3881,25 @@ async function deleteProfile(id){
 
 function updHistBadge(){const n=HIST.length;const b=g("#sib-hist");if(b){b.style.display=n?"":"none";b.textContent=String(n);}const bd=g("#bnd-hist");if(bd)bd.style.display=n?"block":"none";}
 
+// 🚨 v229 (achado de auditoria — Alta): esta função mostrava "Resetado ✓" e
+// já reescrevia a tela INTEIRA (histórico local, cards, contadores) ANTES de
+// sequer chamar o servidor — e o fetch em si ficava num catch{} vazio. Uma
+// falha real (rede, sessão caída, erro 500) deixava o usuário CONVENCIDO de
+// que resetou, com o servidor intocado por baixo — a próxima candidatura
+// manual pra uma empresa "liberada" na tela batia no bloqueio de duplicata
+// de verdade (regra 8) e confundia todo mundo. Agora o servidor confirma
+// PRIMEIRO (d.ok via jsonSafe); só então a tela muda. Retorna true/false
+// pros chamadores (doResetAuto e o botão de Enviadas) saberem o resultado.
 async function doClearHist(ovEl){
   ovEl?.remove();
+  try{
+    const r=await fetch("/api/history/clear",{method:"POST",credentials:"include"});
+    const d=await jsonSafe(r);
+    if(!d.ok)throw new Error(d.error||"Não foi possível resetar.");
+  }catch(e){
+    toast(_sessionDroppedMsg(e)?"Sessão expirada — faça login novamente.":("Não deu pra resetar: "+(e?.message||e)),"r");
+    return false;
+  }
   APPLIED.clear();HIST=[];
   updHistBadge();
   // v38-FIX (caça ativa, 22/07): o reset limpava o SERVIDOR e os cards
@@ -3905,13 +3922,13 @@ async function doClearHist(ovEl){
   // Atualiza contador da planilha
   updSheetCounter();
   toast("Resetado — todas as vagas voltaram à lista ✓","g");
-  try{await fetch("/api/history/clear",{method:"POST",credentials:"include"});}catch{}
   // Re-sincroniza com o servidor JÁ LIMPO (a fila do automático, se existir,
   // CONTINUA bloqueando — correto: ela ainda vai enviar) e recarrega a lista
   // pra paginação/contagem virem do servidor sem os cortes antigos.
   try{if(typeof loadEmpregadoresBloqueados==="function")loadEmpregadoresBloqueados();}catch{}
   try{if(typeof _loadSentIds==="function"){_sentLoaded=false;_loadSentIds();}}catch{}
   try{if(typeof tab!=="undefined"){sSkip=0;sDone=false;sJobs=[];loadSheetMeta(true);}}catch{}
+  return true;
 }
 
 // 🔄 Reset direto da aba AUTOMÁTICO (dono, 18/07/2026): cliente no WhatsApp
@@ -3937,8 +3954,9 @@ function confirmResetAuto(){
   ov.addEventListener("click",e=>{if(e.target===ov)ov.remove();});
 }
 async function doResetAuto(ovEl){
-  await doClearHist(ovEl);
-  toast("Agora toque em 🤖 Começar Envio Automático para recomeçar a fila","g");
+  // v229: só mostra o próximo passo se o reset realmente aconteceu — antes
+  // esse toast aparecia mesmo quando doClearHist tinha falhado por baixo.
+  if(await doClearHist(ovEl))toast("Agora toque em 🤖 Começar Envio Automático para recomeçar a fila","g");
 }
 
 // ═══════════════════════════════════════════
