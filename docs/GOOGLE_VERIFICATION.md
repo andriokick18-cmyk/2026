@@ -1,7 +1,30 @@
 # ✅ Verificação do Google OAuth — escopo `gmail.send` (H2BApply)
 
-**Criado em:** 20/09/2026. **Domínio:** h2bapply.com · servidor único (a era
+**Criado em:** 20/09/2026 · **Atualizado em:** 20/09/2026 (branding
+corrigido e verificado). **Domínio:** h2bapply.com · servidor único (a era
 multi-servidor acabou — v156/v157).
+
+## 📍 Status atual (20/09/2026)
+
+- ✅ **Branding do OAuth corrigido e verificado.** Causa raiz achada e
+  resolvida pelo dono direto no Cloud Console: a Página Inicial, o Link da
+  Política de Privacidade e o Link dos Termos estavam configurados com a
+  URL antiga do Render (`h2bapply-2026.onrender.com`) em vez de
+  `h2bapply.com` — por isso o Google não conseguia verificar a
+  propriedade. Trocados os 3 campos pra `h2bapply.com` / `h2bapply.com/
+  privacy` / `h2bapply.com/terms`, pedida nova verificação de marca:
+  **aprovada** ("Sua marca foi verificada e está aparecendo para os
+  usuários"). Branding publicado.
+- ✅ App confirmado **"Em produção"** (não em modo teste) no Cloud Console.
+- ✅ Justificativa do escopo `gmail.send` já preenchida na tela (texto da
+  seção 1 abaixo).
+- ✅ Uso atual do limite de teste: **4 de 100 usuários** — folga grande,
+  não é urgência.
+- ⏳ **Única coisa que falta pra completar a verificação de acesso a
+  dados**: o vídeo de demonstração (link do YouTube). Ver seção 2b —
+  o Google recomenda EXPLICITAMENTE não gravar direto na conta de
+  produção real, pra não arriscar interromper usuário de verdade nem
+  gastar cota de envio de alguém que está pagando.
 
 Este arquivo é o ponto único de referência pra tirar o H2BApply do limite de
 100 usuários de teste do Google OAuth. Ele substitui/consolida (sem apagar,
@@ -99,6 +122,51 @@ que o resultado bate com o que foi declarado no texto de justificativa.
 
 ---
 
+## 2b) Como gravar SEM mexer na conta Gmail de produção
+
+O Google recomenda não gravar na conta real que está enviando candidaturas
+de verdade agora — risco de interromper um cliente pagante ou gastar cota
+de envio de alguém. O roteiro da seção 2 não exige NENHUM dado sensível de
+cliente real — só precisa mostrar o fluxo de conexão + 1 envio real — então
+dá pra gravar 100% seguro assim:
+
+1. **Conta Google do vídeo**: uma conta Gmail QUALQUER que não seja de
+   cliente nenhum — pode ser uma conta pessoal do Andrio/Diego que nunca
+   foi usada no site antes, ou uma conta nova criada só pra isso. Ela vira
+   o Gmail "de envio" só DAQUELE teste — a tela de consentimento do Google
+   que aparece é sempre a MESMA (mesmo client OAuth, mesmo app H2BApply),
+   então o vídeo prova exatamente o que precisa provar, sem tocar em conta
+   de cliente nenhuma.
+2. **Conta H2BApply do vídeo**: criar uma conta NOVA no site (cadastro
+   normal usuário+senha) só pra gravar — nunca usar login de cliente
+   real. Não precisa de plano pago: conectar o Gmail de envio funciona
+   independente de plano (o gate de plano é só pra ENVIAR, não pra
+   conectar — conferir se isso ainda é assim antes de gravar; se mudou,
+   um código promocional/concessão manual do admin destrava sem custar
+   nada).
+3. **O envio de teste (passo 5 do roteiro)**: mandar a candidatura pra um
+   endereço de e-mail SEGURO controlado pelo próprio Andrio/Diego (o
+   próprio e-mail pessoal, por exemplo) — não pra um e-mail de empregador
+   real do DOL. O importante pro Google é mostrar que o `gmail.send`
+   manda um e-mail de verdade a partir da ação do usuário; não precisa
+   ser pra um empregador de verdade. Se quiser deixar mais realista, pode
+   abrir uma vaga real da planilha só pra MOSTRAR a tela (sem clicar
+   Enviar) e depois simular o envio de teste separadamente pro próprio
+   e-mail — desde que o vídeo mostre claramente a mensagem saindo E
+   chegando na pasta Enviados do Gmail conectado (passo 7).
+4. **Depois de gravar**: desconectar esse Gmail de teste do site (ou só
+   deixar a conta de teste inerte — ela não afeta clientes reais de jeito
+   nenhum, já que é uma conta separada) e revogar o acesso do H2BApply
+   em myaccount.google.com/permissions dessa conta, se quiser encerrar
+   de vez.
+
+Isso resolve o pedido do Google (não gravar em produção) sem exigir nenhum
+ambiente de teste separado do site — só uma conta Google "descartável" e
+uma conta H2BApply nova, gravadas contra o **h2bapply.com real** (o Google
+exige domínio real no vídeo, então localhost/staging não serve).
+
+---
+
 ## 3) O que já está pronto (não depende de mais nada)
 
 - ✅ Só `openid email profile gmail.send` é pedido, em TODO fluxo OAuth do
@@ -154,49 +222,48 @@ que o resultado bate com o que foi declarado no texto de justificativa.
 ## 4) O que só o Andrio consegue fazer (exige login pessoal no Google)
 
 Nada aqui é código — são ações no **Google Cloud Console** e no **Google
-Search Console**, que exigem a senha/2FA da conta do Andrio. Ordem sugerida:
+Search Console**, que exigem a senha/2FA da conta do Andrio.
 
-### A. Domínio (Search Console)
-1. Verificar a propriedade `h2bapply.com` em search.google.com/search-console
-   (registro TXT no DNS da Namecheap, ou outro método de verificação do
-   Search Console).
-2. Conferir que homepage, política de privacidade, termos, "authorized
-   domains" do OAuth, redirect URIs e "JavaScript origins" **apontam todos
-   pro MESMO domínio verificado** (`h2bapply.com`) — um único campo
-   divergente já reprova a submissão inteira.
-3. Remover qualquer `onrender.com` que tenha sobrado da lista de
-   "authorized domains" no Cloud Console.
+### A. Domínio (Search Console) — ✅ CONCLUÍDO 20/09/2026
+1. ✅ Propriedade `h2bapply.com` verificada.
+2. ✅ Homepage, Link da Política de Privacidade e Link dos Termos corrigidos
+   de `h2bapply-2026.onrender.com` (URL antiga do Render, causa raiz de o
+   Google não conseguir verificar) pra `h2bapply.com` / `h2bapply.com/
+   privacy` / `h2bapply.com/terms`.
+3. ⏳ Conferir se ainda sobrou algum `onrender.com` na lista de "authorized
+   domains" do Cloud Console (redirect URIs / JavaScript origins) — vale
+   uma olhada rápida mesmo com o branding já aprovado.
 
-### B. Tela de consentimento OAuth (Cloud Console → OAuth consent screen)
-4. Nome do app **exatamente** `H2BApply` (igual ao que aparece no site).
-5. E-mail de suporte real e monitorado (o mesmo já usado no site).
-6. E-mail de contato do desenvolvedor real e monitorado.
-7. Homepage URL = `https://h2bapply.com`.
-8. Authorized domains = só `h2bapply.com`.
-9. Escopos declarados na tela = exatamente `openid`, `email`, `profile`,
-   `gmail.send` — nada "por via das dúvidas" (cada escopo a mais exige
-   justificar ele também e atrasa a análise).
-10. Tipo de usuário: **Externo**.
-11. Publishing status: **Em produção** (nunca "Testing") antes de clicar em
-    "Preparar para verificação".
-12. **Não subir logo agora** — logo dispara uma verificação de marca
-    separada que atrasa a submissão inteira. Subir só DEPOIS de aprovado.
-13. Colar o texto da seção 1 deste arquivo no campo de justificativa do
-    escopo `gmail.send`.
+### B. Tela de consentimento OAuth (Cloud Console → OAuth consent screen) — ✅ CONCLUÍDO 20/09/2026
+4. ✅ Nome do app, e-mails de suporte/contato, Homepage URL, Authorized
+   domains, escopos declarados, tipo de usuário Externo e publishing
+   status "Em produção" — tudo conferido; **branding verificado e
+   publicado** ("Sua marca foi verificada e está aparecendo para os
+   usuários").
+5. ✅ Justificativa do escopo `gmail.send` já estava bem escrita na tela
+   (o texto da seção 1 deste arquivo serve de referência/backup, caso
+   precise reescrever algo).
+6. **Nota pro pós-aprovação**: se o logo ainda não subiu, mantê-lo fora até
+   a verificação de ACESSO A DADOS (não só a de marca) ser aprovada — a de
+   marca já passou, mas a de dados (que precisa do vídeo) ainda não foi
+   nem submetida.
 
-### C. Vídeo
-14. Gravar o roteiro da seção 2 (em inglês, no domínio real).
-15. Subir no YouTube como **não listado** e copiar o link.
+### C. Vídeo — ⏳ PENDENTE (única coisa que falta)
+7. Gravar o roteiro da seção 2, **seguindo o jeito seguro da seção 2b**
+   (conta Gmail descartável + conta H2BApply nova + envio de teste pro
+   próprio e-mail — nunca na conta de produção real) — em inglês, no
+   domínio real `h2bapply.com`.
+8. Subir no YouTube como **não listado** e copiar o link.
 
-### D. Envio
-16. Colar o link do vídeo e a justificativa no formulário de verificação
-    do Cloud Console e enviar pra revisão.
-17. Responder rápido e sempre em inglês se o time do Google pedir algo a
-    mais — é isso que mais segura o prazo.
+### D. Envio da verificação de acesso a dados — ⏳ PENDENTE
+9. Colar o link do vídeo no formulário de verificação (a justificativa já
+   está preenchida — item 5) e enviar pra revisão.
+10. Responder rápido e sempre em inglês se o time do Google pedir algo a
+    mais — é isso que mais segura o prazo (normalmente poucos dias, sem
+    prazo fixo garantido).
 
 ### E. Pós-aprovação
-18. Só depois de aprovado: subir o logo real na tela de consentimento.
-19. Escopo sensível não tem prazo fixo de revalidação anual (isso é regra
+11. Escopo sensível não tem prazo fixo de revalidação anual (isso é regra
     do escopo *restrito*/CASA) — ainda vale conferir uma vez por ano se a
     política do Google mudou algo.
 
