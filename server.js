@@ -164,6 +164,7 @@ const { MAX_SENDER_EMAILS_FREE, MAX_SENDER_EMAILS_VIP, MAX_SENDER_EMAILS_DOUBLEP
         ADMIN_AUTO_DAILY_LIMIT_PER_SENDER,
         MAX_RESUMES, MAX_COVERS,
         ADMIN_EMAIL, ADMIN_EMAIL_2, ADMIN_EMAILS_EXTRA, ADMIN_EMAILS, isAdminEmail,
+        isTestAccountEmail, naoEhReceita,
         PUSH_ENABLED,
         PLAN_LIMITS, PLAN_LIMITS_NEW, NOME_PLANO_PUBLICO } = require("./mod-config.js");
 // 🏷️ v218 — nome público de um plano em texto (log/extrato/nota), nunca a
@@ -635,7 +636,7 @@ function computeFinanceCanonico(){
     // (dinheiro de teste nunca é receita — v53) e lançamento ANULADO/AJUSTE
     // (o par ±0 do AJUSTE do cérebro; antes o negativo era descartado e o
     // anulado seguia somando — receita fantasma).
-    if(isAdminEmail(e))continue;
+    if(naoEhReceita(e))continue;
     if(pg.anuladoPor||pg.tipo==="ajuste")continue;
     let v=pv(pg.valor);
     const _ped=pg.pedidoId?_pedById[pg.pedidoId]:null;
@@ -645,7 +646,7 @@ function computeFinanceCanonico(){
   for(const ped of Object.values(DB_PEDIDOS||{})){
     if(!ped||!ped.userEmail)continue;const st=String(ped.status||"").toLowerCase();
     if(st!=="pago"&&st!=="ativo")continue;const e=String(ped.userEmail).toLowerCase();
-    if(isAdminEmail(e))continue; // 💼 MC5-P3: admin nunca é receita (v53)
+    if(naoEhReceita(e))continue; // 💼 MC5-P3 + 🎬 v237v: admin/teste nunca é receita
     (pedBy[e]=pedBy[e]||[]).push({valor:pv(ped.valorTotal),date:ts(ped.ativadoEm)||ts(ped.pagoEm)||0});
   }
   const ms=new Date();ms.setDate(1);ms.setHours(0,0,0,0);const monthStart=ms.getTime();
@@ -654,7 +655,7 @@ function computeFinanceCanonico(){
   const topPagantes=[];
   for(const u of Object.values(DB_USERS||{})){
     if(!u||!u.email)continue;const elc=u.email.toLowerCase();const vip=u.vip||{};const src=String(vip.source||"").toLowerCase();
-    if(isAdminEmail(elc))continue; // 💼 MC5-P3: admin nunca é receita/pagante (v53)
+    if(naoEhReceita(elc))continue; // 💼 MC5-P3 + 🎬 v237v: admin/teste nunca é receita/pagante
     if(src==="trial"){ if(isVipActive(u)) trials++; continue; }
     if(src==="code"){ gift++; giftDias+=(vip.days||0); continue; }
     let pags=finBy[elc]||[];if(!pags.length)pags=pedBy[elc]||[];if(!pags.length&&u.paymentAmount)pags=[{valor:pv(u.paymentAmount),date:ts(vip.activatedAt)||0}];
@@ -678,7 +679,7 @@ function computeFinanceCanonico(){
     if(!pg) continue;
     const e=String(pg.email||"").toLowerCase();
     if(e&&_uEm.has(e)) continue;
-    if(isAdminEmail(e)||pg.anuladoPor||pg.tipo==="ajuste") continue; // 💼 MC5-P3
+    if(naoEhReceita(e)||pg.anuladoPor||pg.tipo==="ajuste") continue; // 💼 MC5-P3 + 🎬 v237v
     const v=pv(pg.valor); if(v<=0) continue;
     const dt=ts(pg.dataPagamento)||ts(pg.data)||pg.criadoEm||0;
     receitaAvulsa+=v; receitaTotal+=v; avulsas.push({valor:v,date:dt});
@@ -701,7 +702,7 @@ function computeEntradasJanelas(){
   const hojeISO=new Date(now-3*3600_000).toISOString().slice(0,10);
   const _ts=x=>{if(!x)return 0;if(typeof x==="number")return x;const t=Date.parse(x);return isNaN(t)?0:t;};
   const _pedById={};for(const ped of (DB_PEDIDOS||[])){if(ped&&ped.id)_pedById[ped.id]=ped;}
-  const pags=(DB_FINANCEIRO.pagamentos||[]).filter(p=>!isAdminEmail(p.email));
+  const pags=(DB_FINANCEIRO.pagamentos||[]).filter(p=>!naoEhReceita(p.email));
   let hoje=0,dias7=0,dias30=0,total=0,n30=0;
   for(const p of pags){
     const t=_ts(p.dataPagamento||p.data);
@@ -715,7 +716,7 @@ function computeEntradasJanelas(){
   }
   let pagantes=0;
   for(const[em,u2]of Object.entries(DB_USERS)){
-    if(isAdminEmail(em))continue;
+    if(naoEhReceita(em))continue;
     if(!u2?.vip?.active||u2.vip.source==="trial"||u2.vip.source==="code")continue;
     const exp=Math.max(u2.vip.manualExpires||0,u2.vip.autoExpires||0);
     if(exp>now)pagantes++;
@@ -762,7 +763,7 @@ function _finDonoDe(p,byId,depth){
 function computeSocios(){
   const _round=v=>Math.round(v*100)/100;
   const _pedById={};for(const ped of (DB_PEDIDOS||[])){if(ped&&ped.id)_pedById[ped.id]=ped;}
-  const pags=(DB_FINANCEIRO.pagamentos||[]).filter(p=>p&&!isAdminEmail(p.email));
+  const pags=(DB_FINANCEIRO.pagamentos||[]).filter(p=>p&&!naoEhReceita(p.email));
   const _byId={};for(const p of pags){if(p.id)_byId[p.id]=p;}
   const S=()=>({recebido:0,n:0,derivado:0,derivadoValor:0,gastosPagos:0,repassou:0,recebeuRepasse:0,posicao:0,direito:0,acerto:0});
   const socios={andrio:S(),diego:S()};
@@ -855,7 +856,7 @@ function computeDreMensal(){
   // fechamento mensal herda o corte por usar esta mesma função (fonte única).
   const _mes=t=>{if(!t)return null;const d=new Date(t);if(isNaN(d.getTime()))return null;return new Date(d.getTime()-3*3600*1000).toISOString().slice(0,7);};
   const _pedById={};for(const ped of (DB_PEDIDOS||[])){if(ped&&ped.id)_pedById[ped.id]=ped;}
-  const pags=(DB_FINANCEIRO.pagamentos||[]).filter(p=>p&&!isAdminEmail(p.email));
+  const pags=(DB_FINANCEIRO.pagamentos||[]).filter(p=>p&&!naoEhReceita(p.email));
   const _byId={};for(const p of pags){if(p.id)_byId[p.id]=p;}
   const meses={};
   const M=k=>meses[k]=meses[k]||{mes:k,receita:0,gastos:0,resultado:0,porSocio:{andrio:0,diego:0,semDono:0},porPlano:{},gastosPorCategoria:{},gastosPorPagador:{andrio:0,diego:0,empresa:0}};
@@ -6407,8 +6408,11 @@ function _mensagemPedidoAdmin(pedido) {
   // v192 LOTE 10: os bytes do comprovante vêm do disco (leitura sob demanda),
   // não da memória — o anexo do aviso aos sócios continua idêntico.
   const _compB64 = loadComprovante(pedido);
-  const subject = `💳 Novo pedido de plano — ${pedido.userName || pedido.userEmail} quer ${pedido.plano} por ${pedido.dias}d`;
-  const text = `💳 NOVO PEDIDO DE PLANO RECEBIDO!
+  // 🎬 v237v: aviso da conta de TESTE fica CLARÍSSIMO no assunto/corpo —
+  // nunca parece uma venda real (ver requisito de isolamento financeiro).
+  const _testeTag = pedido.isTeste ? "[TESTE] " : "";
+  const subject = `${_testeTag}💳 Novo pedido de plano — ${pedido.userName || pedido.userEmail} quer ${pedido.plano} por ${pedido.dias}d`;
+  const text = `${pedido.isTeste ? "🎬 ESTE PEDIDO É DE TESTE (conta de demonstração) — NÃO é uma venda real, não entra em nenhum relatório financeiro.\n\n" : ""}💳 NOVO PEDIDO DE PLANO RECEBIDO!
 
 👤 Usuário: ${pedido.userName || "?"}
 🪪 Usuário (login): ${pedido.userEmail || "?"}
@@ -9212,7 +9216,7 @@ filtrar();
       const n2=v=>String((Number(v)||0).toFixed(2)).replace(".",",");
       const cel=v=>{const t2=String(v==null?"":v).replace(/"/g,'""');return /[",;\n]/.test(t2)?'"'+t2+'"':t2;};
       const _pedById={};for(const ped of (DB_PEDIDOS||[])){if(ped&&ped.id)_pedById[ped.id]=ped;}
-      const pags=(DB_FINANCEIRO.pagamentos||[]).filter(p2=>p2&&!isAdminEmail(p2.email));
+      const pags=(DB_FINANCEIRO.pagamentos||[]).filter(p2=>p2&&!naoEhReceita(p2.email));
       const _byId={};for(const p2 of pags){if(p2.id)_byId[p2.id]=p2;}
       const linhas=["tipo;data;cliente_descricao;plano_categoria;valor_lancado;valor_efetivo;dono;origem_dono;anulado;nota"];
       for(const p2 of pags){
@@ -10242,6 +10246,9 @@ filtrar();
         ativadoPor:null,
         ativadoEm:null,
         pagoEm:_pagoEmMs,
+        // 🎬 v237v: marca pra sempre poder filtrar/excluir de relatórios reais
+        // depois — a conta de TESTE única (ver mod-config.js), nunca um padrão.
+        isTeste:isTestAccountEmail(targetEmail),
       };
       if(typeof d.comprovante==="string"&&d.comprovante){
         const _arqC=saveComprovante(pedido.id,d.comprovante);
@@ -10628,8 +10635,16 @@ filtrar();
           motivo:`Plano ${nomePlanoDisplay(planoKey)} ${dias}d — pedido #${pd.id.slice(-8).toUpperCase()}`,
           dadoPor:pd._ativadoEditor||"Admin",pedidoId:pd.id,valor:pd.valorTotal||0});
         const _pgTs=(typeof pd.pagoEm==="number"&&Number.isFinite(pd.pagoEm))?pd.pagoEm:Date.parse(String(pd.pagoEm||""));
+        // 🎬 v237v: pedido da conta de TESTE NUNCA entra no caixa — confirmar
+        // ativa o plano normalmente (mesmo VIP de sempre, pro vídeo mostrar o
+        // ciclo completo) mas o "dinheiro" nunca nasce em DB_FINANCEIRO, então
+        // nenhuma tela financeira (Indicadores/Sócios/DRE/Conferência/
+        // Pagantes/Visão do Dono) precisa nem saber que isso existiu.
+        if(pd.isTeste){
+          console.log(`[financeiro] 🎬 pedido de TESTE confirmado (${pd.userEmail}) — plano ativado, SEM entrada no caixa (v237v)`);
+        }
         if(!DB_FINANCEIRO.pagamentos)DB_FINANCEIRO.pagamentos=[];
-        if(!DB_FINANCEIRO.pagamentos.some(x=>x.pedidoId===pd.id)){
+        if(!pd.isTeste&&!DB_FINANCEIRO.pagamentos.some(x=>x.pedidoId===pd.id)){
           DB_FINANCEIRO.pagamentos.unshift({
             id:"fin_"+Date.now().toString(36),email:pd.userEmail,
             nome:pd.userName||pd.userEmail,plano:planoKey,
@@ -10689,8 +10704,10 @@ filtrar();
     // desconsidere"): conta de ADMIN nunca entra na Conferência, nem nas
     // divergências, nem em nenhum total — pedido/código de admin é teste
     // interno, não receita. Fonte da verdade: isAdminEmail (mod-config).
+    // 🎬 v237v: mesma exclusão pra conta de TESTE (naoEhReceita) — o pedido
+    // de demo não pode aparecer como venda de verdade na Conferência.
     for(const pd of DB_PEDIDOS){
-      if(isAdminEmail(pd.userEmail))continue;
+      if(naoEhReceita(pd.userEmail))continue;
       rows.push({tipo:"pedido",id:pd.id,em:pd.createdAt||0,
         email:pd.userEmail,nome:pd.userName||pd.userEmail,
         plano:pd.plano,dias:pd.dias,valor:pd.valorTotal||0,status:pd.status,
@@ -10733,7 +10750,7 @@ filtrar();
       .filter(pd=>["pago","ativo"].includes(String(pd.status||"").toLowerCase()))
       .map(pd=>String(pd.userEmail||"").toLowerCase()));
     for(const [em,usr] of Object.entries(DB_USERS)){
-      if(!usr?.vip||usr.isAdmin||isAdminEmail(em))continue; // v53: admin fora das divergências
+      if(!usr?.vip||usr.isAdmin||naoEhReceita(em))continue; // v53 + v237v: admin/teste fora das divergências
       if(!["payment","pago"].includes(String(usr.vip.source||"")))continue;
       const expD=Math.max(usr.vip.manualExpires||0,usr.vip.autoExpires||0);
       if(expD<=nowD)continue;
@@ -10741,9 +10758,9 @@ filtrar();
         divergencias.push({tipo:"vip_sem_pedido",email:em,nome:usr.name||em,
           msg:`VIP ${String(usr.vip.plan||"?").toUpperCase()} ativo até ${new Date(expD).toLocaleDateString("pt-BR")} sem NENHUM pedido pago/ativo no sistema`});
     }
-    const _pagsAut=(DB_FINANCEIRO.pagamentos||[]).filter(pg=>!isAdminEmail(pg.email)); // v53: caixa de admin é teste, não divergência
+    const _pagsAut=(DB_FINANCEIRO.pagamentos||[]).filter(pg=>!naoEhReceita(pg.email)); // v53 + v237v: caixa de admin/teste não é divergência
     for(const pd of DB_PEDIDOS){
-      if(isAdminEmail(pd.userEmail))continue; // v53
+      if(naoEhReceita(pd.userEmail))continue; // v53 + v237v
       if(String(pd.status||"")!=="ativo"||(pd.valorTotal||0)<=0)continue;
       if(!_pagsAut.some(x=>x.pedidoId===pd.id))
         divergencias.push({tipo:"pedido_sem_caixa",email:pd.userEmail,nome:pd.userName||pd.userEmail,pedidoId:pd.id,
@@ -10762,7 +10779,7 @@ filtrar();
     // 💳 v141 — 5ª divergência (caso Cleiton): concessão de dias duplicada
     // (mesmo usuário, 2 ativações de plano em poucos minutos).
     for(const dup of detectarConcessoesDuplicadas(15)){
-      if(isAdminEmail(dup.email))continue; // v53
+      if(naoEhReceita(dup.email))continue; // v53 + v237v
       const u2=getUser(dup.email);
       divergencias.push({tipo:"concessoes_duplicadas",email:dup.email,nome:u2?.name||dup.email,
         msg:`Plano ativado 2x em ${dup.gapMin}min — possível clique duplo (${dup.a1.detail} → ${dup.a2.detail}). Confira em 💳 Pagantes → clique no usuário.`});
@@ -12534,14 +12551,14 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
       // "líquido 30d" virar receita bruta disfarçada.
       let g30=0;for(const g of (DB_FINANCEIRO.gastos||[])){const t=_ts(g.dataGasto||g.data)||g.criadoEm||0;if(t>=now-30*DAY)g30+=parseFloat(g.valor)||0;}
       // Pedidos esperando decisão = dinheiro parado na mesa
-      const pend=DB_PEDIDOS.filter(x=>["pendente","pago"].includes(String(x.status||"").toLowerCase())&&!isAdminEmail(x.userEmail));
+      const pend=DB_PEDIDOS.filter(x=>["pendente","pago"].includes(String(x.status||"").toLowerCase())&&!naoEhReceita(x.userEmail));
       const pendValor=pend.reduce((a,x)=>a+(parseFloat(x.valorTotal)||0),0);
       // Vencendo em 7 dias (renovação = receita da semana que vem) — a
       // CONTAGEM de pagantes já vem de janelas.pagantes (fonte única);
       // esta lista só monta o detalhe (quem, plano, quantos dias faltam).
       const vencendo=[];
       for(const[em,u2]of Object.entries(DB_USERS)){
-        if(isAdminEmail(em))continue; // v53: admin não é pagante
+        if(naoEhReceita(em))continue; // v53 + v237v: admin/teste não é pagante
         if(!u2?.vip?.active||u2.vip.source==="trial"||u2.vip.source==="code")continue;
         const exp=Math.max(u2.vip.manualExpires||0,u2.vip.autoExpires||0);
         if(exp<=now)continue;
@@ -12588,6 +12605,9 @@ if(pathname==="/api/admin/pagantes"&&req.method==="GET"){try{
   const rows=[];
   for(const u of Object.values(DB_USERS||{})){
     if(!u||!u.email)continue;
+    // 🎬 v237v: a conta de TESTE nunca aparece como "quem pagou" — mesma
+    // régua da Conferência/DRE (naoEhReceita), mesmo sem excluir admin antes.
+    if(isTestAccountEmail(u.email))continue;
     const email=u.email;const elc=email.toLowerCase();const vip=u.vip||{};
     const src=String(vip.source||"").toLowerCase();
     // Pagamentos: Financeiro (primário) -> Pedidos (fallback) -> paymentAmount do usuário (último recurso)
@@ -14445,6 +14465,32 @@ async function preCheckComprovante(pedido, opts){
       if(_i>=0){DB_PEDIDOS[_i].comprovanteHash=_h;pedido.comprovanteHash=_h;persistPedidos();}
     }
   }catch(eH){console.warn("[precheck] fingerprint:",eH.message);}
+  // 🎬 v237v (dono, 20/09/2026 — vídeo de verificação do Google/gmail.send +
+  // demo de compra pro Andrio): a conta de TESTE única (TEST_ACCOUNT_EMAIL,
+  // mod-config.js) pula a leitura REAL do comprovante — qualquer arquivo
+  // vira um "CONFERE" sintético batendo com o valor do próprio pedido, sem
+  // OCR nenhum. Roda ANTES do gancho TEST_LOGIN_TOKEN (que só existe em
+  // npm test — NUNCA em produção) pra funcionar no site AO VIVO, que é
+  // onde esse vídeo precisa ser gravado. Isso NÃO pula a confirmação
+  // manual do admin: o pedido continua "pendente" igual a qualquer outro
+  // (autoAtivarProvisorio só dá acesso PROVISÓRIO de 3 dias, a MESMA régua
+  // de sempre pra comprovante real que bate — a ativação definitiva
+  // continua exigindo o clique do admin em Pedidos Pendentes). Isolamento
+  // financeiro é feito à parte, no PATCH que confirma o pedido (nunca cria
+  // entrada em DB_FINANCEIRO.pagamentos pra pedido.isTeste).
+  if(isTestAccountEmail(pedido.userEmail)){
+    if(!_compB64) return null; // sem arquivo nenhum, fica pendente igual sempre
+    const pc={veredito:"CONFERE",valorLido:pedido.valorTotal||0,dataLida:null,horaLida:null,
+      pagadorLido:null,recebedorLido:null,instituicaoLida:null,transacaoIdLida:null,
+      bateComEsperado:true,resumo:"(conta de teste — comprovante aceito sem OCR, v237v)",
+      alertas:[],precoEsperado:pedido.valorTotal||0,valorInformado:pedido.valorTotal||0};
+    setPedidoPreCheck(pedido.id,pc);
+    if(ativar){
+      const _reuso=_comprovanteJaUsado(pedido);
+      if(!_reuso)autoAtivarProvisorio(pedido.id);
+    }
+    return pc;
+  }
   if(process.env.TEST_LOGIN_TOKEN){
     // Gancho estendido (2.0-P2): TESTE_COMPROVANTE:<valor>[:<idTransacao>[:<pagador>]]
     const m=String(pedido.nota||"").match(/^TESTE_COMPROVANTE:(\d+(?:\.\d+)?)(?::([A-Za-z0-9-]+))?(?::(.+))?$/);

@@ -37,6 +37,19 @@ const ADMIN_EMAILS_EXTRA = ["andrio.kick18@gmail.com","ndrkick.2@gmail.com","ueu
 const ADMIN_EMAILS  = new Set([ADMIN_EMAIL, ADMIN_EMAIL_2, ...ADMIN_EMAILS_EXTRA].filter(Boolean));
 const isAdminEmail  = (e) => ADMIN_EMAILS.has((e||"").trim().toLowerCase());
 
+// 🎬 v237v (dono, 20/09/2026 — vídeo de verificação do Google/gmail.send +
+// demo de compra pro Andrio): conta de TESTE única, pra gravar o fluxo de
+// compra de ponta a ponta sem sujar dinheiro real. Hardcoded/env, NUNCA um
+// padrão — só esse e-mail exato entra na exceção (ver preCheckComprovante,
+// server.js), e ele nunca ganha privilégio nenhum de admin.
+const TEST_ACCOUNT_EMAIL = (process.env.TEST_ACCOUNT_EMAIL || "ndrkick.3@gmail.com").trim().toLowerCase();
+const isTestAccountEmail = (e) => !!e && String(e).trim().toLowerCase() === TEST_ACCOUNT_EMAIL;
+// Dinheiro que NUNCA conta como receita/venda real: conta de ADMIN (v53 —
+// "não pagamos pra usar o programa") OU a conta de TESTE acima. Fonte ÚNICA
+// pras telas financeiras (Indicadores, Sócios, DRE, Conferência, Pagantes,
+// Visão do Dono) — nunca reimplementar esse OU em cada tela separadamente.
+const naoEhReceita = (e) => isAdminEmail(e) || isTestAccountEmail(e);
+
 // ── Web Push ─────────────────────────────────────────────────────────────
 // Sem backend real de Web Push nesta reconstrução (sem lib web-push, sem
 // rotas /api/push/*, sem VAPID configurado) — PUSH_ENABLED fica sempre
@@ -102,6 +115,7 @@ module.exports = {
   ADMIN_AUTO_DAILY_LIMIT_PER_SENDER,
   MAX_RESUMES, MAX_COVERS,
   ADMIN_EMAIL, ADMIN_EMAIL_2, ADMIN_EMAILS_EXTRA, ADMIN_EMAILS, isAdminEmail,
+  TEST_ACCOUNT_EMAIL, isTestAccountEmail, naoEhReceita,
   PUSH_ENABLED,
   PLAN_LIMITS, PLAN_LIMITS_NEW, NOME_PLANO_PUBLICO,
 };

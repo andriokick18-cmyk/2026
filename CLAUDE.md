@@ -3429,3 +3429,70 @@ de início e a reconstrução de sessão nos 3 callbacks. `npm test`
 100% verde, `check-duplicates.js`/`check-xss-guard.js` sem achados.
 Sem bump de sw.js (mudança 100% server-side).
 
+## v237v — Conta de TESTE única pra vídeo de verificação do Google + demo de compra (dono, 20/09/2026)
+
+Pedido do Andrio, especificação completa relayada pelo usuário: precisa
+gravar um vídeo mostrando o site inteiro funcionando de ponta a ponta
+(inclusive a compra de um plano) tanto pra verificação do Google (escopo
+`gmail.send`) quanto pra mostrar pro Andrio que o fluxo de compra está
+100% funcional — sem gastar dinheiro real nem sujar a contabilidade real.
+
+**Feature interna de teste/demonstração** — restrita a UM e-mail:
+`TEST_ACCOUNT_EMAIL` (`ndrkick.3@gmail.com` por padrão, `.env.example`),
+hardcoded/env, NUNCA um padrão — impossível de forjar via URL ou campo de
+formulário, porque a checagem é sempre pelo e-mail REAL da sessão/pedido,
+nunca por um parâmetro que o cliente manda (mesmo desenho de `isAdminEmail`,
+mod-config.js). Essa conta continua um usuário comum em todo o resto do
+site — nenhum privilégio de admin.
+
+O que muda, só pra esse e-mail:
+1. **Comprovante aceito sem OCR real**: `preCheckComprovante` (server.js)
+   ganhou um bypass ANTES do gancho `TEST_LOGIN_TOKEN` (que só existe em
+   `npm test`) — qualquer arquivo (até um print qualquer) vira um veredito
+   "CONFERE" sintético batendo com o valor do PRÓPRIO pedido, sem chamar o
+   Gemini. Continua exigindo que um arquivo real tenha sido enviado (sem
+   comprovante nenhum, fica pendente igual sempre) e continua rodando a
+   checagem de "comprovante já usado" (`_comprovanteJaUsado`) normalmente.
+2. **Confirmação manual do admin NUNCA é pulada** — pedido nasce e fica
+   "pendente" igual a qualquer outro, aparece normalmente na listagem de
+   `/api/pedidos` (Pedidos Pendentes do painel); só a etapa ANTERIOR (o
+   comprovante ser aceito) foi facilitada. O admin confirma com o clique
+   de sempre (`PATCH /api/pedido/:id {status:"ativo"}`) — que ativa o
+   plano/VIP de verdade (a pessoa vê o ciclo completo no vídeo).
+3. **Isolamento financeiro total**: o PATCH que confirma o pedido pula de
+   propósito a criação da entrada em `DB_FINANCEIRO.pagamentos` quando
+   `pd.isTeste` (o "dinheiro" nunca nasce no caixa). Defesa em profundidade:
+   `naoEhReceita(email)` (mod-config.js) = `isAdminEmail(email) ||
+   isTestAccountEmail(email)` — a MESMA fonte única já usada pra excluir a
+   conta de admin (v53) de TODA tela financeira, agora generalizada pra
+   também excluir a conta de teste: `computeFinanceCanonico`,
+   `computeEntradasJanelas`, `computeSocios`, `computeDreMensal`, o export
+   CSV da contabilidade, a Conferência (linhas + divergências), a Visão do
+   Dono (pendentes/vencendo) e a lista de Pagantes. Nenhum contador de
+   receita/vendas soma essa conta em lugar nenhum.
+4. **Marcação permanente**: todo pedido dessa conta nasce com
+   `isTeste:true` (server.js, criação do pedido) — dá pra filtrar/excluir
+   de qualquer relatório futuro sem precisar comparar e-mail. O e-mail de
+   aviso de pedido novo (`_mensagemPedidoAdmin`) ganha o prefixo
+   `[TESTE]` no assunto e uma linha clara no corpo — nunca parece uma
+   venda real, mesmo continuando a sair (útil pro Andrio confirmar que o
+   disparo funciona).
+5. **Nunca vira brecha geral**: o MESMO truque (comprovante qualquer, sem
+   `GEMINI_API_KEY`) continua honestamente pendente pra QUALQUER outro
+   e-mail — provado no teste com um e-mail comum recebendo o mesmo
+   arquivo fake e ficando sem `preCheck` nenhum.
+
+Testes: 10 checks comportamentais reais de ponta a ponta — pedido criado e
+marcado `isTeste`; comprovante fake vira CONFERE batendo com o valor do
+pedido; pedido continua PENDENTE (confirmação não pulada); admin confirma
+manualmente e o plano ativa; contagem BRUTA de `DB_FINANCEIRO.pagamentos`
+(via `/api/admin/memoria`) idêntica antes/depois de confirmar um pedido de
+R$ "real"; janelas de receita da Visão do Dono (`computeEntradasJanelas`)
+idênticas antes/depois; conta nunca aparece em Pagantes; pedido nunca
+aparece na Conferência/divergências; pedido CONTINUA aparecendo na
+listagem normal de `/api/pedidos` (visibilidade não é afetada, só o
+dinheiro); e o negativo — mesmo comprovante fake pra e-mail comum não
+gera CONFERE nenhum. `npm test` 100% verde, `check-duplicates.js`/
+`check-xss-guard.js` sem achados, `.env.example` documenta
+`TEST_ACCOUNT_EMAIL`. Sem bump de sw.js (mudança 100% server-side).
+

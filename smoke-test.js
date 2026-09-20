@@ -5208,9 +5208,9 @@ async function drillBloqueioComprasNovas() {
     // (admin.html enxuto não tem a Visão do Dono com cards clicáveis,
     // "📖 Entenda os números" ou o card 🌍 Faturamento Global do painel
     // antigo — as peças reais e vivas são os dados/flags que a API expõe.)
-    check("💼 MC5-P4: pedidos chegam marcados (ehAdmin pela lista real de e-mails de admin) — exclusão de teste de admin também vale no server (mesma régua da Conferência)",
+    check("💼 MC5-P4: pedidos chegam marcados (ehAdmin pela lista real de e-mails de admin) — exclusão de teste de admin também vale no server (mesma régua da Conferência, agora naoEhReceita — v237v generalizou pra também excluir a conta de teste)",
       _rAdm4?.ehAdmin === true && _rUsr4?.ehAdmin === false &&
-      _srvSrc.includes("if(isAdminEmail(pd.userEmail))continue;"),
+      _srvSrc.includes("if(naoEhReceita(pd.userEmail))continue;"),
       JSON.stringify({ adm: _rAdm4?.ehAdmin, usr: _rUsr4?.ehAdmin }).slice(0, 80));
 
     // ═══ 💼 MC5 — PARTE 5 (29/08): QUEM RECEBEU/GASTOU 100% ════════════════
@@ -7403,6 +7403,89 @@ async function drillBloqueioComprasNovas() {
     // provando que o interruptor de emergência, se algum dia for ligado,
     // recusa de verdade no backend — ver função acima.
     await drillBloqueioComprasNovas();
+
+    // 🎬 v237v (dono, 20/09/2026 — vídeo de verificação do Google/gmail.send +
+    // demo de compra pro Andrio): conta de TESTE única (ndrkick.3@gmail.com,
+    // TEST_ACCOUNT_EMAIL/mod-config.js) — comprovante FAKE aceito só nela
+    // (sem OCR), confirmação manual do admin NUNCA pulada, e nada disso pode
+    // contar como dinheiro real em nenhuma tela financeira.
+    {
+      const _testeEmail = "ndrkick.3@gmail.com";
+      await req2("POST", "/api/admin-panel/login", { user: "andrio", password: "teste-smoke-andrio-2026" });
+      const _memAntes = await req2("GET", "/api/admin/memoria");
+      const _donoAntes = await req2("GET", "/api/admin/dono-resumo");
+      const _pagAntes = await req2("GET", "/api/admin/pagantes");
+      const _pagAntesN = (_pagAntes.json?.rows || []).filter(r => r.email === _testeEmail).length;
+
+      const _pedTeste = await req2("POST", "/api/pedido", {
+        userEmail: _testeEmail, plano: "vip", dias: 30,
+        userName: "Conta de Teste (vídeo)", userWhatsapp: "11 90000-0000", userCity: "SP",
+        comprovante: Buffer.from("isso-nao-e-um-comprovante-de-verdade-so-um-print-qualquer").toString("base64"),
+        comprovanteType: "image/jpeg", pagoEm: Date.now(),
+      });
+      check("🎬 v237v: pedido da conta de TESTE é criado normalmente (comprovante fake aceito)",
+        _pedTeste.status === 200 && !!_pedTeste.json?.pedidoId,
+        JSON.stringify(_pedTeste.json));
+      const _pedTesteId = _pedTeste.json?.pedidoId;
+
+      const _pedTesteDetalhe = await req2("GET", "/api/pedido/" + _pedTesteId);
+      check("🎬 v237v: o pedido sai marcado isTeste:true e continua PENDENTE (a confirmação manual do admin NUNCA é pulada — só o comprovante é facilitado)",
+        _pedTesteDetalhe.json?.pedido?.isTeste === true && _pedTesteDetalhe.json?.pedido?.status === "pendente",
+        JSON.stringify({ isTeste: _pedTesteDetalhe.json?.pedido?.isTeste, status: _pedTesteDetalhe.json?.pedido?.status }));
+      check("🎬 v237v: comprovante FAKE (bytes quaisquer, sem foto de pagamento real) vira CONFERE sem OCR só nessa conta — bate com o valor do próprio pedido",
+        _pedTesteDetalhe.json?.pedido?.preCheck?.veredito === "CONFERE" &&
+        Math.abs((_pedTesteDetalhe.json?.pedido?.preCheck?.valorLido || 0) - (_pedTesteDetalhe.json?.pedido?.valorTotal || -1)) < 0.01 &&
+        /conta de teste/i.test(_pedTesteDetalhe.json?.pedido?.preCheck?.resumo || ""),
+        JSON.stringify(_pedTesteDetalhe.json?.pedido?.preCheck));
+
+      const _confirmaTeste = await req2("PATCH", "/api/pedido/" + _pedTesteId, { status: "ativo", recebidoPor: "andrio" });
+      check("🎬 v237v: admin CONFIRMA manualmente o pedido de teste (exatamente como um pedido real) e o plano é ativado",
+        _confirmaTeste.status === 200 && _confirmaTeste.json?.ok === true,
+        JSON.stringify(_confirmaTeste.json));
+
+      const _memDepois = await req2("GET", "/api/admin/memoria");
+      check("🎬 v237v: confirmar o pedido de teste NÃO cria NENHUMA entrada no caixa (DB_FINANCEIRO.pagamentos) — contagem bruta idêntica antes/depois",
+        _memDepois.json?.bancos?.pagamentos === _memAntes.json?.bancos?.pagamentos,
+        `antes=${_memAntes.json?.bancos?.pagamentos} depois=${_memDepois.json?.bancos?.pagamentos}`);
+
+      const _donoDepois = await req2("GET", "/api/admin/dono-resumo");
+      check("🎬 v237v: receita/pendentes da Visão do Dono (computeEntradasJanelas) ficam EXATAMENTE iguais antes/depois de confirmar um pedido de R$ real pra conta de teste",
+        JSON.stringify(_donoDepois.json?.entradas) === JSON.stringify(_donoAntes.json?.entradas) &&
+        _donoDepois.json?.pendentes?.valor === _donoAntes.json?.pendentes?.valor,
+        JSON.stringify({ antes: _donoAntes.json?.entradas, depois: _donoDepois.json?.entradas }));
+
+      const _pagDepois = await req2("GET", "/api/admin/pagantes");
+      const _pagDepoisN = (_pagDepois.json?.rows || []).filter(r => r.email === _testeEmail).length;
+      check("🎬 v237v: a conta de teste NUNCA aparece na lista de Pagantes, mesmo com plano ativo de verdade",
+        _pagAntesN === 0 && _pagDepoisN === 0,
+        `antes=${_pagAntesN} depois=${_pagDepoisN}`);
+
+      const _confConf = await req2("GET", "/api/admin/conferencia");
+      const _naConferencia = (_confConf.json?.rows || []).some(r => r.id === _pedTesteId);
+      check("🎬 v237v: o pedido de teste NÃO aparece na Conferência (relatório de todos os pagamentos) nem gera divergência",
+        !_naConferencia,
+        JSON.stringify((_confConf.json?.rows || []).find(r => r.email === _testeEmail)));
+
+      const _pedidosAdmin = await req2("GET", "/api/pedidos");
+      const _apareceNormal = (_pedidosAdmin.json?.pedidos || []).some(p => p.id === _pedTesteId);
+      check("🎬 v237v: o pedido de teste continua aparecendo NORMALMENTE na listagem de pedidos do admin — só o dinheiro é isolado, nunca a visibilidade (o admin precisa achar e confirmar pelo painel de sempre)",
+        _apareceNormal === true,
+        "pedido de teste sumiu de /api/pedidos");
+
+      // 🔒 negativo: o MESMO truque (comprovante qualquer, sem GEMINI_API_KEY
+      // configurada neste ambiente) NUNCA funciona pra um e-mail comum —
+      // a exceção é hardcoded num único e-mail, nunca um padrão geral.
+      const _pedNormalFake = await req2("POST", "/api/pedido", {
+        userEmail: "usuarionormal237v@test.com", plano: "vip", dias: 30,
+        userName: "Usuário Normal", userWhatsapp: "11 90000-0000", userCity: "SP",
+        comprovante: Buffer.from("mesmo-truque-mas-com-email-normal-nao-e-a-conta-de-teste").toString("base64"),
+        comprovanteType: "image/jpeg", pagoEm: Date.now(),
+      });
+      const _pedNormalDetalhe = await req2("GET", "/api/pedido/" + _pedNormalFake.json?.pedidoId);
+      check("🔒 v237v: o MESMO comprovante fake NÃO vira CONFERE pra um e-mail comum (fica honestamente sem leitura, como sempre) — a exceção nunca vira padrão geral",
+        _pedNormalDetalhe.json?.pedido?.isTeste !== true && _pedNormalDetalhe.json?.pedido?.preCheck == null,
+        JSON.stringify({ isTeste: _pedNormalDetalhe.json?.pedido?.isTeste, preCheck: _pedNormalDetalhe.json?.pedido?.preCheck }));
+    }
 
     const disk = fs.readdirSync(path.join(DATA, "cvs"));
     check("PDFs válidos gravados no disco", disk.includes("cliente@test.com_1002.pdf") && disk.includes("cliente@test.com_1004.pdf"),
