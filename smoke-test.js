@@ -959,6 +959,33 @@ async function drillBloqueioComprasNovas() {
     check("🔑 v175: código errado/senha curta não redefinem; código certo redefine, a senha velha morre e a nova entra",
       _redefBad.status === 400 && _redefCurta.status === 400 && _redefOk.status === 200 && _logVelha.status === 403 && _logNova.status === 200,
       JSON.stringify({ bad: _redefBad.status, curta: _redefCurta.status, ok: _redefOk.status, velha: _logVelha.status, nova: _logNova.status }));
+    // ═══ 🚨 v237h (achado de auditoria — Alta, 3ª rodada, área auth): "relogar
+    // com o MESMO e-mail restaura tudo automaticamente" era só promessa —
+    // NENHUM caminho de login limpava accountDeleted. Como a senha nunca é
+    // apagada (soft-delete), o login continuava funcionando normal, mas
+    // scheduleAuto() (server.js) via accountDeleted:true em TODO ciclo e
+    // desligava o automático pra sempre em silêncio — o app.js nunca trata
+    // esse status, então o recurso pago mais importante do site ficava
+    // quebrado sem chance de autoatendimento pra quem excluiu e voltou.
+    // Reusa a sessão de "novo_user_v172c" (login OK 2 linhas acima). O
+    // estado real é lido via /api/admin/live (em memória, live) — não do
+    // users.json em disco, que só grava accountDeleted debounced (5s, não é
+    // campo crítico) e daria falso-negativo lendo logo após a resposta.
+    const _delAcc = await req2("POST", "/api/account/delete", { confirm: true });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
+    const _liveAposDelete = await req2("GET", "/api/admin/live");
+    const _uLiveAposDelete = _liveAposDelete.json?.users?.find(u => u.email === "novo_user_v172c");
+    check("🚨 v237h: /api/account/delete marca accountDeleted:true (soft-delete — a senha continua intacta)",
+      _delAcc.status === 200 && _delAcc.json?.ok === true && _uLiveAposDelete?.accountDeleted === true,
+      JSON.stringify({ del: _delAcc.status, accountDeleted: _uLiveAposDelete?.accountDeleted }));
+    COOKIE = "";
+    const _logDepoisDelete = await req2("POST", "/api/login", { username: "novo_user_v172c", password: "novasenha123" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
+    const _liveAposRelogin = await req2("GET", "/api/admin/live");
+    const _uLiveAposRelogin = _liveAposRelogin.json?.users?.find(u => u.email === "novo_user_v172c");
+    check("🚨 v237h: relogar com a MESMA senha depois de excluir a conta FUNCIONA (200) e LIMPA accountDeleted de verdade — nunca mais o automático fica quebrado em silêncio pra quem voltou",
+      _logDepoisDelete.status === 200 && _logDepoisDelete.json?.ok === true && _uLiveAposRelogin?.accountDeleted === false,
+      JSON.stringify({ login: _logDepoisDelete.status, accountDeleted: _uLiveAposRelogin?.accountDeleted }));
     // 📧 v175: aba Notificações do admin (status/teste/config/desconectar)
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
     const _ntSt = await get("/api/admin/notificacoes/status");

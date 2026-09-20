@@ -8390,6 +8390,22 @@ filtrar();
       if(_legado){await _atéTempoMinimo();return json(res,403,{error:"Essa conta é de antes da senha (login era só pelo Google) e ainda não tem senha definida. Clique em \"Esqueci minha senha\" pra criar uma agora (mais rápido) ou chame o suporte no WhatsApp +55 53 98145-3496."});}
       const ok=!!u&&!isAdminEmail(_ident)&&(await _verifyPw(senha,u.passwordSalt,u.passwordHash));
       if(!ok){await _atéTempoMinimo();return json(res,403,{error:"Usuário ou senha inválidos."});}
+      // 🚨 v237 (achado de auditoria — Alta): /api/account/delete promete no
+      // próprio comentário "relogar com o MESMO e-mail restaura tudo
+      // automaticamente", mas NENHUM caminho de login jamais limpava
+      // accountDeleted. A senha nunca é apagada na exclusão (soft-delete),
+      // então o login funcionava normal — mas scheduleAuto() (linha ~4293)
+      // continua vendo accountDeleted:true em TODO ciclo e desliga o
+      // automático em silêncio, pra sempre, sem o app.js jamais mostrar
+      // isso na tela. Quem excluiu a conta por engano (ou achando que era
+      // só uma pausa) e voltou ficava com o recurso pago mais importante
+      // do site quebrado sem chance de autoatendimento.
+      if(u.accountDeleted){
+        setUser(_ident,{accountDeleted:false,deletedAt:null});
+        addLog(_ident,{status:"sistema",jobTitle:"✅ Conta restaurada (relogou depois de excluir)",company:""});
+        try{trackJourney(_ident,'account_restored',{detail:'Usuário relogou depois de ter excluído a própria conta'});}catch{}
+        console.log("[account] ✅ Conta restaurada no relogin:",_ident);
+      }
       const sid="usr_"+crypto.randomBytes(16).toString("hex");
       sessions[sid]={user_email:_ident,user_name:u.name||_ident,created_at:Date.now()};
       persistSessionsDebounced(500);

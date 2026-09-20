@@ -2880,3 +2880,38 @@ certas; os 3 jeitos de fechar — X/clique-fora/Escape — presentes no
 HTML/JS). `npm test` 100% verde, `check-duplicates.js`/
 `check-xss-guard.js` sem achados. sw.js bumpado (v98→v99).
 
+## v237h — accountDeleted nunca era limpo no relogin (achado Alta de auth) (20/09/2026)
+
+`/api/account/delete` é um soft-delete deliberado: nada é apagado
+(histórico, financeiro, pedidos), só marca `accountDeleted:true` e
+para o automático. O próprio comentário do código promete "relogar
+com o MESMO e-mail restaura tudo automaticamente" — mas NENHUM
+caminho de login jamais limpava esse campo. Como a senha nunca é
+apagada na exclusão, `/api/login` continuava funcionando 100% normal
+(usuário nem percebe nada de errado) — só que `scheduleAuto()`
+(server.js) via `accountDeleted:true` em TODO ciclo seguinte e
+desligava o job com status `paused_account_deleted`, pra sempre, sem
+o `app.js` jamais tratar ou mostrar esse status na tela. Quem excluiu
+a conta por engano (ou achando que era só uma pausa) e voltou ficava
+com o recurso pago mais importante do site (envio automático)
+quebrado, sem chance nenhuma de autoatendimento.
+
+Corrigido em `/api/login`: login bem-sucedido numa conta com
+`accountDeleted:true` agora limpa `accountDeleted`/`deletedAt` de
+verdade, grava um log visível ("✅ Conta restaurada") e registra em
+`trackJourney`. Não foi preciso mexer em `/api/senha/redefinir` — essa
+rota só troca a senha e derruba sessões, nunca cria uma nova; quem
+passa por ela ainda precisa ir pro `/api/login` depois, que já cobre o
+caso.
+
+Testes: 2 checks comportamentais no smoke (excluir conta → confere
+`accountDeleted:true` via `/api/admin/live`, que lê o estado em
+MEMÓRIA — `accountDeleted` não é campo crítico, então o `users.json`
+em disco só grava com até 5s de atraso, debounced; ler o arquivo
+direto após a resposta dava falso-negativo determinístico — lição
+nova pra qualquer teste futuro que precise conferir campo não-crítico
+logo após a escrita: sempre ler o estado vivo, nunca o disco); relogar
+com a mesma senha → confere `accountDeleted:false`. `npm test` 100%
+verde, `check-duplicates.js`/`check-xss-guard.js` sem achados. Sem
+bump de sw.js (server.js/smoke-test.js only).
+
