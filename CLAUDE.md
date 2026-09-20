@@ -2387,3 +2387,52 @@ falso, provando que não caiu pro principal em silêncio). `npm test`
 100% verde, `check-duplicates.js`/`check-xss-guard.js` sem achados.
 sw.js bumpado (v89→v90).
 
+## v231 — achado do dono testando ao vivo: badge "Currículos 1" mentindo enquanto a tela dizia "nenhum perfil" (20/09/2026)
+
+O dono testou uma conta real com 326 candidaturas automáticas enviadas
+e viu o badge da aba Currículos mostrando "1" enquanto o corpo da
+página dizia "Nenhum perfil criado ainda". Ele mesmo suspeitou —
+corretamente — que fosse a mesma família dos bugs de carregamento já
+corrigidos em Planos (v227b) e login (v225): um fetch falhando em
+silêncio e caindo pro estado vazio sem retry.
+
+**Causa raiz confirmada**, achada lendo o código: 4 lugares deste
+arquivo buscavam perfis frescos do servidor (`loadProfilesView` — a
+Currículos em si —, `_renderAutoProfilesPanel`, `openAutoModal` e o
+"recarrega perfis" dentro de `stopAuto`) e TODOS faziam
+`UPROFILES=pr.profiles||[]` sem checar se a resposta veio de verdade.
+`GET /api/profiles` devolve `{error:"..."}` (SEM campo `profiles`) num
+401 de sessão caída — e como `pr.profiles||[]` trata qualquer coisa
+sem esse campo como array vazio, uma sessão velha (deploy reiniciou,
+aparelho ficou minutos parado — sessão NÃO sobrevive a restart, decisão
+intencional da casa) virava silenciosamente "você tem 0 perfis",
+sobrescrevendo `UPROFILES` e, em 3 dos 4 lugares, `U.profiles` TAMBÉM.
+
+Como o Envio Automático é a tela que esse usuário mais abre (326
+candidaturas!), bastava abrir esse modal com a sessão velha pra
+corromper os dois. O badge, pintado numa checagem ANTERIOR (que já usa
+o fallback `U.profiles`, código único que só faltava aqui), ficava com
+o número certo "1" — congelado, sem se atualizar de novo. A tela de
+Currículos (`renderProfiles()`), sem nenhum fallback, lia o `UPROFILES`
+já corrompido e mostrava vazio. Os dois nunca "mentiram" sozinhos — só
+ficaram dessincronizados por uma falha silenciosa em outro lugar.
+
+**Correção (fonte única):** nova função `_refreshProfiles()` — só
+aceita a resposta do servidor quando `profiles` é de fato um `Array`
+(nunca um erro genérico/401); em qualquer outro caso, MANTÉM o último
+dado bom conhecido e devolve `false` pro chamador decidir avisar. Os 4
+pontos que faziam o fetch cru agora chamam essa função única — nenhuma
+lógica duplicada. `renderProfiles()` ganhou o MESMO fallback pra
+`U.profiles` que já existia em ~10 outros lugares do arquivo (contagem
+do badge, gate de envio manual, painel do automático etc.) — auto-cura
+`UPROFILES` a partir de `U.profiles` antes de decidir "nenhum perfil
+criado", a última linha de defesa contra qualquer outro lugar que ainda
+possa corromper o estado no futuro.
+
+Testes: 3 checks estruturais no smoke (sem Chromium nesta suíte —
+guarda de código-fonte: `_refreshProfiles` valida array antes de
+aceitar; os 4 pontos chamam a função única; `renderProfiles()` faz a
+auto-cura ANTES do estado vazio). `npm test` 100% verde,
+`check-duplicates.js`/`check-xss-guard.js` sem achados. sw.js
+bumpado (v90→v91).
+

@@ -3083,16 +3083,42 @@ const fill=(tpl,j)=>(tpl||"")
   .replace(/{inicio}/g,  j?.start||j?.beginDate||"")
   .replace(/{start}/g,   j?.start||j?.beginDate||"");
 
+// 🚨 v231 (achado do dono testando ao vivo, 20/09/2026 — badge "Currículos
+// 1" mas o corpo mostrava "Nenhum perfil criado ainda" numa conta com 326
+// candidaturas automáticas enviadas): 3 lugares deste arquivo buscavam
+// perfis frescos do servidor (aqui, _renderAutoProfilesPanel e openAutoModal)
+// e todos faziam `UPROFILES=pr.profiles||[]` SEM checar se a resposta veio
+// de verdade — uma sessão caída (401, `{error:"Não autenticado."}`, SEM
+// campo `profiles`) virava silenciosamente "você tem 0 perfis", sobrescrevendo
+// UPROFILES (e em 2 dos 3 lugares, U.profiles TAMBÉM) com um array vazio.
+// Como esse fetch dispara ao abrir o Envio Automático — a tela que esse
+// usuário mais usa — bastava UMA sessão velha (deploy reiniciou, aparelho
+// ficou minutos parado) pra apagar os dois. O badge, pintado antes numa
+// checagem anterior (com fallback pra U.profiles), ficava com o número
+// antigo "1" na tela; a tela de Currículos, sem fallback nenhum, mostrava
+// vazio na cara — os dois nunca mentiam sozinhos, só ficavam DESSINCRONIZADOS.
+// Fonte única: só aceita a resposta quando `profiles` é de fato um array
+// (nunca um 401/erro genérico); senão MANTÉM o último dado bom conhecido.
+async function _refreshProfiles(){
+  try{
+    const r=await fetch("/api/profiles",{credentials:"include"});
+    const d=await jsonSafe(r);
+    if(!Array.isArray(d.profiles))throw new Error(d.error||"resposta sem perfis");
+    UPROFILES=d.profiles;
+    if(U)U.profiles=UPROFILES;
+    return true;
+  }catch(e){
+    console.warn("[_refreshProfiles] mantendo último dado conhecido:",e.message);
+    return false;
+  }
+}
 // v198 LOTE 16: o nome antigo dizia "view de templates" e enganava — ela é a
 // ÚNICA coisa que renderiza a lista de perfis ao abrir o Perfil. O fetch de
 // /api/templates (subsistema inteiro morto: BUILTIN_TEMPLATES=[], nenhum
 // elemento #tpl-* no HTML) custava uma requisição a CADA abertura do Perfil,
 // pra encher uma lista que ninguém via.
 async function loadProfilesView(){
-  try{
-    const pr=await fetch("/api/profiles",{credentials:"include"}).then(r=>r.json());
-    UPROFILES=pr.profiles||[];
-  }catch{}
+  if(!(await _refreshProfiles()))toast("Não deu pra atualizar seus perfis agora — mostrando os últimos dados carregados.","r");
   renderProfiles();
 }
 
@@ -3370,6 +3396,11 @@ function _createTypeBtnHTML(vt){
 function renderProfiles(){
   const list=g("#profile-list");if(!list)return;
   const createBtn=g("#profile-create-btn");
+  // v231: auto-cura — se UPROFILES ficou vazio (fetch falhou/sessão caiu em
+  // OUTRA tela) mas U.profiles ainda tem o último dado bom, restaura antes
+  // de decidir "nenhum perfil criado" (mesmo fallback já usado em ~10
+  // lugares deste arquivo pra ler a contagem de perfis).
+  if(!UPROFILES.length&&(U.profiles||[]).length)UPROFILES=U.profiles;
   if(!UPROFILES.length){
     list.innerHTML=`<div class="empty-state"><i class="ti ti-user-circle"></i><p>Nenhum perfil criado ainda</p><small>Você pode ter até 2 perfis: um pra vagas <strong>H-2B</strong> (hotelaria, construção, paisagismo...) e um pra vagas <strong>H-2A</strong> (agricultura). Cada vaga usa automaticamente o perfil do tipo dela. Comece criando o que você mais usa — o outro é opcional.</small></div>`
       +_createTypeBtnHTML("h2b")+_createTypeBtnHTML("h2a");
@@ -4160,12 +4191,9 @@ let _autoPanelExpanded=false;
 
 async function _renderAutoProfilesPanel(){
   const panel=g("#auto-profiles-panel");if(!panel)return;
-  // Sempre busca perfis frescos do servidor
-  try{
-    const pr=await fetch("/api/profiles",{credentials:"include"}).then(r=>r.json());
-    UPROFILES=pr.profiles||[];
-    if(U)U.profiles=UPROFILES;
-  }catch(e){console.warn("[_renderAutoProfilesPanel] falha ao buscar perfis:",e.message);}
+  // Sempre busca perfis frescos do servidor — v231: via _refreshProfiles(),
+  // que nunca mais confunde sessão caída (401) com "0 perfis de verdade".
+  await _refreshProfiles();
   const profiles=UPROFILES.filter(p=>p.active!==false);
 
   if(!profiles.length){
@@ -4738,8 +4766,8 @@ async function pauseAuto(){try{const r=await fetch("/api/auto/pause",{method:"PO
 async function resumeAuto(){try{const r=await fetch("/api/auto/resume",{method:"POST",credentials:"include"});const d=await jsonSafe(r);if(!d.ok)throw new Error(d.error||"Não foi possível retomar.");U.autoJob={...U.autoJob,active:true,status:"resuming"};updateAutoUI();startAutoPolling();toast("Retomado ✓","g");}catch(e){toast(_sessionDroppedMsg(e)?"Sessão expirada — faça login novamente.":("Erro: "+(e?.message||e)),"r");}}
 async function stopAuto(){
   setTimeout(async function(){await _loadSentIds();loadSheetMeta(true);},600);
-if(!confirm("Parar o envio completamente?"))return;try{const r=await fetch("/api/auto/stop",{method:"POST",credentials:"include"});const d=await jsonSafe(r);if(!d.ok)throw new Error(d.error||"Não foi possível parar.");U.autoJob=null;_autoQueueIds=new Set();_syncAutoQueueVisibility();clearInterval(autoInterval);autoInterval=null;if(_autoCountdown){clearInterval(_autoCountdown);_autoCountdown=null;}updateAutoUI();updateAutoDot(false);toast("Parado","r");// Recarrega perfis do servidor para garantir que não sumiram
-try{const pr=await fetch("/api/profiles",{credentials:"include"}).then(r=>r.json());UPROFILES=pr.profiles||[];if(U)U.profiles=UPROFILES;}catch{}
+if(!confirm("Parar o envio completamente?"))return;try{const r=await fetch("/api/auto/stop",{method:"POST",credentials:"include"});const d=await jsonSafe(r);if(!d.ok)throw new Error(d.error||"Não foi possível parar.");U.autoJob=null;_autoQueueIds=new Set();_syncAutoQueueVisibility();clearInterval(autoInterval);autoInterval=null;if(_autoCountdown){clearInterval(_autoCountdown);_autoCountdown=null;}updateAutoUI();updateAutoDot(false);toast("Parado","r");// v231: recarrega perfis do servidor via _refreshProfiles() — a ironia do comentário antigo ("garantir que não sumiram") era a própria causa de sumirem numa sessão caída
+await _refreshProfiles();
 }catch(e){toast(_sessionDroppedMsg(e)?"Sessão expirada — faça login novamente.":("Erro: "+(e?.message||e)),"r");}}
 
 // FIX: oculta/mostra cards de vagas com base em _autoQueueIds (sincroniza UI após auto iniciar/parar)
@@ -5531,13 +5559,12 @@ async function openAutoModal(){
   }
 
   // ── Sempre busca perfis frescos do servidor antes de verificar pré-requisitos ──
+  // v231: via _refreshProfiles() — uma sessão caída (401) não pode mais
+  // apagar o perfil de quem já tem um só porque essa checagem falhou aqui,
+  // bem na porta de entrada do Envio Automático (a tela mais usada do site).
   try{ loadDynamicSheets(); }catch(e){}
   try{ renderAutoSenders(); }catch(e){}
-  try{
-    const pr=await fetch("/api/profiles",{credentials:"include"}).then(r=>r.json());
-    UPROFILES=pr.profiles||[];
-    if(U)U.profiles=UPROFILES;
-  }catch(e){console.warn("[openAutoModal] falha ao buscar perfis:",e.message);}
+  await _refreshProfiles();
 
   const profiles=UPROFILES.filter(p=>p.active!==false);
   const hasCv=DOCS.some(c=>(c.cvType||"resume")==="resume");

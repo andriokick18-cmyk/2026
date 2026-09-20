@@ -4648,6 +4648,31 @@ async function drillBloqueioComprasNovas() {
       check("🚨 v230 (estrutural): o dropdown 'Enviar por' do modal de envio manual (openSendModal) também exclui remetente blocked, igual às outras telas que listam remetentes elegíveis — nunca mais deixa escolher uma conta suspensa pelo Google",
         !!_fnPopSender,
         "filtro de 'Enviar por' sem &&!x.blocked");
+
+      // ═══ 🚨 v231 (achado do dono testando ao vivo, 20/09/2026): badge
+      // "Currículos 1" mas o corpo mostrava "Nenhum perfil criado ainda"
+      // numa conta com 326 candidaturas automáticas — 3 lugares buscavam
+      // perfis frescos e tratavam QUALQUER resposta sem `profiles` (um 401
+      // de sessão caída incluso) como "0 perfis de verdade", sobrescrevendo
+      // UPROFILES/U.profiles com array vazio. Fonte única _refreshProfiles()
+      // só aceita quando `profiles` é de fato um array; renderProfiles()
+      // ganhou o mesmo fallback pra U.profiles usado em ~10 outros lugares.
+      const _fnRefresh = (_appSrcV229.match(/async function _refreshProfiles\(\)\{[\s\S]*?\n\}/) || [""])[0];
+      check("🚨 v231 (estrutural): _refreshProfiles() usa jsonSafe e só aceita a resposta quando Array.isArray(d.profiles) — nunca mais confunde 401/erro genérico com '0 perfis'",
+        /jsonSafe\(r\)/.test(_fnRefresh) && /Array\.isArray\(d\.profiles\)/.test(_fnRefresh) && /throw new Error/.test(_fnRefresh),
+        _fnRefresh.slice(0, 200));
+      check("🚨 v231 (estrutural): os 4 pontos que buscavam perfis frescos direto (loadProfilesView, _renderAutoProfilesPanel, openAutoModal, stopAuto) agora chamam _refreshProfiles() — nenhuma cópia duplicada do fetch cru sobrando neles",
+        /await _refreshProfiles\(\)\)\)toast/.test(_appSrcV229.match(/async function loadProfilesView\(\)\{[\s\S]*?\n\}/)?.[0] || "") &&
+        /await _refreshProfiles\(\);/.test(_appSrcV229.match(/async function _renderAutoProfilesPanel\(\)\{[\s\S]*?\n  const profiles=/)?.[0] || "") &&
+        /await _refreshProfiles\(\);/.test(_appSrcV229.match(/async function openAutoModal\(\)\{[\s\S]*?\n  const profiles=/)?.[0] || "") &&
+        /await _refreshProfiles\(\);\n\}catch\(e\)/.test(_appSrcV229.match(/async function stopAuto\(\)\{[\s\S]*?\n\}\n/)?.[0] || ""),
+        "algum dos 4 pontos ainda tem o fetch cru de /api/profiles em vez de chamar _refreshProfiles()");
+      const _fnRenderProfiles = (_appSrcV229.match(/function renderProfiles\(\)\{[\s\S]*?\n\}/) || [""])[0];
+      const _idxAutoCura = _fnRenderProfiles.indexOf("UPROFILES=U.profiles");
+      const _idxVazio = _fnRenderProfiles.indexOf("if(!UPROFILES.length){");
+      check("🚨 v231 (estrutural): renderProfiles() AUTO-CURA UPROFILES a partir de U.profiles ANTES de decidir 'nenhum perfil criado' — nunca mais mostra a tela mais grave do site (perfil é essencial pro Automático) só porque UPROFILES ficou vazio por uma falha em OUTRA tela",
+        _idxAutoCura >= 0 && _idxVazio >= 0 && _idxAutoCura < _idxVazio,
+        JSON.stringify({ idxAutoCura: _idxAutoCura, idxVazio: _idxVazio }));
     }
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5c@test.com", name: "MC5 C" });
     const mc5d1 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-um").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
