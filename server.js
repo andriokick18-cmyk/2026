@@ -5890,7 +5890,15 @@ async function refreshSenderToken(ownerEmail, senderEmail) {
   if (!r.access_token) throw new Error("Token não retornado pelo Google.");
   const expiresAt = Date.now() + (r.expires_in || 3600) * 1000;
   // Atualiza token do sender no banco
-  const senders = (p.senderEmails || []).map(s =>
+  // 🚨 v237 (achado de auditoria — Alta, gmail-envio): usava `p.senderEmails`
+  // capturado no TOPO da função, ANTES do await de rede acima — qualquer
+  // escrita concorrente em senderEmails nessa janela (ex.: outro candidato
+  // do MESMO round-robin marcando tokenExpired, ou o admin removendo um
+  // extra) seria apagada por esta escrita reusando o array velho. Relê
+  // getUser() agora, imediatamente antes de escrever — mesma lição do
+  // "nunca guardar snapshot antes de um helper que já lê+grava o mesmo
+  // registro, sempre reler depois".
+  const senders = (getUser(ownerEmail)?.senderEmails || []).map(s =>
     s.email === senderEmail
       ? { ...s, access_token: r.access_token, token_expiry: expiresAt,
           ...(r.refresh_token ? { refresh_token: r.refresh_token } : {}),
@@ -5953,7 +5961,10 @@ async function getSenderToken(ownerEmail, requestedSender, allowedSenders) {
       // via "RECONECTAR" numa conta perfeitamente saudável.
       const _mE=String(e.message||"");
       if(_mE.includes("invalid_grant")||_mE.includes("revoked")||_mE.includes("invalid_client")){
-        setUser(ownerEmail, { senderEmails: (p.senderEmails || []).map(x => x.email === s.email ? { ...x, tokenExpired: true } : x) });
+        // 🚨 v237 (achado de auditoria — Alta): relê getUser() em vez de reusar
+        // o `p` capturado no topo de getSenderToken() — evita apagar uma
+        // marcação concorrente (ver o mesmo achado no round-robin abaixo).
+        setUser(ownerEmail, { senderEmails: (getUser(ownerEmail)?.senderEmails || []).map(x => x.email === s.email ? { ...x, tokenExpired: true } : x) });
         console.warn(`[sender] ⚠️ Token do sender ${s.email} MORTO (${_mE.slice(0,80)}), usando principal`);
       } else {
         console.warn(`[sender] ⚠️ erro passageiro no refresh de ${s.email} (${_mE.slice(0,80)}) — usando principal só neste envio, sem marcar RECONECTAR`);
@@ -6060,7 +6071,15 @@ async function getSenderToken(ownerEmail, requestedSender, allowedSenders) {
         // pelo Google; erro passageiro pula a conta SÓ neste ciclo (13a2).
         const _mE=String(e.message||"");
         if(_mE.includes("invalid_grant")||_mE.includes("revoked")||_mE.includes("invalid_client")){
-          setUser(ownerEmail, { senderEmails: (p.senderEmails || []).map(x => x.email === candidate.email ? { ...x, tokenExpired: true } : x) });
+          // 🚨 v237 (achado de auditoria — Alta, gmail-envio): usava `p`
+          // capturado no TOPO de getSenderToken() — quando 2+ candidatos do
+          // MESMO round-robin falham em sequência, a 2ª escrita reusava o
+          // array de ANTES da 1ª falha e apagava o tokenExpired que a 1ª
+          // tinha acabado de gravar (só o ÚLTIMO que falhou ficava marcado
+          // de verdade; o(s) anterior(es) voltavam a aparecer saudáveis na
+          // tela, e o robô tentava enviar por eles de novo no PRÓXIMO
+          // ciclo). Relê getUser() a cada escrita — nunca reusa snapshot.
+          setUser(ownerEmail, { senderEmails: (getUser(ownerEmail)?.senderEmails || []).map(x => x.email === candidate.email ? { ...x, tokenExpired: true } : x) });
           console.warn(`[sender] ⚠️ Sender ${candidate.email} com token MORTO (${_mE.slice(0,80)}), pulando`);
         } else {
           console.warn(`[sender] ⚠️ erro passageiro no refresh de ${candidate.email} (${_mE.slice(0,80)}) — pulando só neste ciclo, sem marcar RECONECTAR`);

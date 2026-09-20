@@ -6730,6 +6730,37 @@ async function drillBloqueioComprasNovas() {
         _jExtra.active === true && _jExtra.status !== "paused_auth_error",
         JSON.stringify({ senders: _udExtra?.auth?.senders, envios: GOOGLE.envios.map((e2) => e2.para), job: { a: _jExtra.active, s: _jExtra.status } }).slice(0, 380));
       GOOGLE.limpar();
+
+      // ── 7) 🚨 v237 (achado de auditoria — Alta, gmail-envio): 2 extras com
+      // auth morta na MESMA chamada de round-robin não podiam mais apagar um
+      // ao outro. getSenderToken() usava o `p` capturado no TOPO da função
+      // pra gravar tokenExpired — quando o 2º candidato também falhava, a
+      // escrita dele reusava o array de ANTES da 1ª falha, revertendo a
+      // marcação que tinha acabado de ser gravada 2 linhas antes (só o
+      // ÚLTIMO processado ficava tokenExpired:true de verdade). Cenário: só
+      // admin permite 2+ extras no pool ao mesmo tempo (MAX_SENDER_EMAILS_
+      // DOUBLEPRO=2 = principal+1 extra só — não dá pra ter 2 extras vivos
+      // simultâneos fora do admin); `senders` do /api/auto/start restringe o
+      // rodízio SÓ aos 2 extras (exclui o principal do pool), garantindo que
+      // os 2 sejam tentados nessa chamada — ambos com refresh_token morto.
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "duplaextra20@test.com", name: "Dupla Extra 20", isAdmin: true, refreshToken: "rt-duplaextra20-principal", senderEmails: [
+        { email: "extraruimA20@test.com", active: true, refresh_token: "rt-duplaextra20-mortaA", addedAt: Date.now() - 60 * 86400_000 },
+        { email: "extraruimB20@test.com", active: true, refresh_token: "rt-duplaextra20-mortaB", addedAt: Date.now() - 60 * 86400_000 },
+      ] });
+      const _cvDupla = await req2("POST", "/api/cv/upload", { base64: Buffer.from("%PDF-1.4 " + "duplaextra20 ".repeat(300)).toString("base64"), name: "CV_DuplaExtra20.pdf", cvType: "resume" });
+      GOOGLE.limpar();
+      GOOGLE.rtMortos.add("rt-duplaextra20-mortaA");
+      GOOGLE.rtMortos.add("rt-duplaextra20-mortaB");
+      const _startDupla = await req2("POST", "/api/auto/start", { queue: [{ to: "rh1@duplaextra20-test.com", title: "Cook", company: "Dupla A" }], senders: ["extraruimA20@test.com", "extraruimB20@test.com"], resumeIdx: _cvDupla.json?.cv?.idx, subjects: ["Candidatura"], emailBodies: ["Olá."] });
+      const _okDupla = await _ate(() => GOOGLE.refreshes.length >= 2);
+      const _udDupla = (await get("/api/admin/financeiro-usuario/" + encodeURIComponent("duplaextra20@test.com"))).json;
+      const _sendersDupla = _udDupla?.auth?.senders || [];
+      check("🚨 v237: 2 extras com auth morta na MESMA rodada de round-robin (rodízio restrito só a eles via 'senders', exclui o principal do pool) ficam AMBOS com tokenExpired:true — a 2ª escrita não apaga mais o que a 1ª acabou de gravar (releitura de getUser() a cada escrita, nunca reusa snapshot velho)",
+        _startDupla.status === 200 && _okDupla === true &&
+        _sendersDupla.some((se) => se.email === "extraruimA20@test.com" && se.tokenExpired === true) &&
+        _sendersDupla.some((se) => se.email === "extraruimB20@test.com" && se.tokenExpired === true),
+        JSON.stringify({ senders: _sendersDupla, refreshes: GOOGLE.refreshes.length }).slice(0, 320));
+      GOOGLE.limpar();
     }
 
     // ═══ 🧹 v199 LOTE 18: faxina do servidor (o que não tinha como rodar) ═══

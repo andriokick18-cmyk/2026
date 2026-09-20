@@ -2950,3 +2950,42 @@ prefixo de log de cada watchdog). `npm test` 100% verde,
 `check-duplicates.js`/`check-xss-guard.js` sem achados. Sem bump de
 sw.js (server-side only).
 
+## v237j — getSenderToken() apagava marcação de sender morto por snapshot velho (achado Alta de gmail-envio) (20/09/2026)
+
+`getSenderToken()` (o motor que escolhe qual conta Gmail usa pra
+enviar — round-robin automático e sender explícito no manual) captura
+`p = getUser(ownerEmail)` UMA vez no topo da função. Quando um sender
+falha com `invalid_grant`/`revoked`/`invalid_client` (queda CONFIRMADA
+pelo Google, 13a2), o código grava `tokenExpired:true` fazendo
+`setUser(ownerEmail, {senderEmails: (p.senderEmails||[]).map(...)})` —
+usando esse MESMO `p` congelado desde o início da chamada.
+
+O problema: no round-robin automático, o loop tenta VÁRIOS candidatos
+na MESMA chamada até achar um que funcione. Se o candidato #1 falha e
+grava `tokenExpired:true`, e o candidato #2 TAMBÉM falha, a escrita do
+#2 reusa o array `p.senderEmails` de ANTES da falha do #1 — apagando a
+marcação que tinha acabado de ser gravada 2 linhas antes. Resultado:
+só o ÚLTIMO sender que falhou nesse ciclo ficava com o badge
+RECONECTAR correto; o(s) anterior(es) voltavam a aparecer saudáveis na
+tela do usuário, e o robô tentava enviar por eles de novo no PRÓXIMO
+ciclo, desperdiçando o slot de ~7min recorrentemente. O mesmo padrão
+de escrita-com-snapshot-velho existia em 3 lugares: o branch manual, o
+round-robin automático, e dentro da própria `refreshSenderToken()`
+(escreve DEPOIS de um `await` de rede, com o `p` capturado ANTES).
+
+Corrigido nos 3 pontos: cada escrita agora relê `getUser(ownerEmail)`
+imediatamente antes de gravar, nunca reusando um snapshot capturado
+mais cedo na função — mesma lição já aplicada noutros lugares deste
+arquivo ("nunca guardar snapshot antes de um helper que já lê+grava o
+mesmo registro").
+
+Testes: 1 check comportamental REAL no smoke — só conta admin permite
+2+ extras simultâneos no pool (`MAX_SENDER_EMAILS_DOUBLEPRO=2` só
+permite 1 extra; só admin permite 6); um admin de teste com 2 extras
+de refresh_token morto, rodízio restrito a SÓ eles via `senders` do
+`/api/auto/start` (exclui o principal do pool, garantindo que os 2
+sejam tentados na mesma chamada) — confere que os DOIS terminam com
+`tokenExpired:true` via `/api/admin/financeiro-usuario/:email`.
+`npm test` 100% verde, `check-duplicates.js`/`check-xss-guard.js` sem
+achados. Sem bump de sw.js (server-side only).
+
