@@ -3023,6 +3023,20 @@ async function drillBloqueioComprasNovas() {
       check("🔍 v173: motor — salário normalizado pra $/hora (1500/mês ≈ $8,67/h fica abaixo de $12), faceta de e-mail conta com/sem, estado ignora o próprio filtro",
         facF.total === 2 && facF.facetas.salario.limiares.find(l => l.v === 12).n === 1 && facF.facetas.email.com === 2 && facF.facetas.email.sem === 0 && facF.facetas.estado.find(x => x.v === "TEXAS").n === 1,
         JSON.stringify({ t: facF.total, l12: facF.facetas.salario.limiares.find(l => l.v === 12), em: facF.facetas.email, tx: facF.facetas.estado }).slice(0, 200));
+      // ═══ 🚨 v237 (achado de auditoria — Baixa, dormente até o DOL mandar um
+      // SOC sujo): a família do cargo era `("soc:" + _famNorm(r.soc)) ||
+      // _famNorm(t)` — concatenação de string NUNCA é falsy, então o
+      // fallback pro título nunca disparava. SOC sujo (só pontuação, ex.:
+      // "-") normaliza pra "" e virava a família fantasma "soc:" — juntando
+      // vagas de CARGOS DIFERENTES no mesmo chip só por causa do SOC ruim.
+      const rowsSoc = [
+        { c: "10", s: "FLORIDA", k: "farm", t: "Farmworker", soc: "-", w: "18", wunit: "h", e: "a@x.com", wk: 5 },
+        { c: "11", s: "FLORIDA", k: "farm", t: "Landscaper", soc: "-", w: "18", wunit: "h", e: "b@x.com", wk: 5 },
+      ];
+      const facSoc = F.facetas(rowsSoc, F.parse(new URLSearchParams()), {});
+      check("🚨 v237: SOC sujo (\"-\", normaliza pra vazio) cai no TÍTULO — 2 vagas de cargos diferentes com o mesmo SOC ruim viram 2 chips separados, nunca a família fantasma 'soc:' juntando as duas",
+        facSoc.facetas.cargo.length === 2 && facSoc.facetas.cargo.every(x => x.n === 1) && !facSoc.facetas.cargo.some(x => x.v === "soc:"),
+        JSON.stringify(facSoc.facetas.cargo));
       // estrutural: fonte única no servidor + front novo sem resquício do antigo
       const _srv173 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
       const _refill = _srv173.slice(_srv173.indexOf("function tryAutoRefill("), _srv173.indexOf("function tryAutoRefill(") + 2500);

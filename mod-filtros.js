@@ -366,7 +366,16 @@ function createFiltros(deps) {
       // título normalizado. O mapa título→família mantém COMPATÍVEL o valor
       // antigo (título literal salvo no aparelho ou num job.filters de robô
       // que já está rodando) — ele continua casando com a família certa.
-      const fam = t ? (r.soc ? ("soc:" + _famNorm(r.soc)) || _famNorm(t) : _famNorm(t)) : "";
+      // 🚨 v237 (achado de auditoria — Baixa, dormente): era
+      // `("soc:" + _famNorm(r.soc)) || _famNorm(t)` — concatenação de
+      // string NUNCA é falsy (mesmo com _famNorm(r.soc)==="", o resultado
+      // é "soc:" — truthy), então o fallback pro título nunca disparava.
+      // SOC "sujo" (só pontuação/vazio depois de normalizar, ex.: "-" ou
+      // "N/D") virava a família fantasma "soc:" em vez de cair no título —
+      // agrupava a vaga sozinha, longe de onde ela devia estar. Mesmo
+      // padrão defensivo que _famKey() já usa (linha ~178).
+      const _socFam = r.soc ? _famNorm(r.soc) : "";
+      const fam = t ? (_socFam ? "soc:" + _socFam : _famNorm(t)) : "";
       ix.tFam[i] = fam;
       if (fam) { ix.famSet.add(fam); const tf = _famNorm(t); if (tf && !ix.famPorTitulo.has(tf)) ix.famPorTitulo.set(tf, fam); }
 

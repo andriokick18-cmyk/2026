@@ -2717,11 +2717,46 @@ Testes: 1 check estrutural no smoke (varredura dos 2 arrays presente,
 
 Fecha por completo a 2ª rodada de 3 auditorias paralelas
 (painel-admin/dinheiro: v236(parte)+v237; perfil/onboarding: v236+
-v237c; vagas/filtros: v237b). Restam só 2 itens de baixa prioridade
-que ficam pra depois por decisão do dono: duplicação de código em
-`add_pagamento`/`add_gasto` (Baixa) e a UI pra Sócios & Acerto — o
-backend (`/api/admin/financeiro`, split andrio/diego, comprovante com
-hash antifraude, conversão USD) é 100% funcional e testado por HTTP
-direto, mas não tem NENHUMA tela no painel admin; o dono prefere
-decidir os detalhes dessa tela quando revisar pessoalmente.
+v237c; vagas/filtros: v237b+v237d). Restam só 2 itens de baixa
+prioridade que ficam pra depois por decisão do dono: duplicação de
+código em `add_pagamento`/`add_gasto` (Baixa) e a UI pra Sócios &
+Acerto — o backend (`/api/admin/financeiro`, split andrio/diego,
+comprovante com hash antifraude, conversão USD) é 100% funcional e
+testado por HTTP direto, mas não tem NENHUMA tela no painel admin; o
+dono prefere decidir os detalhes dessa tela quando revisar
+pessoalmente.
+
+## v237d — família de cargo fantasma "soc:" (achado Baixa dormente de vagas/filtros) (20/09/2026)
+
+Último achado da 2ª rodada (vagas/filtros), dormente até hoje: a
+família do cargo em `mod-filtros.js` (usada pra agrupar grafias
+diferentes do mesmo cargo num único chip — "Landscape Laborer 2.360"
+em vez de 3 chips separados) era `("soc:" + _famNorm(r.soc)) ||
+_famNorm(t)`. Concatenação de string NUNCA é falsy — mesmo com
+`_famNorm(r.soc)===""`, o resultado é `"soc:"`, que é truthy — então o
+fallback pro título (`_famNorm(t)`) nunca disparava de verdade.
+
+Um SOC "sujo" (só pontuação, ex.: `"-"` ou `"N/D"`, que normaliza pra
+string vazia) virava a família fantasma `"soc:"` em vez de cair no
+título — e QUALQUER vaga com SOC sujo, de QUALQUER cargo, caía nessa
+MESMA família fantasma, misturando cargos completamente diferentes
+(ex.: Farmworker e Landscaper) num chip só. Provado com um teste real:
+2 linhas com títulos diferentes e SOC sujo idêntico produziam 1 chip
+só (`{v:"soc:",n:2}`) no código velho e 2 chips corretos no código
+novo. Dormente até agora porque os feeds do DOL sempre mandaram SOC
+bem-formado (dígitos+traço, ex.: `"45-2092.00"`, que normaliza pra
+algo não-vazio) — mas nada impede um feed futuro de mandar um valor
+sujo, e o bug ficaria current, corrompendo os chips em silêncio.
+
+Corrigido com o mesmo padrão defensivo que `_famKey()` já usava
+(`_famNorm` calculado primeiro, prefixo `"soc:"` só se o resultado
+não for vazio).
+
+Testes: 1 check comportamental no smoke (2 linhas com títulos
+diferentes e SOC sujo idêntico → 2 chips de cargo separados, nenhum
+com o valor fantasma `"soc:"`) — verificado que o teste REALMENTE
+falha contra o código antigo antes de commitar (não só passa contra o
+novo). `npm test` 100% verde, `check-duplicates.js`/
+`check-xss-guard.js` sem achados. Sem bump de sw.js (`mod-filtros.js`
+é server-side, não servido ao cliente).
 
