@@ -4679,6 +4679,27 @@ const _manualSendReserved = new Map(); // email → nº de envios reservados (em
 function _reserveManualSlot(email){ _manualSendReserved.set(email,(_manualSendReserved.get(email)||0)+1); }
 function _releaseManualSlot(email){ const n=(_manualSendReserved.get(email)||0)-1; if(n<=0)_manualSendReserved.delete(email); else _manualSendReserved.set(email,n); }
 
+// 🚨 v237n (achado de auditoria — Média, gmail-envio): o teto de aquecimento
+// (13a) do envio manual com SENDER ESPECÍFICO (getSenderToken, mais abaixo)
+// checava getHist() sem reservar nada — check-then-act clássico. Diferente
+// do limite diário total (_manualSendReserved acima, corrigido desde o
+// v18-FIX), 2 requisições concorrentes pro MESMO sender em aquecimento liam
+// a MESMA contagem "antiga" e as DUAS passavam, furando o teto por alguns
+// e-mails numa rajada. `_makeWarmupReleaser` devolve uma função DE UM TIRO
+// SÓ (idempotente — 2ª chamada não faz nada): o chamador em /api/send libera
+// explicitamente assim que o envio de verdade termina (sucesso OU falha,
+// bloco finally), e o setTimeout é só rede de segurança (30s) pro raro
+// caminho que nunca chega no finally. Sem o release EXPLÍCITO, um envio que
+// termina rápido (o normal) ficaria contado 2x — no hist real E na reserva —
+// até o timer de 30s, furando o teto pra MENOS da metade do valor real
+// (bug encontrado testando: 16 envios concorrentes com cap=15 só deixava
+// 8 passarem, não 15, com só o timer sem release explícito).
+const _warmupReserved = new Map(); // "dono|sender" → nº de envios reservados (em voo) nesse sender hoje
+function _makeWarmupReleaser(key){
+  let done=false;
+  return ()=>{ if(done)return; done=true; const n=(_warmupReserved.get(key)||0)-1; if(n<=0)_warmupReserved.delete(key); else _warmupReserved.set(key,n); };
+}
+
 // ⚡ v190 LOTE 8: cache de 60s do /api/public-stats (rota pública que varre o
 // histórico inteiro e que a landing chama a cada 30s em toda aba aberta).
 let _publicStatsCache = null;
@@ -5942,18 +5963,27 @@ async function getSenderToken(ownerEmail, requestedSender, allowedSenders) {
     if (getMaxSenders(p || {}) <= 1) throw new Error(_msgLimiteSenders(getMaxSenders(p || {})));
     // 🛡️ v73: mesma proteção de aquecimento do round-robin, aplicada quando
     // o usuário escolhe ESTA conta específica na tela de envio manual.
+    // 🚨 v237n: soma a reserva em voo (ver _warmupReserved acima) ao
+    // histórico já persistido — sem isso, 2 requisições concorrentes pro
+    // mesmo sender liam a MESMA contagem e as DUAS passavam.
     const _wCap = warmupCapForSender(s.addedAt);
+    let _releaseWarmup = null;
     if (_wCap !== null) {
       const _today = todayStr();
+      const _wKey = ownerEmail+"|"+s.email;
       const _sentToday = getHist(ownerEmail).filter(h => h.dateStr === _today && h.senderEmail === s.email).length;
-      if (_sentToday >= _wCap) throw new Error("WARMUP_CAP_REACHED");
+      const _wReserved = _warmupReserved.get(_wKey)||0;
+      if (_sentToday+_wReserved >= _wCap) throw new Error("WARMUP_CAP_REACHED");
+      _warmupReserved.set(_wKey,_wReserved+1);
+      _releaseWarmup = _makeWarmupReleaser(_wKey);
+      setTimeout(_releaseWarmup, 30_000); // rede de segurança — o chamador libera explícito bem antes disso
     }
     if (s.access_token && s.token_expiry && Date.now() < s.token_expiry - 120_000) {
-      return { token: s.access_token, senderEmail: s.email };
+      return { token: s.access_token, senderEmail: s.email, releaseWarmup: _releaseWarmup };
     }
     try {
       const token = await refreshSenderToken(ownerEmail, s.email);
-      return { token, senderEmail: s.email };
+      return { token, senderEmail: s.email, releaseWarmup: _releaseWarmup };
     } catch(e) {
       // 🔐 v165: só marca RECONECTAR quando o GOOGLE confirmou a queda
       // (invalid_grant/revoked) — erro de rede/timeout NÃO mata a conta
@@ -11083,15 +11113,21 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
       if(requestedSender&&requestedSender!==s.user_email){
         // Enviar via email extra especificado manualmente pelo usuário
         try{
-          const{token:senderTok,senderEmail:usedEmail}=await getSenderToken(s.user_email,requestedSender);
+          const{token:senderTok,senderEmail:usedEmail,releaseWarmup}=await getSenderToken(s.user_email,requestedSender);
           if(senderTok){
             actualSenderEmail=usedEmail;
-            const raw2=buildMimeWithHeaders({to:toEmail,subject:d.subject,text:d.message,fromName:d.fromName||p.name||s.user_name||"H2BApply",fromEmail:usedEmail,attachments});
-            const payload2={raw:raw2};
-            const{status:gs2,body:gb2}=await httpsReq({hostname:"gmail.googleapis.com",path:"/gmail/v1/users/me/messages/send",method:"POST",headers:{"Authorization":"Bearer "+senderTok,"Content-Type":"application/json"}},payload2);
-            if(gb2?.error)throw new Error(gb2.error.message||JSON.stringify(gb2.error));
-            if(gs2!==200)throw new Error("Gmail HTTP "+gs2);
-            r=gb2;
+            // 🚨 v237n: libera a reserva de aquecimento (getSenderToken) assim
+            // que ESTA tentativa de envio termina, sucesso ou falha — nunca
+            // espera a rede de segurança de 30s, senão um envio já concluído
+            // fica contado 2x (no hist real E na reserva) até o timer estourar.
+            try{
+              const raw2=buildMimeWithHeaders({to:toEmail,subject:d.subject,text:d.message,fromName:d.fromName||p.name||s.user_name||"H2BApply",fromEmail:usedEmail,attachments});
+              const payload2={raw:raw2};
+              const{status:gs2,body:gb2}=await httpsReq({hostname:"gmail.googleapis.com",path:"/gmail/v1/users/me/messages/send",method:"POST",headers:{"Authorization":"Bearer "+senderTok,"Content-Type":"application/json"}},payload2);
+              if(gb2?.error)throw new Error(gb2.error.message||JSON.stringify(gb2.error));
+              if(gs2!==200)throw new Error("Gmail HTTP "+gs2);
+              r=gb2;
+            }finally{ if(releaseWarmup)releaseWarmup(); }
           }else{r=await gmailSendWithThread(sid,{to:toEmail,subject:d.subject,text:d.message,fromName:d.fromName||p.name||s.user_name||"H2BApply",attachments});}
         }catch(e2){
           // 🛡️ v73: a conta ESCOLHIDA pelo usuário está em aquecimento — cair

@@ -3129,3 +3129,47 @@ admin nunca recebe código) continuam verdes sem alteração. `npm test`
 100% verde, `check-duplicates.js`/`check-xss-guard.js` sem achados.
 Sem bump de sw.js (mudança 100% server-side).
 
+## v237n — teto de aquecimento do envio manual era check-then-act sem reserva (achado Média de gmail-envio) (20/09/2026)
+
+O teto de aquecimento (13a — conta Gmail recém-conectada manda pouco
+nos primeiros dias) do envio manual com sender EXPLÍCITO
+(`getSenderToken`) lia `getHist()` e comparava com o teto na hora,
+sem reservar nada — um check-then-act clássico. Diferente do limite
+diário TOTAL (`_manualSendReserved`, corrigido desde o v18-FIX pelo
+incidente real "180 envios em 3h"), 2+ requisições CONCORRENTES pro
+MESMO sender em aquecimento liam a MESMA contagem "antiga" (o envio
+em voo ainda não tinha virado uma entrada real no histórico) e todas
+passavam, furando o teto por uma rajada de e-mails além do
+planejado — a mesma classe de corrida, só que no aquecimento em vez
+do limite do plano.
+
+Corrigido com o mesmo padrão de reserva do v18-FIX, adaptado: como
+`getSenderToken` tem vários chamadores e não existe um hook único de
+"terminou de enviar" chegando até ele, a reserva por (dono+sender)
+agora é liberada por uma função DE UM TIRO SÓ (`_makeWarmupReleaser`,
+idempotente — 2ª chamada não faz nada) que o `/api/send` chama num
+`finally` assim que a tentativa de envio de verdade termina (sucesso
+OU falha) — nunca espera. Um `setTimeout` de 30s continua existindo
+só como rede de segurança pro raro caminho que nunca chega no
+`finally` (ex. o extra tem token válido mas a chamada nunca é
+completada por algum motivo fora do fluxo normal).
+
+**Achado durante o próprio desenvolvimento do teste** (por isso "cuidado
+extra" valeu a pena): a 1ª versão da correção só tinha o `setTimeout`
+de 30s, sem release explícito — como o envio real (mesmo pro Google
+FALSO da suíte) termina rápido, o hist real já contava o envio E a
+reserva ainda contava o MESMO envio (só expirava em 30s), dobrando a
+contagem — 16 envios concorrentes com teto 15 só deixavam 8 passarem
+em vez de 15. Corrigido antes de qualquer commit com o release
+explícito acima; o teste já nasceu provando o número CERTO.
+
+Testes: 1 check comportamental REAL — 16 chamadas a `/api/send`
+DISPARADAS EM PARALELO (`Promise.all`, 16 conexões TCP distintas)
+pro MESMO sender em aquecimento (conta recém-conectada, teto=15/dia)
+prova que no MÁXIMO 15 saem de verdade pelo Gmail (confere
+`GOOGLE.envios` pelo remetente) e o excedente é recusado com
+`WARMUP_CAP_REACHED` (429) — nunca mais que o teto, mesmo sob
+corrida real. `npm test` 100% verde, `check-duplicates.js`/
+`check-xss-guard.js` sem achados. Sem bump de sw.js (mudança 100%
+server-side).
+

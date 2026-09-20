@@ -6731,6 +6731,29 @@ async function drillBloqueioComprasNovas() {
           `e2 tem=${/if\(e2\.noResponse\)/.test(_e2Block)} e3 tem=${/if\(e3\.noResponse\)/.test(_e3Block)}`);
       }
 
+      // ── 2f) 🚨 v237n (achado de auditoria — Média, gmail-envio): o teto de
+      // AQUECIMENTO (13a) do sender extra explícito era check-then-act SEM
+      // reserva — diferente do limite diário total (_manualSendReserved,
+      // v18-FIX), 2+ requisições CONCORRENTES pro MESMO sender liam a MESMA
+      // contagem "antiga" (getHist ainda sem os envios em voo) e todas
+      // passavam, furando o teto. Conta recém-conectada (addedAt=agora) tem
+      // cap=15/dia (warmupCapForSender) — dispara 16 envios EM PARALELO
+      // (Promise.all, TCP separado cada um) pro mesmo sender e prova que no
+      // MÁXIMO 15 saem de verdade; o 16º (ou mais, se a corrida se repetir)
+      // é recusado com WARMUP_CAP_REACHED, nunca furando o teto.
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "warmup237n@test.com", name: "Warmup 237n", refreshToken: "rt-warmup237n", plan: "doublepro", vip: { active: true, plan: "doublepro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 }, senderEmails: [{ email: "sndwarmup237n@gmail.com", active: true, access_token: "at-warmup237n", token_expiry: Date.now() + 3600_000, addedAt: Date.now() }] });
+      await req2("POST", "/api/cv/upload", { base64: Buffer.from("%PDF-1.4 " + "warmup237n ".repeat(300)).toString("base64"), name: "CV_Warmup237n.pdf", cvType: "resume" });
+      await req2("POST", "/api/settings", { manualCdOff: true });
+      GOOGLE.limpar();
+      const _w237nResults = await Promise.all(Array.from({ length: 16 }, (_, i) =>
+        req2("POST", "/api/send", { to: `rh${i}@warmup237n-test.com`, subject: "Candidatura", message: "Olá, gostaria de me candidatar.", senderEmail: "sndwarmup237n@gmail.com", jobTitle: "Cook", company: `Empresa Warmup ${i}`, caseNum: `H-400-WARMUP237N-${i}` })));
+      const _w237nOk = _w237nResults.filter((r) => r.status === 200 && r.json?.ok === true).length;
+      const _w237nCap = _w237nResults.filter((r) => r.status === 429 && r.json?.warmup === true).length;
+      check("🚨 v237n: 16 envios manuais CONCORRENTES pro MESMO sender em aquecimento (cap=15/dia) — no máximo 15 saem de verdade pelo Gmail; o excedente é recusado (429 warmup), nunca fura o teto por causa da corrida",
+        _w237nOk === 15 && _w237nCap >= 1 && _w237nOk + _w237nCap === 16 &&
+        GOOGLE.envios.filter((e2) => (e2.de || "").includes("sndwarmup237n")).length === 15,
+        JSON.stringify({ ok: _w237nOk, cap: _w237nCap, total: _w237nResults.length, enviosPeloSender: GOOGLE.envios.filter((e2) => (e2.de || "").includes("sndwarmup237n")).length, statuses: _w237nResults.map((r) => r.status) }).slice(0, 400));
+
       // ── 3) FILA AUTOMÁTICA DE 3 VAGAS: envia de verdade e a fila diminui ─
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "auto20@test.com", name: "Auto 20", refreshToken: "rt-auto20", plan: "doublepro", vip: { active: true, plan: "doublepro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 } });
       const _cvAuto20 = await req2("POST", "/api/cv/upload", { base64: Buffer.from("%PDF-1.4 " + "auto20 ".repeat(300)).toString("base64"), name: "CV_Auto20.pdf", cvType: "resume" });
