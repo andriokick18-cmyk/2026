@@ -2436,3 +2436,28 @@ auto-cura ANTES do estado vazio). `npm test` 100% verde,
 `check-duplicates.js`/`check-xss-guard.js` sem achados. sw.js
 bumpado (v90→v91).
 
+## v232 — achado Média da auditoria (segurança/confiabilidade UX): excluir perfil fingia sucesso mesmo recusado (20/09/2026)
+
+`deleteProfile()` descartava por completo a resposta do
+`/api/profiles/delete` — nem olhava status nem corpo. O servidor
+RECUSA (400) apagar o último perfil restante ("Você precisa de pelo
+menos 1 perfil configurado. Edite-o em vez de apagar."), regra que
+existe porque um usuário sem NENHUM perfil não tem assunto/corpo de
+e-mail e o envio cairia no fallback genérico. Mesmo com essa recusa, a
+função removia o card da tela, fechava o editor e mostrava "Perfil
+excluído ✓" — o usuário achava que tinha apagado; na próxima vez que
+`UPROFILES` fosse recarregado (ex.: reabrindo a página, ou pelo
+`_refreshProfiles()` do v231), o perfil REAPARECIA sozinho, parecendo
+um bug de sincronização quando na verdade a exclusão nunca aconteceu.
+
+Corrigido com o mesmo padrão já usado em `pauseAuto`/`resumeAuto`/
+`stopAuto` (v227) e `doClearHist` (v229): `jsonSafe(r)` + checagem
+explícita de `d.ok` ANTES de qualquer mudança otimista na tela; em
+falha, mostra o erro real do servidor (ou "sessão expirada") em vez de
+fingir sucesso.
+
+Testes: 1 check estrutural no smoke confirmando a ordem correta
+(checagem de `d.ok` vem antes da mutação de `UPROFILES`). `npm test`
+100% verde, `check-duplicates.js`/`check-xss-guard.js` sem achados.
+sw.js bumpado (v91→v92).
+

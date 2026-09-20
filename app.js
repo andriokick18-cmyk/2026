@@ -3879,13 +3879,21 @@ async function saveProfileFromEditor(){
   }
 }
 
+// 🚨 v232 (achado de auditoria — Média): a resposta do servidor era
+// descartada — o servidor RECUSA apagar o último perfil restante (400,
+// "Você precisa de pelo menos 1 perfil configurado"), mas essa função
+// removia o card da tela e mostrava "Perfil excluído ✓" mesmo assim. A
+// pessoa achava que tinha apagado, o perfil reaparecia sozinho no próximo
+// carregamento (parecia bug de sincronização, era só a UI mentindo).
 async function deleteProfile(id){
   if(!id||!confirm("Excluir este perfil? Esta ação não pode ser desfeita."))return;
   try{
-    await fetch("/api/profiles/delete",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({id})});
+    const r=await fetch("/api/profiles/delete",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({id})});
+    const d=await jsonSafe(r);
+    if(!d.ok)throw new Error(d.error||"Não foi possível excluir o perfil.");
     UPROFILES=UPROFILES.filter(p=>p.id!==id);U.profiles=UPROFILES;
     closeProfileEditor();renderProfiles();toast("Perfil excluído","g");
-  }catch(e){toast("Erro: "+e.message,"r");}
+  }catch(e){toast(_sessionDroppedMsg(e)?"Sessão expirada — faça login novamente.":("Erro: "+(e?.message||e)),"r");}
 }
 
 // v18-FIX: duplicateProfile() removida — no sistema de perfil único (1 por

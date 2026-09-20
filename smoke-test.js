@@ -4673,6 +4673,17 @@ async function drillBloqueioComprasNovas() {
       check("🚨 v231 (estrutural): renderProfiles() AUTO-CURA UPROFILES a partir de U.profiles ANTES de decidir 'nenhum perfil criado' — nunca mais mostra a tela mais grave do site (perfil é essencial pro Automático) só porque UPROFILES ficou vazio por uma falha em OUTRA tela",
         _idxAutoCura >= 0 && _idxVazio >= 0 && _idxAutoCura < _idxVazio,
         JSON.stringify({ idxAutoCura: _idxAutoCura, idxVazio: _idxVazio }));
+
+      // 🚨 v232 (achado de auditoria — Média): deleteProfile() descartava a
+      // resposta do servidor — o servidor RECUSA apagar o último perfil
+      // restante (400), mas a função removia o card da tela e mostrava
+      // "Perfil excluído ✓" mesmo assim (o perfil reaparecia sozinho no
+      // próximo carregamento, parecendo um bug de sincronização).
+      const _fnDeleteProfile = (_appSrcV229.match(/async function deleteProfile\(id\)\{[\s\S]*?\n\}/) || [""])[0];
+      check("🚨 v232 (estrutural): deleteProfile() checa jsonSafe+d.ok ANTES de remover o card da tela e mostrar sucesso — uma recusa do servidor (ex.: último perfil restante) nunca mais finge que apagou",
+        /jsonSafe\(r\)/.test(_fnDeleteProfile) && /if\(!d\.ok\)throw/.test(_fnDeleteProfile) &&
+        _fnDeleteProfile.indexOf("if(!d.ok)throw") < _fnDeleteProfile.indexOf("UPROFILES=UPROFILES.filter"),
+        _fnDeleteProfile.slice(0, 220));
     }
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5c@test.com", name: "MC5 C" });
     const mc5d1 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-um").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
