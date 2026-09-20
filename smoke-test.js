@@ -957,6 +957,18 @@ async function drillBloqueioComprasNovas() {
     check("🔑 v175: recuperação — resposta GENÉRICA igual pra e-mail sem conta e com conta (sem enumeração); o código de senha só sai pra quem tem conta",
       _recNo.status === 200 && _recOk.status === 200 && _recNo.body === _recOk.body && /^\d{6}$/.test(_codRec || "") && !lerOutbox().some((x) => x.to === "ninguem.v175@gmail.com"),
       `no=${_recNo.status} ok=${_recOk.status} cod=${_codRec}`);
+    // 🚨 v237m (achado de auditoria — Média, auth): a anti-enumeração de cima
+    // provava só o caso feliz (conta existe × não existe, 1 pedido cada).
+    // O vazamento real era noutro lugar: pedir um 2º código pro MESMO e-mail
+    // dentro de 60s (REENVIO_MS) SÓ dava 429 "aguarde" pra quem TEM conta —
+    // pra quem não tem, a rota nunca chega no rate-limit por e-mail (cai
+    // direto no `else`, sempre 200). Um status diferente aqui já entregava
+    // se o e-mail tem conta, sem precisar medir tempo nenhum.
+    const _recDup = await req2("POST", "/api/senha/enviar-codigo", { email: "fulano.v175@gmail.com" });
+    check("🚨 v237m: pedir um 2º código pro MESMO e-mail dentro da janela de reenvio (antes um 429 só pra quem TEM conta) continua devolvendo 200 com a MESMA mensagem genérica — o rate-limit por e-mail ainda vale (nenhum código novo é gerado/enviado), só não aparece mais na resposta HTTP",
+      _recDup.status === 200 && _recDup.body === _recOk.body &&
+      ultimoCodigo("fulano.v175@gmail.com", "codigo_senha") === _codRec,
+      `status=${_recDup.status} corpoIgual=${_recDup.body === _recOk.body} codigoMudou=${ultimoCodigo("fulano.v175@gmail.com", "codigo_senha") !== _codRec}`);
     const _redefBad = await req2("POST", "/api/senha/redefinir", { email: "fulano.v175@gmail.com", codigo: "111111", novaSenha: "novasenha123" });
     const _redefCurta = await req2("POST", "/api/senha/redefinir", { email: "fulano.v175@gmail.com", codigo: _codRec, novaSenha: "123" });
     const _redefOk = await req2("POST", "/api/senha/redefinir", { email: "fulano.v175@gmail.com", codigo: _codRec, novaSenha: "novasenha123" });

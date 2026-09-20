@@ -8122,6 +8122,25 @@ filtrar();
   if(pathname==="/api/senha/enviar-codigo"&&req.method==="POST"){
     const _ip=_clientIp(req);
     if(rateLimit("senhacod_"+_ip,10,3600_000))return json(res,429,{error:"Muitos pedidos deste aparelho. Aguarde 1 hora."});
+    // 🚨 v237m (achado de auditoria — Média, auth): a anti-enumeração desta
+    // rota era ILUSÓRIA. O comentário já dizia "mesmo tempo de resposta —
+    // sem enumeração", mas só o ramo SEM conta esperava um floor fixo de
+    // 400ms — o ramo COM conta fazia um `await NOTIF.sendMail(...)` de
+    // VERDADE (chamada de rede real pro Gmail, normalmente MAIS lenta que
+    // 400ms) antes de responder, e ainda por cima podia devolver um 429
+    // (rate-limit por e-mail) ou um 502 (falha no envio) — 2 status codes
+    // que só existiam nesse ramo. Cronometrar a resposta, ou só olhar o
+    // status, dava pra descobrir se um e-mail tem conta — o oposto do que
+    // a régua 13d/13e (gmail.send-only, nunca lê inbox pra confirmar nada)
+    // já tinha decidido que este site NUNCA revela.
+    // Corrigido: o e-mail agora sai em FIRE-AND-FORGET (nunca aguardado) —
+    // nem o tempo de rede do envio nem uma falha dele chegam a influenciar
+    // a resposta HTTP; o rate-limit por e-mail continua valendo pra
+    // proteger a caixa de quem tem conta, só que em silêncio (nunca vira
+    // um 429 visível). TODO caminho cai no MESMO floor de 400ms e na MESMA
+    // resposta genérica — sem conta, com conta, ou rate-limitado, é tudo
+    // idêntico pra quem está do outro lado da rede.
+    const _t0=Date.now();
     try{
       const d=JSON.parse((await readBody(req))||"{}");
       const email=String(d.email||"").trim().toLowerCase();
@@ -8138,12 +8157,17 @@ filtrar();
       // isAdminVip(u) cobre os 2 formatos (checa u.isAdmin OU isAdminEmail).
       if(u&&!isAdminVip(u)){
         const pode=NOTIF.podeEnviar("senha",email);
-        if(!pode.ok)return json(res,429,{error:pode.motivo==="aguarde"?`Aguarde ${pode.segundos}s pra pedir outro código.`:"Limite de códigos atingido. Tente de novo em alguns minutos.",segundos:pode.segundos});
-        const c=NOTIF.gerarCodigo("senha",email);
-        const tpl=NOTIF.templateCodigoSenha({codigo:c.codigo});
-        try{await NOTIF.sendMail({to:email,subject:tpl.subject,text:tpl.text,tipo:"codigo_senha"});}
-        catch(e){console.warn("[senha/enviar-codigo]",e.message);return json(res,502,{error:"Não conseguimos enviar o e-mail agora. Tente de novo em instantes."});}
-      } else { await new Promise(r=>setTimeout(r,400)); } // mesmo tempo de resposta — sem enumeração
+        if(pode.ok){
+          const c=NOTIF.gerarCodigo("senha",email);
+          const tpl=NOTIF.templateCodigoSenha({codigo:c.codigo});
+          NOTIF.sendMail({to:email,subject:tpl.subject,text:tpl.text,tipo:"codigo_senha"})
+            .catch(e=>console.warn("[senha/enviar-codigo] falha no envio (resposta segue genérica, anti-enumeração):",e.message));
+        } else {
+          console.warn(`[senha/enviar-codigo] rate-limit por e-mail atingido (${email}) — resposta segue genérica (anti-enumeração)`);
+        }
+      }
+      const _falta=400-(Date.now()-_t0);
+      if(_falta>0)await new Promise(r=>setTimeout(r,_falta));
       return json(res,200,{ok:true,msg:"Se existir uma conta com esse e-mail, o código foi enviado. Vale 5 minutos."});
     }catch(e){return json(res,400,{error:"Corpo inválido: "+e.message});}
   }

@@ -3082,3 +3082,50 @@ MESMO `httpsReq` com a MESMA marca. `npm test` 100% verde,
 sw.js (mudança 100% server-side — `httpsReq` é usado só pelo
 back-end).
 
+## v237m — anti-enumeração ilusória em /api/senha/enviar-codigo (achado Média de auth) (20/09/2026)
+
+O comentário da rota já dizia "mesmo tempo de resposta — sem
+enumeração", mas a promessa não era cumprida de verdade. Só o ramo
+SEM conta esperava um floor fixo de 400ms antes de responder; o ramo
+COM conta fazia um `await NOTIF.sendMail(...)` de VERDADE — uma
+chamada de rede real pro Gmail, normalmente mais lenta (e mais
+variável) que 400ms — e ainda podia devolver 2 status codes que só
+existiam nesse ramo: 429 (rate-limit por e-mail, `NOTIF.podeEnviar`)
+e 502 (falha no envio). Cronometrar a resposta, ou simplesmente olhar
+o status, dava pra descobrir se um e-mail tem conta no H2BApply —
+o oposto do que a régua 13d/13e (gmail.send-only, nunca lê inbox pra
+confirmar nada) já tinha decidido que este site nunca revela.
+(Achado irmão da mesma auditoria, `/api/email/enviar-codigo` devolver
+409 explícito "já existe uma conta com esse e-mail" no CADASTRO, foi
+avaliado e **deixado como está de propósito** — é um padrão comum e
+aceito na imensa maioria dos sites de cadastro, o oposto de esconder
+isso pioraria bastante a UX de alguém tentando recriar a própria
+conta, e o risco real pra este produto — sem dado financeiro/sensível
+além do que a candidatura de emprego já pede — é baixo; mudar teria
+MAIOR risco de UX por MENOR ganho de segurança, o contrário da régua
+de decisão do dono.)
+
+Corrigido na raiz: o envio do e-mail agora é FIRE-AND-FORGET
+(`NOTIF.sendMail(...).catch(...)`, nunca `await`) — nem o tempo de
+rede do envio nem uma falha dele chegam a influenciar a resposta
+HTTP. O rate-limit por e-mail (`podeEnviar`) continua valendo pra
+proteger a caixa de quem tem conta contra spam de código, só que em
+silêncio (log no console, nunca um 429 visível). TODOS os caminhos —
+sem conta, com conta enviando com sucesso, com conta rate-limitada —
+caem no MESMO floor de 400ms e na MESMA resposta genérica 200. Em
+`npm test` (modo `isTest` do mod-notif.js) o envio pro outbox é
+síncrono (sem nenhum `await` real dentro do ramo de teste), então o
+fire-and-forget não muda nada pro comportamento já provado pelos
+testes existentes — só fecha o buraco que só existe com rede de
+verdade (produção).
+
+Testes: 1 check novo — pedir um 2º código pro MESMO e-mail dentro da
+janela de reenvio (antes um 429 só pra quem TEM conta) continua 200
+com a MESMA mensagem genérica do 1º pedido, e o código pendente não
+muda (prova que o rate-limit continua funcionando de verdade por
+baixo, só não vaza mais pra fora). Os checks existentes (resposta
+idêntica pra e-mail com/sem conta, código só sai pra quem tem conta,
+admin nunca recebe código) continuam verdes sem alteração. `npm test`
+100% verde, `check-duplicates.js`/`check-xss-guard.js` sem achados.
+Sem bump de sw.js (mudança 100% server-side).
+
