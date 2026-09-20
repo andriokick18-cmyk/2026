@@ -4719,6 +4719,14 @@ async function drillBloqueioComprasNovas() {
     check("🚨 v234: reenviar comprovante tem rate limit (5/hora por usuário) — a 6ª tentativa seguida leva 429, protegendo disco e cota de IA de um script hostil martelando a rota",
       _rl234Last.status === 429 && /Muitos reenvios/.test(_rl234Last.json?.error || ""),
       JSON.stringify({ status: _rl234Last.status, err: _rl234Last.json?.error }).slice(0, 160));
+
+    // 🧹 v235 (achado de auditoria — Baixa): "SEM_COMPROVANTE" nunca era um
+    // veredito de verdade — _geminiComprovanteParse e o gancho de teste só
+    // produzem ERRO/ILEGIVEL/CONFERE/DIVERGENCIA. Guarda permanente contra
+    // reintroduzir código morto (a string nunca dava match em lugar nenhum).
+    check("🧹 v235 (estrutural): 'SEM_COMPROVANTE' não existe mais em lugar nenhum do server.js — era um veredito que nunca era produzido (código morto no allowlist de leitura ruim)",
+      !_srvSrc.includes("SEM_COMPROVANTE"),
+      "achado 'SEM_COMPROVANTE' de volta no server.js — confirmar se virou um veredito real antes de reintroduzir");
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5c@test.com", name: "MC5 C" });
     const mc5d1 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-um").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     const mc5d2 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-dois").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });

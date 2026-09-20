@@ -2511,3 +2511,32 @@ mesmo pedido — a 6ª leva 429). `npm test` 100% verde,
 `check-duplicates.js`/`check-xss-guard.js` sem achados. Mudança 100%
 em server.js — sem bump de sw.js.
 
+## v235 — achado Baixa da auditoria (pagamento/admin): veredito código morto (20/09/2026 — FECHA os 10 achados das 3 auditorias)
+
+O allowlist de "leitura ruim" na aprovação manual de pedido
+(`["DIVERGENCIA","ILEGIVEL","SEM_COMPROVANTE"]`) incluía um 3º
+veredito que nunca existiu de verdade — `_geminiComprovanteParse`
+(leitura real da IA) e o gancho de teste (`TESTE_COMPROVANTE:`) só
+produzem `ERRO`/`ILEGIVEL`/`CONFERE`/`DIVERGENCIA`. Confirmado por grep
+completo: nenhuma outra linha do arquivo jamais atribuía esse veredito
+a `preCheck.veredito`. E mesmo que existisse, o cenário que o nome
+sugere ("pedido sem comprovante nenhum") já é coberto de outro jeito —
+`preCheckComprovante` nunca roda sem `_compB64`, então `pd.preCheck`
+simplesmente fica `null`/undefined, e a checagem já é `_pc&&[...]`
+(curto-circuita antes de olhar a lista). Removido — código morto puro,
+zero mudança de comportamento observável.
+
+Testes: guarda estrutural permanente no smoke (a string não pode mais
+aparecer em lugar nenhum do server.js). `npm test` 100% verde,
+`check-duplicates.js`/`check-xss-guard.js` sem achados. Mudança 100%
+em server.js — sem bump de sw.js.
+
+**Com este achado fecham os 10 confirmados pelas 3 auditorias
+paralelas do v225** (envio/automação, pagamento/admin, segurança/
+confiabilidade UX): v226 (Crítica), v227+v230 (Alta/Média, envio),
+v228 (Alta, ban), v229 (Alta, reset), v232 (Média, excluir perfil),
+v233 (Média, /api/debug público), v234 (Média, rate limit) e este
+v235 (Baixa). Junto com os 4 achados do dono testando ao vivo (v225
+login+tutorial, v227b Planos, v231 badge de Currículos), são 14
+correções reais entregues nesta sessão, todas testadas e no ar.
+

@@ -10365,13 +10365,19 @@ filtrar();
         }
         // 💼 MC5-P1 item 1 (auditoria 29/08): a aprovação agora ENXERGA o
         // pré-check. Nada bloqueia definitivo — mas aprovar leitura ruim
-        // (DIVERGENCIA/ILEGIVEL/SEM_COMPROVANTE) ou valor lido ≠ valor do
-        // pedido exige confirmação explícita, VENDO os números (mesmo
-        // padrão do confirmarDuplicado). O robô avisa, o humano decide.
+        // (DIVERGENCIA/ILEGIVEL) ou valor lido ≠ valor do pedido exige
+        // confirmação explícita, VENDO os números (mesmo padrão do
+        // confirmarDuplicado). O robô avisa, o humano decide.
+        // 🧹 v235 (achado de auditoria — Baixa): removido um 3º veredito
+        // deste allowlist que nunca existia de verdade — _geminiComprovanteParse
+        // e o gancho de teste só produzem ERRO/ILEGIVEL/CONFERE/DIVERGENCIA,
+        // e pedido sem comprovante nenhum nunca chega a ter `preCheck`
+        // setado (a checagem já é `_pc&&[...]`, então _pc falsy já cobria
+        // esse caso). Era código morto — nunca dava match.
         if(!d.confirmarDivergencia){
           const _pc=pd.preCheck||null;
           const _vLido=(_pc&&_pc.valorLido!=null)?parseFloat(_pc.valorLido):null;
-          const _ruim=_pc&&["DIVERGENCIA","ILEGIVEL","SEM_COMPROVANTE"].includes(String(_pc.veredito||"").toUpperCase());
+          const _ruim=_pc&&["DIVERGENCIA","ILEGIVEL"].includes(String(_pc.veredito||"").toUpperCase());
           const _difere=_vLido!=null&&Math.abs(_vLido-(pd.valorTotal||0))>=0.01;
           if(_ruim||_difere){
             return json(res,409,{divergencia:true,veredito:_pc?.veredito||null,valorLido:_vLido,valorPedido:pd.valorTotal||0,
