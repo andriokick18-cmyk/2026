@@ -2989,3 +2989,36 @@ sejam tentados na mesma chamada) — confere que os DOIS terminam com
 `npm test` 100% verde, `check-duplicates.js`/`check-xss-guard.js` sem
 achados. Sem bump de sw.js (server-side only).
 
+## v237k — vip/gift-days sem trava de duplo-clique nem logAdminAction (achado Alta de admin) (20/09/2026)
+
+`POST /api/admin/vip/gift-days` (o botão do admin pra dar dias de
+cortesia — "site fora do ar", compensação de bug, etc.) mexe no MESMO
+par `vip.manualExpires`/`vip.autoExpires` que `vip/activate`,
+`set-plan` e `vip/set-expiry` — mas era a ÚNICA das 4 rotas sem a
+trava `_adminVipActivateLock` (duplo-clique/retry de rede soma a
+cortesia 2x em silêncio, mesma classe de bug que motivou a trava nas
+rotas irmãs — o "caso Cleiton", 13r) e sem `logAdminAction` (a
+concessão nunca aparecia em `/api/admin/audit`, só num `console.log`
+efêmero — não dava pra ver quem deu quantos dias pra quem, nem
+reverter pelo botão ↩️ que todas as outras concessões administrativas
+já têm).
+
+Corrigido: a rota agora abre a trava `_adminVipActivateLock` (chave
+`adminEmail|targetEmail`, TTL 5s — mesmo padrão das 3 rotas irmãs)
+logo após validar o motivo e ANTES de tocar no VIP do usuário,
+recusando um 2º clique em cima do 1º com 409 `duplicate:true`; e grava
+`logAdminAction(admin,"vip_gift_days",email,snapshotAntes,
+snapshotDepois,motivo)` logo após o `setUser`, com snapshot de
+ANTES capturado antes de qualquer mudança (o mesmo padrão de "nunca
+reusar um `getUser()` velho depois de um helper que já lê+grava" que
+motivou o fix do v237j, aplicado aqui preventivamente).
+
+Testes: 3 checks comportamentais REAIS no smoke — 1º clique concede
+os dias normalmente; 2º clique EM SEGUIDA no MESMO usuário é
+bloqueado (409, `duplicate:true`) — nunca mais soma a cortesia 2x por
+duplo-clique; e `GET /api/admin/audit` mostra a entrada
+`vip_gift_days` com o e-mail do usuário — a concessão passa a ser
+auditável e reversível, antes era invisível fora do log de console.
+`npm test` 100% verde, `check-duplicates.js`/`check-xss-guard.js` sem
+achados. Sem bump de sw.js (server-side only).
+

@@ -4874,6 +4874,22 @@ async function drillBloqueioComprasNovas() {
     check("🚨 v237: 2º clique em SEGUIDA no MESMO usuário é BLOQUEADO (409, mesma trava do set-plan/v141) — nunca mais duplica addCredito()/logAdminAction() por duplo-clique",
       v237se2.status === 409 && v237se2.json?.duplicate === true, `status=${v237se2.status} body=${v237se2.body.slice(0, 140)}`);
 
+    // ═══ 🚨 v237k (achado de uma 3ª rodada de auditoria — Alta, admin):
+    // vip/gift-days mexe no MESMO par vip.manualExpires/autoExpires que
+    // vip/activate, set-plan e vip/set-expiry — mas era a única rota sem a
+    // trava de duplo-clique (_adminVipActivateLock) nem logAdminAction.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "v237gift@test.com", name: "V237 Gift" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "andrio.usa2026@gmail.com", name: "Dono", isAdmin: true });
+    const v237g1 = await req2("POST", "/api/admin/vip/gift-days", { email: "v237gift@test.com", dias: 3, motivo: "site fora do ar (teste v237k)" });
+    const v237g2 = await req2("POST", "/api/admin/vip/gift-days", { email: "v237gift@test.com", dias: 3, motivo: "site fora do ar (teste v237k)" });
+    check("🚨 v237k: 1º clique em vip/gift-days funciona normalmente", v237g1.json?.ok === true, v237g1.body.slice(0, 140));
+    check("🚨 v237k: 2º clique em SEGUIDA no MESMO usuário é BLOQUEADO (409, mesma trava do set-expiry/set-plan) — nunca mais soma a cortesia 2x por duplo-clique",
+      v237g2.status === 409 && v237g2.json?.duplicate === true, `status=${v237g2.status} body=${v237g2.body.slice(0, 140)}`);
+    const v237gAudit = await req2("GET", "/api/admin/audit");
+    const v237gAuditEntry = (v237gAudit.json?.audit || []).find(a => a.action === "vip_gift_days" && a.targetEmail === "v237gift@test.com");
+    check("🚨 v237k: a concessão de dias grátis fica registrada em /api/admin/audit (reversível pelo ↩️ — antes era invisível, só o console.log efêmero)",
+      !!v237gAuditEntry, JSON.stringify({ achou: !!v237gAuditEntry }));
+
     // ═══ 🚨 v237 (achado de auditoria — Alta, vagas/filtros): loadSheetMeta()
     // (a busca manual de vagas, aba planilha) não tinha NENHUMA proteção
     // contra resposta de um fetch antigo chegando depois de uma troca de

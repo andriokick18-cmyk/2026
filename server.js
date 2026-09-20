@@ -12140,9 +12140,22 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
       if(!(parseInt(d.dias,10)>0))return json(res,400,{error:"Informe quantos dias (1 a 60)."});
       const motivo=String(d.motivo||"").trim();
       if(motivo.length<3)return json(res,400,{error:"Informe o motivo (obrigatório — ex.: 'site fora do ar 2 dias')."});
+      // 🚨 v237 (achado de auditoria — Alta, admin): esta rota mexe no MESMO
+      // par vip.manualExpires/autoExpires que vip/activate, set-plan e
+      // vip/set-expiry — mas era a única sem a trava de duplo-clique
+      // (_adminVipActivateLock) nem logAdminAction. Duplo-clique/retry somava
+      // a cortesia 2x em silêncio (mesma classe do "caso Cleiton" que já
+      // motivou a trava nas rotas irmãs); sem logAdminAction, a concessão
+      // nunca aparecia em /api/admin/audit e não dava pra reverter pelo ↩️.
+      const _giftKey=s.user_email+"|"+email;
+      if(_adminVipActivateLock.has(_giftKey))
+        return json(res,409,{error:"Concessão em andamento para este usuário. Aguarde alguns segundos e confira antes de tentar de novo.",duplicate:true});
+      _adminVipActivateLock.set(_giftKey,Date.now());
+      setTimeout(()=>_adminVipActivateLock.delete(_giftKey),5000);
       const target=getUser(email);
       if(!target)return json(res,404,{error:"Usuário não encontrado."});
       const now=Date.now(),DAYg=86400_000;
+      const _audBeforeGift=_vipSnapshot(target); // v19: snapshot pra reversão
       const v={...(target.vip||{})};
       // Estende o manual sempre; o automático só se o cliente JÁ tem automático
       // (cortesia espelha o que ele contratou — não dá recurso novo de graça).
@@ -12156,6 +12169,7 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
       v.giftHistory=[...(v.giftHistory||[]).slice(-19),{em:now,dias,motivo:motivo.slice(0,160),
         por:_sessAdminNome(s)}];
       setUser(email,{vip:v});
+      logAdminAction(_sessAdminEmail(s),"vip_gift_days",email,_audBeforeGift,_vipSnapshot(getUser(email)),`+${dias}d cortesia — ${motivo}`);
       console.log(`[gift-days] +${dias}d para ${email} por ${s.user_email} — ${motivo.slice(0,80)}`);
       return json(res,200,{ok:true,dias,manualExpires:v.manualExpires,autoExpires:v.autoExpires||0,
         venceEm:new Date(v.manualExpires).toLocaleDateString("pt-BR")});
