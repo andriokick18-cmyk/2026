@@ -47,11 +47,20 @@ const PUSH_ENABLED = false;
 
 // ── Planos ───────────────────────────────────────────────────────────────
 //   free      → 0 manual   + 0 auto   /dia (SEM envio — só navegar/ver como funciona)
-//   vip       → 200 manual + 0 auto   /dia (só manual pago)
-//   vipro     → 200 manual + 200 auto  /dia (manual + automático)
-//   doublepro → 400 manual + 400 auto  /dia (2 contas Gmail)
+//   vip       → 100 manual + 0 auto   /dia — nome público "Manual" (só manual pago)
+//   vipro     → 100 manual + 100 auto /dia — nome público "Turbo" (manual + automático)
+//   doublepro → 50  manual + 300 auto /dia — nome público "Máximo" (foco em automático)
 //   pro       → 0 manual   + 200 auto  /dia (só auto — legado)
 //   Os limites de manual e auto são INDEPENDENTES — não se misturam.
+// v218 (ORDEM DO DONO, 20/09/2026 — reestruturação da página de Planos):
+// nomes/preços/limites NOVOS pra quem compra a partir de hoje. As CHAVES
+// INTERNAS (vip/vipro/doublepro) continuam as MESMAS de propósito — só o
+// NOME PÚBLICO e os NÚMEROS mudaram (ver NOME_PLANO_PUBLICO, server.js, e
+// PLANO_PRECO_TAB pros preços de 30/60 dias). Isso evita reescrever toda a
+// contabilidade/admin/migração de código por causa de um nome novo — o
+// "contrato congelado" em vip.limits (carimbado na ativação) já garante que
+// quem tinha DoublePro (200/200) ANTES desta mudança continua com 200/200
+// até vencer; só ativação NOVA a partir de agora carimba 50/300.
 // v118 (ORDEM DO DONO, 02/08/2026): tabela NOVA de limites — vale só pra
 // CONTRATAÇÕES a partir da mudança (troca 💎, upgrade, código, set-plan do
 // admin). Quem já tinha plano ativo mantém a tabela antiga até vencer
@@ -63,11 +72,17 @@ const PUSH_ENABLED = false;
 // fallback `|| N` que escondia zero como falsy — CORRIGIDO junto (ver lá).
 const PLAN_LIMITS_NEW = {
   free:      { manual: 0,   auto: 0   },
-  vip:       { manual: 100, auto: 0   }, // R$100 — 100 manuais/dia
+  vip:       { manual: 100, auto: 0   }, // "Manual" — R$150/30d ou R$270/60d
   pro:       { manual: 0,   auto: 100 }, // legado
-  vipro:     { manual: 100, auto: 100 }, // R$150 — 100 + 100
-  doublepro: { manual: 200, auto: 200 }, // R$250 — 200 + 200
+  vipro:     { manual: 100, auto: 100 }, // "Turbo" — R$300/30d ou R$540/60d
+  doublepro: { manual: 50,  auto: 300 }, // "Máximo" — R$500/30d ou R$900/60d
 };
+// 🏷️ v218 — NOME PÚBLICO DE CADA PLANO. Fonte única no backend (o front tem
+// a sua própria, PLAN_NAMES em app.js — mantidas em paralelo de propósito,
+// uma pro que o SERVIDOR escreve em texto/log/extrato, outra pro que a TELA
+// desenha; mudar um nome exige tocar nos dois, é o mesmo padrão que já
+// existia pro emoji). Nunca "VIP"/"VIPro"/"DoublePro" de novo em texto novo.
+const NOME_PLANO_PUBLICO = { vip: "Manual", vipro: "Turbo", doublepro: "Máximo", pro: "Pro", free: "Grátis" };
 const PLAN_LIMITS = {
   free:      { manual: 0,   auto: 0   },
   // 🔒 v172g (auditoria 12/09/2026): era `auto:10` — resquício de antes da
@@ -88,5 +103,5 @@ module.exports = {
   MAX_RESUMES, MAX_COVERS,
   ADMIN_EMAIL, ADMIN_EMAIL_2, ADMIN_EMAILS_EXTRA, ADMIN_EMAILS, isAdminEmail,
   PUSH_ENABLED,
-  PLAN_LIMITS, PLAN_LIMITS_NEW,
+  PLAN_LIMITS, PLAN_LIMITS_NEW, NOME_PLANO_PUBLICO,
 };

@@ -165,7 +165,11 @@ const { MAX_SENDER_EMAILS_FREE, MAX_SENDER_EMAILS_VIP, MAX_SENDER_EMAILS_DOUBLEP
         MAX_RESUMES, MAX_COVERS,
         ADMIN_EMAIL, ADMIN_EMAIL_2, ADMIN_EMAILS_EXTRA, ADMIN_EMAILS, isAdminEmail,
         PUSH_ENABLED,
-        PLAN_LIMITS, PLAN_LIMITS_NEW } = require("./mod-config.js");
+        PLAN_LIMITS, PLAN_LIMITS_NEW, NOME_PLANO_PUBLICO } = require("./mod-config.js");
+// 🏷️ v218 — nome público de um plano em texto (log/extrato/nota), nunca a
+// chave interna crua (era "Plano VIPRO" — não faz sentido pra quem paga).
+// Chave desconhecida cai no próprio nome maiúsculo — nunca quebra.
+const nomePlanoDisplay = (k) => NOME_PLANO_PUBLICO[String(k || "").toLowerCase()] || String(k || "").toUpperCase() || "?";
 // 🔐 SENHA — helpers compartilhados (painel admin E cadastro de usuário
 // comum, ambos por usuário+senha agora). scrypt (memory-hard) com salt
 // próprio por conta; nunca texto puro persistido em lugar nenhum.
@@ -251,7 +255,7 @@ const getMaxSenders = (u) => {
 const _msgLimiteSenders = (max) => max<=0
   ? "Sem plano ativo não dá pra vincular Gmail de envio — assine um plano na aba Planos."
   : max===1
-    ? "Gmail extra é exclusivo do plano DoublePro (2 e-mails de envio) — seu plano usa só o e-mail principal."
+    ? "Gmail extra é exclusivo do plano Máximo (2 e-mails de envio) — seu plano usa só o e-mail principal."
     : `Limite de ${max} e-mails de envio atingido.`;
 const PORT          = parseInt(process.env.PORT || "3000", 10);
 const IS_PROD       = APP_URL.startsWith("https://");
@@ -587,7 +591,12 @@ function _vipSnapshot(u){
 // esta tabela. Um cliente podia mandar {plano:"vip",dias:3650} e, se o editor
 // aprovasse sem reparar no alerta do Gemini, o sistema creditava 10 anos de
 // VIP. Preços em R$ — mudar aqui exige avisar o Andrio antes (dinheiro real).
-const PLANO_PRECO_TAB={vip:{30:100,60:190,90:270,365:960},vipro:{30:150,60:285,90:405,365:1440},doublepro:{30:250,60:475,90:675,365:2400}};
+// v218 (ORDEM DO DONO, 20/09/2026): reestruturação de Planos — só 30 e 60
+// dias (90/365 saíram; nada usa esses prazos fora desta tabela — coleta
+// manual do admin manda valorTotal explícito, código de migração credita
+// dias direto sem olhar aqui). 60 dias vem com desconto pra incentivar o
+// plano mais longo: Manual economiza R$30, Turbo R$60, Máximo R$100.
+const PLANO_PRECO_TAB={vip:{30:150,60:270},vipro:{30:300,60:540},doublepro:{30:500,60:900}};
 
 // 🚧 INTERRUPTOR DE EMERGÊNCIA — compra nova (dono, 19/09/2026, ATUALIZADO no
 // mesmo dia: "h2bapply.com agora aponta pra este ambiente DE VERDADE"). Nasceu
@@ -6488,7 +6497,7 @@ function _mensagemPedidoAdmin(pedido) {
 📱 WhatsApp: ${pedido.userWhatsapp || "?"}
 🏙️ Cidade: ${pedido.userCity || "?"}
 
-📦 Plano: ${pedido.plano.toUpperCase()} — ${pedido.dias} dias — R$${pedido.valorTotal}${pedido.desconto > 0 ? " (" + pedido.desconto + "% desconto)" : ""}
+📦 Plano: ${nomePlanoDisplay(pedido.plano)} — ${pedido.dias} dias — R$${pedido.valorTotal}${pedido.desconto > 0 ? " (" + pedido.desconto + "% desconto)" : ""}
 💰 Data de pagamento informada pelo cliente: ${_pagoEmStr}   ⬅️ CONFIRA se bate com o comprovante
 📝 Nota: ${pedido.nota || "Sem observação"}
 🆔 Pedido: #${pedido.id.slice(-8).toUpperCase()}
@@ -7028,7 +7037,7 @@ const server=http.createServer(async(req,res)=>{
       <li>O volume de emails é muito alto em um único dia</li>
       <li>Os emails são enviados para muitos destinatários desconhecidos</li>
     </ul>
-    <p><strong>O que o H2BApply já faz para reduzir esse risco:</strong> aquecimento gradual de conta nova, intervalo humanizado entre envios automáticos e o rodízio entre Gmails: VIP e VIPro enviam pelo seu Gmail cadastrado (1 conta); o DoublePro reveza entre 2 Gmails, o que reduz o volume por conta e o risco de bloqueio.</p>
+    <p><strong>O que o H2BApply já faz para reduzir esse risco:</strong> aquecimento gradual de conta nova, intervalo humanizado entre envios automáticos e o rodízio entre Gmails: Manual e Turbo enviam pelo seu Gmail cadastrado (1 conta); o Máximo reveza entre 2 Gmails, o que reduz o volume por conta e o risco de bloqueio.</p>
     <p><strong>Isenção específica:</strong> mesmo com essas proteções, a decisão de limitar, suspender ou bloquear uma conta Gmail é tomada exclusivamente pelo Google, segundo critérios e políticas próprias que o H2BApply não controla nem pode garantir. Por isso, o H2BApply não se responsabiliza por bloqueios, suspensões ou limitações impostas pelo Google à sua conta Gmail. Ao ativar o envio automático, você declara estar ciente deste risco específico — que decorre de ato de terceiro (o Google), e não de falha do H2BApply.</p>
 
     <h2>12. Consentimento informado ao comprar um plano</h2>
@@ -7232,7 +7241,7 @@ ul li{margin-bottom:6px}
   </div>
   <div class="card" style="background:#fefce8;border-color:#fde68a">
     <h2 style="font-size:16px;color:#92400e;margin-bottom:10px">⚠️ Aviso sobre Gmail</h2>
-    <p style="font-size:14px;color:#78350f">O uso intensivo de uma única conta Gmail pode gerar bloqueio pelo Google. VIP e VIPro enviam pelo seu Gmail cadastrado (1 conta); o DoublePro reveza entre 2 Gmails, o que reduz o volume por conta e o risco de bloqueio. <a href="/terms#gmail-aviso" style="color:#92400e;font-weight:700">Ver termos de uso →</a></p>
+    <p style="font-size:14px;color:#78350f">O uso intensivo de uma única conta Gmail pode gerar bloqueio pelo Google. Manual e Turbo enviam pelo seu Gmail cadastrado (1 conta); o Máximo reveza entre 2 Gmails, o que reduz o volume por conta e o risco de bloqueio. <a href="/terms#gmail-aviso" style="color:#92400e;font-weight:700">Ver termos de uso →</a></p>
   </div>
   <div class="footer">
     © 2026 H2BApply &nbsp;·&nbsp; <a href="/privacy" style="color:#94a3b8">Privacidade</a> &nbsp;·&nbsp; <a href="/terms" style="color:#94a3b8">Termos</a>
@@ -10711,10 +10720,10 @@ filtrar();
         const uFresh=getUser(pd.userEmail)||{}; // relê fresco — os helpers acima já gravaram
         setUser(pd.userEmail,{plan:planoKey,vip:{...(uFresh.vip||{}),plan:planoKey,source:"payment",
           activatedAt:pd.ativadoEm,activatedBy:pd._ativadoEditor||"Admin",
-          note:`Plano ${planoKey.toUpperCase()} ${dias}d — pedido #${pd.id.slice(-8).toUpperCase()}`,
+          note:`Plano ${nomePlanoDisplay(planoKey)} ${dias}d — pedido #${pd.id.slice(-8).toUpperCase()}`,
           days:dias,autoDays:isAuto?dias:0,limits:limitesDoPlanoNovo(planoKey)}});
         addCredito(pd.userEmail,{dias,tipo:"pago",origem:"pagamento",
-          motivo:`Plano ${planoKey.toUpperCase()} ${dias}d — pedido #${pd.id.slice(-8).toUpperCase()}`,
+          motivo:`Plano ${nomePlanoDisplay(planoKey)} ${dias}d — pedido #${pd.id.slice(-8).toUpperCase()}`,
           dadoPor:pd._ativadoEditor||"Admin",pedidoId:pd.id,valor:pd.valorTotal||0});
         const _pgTs=(typeof pd.pagoEm==="number"&&Number.isFinite(pd.pagoEm))?pd.pagoEm:Date.parse(String(pd.pagoEm||""));
         if(!DB_FINANCEIRO.pagamentos)DB_FINANCEIRO.pagamentos=[];
@@ -10723,7 +10732,7 @@ filtrar();
             id:"fin_"+Date.now().toString(36),email:pd.userEmail,
             nome:pd.userName||pd.userEmail,plano:planoKey,
             dias,valor:pd.valorTotal||0,desconto:0,
-            nota:`Plano ${planoKey.toUpperCase()} ${dias}d — pedido #${pd.id.slice(-8).toUpperCase()}`,
+            nota:`Plano ${nomePlanoDisplay(planoKey)} ${dias}d — pedido #${pd.id.slice(-8).toUpperCase()}`,
             data:new Date().toISOString(),
             // v193 LOTE 11: cinto e suspensório — a criação já recusa data
             // sem sentido, mas pedido LEGADO pode ter `pagoEm` lixo gravado
@@ -10744,7 +10753,7 @@ filtrar();
           _persistFinConferido("aprovação do pedido #"+pd.id.slice(-8).toUpperCase()); // MC5-P6: gravação conferida
           console.log("[financeiro] plano ativado:",pd.userEmail,"R$",pd.valorTotal,"→",planoKey,dias+"d");
         }
-        addLog(pd.userEmail,{status:"sistema",jobTitle:`✅ Plano ${planoKey.toUpperCase()} ativado (${dias}d) — pedido #${pd.id.slice(-8).toUpperCase()} confirmado`,company:"Pedido #"+pd.id.slice(-8).toUpperCase()});
+        addLog(pd.userEmail,{status:"sistema",jobTitle:`✅ Plano ${nomePlanoDisplay(planoKey)} ativado (${dias}d) — pedido #${pd.id.slice(-8).toUpperCase()} confirmado`,company:"Pedido #"+pd.id.slice(-8).toUpperCase()});
         persistPedidos();
         acordarRoboAposPlano(pd.userEmail); // v125: robô dormindo por limite antigo acorda já
         return json(res,200,{ok:true,pedido:(()=>{const{comprovante,..._l}=pd;return _l;})(),plano:planoKey,dias});
@@ -11982,7 +11991,7 @@ if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c
     // 🔒 v172 (ORDEM DO DONO, 11/09/2026): autoLimit=0 é o caso NOVO (plano
     // free não manda mais nada) — merece mensagem própria, "atingiu 0/dia"
     // confundiria quem nunca teve chance de mandar nenhum.
-    if(!isAdminVip(p)&&autoLimit<=0)return json(res,402,{error:planGateMsg(p,"Você precisa de um plano com envio automático (VIPro ou DoublePro) pra usar o robô.","auto"),needsPlan:true});
+    if(!isAdminVip(p)&&autoLimit<=0)return json(res,402,{error:planGateMsg(p,"Você precisa de um plano com envio automático (Turbo ou Máximo) pra usar o robô.","auto"),needsPlan:true});
     // 🎯 ordem do dono, 12/09/2026: o teto do admin (450/dia por e-mail
     // conectado, somado em getAutoLimit) agora é REAL e vale pra ele
     // também — só a trava de PLANO (linha acima) continua isentando admin.
@@ -12629,7 +12638,7 @@ if(pathname==="/api/admin/pagantes"&&req.method==="GET"){try{
     const e=String(ped.userEmail).toLowerCase();
     (pedByEmail[e]=pedByEmail[e]||[]).push({valor:parseVal(ped.valorTotal),date:ped.ativadoEm||ped.pagoEm||ped.createdAt||null,id:ped.id||null,source:"pedido"});
   }
-  const PLAN_LABELS={free:"Free",vip:"⭐ VIP Manual",pro:"🤖 Pro",vipro:"⭐🤖 VIPro",doublepro:"🚀 DoublePro"};
+  const PLAN_LABELS={free:"Grátis",vip:"✋ Manual",pro:"🤖 Pro",vipro:"⚡ Turbo",doublepro:"🚀 Máximo"};
   const rows=[];
   for(const u of Object.values(DB_USERS||{})){
     if(!u||!u.email)continue;

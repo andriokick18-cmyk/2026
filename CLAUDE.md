@@ -1785,3 +1785,99 @@ contém `setTimeout`/`setInterval`, que as 5 rotas manuais continuam
 funcionando (já cobertas pelos checks do v174/v177/v207), e que
 `statusPainel().agendado` é sempre `false`.
 
+## v218 — Reestruturação da página de Planos (dono, 20/09/2026)
+
+**Pedido do dono** (3 partes, texto completo): design novo com diamante
+ilustrado nas cores do Brasil como peça central, pesquisa de páginas de
+pricing bem avaliadas (tabela comparativa, plano recomendado, FAQ, selo
+de economia); nomes/preços/duração novos pros 3 planos, cada um com 30 ou
+60 dias (60 com desconto); e varredura técnica completa em todo o site
+(front+back) atrás de qualquer referência aos nomes/preços/limites
+antigos, incluindo checkout, limites diários, ativação/duração do VIP
+(agora 30 ou 60 dias) e tratamento de quem já tem plano ativo. Sem push
+pra produção até confirmação explícita do dono (mesmo protocolo do hero
+v216).
+
+**PREÇOS/NOMES/LIMITES NOVOS** (`mod-config.js` `PLAN_LIMITS_NEW` +
+`NOME_PLANO_PUBLICO`, `server.js` `PLANO_PRECO_TAB`) — só valem pra
+ativação NOVA a partir de hoje (contrato congelado, ver abaixo):
+- **Manual** (chave interna `vip`, inalterada): 100 candidaturas manuais
+  por dia, sem automático. R$150 por 30 dias ou R$270 por 60 dias
+  (economize R$30).
+- **Turbo** (chave interna `vipro`, inalterada): 100 manuais + 100
+  automáticas por dia. R$300 por 30 dias ou R$540 por 60 dias (economize
+  R$60).
+- **Máximo** (chave interna `doublepro`, inalterada): 50 manuais + 300
+  automáticas por dia (era 200/200). R$500 por 30 dias ou R$900 por 60
+  dias (economize R$100).
+- Durações de 90 e 365 dias saíram de `PLANO_PRECO_TAB` (só 30/60 agora)
+  — nada mais dependia delas (confirmado na varredura).
+
+**DECISÃO ARQUITETURAL CENTRAL**: as CHAVES INTERNAS (`vip`/`vipro`/
+`doublepro`) foram mantidas de propósito — só o NOME PÚBLICO e os
+NÚMEROS mudaram. Isso evitou reescrever banco de dados, chaves do
+dropdown do admin, agrupamento de relatório financeiro, formato dos
+códigos de migração e a chave de `getMaxSenders` — o "contrato
+congelado" que já existia desde o v118 (`vip.limits` carimbado na
+ativação, `getManualLimit`/`getAutoLimit` leem de lá primeiro) já
+resolve sozinho o problema de "quem já pagou não pode ser afetado":
+`PLAN_LIMITS` (tabela legada) foi atualizada para os valores de HOJE (a
+geração anterior à v218), então quem tem plano ativo continua com o
+limite que comprou até vencer, sem re-carimbo.
+
+**Fonte única de nome público**: `NOME_PLANO_PUBLICO` (mod-config.js) no
+backend + `PLAN_NAMES` (app.js) no front — os dois precisam ser tocados
+juntos ao renomear um plano (mesmo padrão que já existia pro emoji).
+Nenhum texto novo pode voltar a dizer "VIP"/"VIPro"/"DoublePro" — só
+"VIP" genérico (= assinante pagante, conceito antigo que sobrevive em
+textos de migração do site velho) e "VIP Infinito" (acesso ilimitado do
+admin, conceito diferente) continuam existindo, sem relação com os 3
+nomes de plano renomeados.
+
+**DESIGN**: diamante SVG (corte brilhante, `clipPath`) estampado com a
+bandeira do Brasil (campo verde, losango amarelo — ecoando a forma do
+próprio diamante —, círculo azul com globo estilizado, faixa branca sem
+texto ilegível, estrelas), facetas e brilho diagonal, `drop-shadow` —
+peça central no topo da aba Planos (index.html). Pesquisa de mercado
+aplicada: 3 planos é o número mais efetivo; plano do meio (Turbo)
+destacado com selo "🔥 MAIS POPULAR" e borda âmbar; selo de economia em
+R$ calculado DINAMICAMENTE a partir do preço real vindo de `/api/planos`
+(nunca hardcoded — se a tabela mudar de novo, o selo se atualiza
+sozinho); FAQ de 6 perguntas (diferença dos planos, por que 60 dias é
+mais barato, o que acontece no vencimento, reembolso, segurança do
+Gmail, garantia de emprego) com conteúdo cruzado com `/termos` pra nunca
+contradizer a lei (CDC art. 49, 7 dias de arrependimento).
+
+**VARREDURA TÉCNICA**: sweep completo em server.js (preço oficial
+sempre recalculado no servidor — nunca confia em valor do cliente),
+app.js (removidos 4 dicionários de nome duplicados, unificados em
+`PLAN_NAMES`), admin.html (dropdowns de migração/set-plan, listagens de
+usuário/pedido), index.html, tutorial-conteudo.html, como-usar.html,
+h2bapply-funciona.html (página estática de preços reescrita por
+inteiro), README.md — toda menção a nome/preço/limite antigo trocada,
+incluindo textos de aviso de Gmail ("VIP e VIPro… DoublePro" →
+"Manual e Turbo… Máximo") que uma busca só pelo NOME antigo não pegaria
+sem também atualizar a régua de guarda do smoke.
+
+**Transição seguro pra quem já comprou**: nenhuma migração de boot foi
+necessária — o mecanismo de contrato congelado (v118) já cobre 100% do
+caso "cliente pagou antes da mudança de preço/nome". Único cuidado
+prático (fora do código, avisado ao dono no relatório): um pedido criado
+ANTES do deploy mas aprovado DEPOIS herda os limites NOVOS na hora da
+aprovação (é a ativação que carimba `vip.limits`, não a criação do
+pedido) — recomendação de aprovar pedidos pendentes antes de publicar,
+ou aceitar que o cliente recebe o valor da tabela vigente na aprovação
+(nunca o contrário — nunca cobra errado, o preço final que o pedido
+grava é sempre o oficial de quando foi CRIADO, `PLANO_PRECO_TAB` na
+criação do pedido).
+
+Testes: smoke v218 exercita a tabela nova ponta a ponta pela APROVAÇÃO
+REAL de pedido (não só `set-plan` do admin) nos 3 planos, incluindo a
+duração de 60 dias (v187-L5, MC5-P1/P2/P5/P6, v183-L1, v185-L3,
+combo plano×prazo); guarda permanente (v197-L15) garante que os números
+de envio/dia da landing/calculadora sempre saem de `PLAN_LIMITS_NEW` e
+nenhum texto antigo de "2 ou mais contas Gmail"/nome de plano volta.
+Verificação visual real com Playwright (desktop 1440px e mobile 390px)
+confirmou o diamante, a tabela, o selo "MAIS POPULAR", os selos de
+economia e o FAQ renderizando corretamente nos dois formatos.
+

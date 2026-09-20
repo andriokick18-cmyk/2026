@@ -180,8 +180,10 @@ const ALLOWLIST = new Set([
   "app.js:7163c67187d6", // compLinha   — IIFE que só devolve HTML com esc(t(...))
   // ── (d) .map(...).join("") cujo corpo já escapa cada campo ───────────
   "app.js:24c969bf60de", // profiles.map(…) — esc(icon)/esc(cats)/esc(name) por dentro (v177-FIX2/v198)
-  "app.js:fdbd747a1e70", // (porPlano[pl]||[]).map(…) — só número/DIAS_LBL/brl por dentro
+  "app.js:86ead499f429", // v218: (porPlano[pl]||[]).map(…) — só DIAS_LBL/brl/economia (número) e literais CSS por dentro
   "app.js:a7d180300b97", // _vfChipList("manual").map(c2=>esc(c2.lbl)).join(" · ")||esc(t('radar_all'))
+  // ── (b) v218: CONSTANTE INTERNA — cor do card de plano ──────────────
+  "app.js:fd150390570f", // borderCor — ternário de 3 literais CSS fixos ('var(--blue)'|'#f59e0b'|'var(--border2)')
 ]);
 
 // ── Extração: as instruções que escrevem HTML ────────────────────────────

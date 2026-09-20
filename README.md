@@ -42,7 +42,7 @@ período, paga via Pix e sobe o comprovante diretamente.
 - Depois do cadastro, a janela "Cadastre seu currículo agora" abre o editor
   de perfil (3 títulos + 3 textos de e-mail já abertos, currículo PDF; cover
   letter opcional) — dá pra pular e fazer depois em Perfil
-- Compra direta de plano (VIP/VIPro/DoublePro): escolhe plano+período, vê o
+- Compra direta de plano (Manual/Turbo/Máximo): escolhe plano+período, vê o
   preço oficial, paga via Pix e sobe o comprovante. Se o valor bater, o
   plano ativa na hora por 3 dias (janela provisória) enquanto o pedido
   segue pendente — a confirmação humana do admin continua SEMPRE

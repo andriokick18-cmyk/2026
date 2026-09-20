@@ -1568,7 +1568,7 @@ async function drillBloqueioComprasNovas() {
       // manuais/dia).
       const _regexLbl = /function planLabelAtivo\(\)\{[\s\S]*?\n\}/.exec(_app16);
       const _planLabelAtivo = (vip, plan) => {
-        const U = { vip, plan }, PLAN_NAMES = { vip: "⭐ VIP", vipro: "🤖 VIPro", doublepro: "💎 DoublePro" };
+        const U = { vip, plan }, PLAN_NAMES = { vip: "✋ Manual", vipro: "⚡ Turbo", doublepro: "🚀 Máximo" };
         return eval("(" + _regexLbl[0].replace("function planLabelAtivo()", "function()") + ")")();
       };
       const _fut = Date.now() + 30 * 86400_000, _pas = Date.now() - 86400_000;
@@ -1576,8 +1576,12 @@ async function drillBloqueioComprasNovas() {
       const _soAuto = _planLabelAtivo({ manualExpires: _pas, autoExpires: _fut }, "vipro");
       const _osDois = _planLabelAtivo({ manualExpires: _fut, autoExpires: _fut }, "vipro");
       const _nada = _planLabelAtivo(null, "vipro");
-      check("🏷️ v198-L16: o rótulo de plano do header vem dos DOIS relógios — quem só tem o manual é '⭐ VIP' e quem só tem o automático NUNCA aparece como VIPro (getPlan() devolve 'vipro' pros dois: era assim que uma conta com 0 manuais/dia se anunciava como VIPro)",
-        _soManual === "⭐ VIP" && _soAuto === "🤖 Pro" && _osDois === "⭐🤖 VIPro" && _nada === "Grátis" &&
+      // v218: nomes novos (Manual/Turbo/Máximo) — quem só tem o manual é
+      // '✋ Manual' e quem só tem o automático NUNCA aparece como Turbo
+      // (getPlan() devolve 'vipro' pros dois: era assim que uma conta com 0
+      // manuais/dia se anunciava como o plano errado).
+      check("🏷️ v198-L16/v218: o rótulo de plano do header vem dos DOIS relógios — quem só tem o manual é '✋ Manual' e quem só tem o automático NUNCA aparece como Turbo",
+        _soManual === "✋ Manual" && _soAuto === "🤖 Pro" && _osDois === "✋⚡ Turbo" && _nada === "Grátis" &&
         _app16.includes("g(\"#hdr-plans-label\").textContent=_lblAtivo;"),
         JSON.stringify({ soManual: _soManual, soAuto: _soAuto, osDois: _osDois, nada: _nada }));
       check("🏷️ v198-L16: o NOME do plano virou constante única (PLAN_NAMES) e só aparece onde o rótulo se refere a um PEDIDO — sobrou 1 declaração, nenhum mapa solto",
@@ -1768,7 +1772,7 @@ async function drillBloqueioComprasNovas() {
         _app23.includes("${esc(job.workers)}") && _app23.includes("<strong>${esc(s.name)}</strong>") &&
         _app23.includes("${esc(s.emoji||'📋')}") && _app23.includes("${esc(PIX_KEY)}") && _app23.includes("${esc(PIX_NAME)}") &&
         _app23.includes("${esc(currentLimits[em]||'')}") && _app23.includes("${esc(hora)}") &&
-        _app23.includes("${esc(NOME[plano]||plano)}") && _app23.includes("${esc(sheetLabel)}") &&
+        _app23.includes("${esc(PLAN_NAMES[plano]||plano)}") && _app23.includes("${esc(sheetLabel)}") &&
         !/\$\{PIX_KEY\}/.test(_app23) && !/\$\{job\.workers\}/.test(_app23) && !/\$\{s\.visa\}/.test(_app23),
         "alguma das interpolações de dado voltou a ser crua");
       check("🧹 v205-L23: showBanner() saiu do front — zero chamadores em todo o repo e era a ÚNICA função cuja API era 'me passe HTML pronto' (recebia `html` e um `action` que virava atributo onclick, sem escape possível)",
@@ -1834,8 +1838,8 @@ async function drillBloqueioComprasNovas() {
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "conta.nova@test.com", name: "Conta Nova", emailContato: "MIGRADO2@gmail.com" });
       const _migOk2 = await req2("POST", "/api/vip/resgatar-codigo", { codigo: "H2B26-TEST-0002" });
       const _st2 = (await get("/api/status")).json;
-      check("🎟️ v206: a identidade que prende o código é o Gmail CONFIRMADO no cadastro (emailContato) — conta com chave diferente do e-mail resgata; DoublePro 7d carimba 200/200 e libera 2 Gmails",
-        _migOk2.status === 200 && _migOk2.json?.plano === "doublepro" && _st2.plan === "doublepro" && _st2.manualLimit === 200 && _st2.autoLimit === 200 && _st2.senderMax === 2 &&
+      check("🎟️ v206/v218: a identidade que prende o código é o Gmail CONFIRMADO no cadastro (emailContato) — conta com chave diferente do e-mail resgata; Máximo 7d carimba 50/300 e libera 2 Gmails",
+        _migOk2.status === 200 && _migOk2.json?.plano === "doublepro" && _st2.plan === "doublepro" && _st2.manualLimit === 50 && _st2.autoLimit === 300 && _st2.senderMax === 2 &&
         Math.abs((_st2.vip?.autoExpires || 0) - (Date.now() + 7 * _DAYm)) < 5 * 60_000,
         JSON.stringify({ r: _migOk2.json, plan: _st2.plan, ml: _st2.manualLimit, al: _st2.autoLimit, sm: _st2.senderMax }));
       // De volta ao admin: caixa intocado, lista com status, exclusão só de código sem uso, disco gravado
@@ -2337,8 +2341,8 @@ async function drillBloqueioComprasNovas() {
     const pdId = pd1.json?.pedidoId;
     check("pedido criado pelo comprador", pd1.json?.ok === true && !!pdId, pd1.body.slice(0, 120));
     const pd1Get = await get("/api/pedido/" + pdId);
-    check("🧾 v170: o preço vem SEMPRE da tabela oficial — o valorTotal mandado pelo cliente (R$1, propositalmente errado) é ignorado e o pedido nasce com R$150 (VIPro 30d)",
-      pd1Get.json?.pedido?.valorTotal === 150, JSON.stringify({ valorTotal: pd1Get.json?.pedido?.valorTotal }));
+    check("🧾 v170/v218: o preço vem SEMPRE da tabela oficial — o valorTotal mandado pelo cliente (R$1, propositalmente errado) é ignorado e o pedido nasce com R$300 (Turbo 30d)",
+      pd1Get.json?.pedido?.valorTotal === 300, JSON.stringify({ valorTotal: pd1Get.json?.pedido?.valorTotal }));
     // 💼 MC5-P1 (29/08): pendente aberto NUNCA mais cai no dedup (o PIX é
     // feito ANTES do envio; engolir o 2º comprovante era dinheiro real sem
     // rastro). O 2º pedido nasce como pedido PRÓPRIO — e é cancelado aqui em
@@ -2385,14 +2389,14 @@ async function drillBloqueioComprasNovas() {
 
     // v28: Visão do Dono — resumo de dinheiro calculado no servidor
     const dr = await get("/api/admin/dono-resumo");
-    check("💰 Visão do Dono: a ativação de R$150 aparece nas entradas de hoje",
-      dr.json?.ok === true && dr.json?.entradas?.total >= 150 && dr.json?.entradas?.hoje >= 150, dr.body.slice(0, 140));
+    check("💰 Visão do Dono: a ativação de R$300 aparece nas entradas de hoje",
+      dr.json?.ok === true && dr.json?.entradas?.total >= 300 && dr.json?.entradas?.hoje >= 300, dr.body.slice(0, 140));
 
     // v31: 🧾 Conferência de pagamentos — todos os pagamentos numa lista só,
     // valor ao lado do nome, e correção de valor com trilha (caixa junto)
     const cf = await get("/api/admin/conferencia");
     const cfRow = (cf.json?.rows || []).find((r) => r.tipo === "pedido" && r.id === pdId);
-    check("🧾 Conferência lista o pedido com o valor ao lado do nome", cf.json?.ok === true && cfRow?.valor === 150, cf.body.slice(0, 140));
+    check("🧾 Conferência lista o pedido com o valor ao lado do nome", cf.json?.ok === true && cfRow?.valor === 300, cf.body.slice(0, 140));
     // O pedido recém-ativado TEM entrada no caixa — não pode aparecer como divergência
     const dvComprador = (cf.json?.divergencias || []).filter((x) => x.email === "comprador@test.com");
     check("🔍 varredura de divergências roda e não acusa o fluxo saudável", Array.isArray(cf.json?.divergencias) && dvComprador.length === 0, JSON.stringify(dvComprador).slice(0, 140));
@@ -2405,13 +2409,13 @@ async function drillBloqueioComprasNovas() {
     const corr = await req2("PATCH", "/api/pedido/" + pdId, { corrigirValor: 147 });
     const pedDepois = await get("/api/pedido/" + pdId);
     check("🚫 v194-L12: corrigir o VALOR de um pedido foi removido (ordem v178: valor errado cancela e o cliente refaz) — o PATCH recusa com explicação e o valor NÃO muda",
-      corr.status === 400 && corr.json?.correcaoRemovida === true && pedDepois.json?.pedido?.valorTotal === 150,
+      corr.status === 400 && corr.json?.correcaoRemovida === true && pedDepois.json?.pedido?.valorTotal === 300,
       JSON.stringify({ status: corr.status, valorDepois: pedDepois.json?.pedido?.valorTotal }));
     const setValorMorto = await req2("POST", "/api/admin/pedido-set-valor", { pedidoId: pdId, valor: 147 });
     const fin1b = await get("/api/admin/financeiro");
     const pgCorr = (fin1b.json?.pagamentos || []).find((x) => x.pedidoId === pdId);
     check("🚫 v194-L12: a rota /api/admin/pedido-set-valor (sem chamador em tela nenhuma, e que nem olhava o status — reescrevia pago e cancelado, sincronizando o caixa junto) foi REMOVIDA: 404, e o caixa segue com o valor original",
-      setValorMorto.status === 404 && pgCorr?.valor === 150,
+      setValorMorto.status === 404 && pgCorr?.valor === 300,
       JSON.stringify({ rota: setValorMorto.status, caixa: pgCorr?.valor }));
 
     // (v32: Robô de Renovação — /api/admin/renova-run não existe nesta
@@ -2527,12 +2531,12 @@ async function drillBloqueioComprasNovas() {
     // o front nunca hardcoda o texto de manual/auto por plano (mesma
     // preocupação do antigo v168, agora sem diamante no meio).
     const plTab = await get("/api/planos");
-    check("🧾 v170: GET /api/planos expõe 'limites' (fonte única PLAN_LIMITS_NEW) e 'precos' (fonte única PLANO_PRECO_TAB), sem exigir sessão",
+    check("🧾 v170/v218: GET /api/planos expõe 'limites' (fonte única PLAN_LIMITS_NEW) e 'precos' (fonte única PLANO_PRECO_TAB), sem exigir sessão",
       plTab.json?.ok === true &&
       plTab.json?.limites?.vip?.manual === 100 && plTab.json?.limites?.vip?.auto === 0 &&
       plTab.json?.limites?.vipro?.manual === 100 && plTab.json?.limites?.vipro?.auto === 100 &&
-      plTab.json?.limites?.doublepro?.manual === 200 && plTab.json?.limites?.doublepro?.auto === 200 &&
-      (plTab.json?.precos || []).some((p2) => p2.plano === "vipro" && p2.dias === 30 && p2.valorTotal === 150),
+      plTab.json?.limites?.doublepro?.manual === 50 && plTab.json?.limites?.doublepro?.auto === 300 &&
+      (plTab.json?.precos || []).some((p2) => p2.plano === "vipro" && p2.dias === 30 && p2.valorTotal === 300),
       JSON.stringify({ limites: plTab.json?.limites, n: plTab.json?.precos?.length }).slice(0, 200));
 
     // admin cancela: caixa estornado E os dias de VIP estornados
@@ -2542,16 +2546,14 @@ async function drillBloqueioComprasNovas() {
     // original fica ANULADO (história preservada) e entra o par de AJUSTE
     // negativo pelo valor EFETIVO. O líquido é idêntico ao da exclusão
     // antiga; a história, não.
-    // ⚠️ VALOR ATUALIZADO no v194 LOTE 12: era −147 porque o teste acima
-    // CORRIGIA o pedido de 150 pra 147 — correção que não existe mais (ordem
-    // v178: valor errado cancela e o cliente refaz). O pedido mantém os R$150
-    // que entraram, então o par de ajuste é −150. A regra testada ("pedido
+    // ⚠️ VALOR ATUALIZADO no v218: o pedido mantém os R$300 (Turbo 30d) que
+    // entraram, então o par de ajuste é −300. A regra testada ("pedido
     // vence caixa" no valor efetivo) continua exatamente a mesma.
     const fin2 = await get("/api/admin/financeiro");
     const _cOrig = (fin2.json?.pagamentos || []).find((x) => x.pedidoId === pdId && x.tipo !== "ajuste");
     const _cAj = (fin2.json?.pagamentos || []).find((x) => x.tipo === "ajuste" && x.ajustaPedidoId === pdId);
-    check("💼 MC5-P6: cancelamento estorna por AJUSTE− (original preservado+anulado, par −150 pelo valor efetivo do pedido) — o caixa nunca apaga",
-      canc.json?.ok === true && _cOrig && !!_cOrig.anuladoPor && _cAj && _cAj.valor === -150,
+    check("💼 MC5-P6: cancelamento estorna por AJUSTE− (original preservado+anulado, par −300 pelo valor efetivo do pedido) — o caixa nunca apaga",
+      canc.json?.ok === true && _cOrig && !!_cOrig.anuladoPor && _cAj && _cAj.valor === -300,
       JSON.stringify({ anulado: !!_cOrig?.anuladoPor, aj: _cAj?.valor }).slice(0, 120));
     // 🚨 v177-FIX2 (auditoria 14/09/2026): o estorno de dias mexia direto em
     // manualExpires/autoExpires sem deixar rastro no extrato vip.creditos —
@@ -2664,13 +2666,13 @@ async function drillBloqueioComprasNovas() {
       // primeiro NÃO revogava nada — o admin via "cancelado com sucesso" e o
       // cliente seguia com o plano ativo. ═══
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "provdup@test.com", name: "Prov Dup" });
-      const _pvA = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Prov Dup", userWhatsapp: "11 99999", userCity: "SP", nota: "TESTE_COMPROVANTE:100", comprovante: Buffer.from("prov-dup-a").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+      const _pvA = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Prov Dup", userWhatsapp: "11 99999", userCity: "SP", nota: "TESTE_COMPROVANTE:150", comprovante: Buffer.from("prov-dup-a").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
       await new Promise((r) => setTimeout(r, 400));
       const _pvStA = (await get("/api/status")).json;
       // 2º pedido com comprovante que também CONFERE — antes do fix ele
       // reativava o provisório por cima e roubava o vip.pedidoId do 1º
       // (de quebra, renovando os 3 dias de graça indefinidamente).
-      const _pvB = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Prov Dup", userWhatsapp: "11 99999", userCity: "SP", nota: "TESTE_COMPROVANTE:100", comprovante: Buffer.from("prov-dup-b").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+      const _pvB = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Prov Dup", userWhatsapp: "11 99999", userCity: "SP", nota: "TESTE_COMPROVANTE:150", comprovante: Buffer.from("prov-dup-b").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
       await new Promise((r) => setTimeout(r, 400));
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
       const _pvBGet = (await get("/api/pedido/" + _pvB.json?.pedidoId)).json;
@@ -2917,10 +2919,10 @@ async function drillBloqueioComprasNovas() {
     check("🛡️ v79: /api/status do próprio Esdras também mostra DoublePro (nunca diverge do que o admin vê)", stEsdras.json?.plan === "doublepro" && stEsdras.json?.vip?.active === true, JSON.stringify({ plan: stEsdras.json?.plan }));
     // 🚨 ordem do dono (29/07, direto após o caso Esdras): quem tem DoublePro
     // tem que ter EXATAMENTE os limites de DoublePro — antes desse fix, esse
-    // usuário ficava com plan:"free" (0 de tudo). v118: ativação NOVA via
-    // set-plan carimba a tabela nova (200 manual + 200 auto).
-    check("🚨 v79+v118: Esdras com DoublePro novo tem EXATAMENTE 200 manual + 200 automático (tabela v118 carimbada na ativação)",
-      stEsdras.json?.manualLimit === 200 && stEsdras.json?.autoLimit === 200,
+    // usuário ficava com plan:"free" (0 de tudo). v218: ativação NOVA via
+    // set-plan carimba a tabela nova (Máximo = 50 manual + 300 auto).
+    check("🚨 v79+v218: Esdras com Máximo novo tem EXATAMENTE 50 manual + 300 automático (tabela v218 carimbada na ativação)",
+      stEsdras.json?.manualLimit === 50 && stEsdras.json?.autoLimit === 300,
       JSON.stringify({ manualLimit: stEsdras.json?.manualLimit, autoLimit: stEsdras.json?.autoLimit }));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
 
@@ -4069,10 +4071,10 @@ async function drillBloqueioComprasNovas() {
       // que não existe em lugar nenhum do código.
       const _totVipro = _PL15.vipro.manual + _PL15.vipro.auto;
       const _totDp = _PL15.doublepro.manual + _PL15.doublepro.auto;
-      check("📣 v197-L15 (guarda permanente): os números de envio/dia da landing e da calculadora saem de PLAN_LIMITS_NEW — e as promessas que o código não cumpre ('prioridade máxima na fila', 'aumenta seu limite diário', robô de 400/dia) sumiram",
-        _idx15.includes(`${_PL15.vip.manual} manuais no VIP, ${_PL15.vipro.manual} manuais + ${_PL15.vipro.auto} automáticas no VIPro e ${_PL15.doublepro.manual} + ${_PL15.doublepro.auto} no DoublePro`) &&
-        _idx15.includes(`data-i18n="roi_vipro">VIPro — ${_totVipro}/dia (manual + automático)`) &&
-        _idx15.includes(`data-i18n="roi_dp">DoublePro — ${_totDp}/dia (manual + automático)`) &&
+      check("📣 v197-L15/v218 (guarda permanente): os números de envio/dia da landing e da calculadora saem de PLAN_LIMITS_NEW — e as promessas que o código não cumpre ('prioridade máxima na fila', 'aumenta seu limite diário', robô de 400/dia) sumiram",
+        _idx15.includes(`${_PL15.vip.manual} manuais no Manual, ${_PL15.vipro.manual} manuais + ${_PL15.vipro.auto} automáticas no Turbo e ${_PL15.doublepro.manual} manuais + ${_PL15.doublepro.auto} automáticas no Máximo`) &&
+        _idx15.includes(`data-i18n="roi_vipro">Turbo — ${_totVipro}/dia (manual + automático)`) &&
+        _idx15.includes(`data-i18n="roi_dp">Máximo — ${_totDp}/dia (manual + automático)`) &&
         (_app15.match(/"roi_vipro":/g) || []).length === 3 &&
         !/prioridade m[áa]xima na fila/i.test(_semHtml15(_idx15)) &&
         !/aumenta seu limite di[áa]rio/i.test(_semHtml15(_idx15)) &&
@@ -4104,11 +4106,11 @@ async function drillBloqueioComprasNovas() {
       // de quem tentar o 3º) — 4 telas mandavam "adicionar 2 ou mais contas".
       const _todos15 = { ..._servidos15, "server.js": _semJs15(_srv15) };
       const _mandam2 = Object.entries(_todos15).filter(([, t2]) => /2 ou mais contas Gmail|2\+ contas Gmail/.test(t2)).map(([f]) => f);
-      check("📣 v197-L15 (guarda permanente): nenhum texto do site manda 'adicionar 2 ou mais / 2+ contas Gmail' — VIP e VIPro têm direito a 1 conta e o DoublePro a 2; o texto agora é o MESMO nos 8 pontos",
+      check("📣 v197-L15/v218 (guarda permanente): nenhum texto do site manda 'adicionar 2 ou mais / 2+ contas Gmail' — Manual e Turbo têm direito a 1 conta e o Máximo a 2; o texto agora é o MESMO nos 8 pontos",
         _mandam2.length === 0 &&
-        (_idx15.match(/o DoublePro reveza entre 2 Gmails/g) || []).length >= 3 &&
-        _cu15.includes("o DoublePro reveza entre 2 Gmails") && _tut15.includes("o DoublePro reveza entre 2 Gmails") &&
-        (_srv15.match(/o DoublePro reveza entre 2 Gmails/g) || []).length >= 2,
+        (_idx15.match(/o Máximo reveza entre 2 Gmails/g) || []).length >= 3 &&
+        _cu15.includes("o Máximo reveza entre 2 Gmails") && _tut15.includes("o Máximo reveza entre 2 Gmails") &&
+        (_srv15.match(/o Máximo reveza entre 2 Gmails/g) || []).length >= 2,
         `ainda mandam 2+: [${_mandam2.join(",")}] `);
       // texto NOVO passa pelo dicionário nas 3 línguas (regra 6f)
       check("📣 v197-L15: o aviso de Gmail do Perfil virou UMA chave de dicionário nas 3 línguas (gmail_contas) — texto novo nunca entra fixo no markup",
@@ -4478,10 +4480,10 @@ async function drillBloqueioComprasNovas() {
     // agora CANCELA sozinho, sem revisão manual nenhuma, e explica o motivo.
     const mc5p1Get = await get("/api/pedido/" + mc5p1.json?.pedidoId);
     const mc5Ap1 = await req2("PATCH", "/api/pedido/" + mc5p1.json?.pedidoId, { status: "ativo", recebidoPor: "andrio" });
-    check("🎯 v178: valor DIVERGENTE (robô leu R$100 × pedido R$150) cancela o pedido SOZINHO, na hora — sem correção manual, sem admin decidir — com o motivo explicado pro cliente",
+    check("🎯 v178: valor DIVERGENTE (robô leu R$100 × pedido R$300) cancela o pedido SOZINHO, na hora — sem correção manual, sem admin decidir — com o motivo explicado pro cliente",
       mc5p1.json?.ok === true && !mc5p1.json?.duplicado &&
       mc5p1Get.json?.pedido?.status === "cancelado" && mc5p1Get.json?.pedido?.canceladoPor === "sistema (IA — valor divergente)" &&
-      /R\$100\.00.*R\$150\.00/.test(mc5p1Get.json?.pedido?.notaAdmin || ""),
+      /R\$100\.00.*R\$300\.00/.test(mc5p1Get.json?.pedido?.notaAdmin || ""),
       JSON.stringify({ status: mc5p1Get.json?.pedido?.status, por: mc5p1Get.json?.pedido?.canceladoPor, nota: mc5p1Get.json?.pedido?.notaAdmin }).slice(0, 200));
     check("🎯 v178: tentar ativar um pedido JÁ cancelado (pelo auto-cancelamento) é barrado com 409 jaCancelado — não existe mais caminho pra 'aprovar mesmo assim' um valor errado",
       mc5Ap1.status === 409 && mc5Ap1.json?.jaCancelado === true && mc5Ap1.json?.canceladoPor === "sistema (IA — valor divergente)",
@@ -4543,7 +4545,7 @@ async function drillBloqueioComprasNovas() {
 
     // Privacidade: o DETALHE do próprio pedido devolvia o objeto CRU
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "l11priv@test.com", name: "L11 Priv" });
-    const _l11Ped = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "L11 Priv", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:100", comprovante: Buffer.from("comp-l11-priv").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    const _l11Ped = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "L11 Priv", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:150", comprovante: Buffer.from("comp-l11-priv").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     await new Promise((r) => setTimeout(r, 400));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     await req2("PATCH", "/api/pedido/" + _l11Ped.json?.pedidoId, { status: "cancelado", notaAdmin: "Comprovante de outra pessoa — cancelado pelo suporte" });
@@ -4570,7 +4572,7 @@ async function drillBloqueioComprasNovas() {
       _mig2x.json?.inlineNaRam === 0 && _mig2x.json?.comArquivo >= 3 && _mig2x.json?.arquivos === _mig2x.json?.comArquivo,
       JSON.stringify(_mig2x.json));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5b@test.com", name: "MC5 B" });
-    const mc5p2 = await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, consentimento: true, userName: "MC5 B", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:150:E2EMC5AAA1:Pagador MC5", comprovante: Buffer.from("comp-mc5-b-refoto").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    const mc5p2 = await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, consentimento: true, userName: "MC5 B", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:300:E2EMC5AAA1:Pagador MC5", comprovante: Buffer.from("comp-mc5-b-refoto").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     await new Promise((r) => setTimeout(r, 400));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     const mc5Ap3 = await req2("PATCH", "/api/pedido/" + mc5p2.json?.pedidoId, { status: "ativo", recebidoPor: "diego" });
@@ -4604,40 +4606,41 @@ async function drillBloqueioComprasNovas() {
       fs.readFileSync(path.join(__dirname, "app.js"), "utf8").includes("_compComprovante"),
       "_compComprovante não encontrado no app.js");
 
-    // 🧪 AUDITORIA 10/09/2026: PLANO_PRECO_TAB tem 3 planos × 4 prazos = 12
-    // combinações, mas só vip/vipro de 30 dias tinham sido exercidos pela
-    // APROVAÇÃO REAL (PATCH /api/pedido/:id {status:"ativo"}) nos testes
-    // acima — doublepro só aparecia via /api/admin/set-plan (concessão
-    // manual do admin, caminho de código diferente) e nenhum prazo de
-    // 60/90/365 dias nunca passou pela aprovação de pedido de verdade.
+    // 🧪 AUDITORIA 10/09/2026 (atualizada v218): PLANO_PRECO_TAB tem 3 planos
+    // × 2 prazos (30/60d) = 6 combinações, mas só vip/vipro de 30 dias
+    // tinham sido exercidos pela APROVAÇÃO REAL (PATCH /api/pedido/:id
+    // {status:"ativo"}) nos testes acima — doublepro só aparecia via
+    // /api/admin/set-plan (concessão manual do admin, caminho de código
+    // diferente) e o prazo de 60 dias nunca passou pela aprovação de
+    // pedido de verdade.
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "combo-dp@test.com", name: "Combo DoublePro" });
-    const comboDp = await req2("POST", "/api/pedido", { plano: "doublepro", dias: 30, consentimento: true, userName: "Combo DoublePro", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:250", comprovante: Buffer.from("combo-dp").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    const comboDp = await req2("POST", "/api/pedido", { plano: "doublepro", dias: 30, consentimento: true, userName: "Combo DoublePro", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:500", comprovante: Buffer.from("combo-dp").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     await new Promise((r) => setTimeout(r, 400));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     const comboDpAp = await req2("PATCH", "/api/pedido/" + comboDp.json?.pedidoId, { status: "ativo", recebidoPor: "andrio" });
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "combo-dp@test.com" });
     const comboDpSt = (await get("/api/status")).json;
-    check("🧪 combo plano×prazo: DoublePro 30d aprovado por PEDIDO REAL (não só set-plan do admin) ativa manual+auto com os limites 200/200 da tabela nova — combinação nunca exercida antes pela aprovação",
+    check("🧪 combo plano×prazo: Máximo 30d aprovado por PEDIDO REAL (não só set-plan do admin) ativa manual+auto com os limites 50/300 da tabela nova — combinação nunca exercida antes pela aprovação",
       comboDpAp.json?.ok === true && comboDpAp.json?.plano === "doublepro" &&
-      comboDpSt?.plan === "doublepro" && comboDpSt?.manualLimit === 200 && comboDpSt?.autoLimit === 200 &&
+      comboDpSt?.plan === "doublepro" && comboDpSt?.manualLimit === 50 && comboDpSt?.autoLimit === 300 &&
       comboDpSt?.vip?.autoActive === true && comboDpSt?.vip?.manualActive === true,
       JSON.stringify({ ap: comboDpAp.json?.plano, plan: comboDpSt?.plan, ml: comboDpSt?.manualLimit, al: comboDpSt?.autoLimit }).slice(0, 160));
 
     // Sem nota "TESTE_COMPROVANTE:" de propósito: com ela, o robô leria
     // CONFERE e a ativação PROVISÓRIA automática (intencional — ver
-    // autoAtivarProvisorio) somaria +AUTO_ATIVA_DIAS por cima dos 90 da
+    // autoAtivarProvisorio) somaria +AUTO_ATIVA_DIAS por cima dos 60 da
     // aprovação, misturando dois comportamentos num teste só. Sem precheck
     // nenhum, a aprovação do admin é a ÚNICA fonte de dias — matemática limpa.
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "combo-90@test.com", name: "Combo 90 Dias" });
-    const combo90 = await req2("POST", "/api/pedido", { plano: "vip", dias: 90, consentimento: true, userName: "Combo 90 Dias", userWhatsapp: "11 9", userCity: "SP", valorTotal: 270, comprovante: Buffer.from("combo-90").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "combo-90@test.com", name: "Combo 60 Dias" });
+    const combo90 = await req2("POST", "/api/pedido", { plano: "vip", dias: 60, consentimento: true, userName: "Combo 60 Dias", userWhatsapp: "11 9", userCity: "SP", valorTotal: 270, comprovante: Buffer.from("combo-90").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     const combo90Ap = await req2("PATCH", "/api/pedido/" + combo90.json?.pedidoId, { status: "ativo", recebidoPor: "diego" });
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "combo-90@test.com" });
     const combo90St = (await get("/api/status")).json;
     const _diasRestantes90 = combo90St?.vip?.manualExpires ? Math.round((combo90St.vip.manualExpires - Date.now()) / 86400000) : 0;
-    check("🧪 combo plano×prazo: VIP de 90 dias (não o padrão de 30) aprovado por pedido real estende a validade ~90 dias e NÃO libera automático (VIP puro é só manual) — prazo 60/90/365 nunca tinha sido exercido pela aprovação",
+    check("🧪 combo plano×prazo: Manual de 60 dias (não o padrão de 30) aprovado por pedido real estende a validade ~60 dias e NÃO libera automático (Manual puro é só manual) — prazo 60d nunca tinha sido exercido pela aprovação",
       combo90Ap.json?.ok === true && combo90St?.plan === "vip" &&
-      _diasRestantes90 >= 88 && _diasRestantes90 <= 91 &&
+      _diasRestantes90 >= 58 && _diasRestantes90 <= 61 &&
       combo90St?.vip?.autoActive === false && combo90St?.manualLimit === 100,
       JSON.stringify({ ap: combo90Ap.status, plan: combo90St?.plan, diasRestantes: _diasRestantes90, auto: combo90St?.vip?.autoActive }).slice(0, 180));
 
@@ -4648,7 +4651,7 @@ async function drillBloqueioComprasNovas() {
     check("💼 MC5-P2 + v178: /api/pedidos do usuário virou WHITELIST — sem preCheck cru (vazava e-mail de OUTRO usuário no dupAlerta), sem notaAdmin/criadoPor internos; comprovanteStatus derivado SEGURO ('analise'); e o pedido aparece CANCELADO com o motivo real do auto-cancelamento (v178) visível no motivoCancelamento — a pessoa sabe exatamente por que precisa fazer um pedido novo",
       _rowA && !("preCheck" in _rowA) && !("notaAdmin" in _rowA) && !("criadoPor" in _rowA) &&
       _rowA.comprovanteStatus === "analise" && _rowA.comprovante === true && typeof _rowA.valorTotal === "number" &&
-      _rowA.status === "cancelado" && /R\$100\.00.*R\$150\.00/.test(_rowA.motivoCancelamento || ""),
+      _rowA.status === "cancelado" && /R\$100\.00.*R\$300\.00/.test(_rowA.motivoCancelamento || ""),
       JSON.stringify(_rowA).slice(0, 260));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     await req2("PATCH", "/api/pedido/" + mc5d1.json?.pedidoId, { status: "cancelado", notaAdmin: "valor não confere com o comprovante" });
@@ -4675,9 +4678,9 @@ async function drillBloqueioComprasNovas() {
       mc5re403.status === 403 && mc5re400.status === 400,
       JSON.stringify({ re: mc5re.status, h: !!_pdRe?.comprovanteHash, f403: mc5re403.status, f400: mc5re400.status }).slice(0, 140));
     const mc5pl = (await get("/api/planos")).json;
-    check("💼 MC5-P2 → v170: /api/planos entrega a mediana REAL de confirmação (promessa honesta no lugar do '24h' fixo) — fonte única de preço/limites pro checkout, nunca hardcoded",
+    check("💼 MC5-P2 → v170/v218: /api/planos entrega a mediana REAL de confirmação (promessa honesta no lugar do '24h' fixo) — fonte única de preço/limites pro checkout, nunca hardcoded (3 planos × 2 prazos desde a v218)",
       mc5pl?.ok === true && (typeof mc5pl?.medianaAprovacaoHoras === "number" || mc5pl?.medianaAprovacaoHoras === null) &&
-      Array.isArray(mc5pl?.precos) && mc5pl.precos.length >= 9 && mc5pl?.limites?.vipro?.manual === 100,
+      Array.isArray(mc5pl?.precos) && mc5pl.precos.length >= 6 && mc5pl?.limites?.vipro?.manual === 100,
       JSON.stringify({ med: mc5pl?.medianaAprovacaoHoras, n: mc5pl?.precos?.length }).slice(0, 100));
 
     // ═══ 💼 MC5 — PARTE 3 (29/08): UMA RÉGUA SÓ NAS TELAS DO ADMIN ═════════
@@ -4744,7 +4747,7 @@ async function drillBloqueioComprasNovas() {
     // mês) e em dólar; repasse com comprovante; entrada manual com prova
     // some do "sem comprovante"; corte de mês em horário de Brasília.
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5e@test.com", name: "MC5 E" });
-    const mc5p5 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 E", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:100", comprovante: Buffer.from("comp-mc5-e-p5").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    const mc5p5 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 E", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:150", comprovante: Buffer.from("comp-mc5-e-p5").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     await new Promise((r) => setTimeout(r, 400));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "andrio.usa2026@gmail.com", name: "Dono", isAdmin: true });
     const mc5Ap5 = await req2("PATCH", "/api/pedido/" + mc5p5.json?.pedidoId, { status: "ativo" }); // SEM recebidoPor, de propósito
@@ -4752,7 +4755,7 @@ async function drillBloqueioComprasNovas() {
     const finP5 = (await get("/api/admin/financeiro")).json;
     const _rowP5 = (finP5?.pagamentos || []).find((x) => x.pedidoId === mc5p5.json?.pedidoId);
     const _csvP5 = (await _getBufA("/api/admin/financeiro/exportar")).buf.toString("utf8");
-    const _linP5 = _csvP5.split("\n").find((l) => l.includes("100,00"));
+    const _linP5 = _csvP5.split("\n").find((l) => l.includes(String(mc5p5.json?.pedidoId || "").slice(-8).toUpperCase()));
     check("💼 MC5-P5: aprovação SEM 'quem recebeu' não carimba mais um sócio na marra — o caixa nasce SEM recebidoPor e o dono sai da TRILHA (ativadoPorEmail do admin real → 'derivado', auditável no CSV)",
       mc5Ap5.json?.ok === true && _rowP5 && !("recebidoPor" in _rowP5) &&
       _rowP5.ativadoPorEmail === "andrio.usa2026@gmail.com" &&
@@ -4801,7 +4804,7 @@ async function drillBloqueioComprasNovas() {
     // dinheiro conferida, action desconhecida = 400 na cara, e os eventos
     // do tempo real sobrevivem a deploy (fila persistida + retomada no boot).
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5f@test.com", name: "MC5 F" });
-    const p6ped = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 F", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:100", comprovante: Buffer.from("comp-p6-f").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    const p6ped = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 F", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:150", comprovante: Buffer.from("comp-p6-f").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     await new Promise((r) => setTimeout(r, 400));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     const _janAntes6 = (await get("/api/admin/financeiro")).json?.entradas?.total;
@@ -4811,10 +4814,10 @@ async function drillBloqueioComprasNovas() {
     const finP6 = (await get("/api/admin/financeiro")).json;
     const _p6orig = (finP6?.pagamentos || []).find((x) => x.pedidoId === p6ped.json?.pedidoId && x.tipo !== "ajuste");
     const _p6aj = (finP6?.pagamentos || []).find((x) => x.tipo === "ajuste" && x.ajustaPedidoId === p6ped.json?.pedidoId);
-    check("💼 MC5-P6: cancelar pedido APROVADO anula por AJUSTE− em vez de apagar — original preservado (anuladoPor com o motivo do admin), par de −100, e o líquido canônico volta EXATO ao de antes da aprovação (delta R$0)",
+    check("💼 MC5-P6: cancelar pedido APROVADO anula por AJUSTE− em vez de apagar — original preservado (anuladoPor com o motivo do admin), par de −150, e o líquido canônico volta EXATO ao de antes da aprovação (delta R$0)",
       p6canc.json?.ok === true && _p6orig && !!_p6orig.anuladoPor && /caixa nunca apaga/.test(_p6orig.anuladoPor.motivo || "") &&
-      _p6aj && _p6aj.valor === -100 && !_p6aj.pedidoId &&
-      Math.abs(_janMeio6 - _janAntes6 - 100) < 0.011 && Math.abs(finP6.entradas.total - _janAntes6) < 0.011,
+      _p6aj && _p6aj.valor === -150 && !_p6aj.pedidoId &&
+      Math.abs(_janMeio6 - _janAntes6 - 150) < 0.011 && Math.abs(finP6.entradas.total - _janAntes6) < 0.011,
       JSON.stringify({ antes: _janAntes6, meio: _janMeio6, fim: finP6?.entradas?.total, aj: _p6aj?.valor }).slice(0, 160));
     // (as checagens de RULE_CANCELLED_PAYMENT/lista de ajustes via
     // /api/admin/cerebro/* saíram — mod-cerebro.js não existe nesta
@@ -5835,7 +5838,7 @@ async function drillBloqueioComprasNovas() {
       // front agora reaplica (applyStatus).
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "provl3@test.com", name: "Provisorio Lote3" });
       const _stAntesL3 = (await get("/api/status")).json;
-      const _pvL3 = await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, consentimento: true, userName: "Provisorio Lote3", userWhatsapp: "53 98145 3496", userCity: "Pelotas", userState: "RS", nota: "TESTE_COMPROVANTE:150", comprovante: Buffer.from("comp-l3-provisorio").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+      const _pvL3 = await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, consentimento: true, userName: "Provisorio Lote3", userWhatsapp: "53 98145 3496", userCity: "Pelotas", userState: "RS", nota: "TESTE_COMPROVANTE:300", comprovante: Buffer.from("comp-l3-provisorio").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
       await new Promise((r) => setTimeout(r, 600));
       const _stDepoisL3 = (await get("/api/status")).json;
       check("🧾 v185-L3: comprovante que CONFERE libera o plano na hora (provisório) e o /api/status já reflete isso — needsPlan vira false e autoLimit passa de 0; é exatamente esse payload que a tela deixava de reaplicar (a pessoa batia no cadeado 'Plano necessário' e só um F5 resolvia)",
@@ -5946,8 +5949,8 @@ async function drillBloqueioComprasNovas() {
       const _dDiego = (_socDepois?.socios?.diego?.recebido || 0) - (_socAntes?.socios?.diego?.recebido || 0);
       const _dDerDiego = (_socDepois?.socios?.diego?.derivado || 0) - (_socAntes?.socios?.diego?.derivado || 0);
       const _dSemDono = (_socDepois?.entradas?.semDono?.n || 0) - (_socAntes?.entradas?.semDono?.n || 0);
-      check("🔐 v183-L1: o R$100 aprovado pelo Diego entra no acerto COMO DELE (modo derivado da trilha) — e a fila de 'entradas sem dono' NÃO cresceu (era pra lá que todo dinheiro aprovado pelo painel ia)",
-        _dDiego === 100 && _dDerDiego === 1 && _dSemDono === 0,
+      check("🔐 v183-L1: o R$150 aprovado pelo Diego entra no acerto COMO DELE (modo derivado da trilha) — e a fila de 'entradas sem dono' NÃO cresceu (era pra lá que todo dinheiro aprovado pelo painel ia)",
+        _dDiego === 150 && _dDerDiego === 1 && _dSemDono === 0,
         JSON.stringify({ deltaRecebidoDiego: _dDiego, deltaDerivado: _dDerDiego, deltaSemDono: _dSemDono }));
       const _banL1 = await get("/api/admin/banned-emails");
       const _sentL1 = await req2("POST", "/api/admin/health-sentinel/run", {});
@@ -5986,7 +5989,7 @@ async function drillBloqueioComprasNovas() {
       // hora em que o admin confirmava o pedido (que carimba a tabela nova) o
       // limite CAÍA PELA METADE na cara de quem acabou de pagar.
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "lim187@test.com", name: "Limites 187" });
-      await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, consentimento: true, userName: "Limites 187", userWhatsapp: "53 98145 3496", userCity: "Pelotas", userState: "RS", nota: "TESTE_COMPROVANTE:150", comprovante: Buffer.from("comp-187-limites").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+      await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, consentimento: true, userName: "Limites 187", userWhatsapp: "53 98145 3496", userCity: "Pelotas", userState: "RS", nota: "TESTE_COMPROVANTE:300", comprovante: Buffer.from("comp-187-limites").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
       await new Promise((r) => setTimeout(r, 600));
       const _stProv187 = (await get("/api/status")).json;
       check("💳 v187-L5: o plano PROVISÓRIO vale exatamente o que foi vendido — VIPro provisório devolve 100 manuais + 100 automáticos (PLAN_LIMITS_NEW), não os 200+200 da tabela legada que a confirmação do admin depois cortaria pela metade",
@@ -6521,7 +6524,7 @@ async function drillBloqueioComprasNovas() {
     // existe com TEST_LOGIN_TOKEN e faz a leitura do comprovante CONFERIR sem
     // tocar em rede — é o que liga a ativação provisória de verdade.)
     const _b2Ped = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true,
-      userName: "Boot2 Pedido", userWhatsapp: "11 98888-0002", userCity: "SP", nota: "TESTE_COMPROVANTE:100",
+      userName: "Boot2 Pedido", userWhatsapp: "11 98888-0002", userCity: "SP", nota: "TESTE_COMPROVANTE:150",
       comprovante: Buffer.from("comprovante-boot2-unico").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     const _b2PedId = _b2Ped.json?.pedidoId;
     await new Promise((r) => setTimeout(r, 500));

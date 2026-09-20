@@ -444,7 +444,7 @@ tbody tr:hover{background:var(--glass2)}
             <div class="mig-grid">
               <div class="field"><label>Nome do cliente</label><input id="mig-nome" type="text" maxlength="80" placeholder="Como aparece no site antigo"></div>
               <div class="field"><label>Gmail do site antigo</label><input id="mig-email" type="email" maxlength="120" placeholder="cliente@gmail.com"><div class="hint">O código só funciona na conta nova cadastrada com ESTE Gmail.</div></div>
-              <div class="field"><label>Plano</label><select id="mig-plano"><option value="vipro">VIPro (100 manual + 100 auto/dia)</option><option value="doublepro">DoublePro (200 + 200/dia)</option><option value="vip">VIP (100 manual/dia)</option></select></div>
+              <div class="field"><label>Plano</label><select id="mig-plano"><option value="vipro">Turbo (100 manual + 100 auto/dia)</option><option value="doublepro">Máximo (50 manual + 300 auto/dia)</option><option value="vip">Manual (100 manual/dia)</option></select></div>
               <div class="field"><label>Dias restantes</label><input id="mig-dias" type="number" min="1" max="365" placeholder="ex.: 25"></div>
               <div class="field"><label>Código (opcional)</label><input id="mig-cod" type="text" maxlength="24" placeholder="vazio = o sistema gera" style="text-transform:uppercase"><div class="hint">Só preencha se o cliente JÁ recebeu um código específico.</div></div>
             </div>
@@ -672,9 +672,9 @@ tbody tr:hover{background:var(--glass2)}
       <div class="field">
         <label>Plano</label>
         <select id="vip-plano">
-          <option value="vip">VIP (só manual)</option>
-          <option value="vipro">VIPro (manual + automático)</option>
-          <option value="doublepro">DoublePro</option>
+          <option value="vip">Manual (só manual)</option>
+          <option value="vipro">Turbo (manual + automático)</option>
+          <option value="doublepro">Máximo (foco em automático)</option>
         </select>
       </div>
       <div class="field">
@@ -684,7 +684,7 @@ tbody tr:hover{background:var(--glass2)}
       <div class="field">
         <label>Dias de envio AUTOMÁTICO</label>
         <input type="number" id="vip-auto" min="0" max="365" value="0">
-        <div class="hint">VIP não tem automático — deixe 0. VIPro/DoublePro normalmente usam o mesmo número do manual.</div>
+        <div class="hint">Manual não tem automático — deixe 0. Turbo normalmente usa o mesmo número do manual (100/100); Máximo é 50 manual + 300 automático.</div>
       </div>
       <div class="field">
         <label>Motivo / observação (fica no extrato do usuário)</label>
@@ -848,8 +848,11 @@ function toast(msg,tipo){
   },4200);
 }
 
-/* ═══════════════════ 🎟️ CÓDIGOS DE MIGRAÇÃO VIP (v206) ═══════════════════ */
-var MIG_PLANO_TXT={vip:"VIP",vipro:"VIPro",doublepro:"DoublePro"};
+// 🏷️ v218 (reestruturação de Planos, 20/09/2026) — nome público de cada
+// plano no painel admin (mensagens ao cliente, listas, confirmações). Chave
+// interna (vip/vipro/doublepro) nunca muda — só o texto que a pessoa lê.
+var NOME_PLANO_ADM={vip:"Manual",vipro:"Turbo",doublepro:"Máximo"};
+var MIG_PLANO_TXT=NOME_PLANO_ADM; // nome antigo mantido como alias — mesmos usos
 async function loadMigracao(){
   var tbody=document.getElementById("tbl-migracao");
   try{
@@ -1148,7 +1151,7 @@ function renderLinhasUsuarios(lista){
     var cortesia=u.diasCreditadosCortesia!=null?u.diasCreditadosCortesia:0;
     html+='<tr>'
       +'<td><div class="cell-main">'+esc(u.nome||u.email)+'</div><div class="cell-sub">'+esc(u.email)+'</div></td>'
-      +'<td><span class="badge blue">'+esc(u.plano||"free")+'</span></td>'
+      +'<td><span class="badge blue">'+esc(NOME_PLANO_ADM[u.plano]||u.plano||"free")+'</span></td>'
       +'<td>'+esc(dias)+'</td>'
       +'<td>'+esc(creditados)+' dia'+((creditados===1)?"":"s")+'</td>'
       +'<td>'+(cortesia>0?('<span class="badge gray">'+esc(cortesia)+' dia'+((cortesia===1)?"":"s")+'</span>'):'—')+'</td>'
@@ -1206,7 +1209,7 @@ function renderRobosParados(rep){
     var x=lista[i];
     html+='<tr>'
       +'<td><div class="cell-main">'+esc(x.nome||x.email)+'</div><div class="cell-sub">'+esc(x.email)+'</div></td>'
-      +'<td><span class="badge blue">'+esc(x.plano||"vip")+'</span></td>'
+      +'<td><span class="badge blue">'+esc(NOME_PLANO_ADM[x.plano]||x.plano||"vip")+'</span></td>'
       +'<td>'+esc(x.diasRestantes!=null?x.diasRestantes:"—")+'</td>'
       +'<td><span class="badge red">'+esc(x.status||"sem_job")+'</span>'+(x.tokenOk?'':'<div class="cell-sub">sem token de envio válido</div>')+'</td>'
       +'<td>'+esc(x.diasInativo!=null?(x.diasInativo+" dia(s)"):"—")+'</td>'
@@ -1244,7 +1247,7 @@ function abrirVipModal(email){
   document.getElementById("vip-quem").innerHTML=
     '<div style="font-size:14px;font-weight:800;color:#fff">'+esc(u.nome||u.email)+'</div>'
     +'<div style="font-size:12.5px;color:var(--t2)">'+esc(u.email)+'</div>'
-    +'<div style="font-size:12.5px;color:var(--t2);margin-top:8px">Hoje: <b style="color:var(--text)">'+esc(u.plano||"free")+'</b> · '
+    +'<div style="font-size:12.5px;color:var(--t2);margin-top:8px">Hoje: <b style="color:var(--text)">'+esc(NOME_PLANO_ADM[u.plano]||u.plano||"free")+'</b> · '
     +(restam>0?('restam <b style="color:var(--text)">'+restam+' dia'+(restam===1?"":"s")+'</b>'):'<b style="color:var(--red)">sem plano ativo</b>')+'</div>'
     +'<div style="font-size:12px;color:var(--t3);margin-top:3px">Manual vence: '+esc(venceManual)+' · Automático vence: '+esc(venceAuto)+'</div>';
   var planoSel=document.getElementById("vip-plano");
@@ -1489,7 +1492,7 @@ function renderPendentes(lista){
   for(var i=0;i<ordenada.length;i++){
     var pd=ordenada[i];
     var statusPd=String(pd.status||"pendente");
-    var planoTxt=esc(pd.plano||"—")+(pd.dias?(" · "+esc(pd.dias)+"d"):"");
+    var planoTxt=esc(NOME_PLANO_ADM[pd.plano]||pd.plano||"—")+(pd.dias?(" · "+esc(pd.dias)+"d"):"");
     var pc=pd.preCheck||null;
     // 🧾 v188 LOTE 6: o pré-check da IA já gravava pagador, banco, data e nº
     // da transação — a tela mostrava só o veredito. É justamente esse detalhe
@@ -1609,7 +1612,7 @@ async function detalhesPedido(id){
       +'<div><b style="color:#fff">'+esc(pd.contaNome||pd.userName||pd.userEmail||"—")+'</b></div>'
       +'<div style="color:var(--t2)">'+esc(pd.userEmail||"")+'</div>'
       +'<div style="margin-top:10px">Pedido <b>#'+esc(String(pd.id||"").slice(-8).toUpperCase())+'</b> · '+_badgeStatusPedido(pd.status)+'</div>'
-      +'<div>Plano: <b>'+esc(pd.plano||"—")+'</b> · '+esc(pd.dias||0)+' dias · '+fmtMoney(pd.valorTotal)+'</div>'
+      +'<div>Plano: <b>'+esc(NOME_PLANO_ADM[pd.plano]||pd.plano||"—")+'</b> · '+esc(pd.dias||0)+' dias · '+fmtMoney(pd.valorTotal)+'</div>'
       +'<div>Criado em '+fmtData(pd.createdAt)+(pd.pagoEm?(" · pago em "+fmtData(pd.pagoEm)):"")+'</div>';
     if(pd.status==="ativo")h+='<div>Aprovado por '+esc(pd._ativadoEditor||pd.ativadoPor||"admin")+(pd.ativadoEm?(" em "+fmtData(pd.ativadoEm)):"")+'</div>';
     if(pd.status==="cancelado"){
@@ -1653,7 +1656,7 @@ function confirmarAprovarPedido(id){
   var pd=(STATE.pendentes||[]).find(function(x){return x.id===id;})||{};
   var quem=pd.contaNome||pd.userName||pd.userEmail||"este usuário";
   var txt="Aprovar o pedido de "+quem
-    +"\n\nPlano: "+(pd.plano||"—")+" · "+(pd.dias||0)+" dias"
+    +"\n\nPlano: "+(NOME_PLANO_ADM[pd.plano]||pd.plano||"—")+" · "+(pd.dias||0)+" dias"
     +"\nValor: "+fmtMoney(pd.valorTotal)
     +"\nE-mail: "+(pd.userEmail||"—")
     +"\n\nIsso ativa o plano na hora e lança a entrada no caixa.";
