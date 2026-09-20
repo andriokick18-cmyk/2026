@@ -4535,6 +4535,36 @@ async function drillBloqueioComprasNovas() {
     check("💼 MC5-P1 + v178: MESMA transação PIX (E2E) reaparece em OUTRO usuário — mesmo o pedido original tendo sido CANCELADO (pelo auto-cancelamento por valor divergente, não aprovado), a aprovação barra com 409 'comprovante já usado' apontando o pedido e o e-mail originais (reuso suspeito não some só porque a 1ª tentativa foi rejeitada)",
       mc5Ap3.status === 409 && mc5Ap3.json?.comprovanteUsado === true && mc5Ap3.json?.pedidoDup === mc5p1.json?.pedidoId && mc5Ap3.json?.emailDup === "mc5a@test.com",
       JSON.stringify(mc5Ap3.json).slice(0, 180));
+
+    // ═══ 🚨 v226 (achado de auditoria, 20/09/2026): reuso de comprovante no
+    // caminho AUTOMÁTICO (ativação provisória na hora, sem admin nenhum) ═══
+    // Antes só a aprovação MANUAL do admin checava hash/transação — o mesmo
+    // comprovante Pix (mesmo arquivo OU mesma transação E2E) reaparecendo em
+    // OUTRA conta, com valor batendo (CONFERE), ativava plano provisório na
+    // hora sem barreira nenhuma. Dois usuários diferentes usam a MESMA
+    // transação E2E (v226aaa1): o 1º ativa normalmente (1ª vez que aparece),
+    // o 2º tem que ficar pendente — SEM autoAtivado nem ativadoEm.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "v226a@test.com", name: "V226 A" });
+    const v226p1 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "V226 A", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:150:E2EV226AAA1:Pagador V226", comprovante: Buffer.from("comp-v226-a").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    await new Promise((r) => setTimeout(r, 400));
+    const v226St1 = (await get("/api/status")).json;
+    check("🚨 v226: 1ª vez que a transação PIX aparece — ativa o provisório automático normalmente (comportamento de sempre intacto)",
+      v226p1.json?.ok === true && v226St1?.plan === "vip" && v226St1?.vip?.source === "auto-provisorio",
+      JSON.stringify({ ok: v226p1.json?.ok, plan: v226St1?.plan, source: v226St1?.vip?.source }).slice(0, 160));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "v226b@test.com", name: "V226 B" });
+    const v226p2 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "V226 B", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:150:E2EV226AAA1:Pagador V226", comprovante: Buffer.from("comp-v226-b-refoto").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    await new Promise((r) => setTimeout(r, 400));
+    const v226St2 = (await get("/api/status")).json;
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const v226Ped2 = (await get("/api/pedido/" + v226p2.json?.pedidoId)).json?.pedido;
+    check("🚨 v226 (CRÍTICO corrigido): MESMA transação PIX reaparecendo em conta NOVA com valor batendo (CONFERE) NÃO ativa mais o provisório automático sozinho — comprovante Pix real reaproveitado em contas novas não vira VIP grátis na hora sem um humano olhar; pedido fica pendente, sem ativadoEm/autoAtivado, e o preCheck continua mostrando CONFERE (a leitura em si não muda, só a ativação é barrada)",
+      v226p2.json?.ok === true && v226St2?.plan !== "vip" && v226St2?.needsPlan === true &&
+      v226Ped2?.status === "pendente" && !v226Ped2?.ativadoEm && !v226Ped2?.autoAtivado &&
+      v226Ped2?.preCheck?.veredito === "CONFERE",
+      JSON.stringify({ plan: v226St2?.plan, needsPlan: v226St2?.needsPlan, status: v226Ped2?.status, ativadoEm: v226Ped2?.ativadoEm, veredito: v226Ped2?.preCheck?.veredito }).slice(0, 220));
+    check("🚨 v226 (estrutural, função única): a mesma _comprovanteJaUsado() usada pela aprovação MANUAL agora também é chamada pelos 2 pontos do caminho AUTOMÁTICO (gancho de teste e Gemini real) antes de autoAtivarProvisorio — nunca uma 2ª lógica duplicada",
+      (_srvSrc.match(/_comprovanteJaUsado\(/g) || []).length >= 4,
+      "chamadas de _comprovanteJaUsado() insuficientes — refactor pode ter perdido algum caminho");
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5c@test.com", name: "MC5 C" });
     const mc5d1 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-um").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     const mc5d2 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-dois").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });

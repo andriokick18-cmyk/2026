@@ -10358,20 +10358,10 @@ filtrar();
         // pedido de QUALQUER usuário. Antes essa fraude só aparecia na
         // auditoria das 02h, DEPOIS dos 💎 creditados — agora barra na hora.
         if(!d.confirmarComprovanteUsado){
-          const _hash=pd.comprovanteHash||null;
-          const _tx=String((pd.preCheck||{}).transacaoIdLida||"").replace(/\s+/g,"").toUpperCase();
-          // 🎯 v178: inclui "cancelado" na busca — desde que o v178 passou a
-          // AUTO-CANCELAR pedido com valor divergente, o mesmo arquivo/
-          // transação reaparecer em OUTRO pedido depois de um cancelamento
-          // (automático ou manual) continua sendo reuso suspeito; filtrar só
-          // "pago"/"ativo" deixaria de flagar exatamente esse caso.
-          const _usado=DB_PEDIDOS.find(x=>x&&x.id!==pd.id
-            &&["pago","ativo","cancelado"].includes(String(x.status||"").toLowerCase())
-            &&((_hash&&x.comprovanteHash===_hash)
-              ||(_tx.length>=6&&String((x.preCheck||{}).transacaoIdLida||"").replace(/\s+/g,"").toUpperCase()===_tx)));
+          const _usado=_comprovanteJaUsado(pd);
           if(_usado){
             return json(res,409,{comprovanteUsado:true,pedidoDup:_usado.id,emailDup:_usado.userEmail,
-              error:`🔴 COMPROVANTE JÁ USADO: ${(_hash&&_usado.comprovanteHash===_hash)?"o MESMO arquivo":"a MESMA transação PIX"} já apareceu no pedido #${String(_usado.id||"").slice(-8).toUpperCase()} (${_usado.userEmail}, status "${_usado.status}"). Só confirme se tiver CERTEZA que são pagamentos diferentes.`});
+              error:`🔴 COMPROVANTE JÁ USADO: ${(pd.comprovanteHash&&_usado.comprovanteHash===pd.comprovanteHash)?"o MESMO arquivo":"a MESMA transação PIX"} já apareceu no pedido #${String(_usado.id||"").slice(-8).toUpperCase()} (${_usado.userEmail}, status "${_usado.status}"). Só confirme se tiver CERTEZA que são pagamentos diferentes.`});
           }
         }
         // v57 (dono, 25/07) — atualizado p/ v172b (12/09): sem senha extra aqui — a
@@ -14152,6 +14142,32 @@ function _autoCancelarSeDivergente(pedido,pc){
     notaAdmin:`Cancelado automaticamente: o comprovante mostra R$${(pc.valorLido||0).toFixed(2)}, mas o plano escolhido custa R$${(pedido.valorTotal||0).toFixed(2)}. Se você pagou o valor certo, confira se enviou o comprovante certo; se pagou um valor diferente, faça uma nova doação com o valor correto.`});
   if(_rD.ok)console.log(`[precheck] 🚫 pedido ${pedido.id} CANCELADO automaticamente — valor divergente (lido R$${pc.valorLido}, esperado R$${pedido.valorTotal||0})`);
 }
+// 🚨 v226 (achado de auditoria, 20/09/2026): função ÚNICA da checagem de
+// "comprovante já usado" — mesmo ARQUIVO (hash SHA-256) ou mesma
+// TRANSAÇÃO PIX (E2E) já pago/ativo/cancelado em outro pedido de QUALQUER
+// usuário. Existia só dentro da aprovação MANUAL do admin (PATCH /api/
+// pedido/:id) — o comentário da ativação AUTOMÁTICA (autoAtivarProvisorio,
+// logo abaixo) dizia "comprovante reusado nunca chega aqui" mas isso era
+// FALSO: nenhuma função no caminho automático olhava hash/transação, só
+// o VALOR lido. Um comprovante Pix real reaproveitado em contas novas
+// (Gmail diferente, mesmo arquivo/transação, mesmo valor) conferia
+// "CONFERE" e ativava 3 dias de VIP na hora, sem nenhum humano olhar.
+// Agora as duas ativações (manual e automática) usam a MESMA régua.
+// v226-fix (achado testando o próprio fix): a ativação AUTOMÁTICA nunca
+// muda pd.status — o pedido fica "pendente" pra sempre até o admin
+// aprovar (ou nunca). Um 1º pedido só auto-ativado (autoAtivado:true,
+// status ainda "pendente") não entrava no filtro ["pago","ativo",
+// "cancelado"], então um 2º pedido com o MESMO arquivo/transação passava
+// pela checagem e também auto-ativava — reuso automático→automático
+// intacto. `x.autoAtivado` cobre esse caso sem duplicar a régua.
+function _comprovanteJaUsado(pd){
+  const _hash=pd.comprovanteHash||null;
+  const _tx=String((pd.preCheck||{}).transacaoIdLida||"").replace(/\s+/g,"").toUpperCase();
+  return DB_PEDIDOS.find(x=>x&&x.id!==pd.id
+    &&(["pago","ativo","cancelado"].includes(String(x.status||"").toLowerCase())||x.autoAtivado)
+    &&((_hash&&x.comprovanteHash===_hash)
+      ||(_tx.length>=6&&String((x.preCheck||{}).transacaoIdLida||"").replace(/\s+/g,"").toUpperCase()===_tx)));
+}
 async function preCheckComprovante(pedido, opts){
   const ativar=!!(opts&&opts.ativar);
   // ── 🧾 2.0-P2: IMPRESSÃO DIGITAL SEMPRE — o hash SHA-256 do comprovante é
@@ -14184,7 +14200,11 @@ async function preCheckComprovante(pedido, opts){
       // como o Gemini de verdade (fonte única _autoCancelarSeDivergente),
       // senão a suíte prova um comportamento que a produção não tem.
       _autoCancelarSeDivergente(pedido,pc);
-      if(ativar&&pc.veredito==="CONFERE")autoAtivarProvisorio(pedido.id);
+      if(ativar&&pc.veredito==="CONFERE"){
+        const _reuso=_comprovanteJaUsado(pedido);
+        if(_reuso)console.warn(`[precheck] 🚫 pedido ${pedido.id} NÃO ativado automaticamente — comprovante já usado no pedido ${_reuso.id} (${_reuso.userEmail}); fica pendente de conferência manual.`);
+        else autoAtivarProvisorio(pedido.id);
+      }
       return pc;
     }
     // (o gancho de teste NUNCA cai pro caminho real do Gemini abaixo — a
@@ -14210,7 +14230,11 @@ async function preCheckComprovante(pedido, opts){
     const pc=_geminiComprovanteParse(r.body,pedido);
     setPedidoPreCheck(pedido.id,pc);
     _autoCancelarSeDivergente(pedido,pc);
-    if(ativar&&pc.veredito==="CONFERE")autoAtivarProvisorio(pedido.id);
+    if(ativar&&pc.veredito==="CONFERE"){
+      const _reuso=_comprovanteJaUsado(pedido);
+      if(_reuso)console.warn(`[precheck] 🚫 pedido ${pedido.id} NÃO ativado automaticamente — comprovante já usado no pedido ${_reuso.id} (${_reuso.userEmail}); fica pendente de conferência manual.`);
+      else autoAtivarProvisorio(pedido.id);
+    }
     return pc;
   }catch(e){
     console.warn("[precheck] erro chamando Gemini:",e.message);
@@ -14227,8 +14251,11 @@ async function preCheckComprovante(pedido, opts){
 // provisória). O pedido continua "pendente" na mesa do admin; a confirmação
 // humana concede o período cheio (substituindo, nunca somando — ver
 // _ehTrial na ativação). Sem confirmação, o provisório expira sozinho.
-// Comprovante reusado nunca chega aqui (o hash anti-fraude rebaixa pra
-// DIVERGENCIA antes). Não roda se o cliente JÁ tem VIP pago ativo
+// v226: comprovante reusado (mesmo arquivo/transação em outro pedido)
+// NUNCA chega aqui — quem chama (preCheckComprovante) barra com
+// _comprovanteJaUsado() antes de chamar esta função (achado real de
+// auditoria: essa checagem não existia antes, e o comentário aqui dizia
+// que ela existia). Não roda se o cliente JÁ tem VIP pago ativo
 // (renovação empilha dias — decisão que fica 100% com o admin).
 const AUTO_ATIVA_DIAS = 3;
 function autoAtivarProvisorio(pedidoId){

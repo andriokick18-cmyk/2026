@@ -2211,3 +2211,51 @@ aplicados.
 Testes: `npm test` 100% verde, `check-duplicates.js`/
 `check-xss-guard.js` sem achados. sw.js bumpado (v86→v87).
 
+## v226 — achado CRÍTICO das 3 auditorias paralelas: reuso de comprovante furava a ativação automática (20/09/2026)
+
+Das 3 auditorias em paralelo do v225 (pagamento/admin), o achado #1 era
+o mais grave: o comprovante Pix reaproveitado (mesmo arquivo OU mesma
+transação E2E) em uma conta DIFERENTE só era barrado na aprovação
+MANUAL do admin (`PATCH /api/pedido/:id`) — a ativação PROVISÓRIA
+AUTOMÁTICA (`preCheckComprovante`→`autoAtivarProvisorio`, dispara sozinha
+na hora que o pedido é criado, sem nenhum humano olhar) só conferia o
+VALOR lido, nunca hash/transação. Pior: o comentário acima de
+`autoAtivarProvisorio` já dizia "comprovante reusado nunca chega aqui"
+— isso era FALSO, nenhuma checagem real existia nesse caminho. Um
+comprovante Pix de verdade (foto/print do mesmo pagamento) reaproveitado
+em contas novas (Gmail diferente, mesmo arquivo) conferia "CONFERE" e
+ganhava 3 dias de VIP na hora, de graça, indefinidamente (cada conta
+nova repetia o golpe).
+
+**Correção (função única):** a checagem que já existia só na rota manual
+virou `_comprovanteJaUsado(pd)` (server.js, logo antes de
+`preCheckComprovante`) e passou a ser chamada nos 3 lugares que decidem
+"já foi usado?": a aprovação manual do admin (refatorada pra usá-la) e
+os 2 pontos de `preCheckComprovante` que chamam `autoAtivarProvisorio`
+(gancho de teste `TESTE_COMPROVANTE:` e o caminho real do Gemini) — se
+`_comprovanteJaUsado` encontra outro pedido com o mesmo hash/transação,
+a ativação automática é pulada (`console.warn`, fica pendente de
+conferência manual) em vez de rodar.
+
+**2ª camada do mesmo bug, achada escrevendo o teste de regressão:** a
+função original só considerava "usado" um pedido com status
+`pago`/`ativo`/`cancelado` — mas a ativação AUTOMÁTICA nunca muda
+`pd.status` (o pedido fica "pendente" pra sempre, só o VIP do usuário é
+que liga). Um 1º pedido só auto-ativado (nunca aprovado manualmente
+depois) não batia nesse filtro, então um 2º pedido com o MESMO
+arquivo/transação ainda passava e auto-ativava de novo — reuso
+automático→automático intacto mesmo depois do primeiro fix. Corrigido
+adicionando `||x.autoAtivado` ao filtro de status — nenhuma 2ª lógica,
+só cobrindo o caso que faltava na mesma função.
+
+Testes: 3 checks novos no smoke (1ª vez que a transação aparece ativa
+normal; 2ª vez em conta nova NÃO ativa mais sozinho, pedido fica
+pendente sem `ativadoEm`/`autoAtivado`, preCheck continua mostrando
+CONFERE; estrutural confirmando as ≥4 chamadas de `_comprovanteJaUsado`
+no server.js). O 2º achado (status `autoAtivado`) só apareceu porque o
+próprio teste de regressão rodou contra o fix antes de eu confiar nele —
+lição: testar o caminho que a correção deveria fechar, não só declarar
+que fechou. `npm test` 100% verde, `check-duplicates.js`/
+`check-xss-guard.js` sem achados. Mudança 100% em server.js — sem
+bump de sw.js (nenhum arquivo servido ao cliente mudou).
+
