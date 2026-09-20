@@ -164,7 +164,7 @@ const { MAX_SENDER_EMAILS_FREE, MAX_SENDER_EMAILS_VIP, MAX_SENDER_EMAILS_DOUBLEP
         ADMIN_AUTO_DAILY_LIMIT_PER_SENDER,
         MAX_RESUMES, MAX_COVERS,
         ADMIN_EMAIL, ADMIN_EMAIL_2, ADMIN_EMAILS_EXTRA, ADMIN_EMAILS, isAdminEmail,
-        isTestAccountEmail, naoEhReceita,
+        TEST_ACCOUNT_EMAIL, isTestAccountEmail, naoEhReceita,
         PUSH_ENABLED,
         PLAN_LIMITS, PLAN_LIMITS_NEW, NOME_PLANO_PUBLICO } = require("./mod-config.js");
 // 🏷️ v218 — nome público de um plano em texto (log/extrato/nota), nunca a
@@ -4718,6 +4718,13 @@ function _releaseManualSlot(email){ const n=(_manualSendReserved.get(email)||0)-
 // (bug encontrado testando: 16 envios concorrentes com cap=15 só deixava
 // 8 passarem, não 15, com só o timer sem release explícito).
 const _warmupReserved = new Map(); // "dono|sender" → nº de envios reservados (em voo) nesse sender hoje
+// 🎬 v237x: tokens do link mágico de entrada na conta de teste (token →
+// {email,expires,used}). PRECISA viver aqui, fora do handler por
+// requisição (bug real corrigido antes do commit: declarado dentro do
+// `http.createServer` ele recriava um Map VAZIO a cada requisição — o
+// token gerado em /entrar-conta-teste sumia antes de /entrar-teste
+// conseguir lê-lo, e o link nunca funcionava de verdade).
+const _loginTesteTokens = new Map();
 function _makeWarmupReleaser(key){
   let done=false;
   return ()=>{ if(done)return; done=true; const n=(_warmupReserved.get(key)||0)-1; if(n<=0)_warmupReserved.delete(key); else _warmupReserved.set(key,n); };
@@ -8913,6 +8920,78 @@ filtrar();
     const qs=new URLSearchParams({client_id:CLIENT_ID,redirect_uri:_oauthBase(req)+"/oauth/callback",response_type:"code",scope:OAUTH_SCOPES,access_type:"offline",prompt:"consent select_account",state:st,...(_hintN?{login_hint:_hintN}:{})});
     // v237u: mesmo cookie de handshake dos outros 2 fluxos.
     res.writeHead(302,{Location:"https://accounts.google.com/o/oauth2/v2/auth?"+qs,"Set-Cookie":makeFlowCookieStr(st)});return res.end();
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  🎬 v237x (dono, 20/09/2026 — "eu nunca digito senha em nenhum campo,
+  //  nem mesmo autopreenchida"): sem login por Google (v172b) e sem digitar
+  //  senha, não existia NENHUM jeito de entrar como a conta de TESTE (ver
+  //  v237v/TEST_ACCOUNT_EMAIL) pra gravar o vídeo de compra. LINK MÁGICO
+  //  por e-mail — MESMO modelo de confiança que /api/email/enviar-codigo
+  //  (cadastro) e a recuperação de senha já usam neste site: prova de
+  //  DONO DA CAIXA DE ENTRADA = login, nunca um admin gerando/entregando
+  //  link na mão de ninguém. É o próprio Andrio que visita esta URL (só
+  //  navegar, sem formulário, sem JS) e recebe o link de entrada no
+  //  Gmail ndrkick.3@gmail.com de verdade; clicou no link = provou que é
+  //  dono daquela caixa = entra. Pública de propósito (é pra quem AINDA
+  //  não tem sessão nenhuma) — mas o alvo é 100% FIXO: NUNCA aceita
+  //  e-mail vindo de query string/body/header, só TEST_ACCOUNT_EMAIL.
+  //  ESCOPO DELIBERADAMENTE FECHADO: isto NÃO é impersonation geral
+  //  (entrar como qualquer usuário real) — só existe UMA conta alvo
+  //  possível, hardcoded pela mesma fonte única do v237v. Rate-limit
+  //  igual ao resto do site pra ninguém spammar o Gmail do Andrio.
+  // ══════════════════════════════════════════════════════════
+  if(pathname==="/entrar-conta-teste"&&req.method==="GET"){
+    const _ip=_clientIp(req);
+    const _pagina=(corpo)=>{res.writeHead(200,{"Content-Type":"text/html; charset=utf-8"});res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Entrar — conta de teste</title><style>body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;color:#1a1a2e;line-height:1.6}</style></head><body>${corpo}</body></html>`);};
+    if(rateLimit("entrarteste_"+_ip,5,900_000))return _pagina("<h2>⏳ Muitos pedidos</h2><p>Aguarde 15 minutos e tente de novo.</p>");
+    try{
+      let loginKey=Object.keys(DB_USERS).find(k=>{
+        const uu=DB_USERS[k];
+        return uu&&!uu.deleted&&String(uu.emailContato||uu.email||"").toLowerCase()===TEST_ACCOUNT_EMAIL;
+      });
+      if(!loginKey){
+        loginKey="contadeteste";
+        if(getUser(loginKey))return _pagina(`<h2>⚠️ Conflito</h2><p>O username "${loginKey}" já existe e não é a conta de teste (${TEST_ACCOUNT_EMAIL}) — verifique manualmente antes.</p>`);
+        // Senha aleatória, forte, NUNCA exposta em resposta nenhuma — o
+        // login desta conta sempre passa pelo link mágico, nunca por senha.
+        const{salt,hash}=await _hashPw(crypto.randomBytes(24).toString("hex"));
+        setUser(loginKey,{
+          email:loginKey,username:loginKey,name:"Conta De Teste",nome:"Conta",sobrenome:"De Teste",
+          emailContato:TEST_ACCOUNT_EMAIL,emailVerificadoEm:Date.now(),
+          dataNascimento:"1995-01-01",city:"Recife",estado:"PE",country:"Brasil",
+          phone:"5581999999999",whatsapp:"5581999999999",
+          passwordSalt:salt,passwordHash:hash,
+          created_at:new Date().toISOString(),plan:"free",vip:null,cvs:[],profiles:[],saved:[],
+          onboarded:false,isAdmin:false,language:"pt",
+        });
+        console.log(`[entrar-conta-teste] 🎬 conta de teste criada agora: ${loginKey} (${TEST_ACCOUNT_EMAIL})`);
+      }
+      const token=crypto.randomBytes(24).toString("hex");
+      _loginTesteTokens.set(token,{email:loginKey,expires:Date.now()+10*60_000,used:false});
+      if(!NOTIF.conectada())return _pagina("<h2>⚠️ Conta de notificações desconectada</h2><p>O site não consegue mandar e-mail agora — conecte a conta de notificações em Admin → Notificações e tente de novo.</p>");
+      await NOTIF.sendMail({to:TEST_ACCOUNT_EMAIL,
+        subject:"🎬 Seu link de entrada — H2BApply (conta de teste)",
+        text:`Clique no link abaixo pra entrar direto na conta de teste, sem senha nenhuma:\n\n${APP_URL}/entrar-teste?t=${token}\n\nVale 10 minutos e só funciona 1 vez. Se você não pediu, ignore este e-mail.`,
+        tipo:"login_conta_teste"});
+      return _pagina(`<h2>✅ Link enviado</h2><p>Confira o Gmail <b>${TEST_ACCOUNT_EMAIL}</b> — o link vale 10 minutos e só funciona 1 vez.</p>`);
+    }catch(e){return _pagina(`<h2>❌ Erro</h2><p>${String(e.message||e)}</p>`);}
+  }
+  // Consome o link (GET — a pessoa só clica) e troca por uma sessão de
+  // login de verdade. Uso único: o token some da memória assim que usado
+  // ou vencido — nunca dá pra reabrir o mesmo link duas vezes.
+  if(pathname==="/entrar-teste"&&req.method==="GET"){
+    const token=u.searchParams.get("t")||"";
+    const pend=_loginTesteTokens.get(token);
+    _loginTesteTokens.delete(token);
+    if(!pend||pend.used||Date.now()>pend.expires){
+      res.writeHead(302,{Location:"/?err="+encodeURIComponent("Link expirado ou já usado — peça um novo em /entrar-conta-teste.")});return res.end();
+    }
+    const uAlvo=getUser(pend.email);
+    const sid="usr_"+crypto.randomBytes(16).toString("hex");
+    sessions[sid]={user_email:pend.email,user_name:uAlvo?.name||pend.email,created_at:Date.now()};
+    persistSessionsDebounced(500);
+    res.writeHead(302,{Location:"/?tab=plans","Set-Cookie":makeCookieStr(sid)});return res.end();
   }
 
   // [FIX] Alias legado — redireciona para /oauth/callback (unificado)

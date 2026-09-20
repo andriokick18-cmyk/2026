@@ -7587,6 +7587,49 @@ async function drillBloqueioComprasNovas() {
         JSON.stringify((_pagREAL.json?.rows || []).find(r => r.email === _usernameEscolhido)));
     }
 
+    // 🎬 v237x (dono, 20/09/2026 — "eu nunca digito senha em nenhum campo,
+    // nem mesmo autopreenchida"): link mágico de entrada na conta de
+    // teste, por e-mail — sem login por Google (v172b) e sem senha,
+    // era o único jeito de o Andrio entrar como ndrkick.3@gmail.com pra
+    // gravar o vídeo. Prova de ponta a ponta: visitar a URL manda o
+    // e-mail, o link do e-mail troca por sessão de VERDADE, o link não
+    // funciona 2 vezes, e um e-mail QUALQUER na query string é ignorado
+    // (o alvo é sempre TEST_ACCOUNT_EMAIL, nunca escolhido por quem pede).
+    {
+      const _outboxPath237x = path.join(DATA, "notif_outbox.json");
+      const _lerOutbox237x = () => { try { return JSON.parse(fs.readFileSync(_outboxPath237x, "utf8")); } catch { return []; } };
+
+      const _pedeLink = await get("/entrar-conta-teste?email=atacante@teste-alheio.com");
+      check("🎬 v237x: GET /entrar-conta-teste manda o link SEMPRE pro TEST_ACCOUNT_EMAIL — um e-mail alheio na query string é ignorado por completo (rota nunca lê e-mail de fora)",
+        _pedeLink.status === 200 && /Link enviado/.test(_pedeLink.body) && /ndrkick\.3@gmail\.com/.test(_pedeLink.body),
+        _pedeLink.body.slice(0, 200));
+
+      const _emailLink = _lerOutbox237x().filter(x => x.to === "ndrkick.3@gmail.com" && x.tipo === "login_conta_teste").pop();
+      const _tokenLink = _emailLink && String(_emailLink.text || "").match(/\/entrar-teste\?t=([a-f0-9]+)/);
+      check("🎬 v237x: o e-mail de verdade chega com o link de entrada (mesmo mecanismo de outbox usado por todo o resto do site em teste)",
+        !!_tokenLink, JSON.stringify(_emailLink?.subject));
+
+      const _entrou = await req2("GET", "/entrar-teste?t=" + (_tokenLink ? _tokenLink[1] : "invalido"));
+      check("🎬 v237x: clicar no link troca por uma sessão de LOGIN de verdade (302 com Set-Cookie, sem passar por senha nenhuma)",
+        _entrou.status === 302 && String(_entrou.headers?.location || "").includes("tab=plans") && /h2b_session=/.test(_entrou.headers?.["set-cookie"]?.join(";") || ""),
+        `status=${_entrou.status} location=${_entrou.headers?.location || ""}`);
+
+      const _statusPosLogin = await req2("GET", "/api/status");
+      check("🚨 v237x: a sessão criada pelo link é da CONTA DE TESTE de verdade (emailContato bate, isAdmin false) — nunca vira admin nem outra conta",
+        _statusPosLogin.json?.connected === true && _statusPosLogin.json?.emailContato === "ndrkick.3@gmail.com" && _statusPosLogin.json?.isAdmin === false,
+        JSON.stringify({ connected: _statusPosLogin.json?.connected, emailContato: _statusPosLogin.json?.emailContato, isAdmin: _statusPosLogin.json?.isAdmin }));
+
+      const _reuso = await req2("GET", "/entrar-teste?t=" + (_tokenLink ? _tokenLink[1] : "invalido"));
+      check("🔒 v237x: o MESMO link não funciona 2 vezes (uso único de verdade — token some da memória no primeiro uso)",
+        _reuso.status === 302 && String(_reuso.headers?.location || "").includes("err="),
+        `status=${_reuso.status} location=${_reuso.headers?.location || ""}`);
+
+      const _tokenInventado = await get("/entrar-teste?t=" + "a".repeat(48));
+      check("🔒 v237x: um token INVENTADO (nunca emitido) nunca vira sessão — redireciona com erro, sem cookie nenhum",
+        _tokenInventado.status === 302 && String(_tokenInventado.headers?.location || "").includes("err=") && !_tokenInventado.headers?.["set-cookie"],
+        `status=${_tokenInventado.status} location=${_tokenInventado.headers?.location || ""}`);
+    }
+
     const disk = fs.readdirSync(path.join(DATA, "cvs"));
     check("PDFs válidos gravados no disco", disk.includes("cliente@test.com_1002.pdf") && disk.includes("cliente@test.com_1004.pdf"),
       disk.join(", "));

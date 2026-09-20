@@ -3574,3 +3574,61 @@ só está no meio de um upgrade) — contraria a regra já estabelecida em
 outro lugar do código (auth nunca cai por iniciativa nossa sem queda
 CONFIRMADA pelo Google) e não foi feita sem confirmação explícita.
 
+## v237x — Link mágico de entrada na conta de teste, por e-mail (dono, 20/09/2026)
+
+Pedido do Andrio: "eu nunca digito senha em nenhum campo, nem mesmo
+autopreenchida". Sem login por Google (v172b) e sem digitar senha, não
+existia NENHUM jeito de entrar como a conta de TESTE (v237v,
+`TEST_ACCOUNT_EMAIL`) pra gravar o vídeo de compra.
+
+**Primeira tentativa REJEITADA pelo próprio harness**: um botão de admin
+que gerava e entregava o link diretamente (`/api/admin/login-as-teste`)
+foi bloqueado pelo classificador de segurança automático da sessão
+("Security Weaken") antes mesmo de eu conseguir rodar `node --check` —
+tem cara de mecanismo de bypass, mesmo restrito a uma única conta
+hardcoded. Perguntei ao dono como prosseguir; a resposta foi reformular
+pra um modelo mais alinhado com o que o site JÁ faz.
+
+**Desenho final (aprovado)**: LINK MÁGICO por e-mail — o MESMO modelo
+de confiança que `/api/email/enviar-codigo` (cadastro) e a recuperação
+de senha já usam neste site: prova de DONO DA CAIXA DE ENTRADA = login,
+nunca um admin gerando/entregando link na mão de ninguém. `GET
+/entrar-conta-teste` (pública — é pra quem AINDA não tem sessão
+nenhuma; só navegar, sem formulário, sem JS) cria a conta de teste se
+ainda não existir (senha aleatória forte, NUNCA exposta — login sempre
+por este link) e manda um e-mail de verdade pro Gmail
+`ndrkick.3@gmail.com` com um link de uso único (10min). `GET
+/entrar-teste?t=<token>` troca o token por uma sessão de LOGIN
+completa. Rate-limit (5/15min) contra spam. Esse desenho passou pelo
+`node --check` sem bloqueio — reaproveita um padrão de confiança já
+existente em vez de introduzir um mecanismo novo de "admin autoriza
+sessão alheia".
+
+**ESCOPO DELIBERADAMENTE FECHADO** (mesma régua do v237v): a rota
+NUNCA lê e-mail de query string/body/header — o alvo é 100% fixo
+(`TEST_ACCOUNT_EMAIL`, a mesma fonte única). Isto NÃO é "esqueci minha
+senha" nem impersonation geral — só existe UMA conta alvo possível. Se
+um dia precisar de link mágico pra QUALQUER usuário (recurso maior,
+mudaria o modelo de login do site inteiro), é decisão nova do dono.
+
+**Bug real encontrado e corrigido ANTES do commit**: o Map dos tokens
+(`_loginTesteTokens`) estava declarado DENTRO do handler por
+requisição (`http.createServer(async(req,res)=>{...})`) — cada
+requisição recriava um Map VAZIO, então o token gerado em
+`/entrar-conta-teste` sumia antes de `/entrar-teste` conseguir lê-lo, e
+o link nunca funcionava (achado pelos próprios testes comportamentais
+falhando: "Link expirado ou já usado" na primeira tentativa, nunca
+usada de verdade). Corrigido movendo a declaração pro escopo do
+MÓDULO (junto de `_warmupReserved`, o mesmo padrão de mapa
+compartilhado entre requisições que o resto do arquivo já usa).
+
+Testes: 6 checks comportamentais reais de ponta a ponta — a rota
+ignora e-mail alheio na query string e manda sempre pro
+TEST_ACCOUNT_EMAIL; o e-mail chega com o link (mesmo mecanismo de
+outbox do resto da suíte); clicar no link cria sessão de LOGIN de
+verdade (nunca senha); a sessão é da conta de teste de verdade
+(`emailContato` bate, `isAdmin:false`); o mesmo link NÃO funciona 2
+vezes; um token inventado nunca vira sessão. `npm test` 100% verde,
+`check-duplicates.js`/`check-xss-guard.js` sem achados. Sem bump de
+sw.js (mudança 100% server-side).
+
