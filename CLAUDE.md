@@ -3700,3 +3700,52 @@ nunca escreve no New-repository). `npm test` 100% verde,
 sw.js (mudança 100% server-side — nenhum arquivo servido ao cliente
 mudou).
 
+**🖼️ v238b: 19 prints REAIS na landing (pedido do dono — "uns 30
+prints", 1º em destaque mostrando envio manual + vaga clicada,
+demais mostrando que o USUÁRIO escreve tudo)**: as 5 fotos antigas da
+seção "Veja o site por dentro" foram substituídas por 19 capturas
+novas, tiradas com Playwright (mesmo padrão documentado no v212/v219)
+contra um servidor real deste repo, com `TEST_LOGIN_TOKEN` + fixtures
+via `/api/test/login` (plano DoublePro ativo, Gmail "conectado",
+perfil H-2B completo com currículo/carta em PDF reais e — o ponto
+central do pedido — 3 títulos e 3 corpos de e-mail com texto que uma
+candidata de verdade escreveria) + `history.json` pré-semeado (o
+`/api/test/login` só marca anti-duplicata via `markSent`, nunca cria
+histórico de verdade — sem isso a aba Enviadas nascia vazia mesmo com
+`sentTo` preenchido). 13 telas desktop + 6 mobile (a mesma conta,
+viewport de celular — bottom-sheet/bottom-nav são telas genuinamente
+diferentes, não duplicata).
+
+**Print 1 (destaque, hero)**: Envio Manual com a vaga clicada — o
+painel `#jdetail` (side panel real, não modal, confirmado lendo
+index.html) mostra salário, local, e-mail do empregador, nº do caso e
+"Candidatar-se" ao lado da lista — exatamente o pedido ("com uma vaga
+clicada já mostrando as informações no lado direito"). A coluna do
+hero (`.ln-hero-visual`) cresceu de 340px pra 460px pra ficar
+"bem maior" como pedido.
+
+**Layout**: a seção "Veja o site por dentro" virou CARROSSEL horizontal
+(`.ln-real-scroll`, scroll-snap) em vez da grade que empilharia 19
+cards em várias telas de altura — padrão consagrado de galeria grande
+(tipo App Store), pesquisado antes de mudar UI (regra 1). O 1º card
+(`--big`) nasce maior que os demais, ecoando o destaque do hero.
+
+**Bugs reais achados e corrigidos ANTES do commit, testando com o app
+de verdade**: (1) `openProfileEditor(id,...)` mostrava "Novo Perfil"
+vazio mesmo com o perfil certo em `UPROFILES` — a causa era uma
+corrida (o script chamava antes do `/api/status` inicial terminar de
+popular `UPROFILES`); resolvido com `page.waitForFunction` esperando
+`UPROFILES.length>0` antes de abrir o editor — achado de robustez do
+SCRIPT de captura, não do app. (2) `sv("auto")` abre um MODAL
+(`openAutoModal()`), não troca de view — sem fechar explicitamente
+(`closeAutoModal()`) antes de navegar pra "Enviadas", o print seguinte
+saía com o modal errado ainda por cima.
+
+Testes: nenhum novo (mudança 100% de conteúdo/CSS da landing, sem
+comportamento de servidor pra testar) — `npm test` 100% verde (a suíte
+inteira, incluindo a guarda estrutural de views aninhadas do
+index.html — regra 6d), `check-duplicates.js`/`check-xss-guard.js`
+sem achados, revisão visual real no Chromium (hero + carrossel,
+desktop e mobile) confirmando que nada quebrou. sw.js v104→v105
+(index.html mudou).
+
