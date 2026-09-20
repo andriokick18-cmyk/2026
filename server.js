@@ -4079,6 +4079,18 @@ function searchSheet(arr, q, state, category, skip, top, sort, matchCtx) {
     if (_ident) { list = _ident; }
     else {
     const ql=_normSearch(qRaw);
+    // 🐛 v224 (achado do dono, teste de robustez do campo "Palavra-chave"):
+    // _normSearch tira acento/apóstrofo/pontuação de propósito ("Marthas" ==
+    // "Martha's", v62) — mas uma busca que é SÓ pontuação (ex.: um apóstrofo
+    // sozinho) normalizava pra STRING VAZIA e cada linha abaixo tratava isso
+    // como "buscar por nada", devolvendo `direct=[]` incondicional: "Ver 0
+    // vagas" pra quem digitou 1 caractere que existe de verdade em nome de
+    // empresa real ("Olson's Greenhouses of Colorado, LLC"). Sem NENHUM
+    // caractere de busca sobrando após normalizar, não há o que comparar —
+    // a busca é ignorada (mesmo resultado de campo vazio), nunca finge ter
+    // encontrado zero.
+    if (!ql) { /* nada a comparar — `list` continua o array completo */ }
+    else {
     const toks=ql.split(" ").filter(Boolean);
     // 🇧🇷 consulta em português vira OU de termos em inglês (a original continua valendo)
     const alvos=[];
@@ -4140,6 +4152,7 @@ function searchSheet(arr, q, state, category, skip, top, sort, matchCtx) {
       const seen=new Set(list.map(r=>r.c));
       let n=0; for(const r of arr) if((r.k||"other")===impliedCat && !seen.has(r.c)) n++;
       if(n>0) sugestao={categoria:impliedCat,label:(CATEGORY_LABELS[impliedCat]?.label||impliedCat),n};
+    }
     }
     }
   }

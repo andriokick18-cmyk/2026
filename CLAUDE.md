@@ -2110,3 +2110,64 @@ porque é lá que mora agora — e só lá — toda conversa HTTP com o DOL.
 Testes: `npm test` 100% verde (722 checks), `check-duplicates.js`/
 `check-xss-guard.js` sem achados. sw.js bumpado (v84→v85).
 
+## v224 — 3 bugs reais do modal "Filtrar vagas" (dono, 20/09/2026 — teste de robustez manual)
+
+Auditoria manual real do dono no modal de filtros (dezenas de
+combinações, resultado geral bom) achou 3 bugs reais e pediu pra
+registrar e corrigir sem pressa. Investigados e corrigidos os 3.
+
+**1) "Limpar tudo" pequeno (chip fora do painel) parecia não fazer
+nada.** Causa raiz: existiam DUAS funções de limpar filtro que nunca
+se falavam — `vfClearDraft()` (botão do cabeçalho do painel) só
+zerava `VF.draft` (o RASCUNHO que a pessoa está editando com o
+painel aberto); `vfClear(ctx)` (chip fora do painel / tela de
+resultado vazio) só zerava `VF.st[ctx]` (o filtro JÁ APLICADO). Quem
+limpava por um lado e reabria/aplicava pelo outro via a seleção
+"ressuscitar". Corrigido: as duas agora zeram os DOIS estados —
+`vfClearDraft()` também zera `VF.st[ctx]`; `vfClear(ctx)` também zera
+`VF.draft` quando o painel está aberto no mesmo contexto.
+
+**2) "Limpar tudo" do cabeçalho às vezes ficava preso mostrando a
+contagem do filtro anterior** (caso real do dono: escolheu Michigan,
+clicou Limpar tudo, ficou "Ver 476 vagas" com a Experiência ainda
+contando como se Michigan estivesse marcado — só um 2º clique
+resolvia). Causa raiz: `vfFetch()` tinha UM contador de sequência só
+(`VF.seq`) compartilhado entre a contagem AO VIVO do painel aberto
+(`vfRefresh`→rascunho) e a contagem do filtro JÁ APLICADO fora do
+painel (`vfCountManual`/`vfAutoCount`) — uma chamada de QUALQUER um
+dos dois motivos incrementava o contador global, então a resposta
+fresca e correta de um motivo podia ser descartada como "antiga" só
+porque o OUTRO motivo tinha disparado uma chamada depois. Corrigido:
+`vfFetch` agora distingue os dois motivos (`st` preenchido = painel;
+ausente = já-aplicado) e usa contadores separados (`VF.seq`/
+`VF.seqAplicado`) — um nunca mais descarta a resposta do outro.
+
+**3) Apóstrofo sozinho no campo "Palavra-chave" devolvia "Ver 0
+vagas"** — mas uma vaga real pode ter apóstrofo no nome da empresa
+("Olson's Greenhouses of Colorado, LLC"), então isso estava errado.
+Digitar algo como `' OR 1=1` NÃO reproduziu nenhuma quebra de
+verdade (nem no servidor, testado direto por HTTP com várias
+variações do texto, nem no navegador de verdade, testado com
+Playwright/Chromium digitando o texto real dentro do campo) — o
+back-end nunca monta SQL nem regex cru a partir da busca (o valor só
+passa por `.includes()`/`.filter()` de string já sanitizada), e o
+dono confirmou que não houve execução de script nenhuma. Causa raiz
+do "0 vagas" confirmada e corrigida: `_normSearch()` (server.js)
+remove acento/apóstrofo/pontuação de propósito pra "Marthas" casar
+com "Martha's" (v62) — mas uma busca que é SÓ pontuação normaliza
+pra STRING VAZIA, e o código tratava isso como "buscar por nada"
+(`alvos=[]` incondicional, `direct=[]`), devolvendo zero em vez de
+ignorar a busca. `searchSheet()` agora checa explicitamente: sem
+NENHUM caractere de busca sobrando depois de normalizar, a busca é
+ignorada (mesmo resultado de campo vazio) — nunca finge ter
+encontrado zero. Uma busca com letras de verdade que não bate com
+nada continua devolvendo 0 honesto (não é o mesmo bug).
+
+Testes: 6 checks novos no smoke (2 estruturais pro `vfClear`/
+`vfClearDraft`, 1 estrutural pro `vfFetch` com contadores separados,
+1 estrutural pra guarda de busca vazia em `searchSheet`, 2
+comportamentais confirmando que busca-vazia-após-normalizar é
+ignorada e busca-com-letra-real-sem-match continua zerando de
+verdade). `npm test` 100% verde, `check-duplicates.js`/
+`check-xss-guard.js` sem achados. sw.js bumpado (v85→v86).
+

@@ -1046,7 +1046,7 @@ function _ensureCatLabels(){
 // clique. Vale igual pro robô (o Passo 2 nasce com o mesmo padrão).
 function _vfEmpty(){return{q:"",estado:[],cidade:[],categoria:[],cargo:[],salarioMin:0,vagasMin:0,inicio:[],exp:[],temporada:[],visa:[],ocultarEncerradas:true,grupo:[],email:true,tipo:"all",ativa:false};}
 
-const VF={ctx:"manual",st:{manual:_vfEmpty(),auto:_vfEmpty()},fac:{manual:null,auto:null},draft:null,seq:0,timer:null,busca:{estado:"",cidade:"",cargo:""},mais:{},secs:[],facDraft:null};
+const VF={ctx:"manual",st:{manual:_vfEmpty(),auto:_vfEmpty()},fac:{manual:null,auto:null},draft:null,seq:0,seqAplicado:0,timer:null,busca:{estado:"",cidade:"",cargo:""},mais:{},secs:[],facDraft:null};
 const _VF_ESTADO_PT={FLORIDA:"Flórida","NEW YORK":"Nova York",CALIFORNIA:"Califórnia",PENNSYLVANIA:"Pensilvânia","NEW JERSEY":"Nova Jersey","NORTH CAROLINA":"Carolina do Norte","SOUTH CAROLINA":"Carolina do Sul",VIRGINIA:"Virgínia","WEST VIRGINIA":"Virgínia Ocidental","NEW MEXICO":"Novo México","NEW HAMPSHIRE":"Nova Hampshire",LOUISIANA:"Luisiana",HAWAII:"Havaí","NORTH DAKOTA":"Dakota do Norte","SOUTH DAKOTA":"Dakota do Sul",GEORGIA:"Geórgia","DISTRICT OF COLUMBIA":"Washington D.C.","PUERTO RICO":"Porto Rico"};
 function _vfEstadoNome(v){const u=String(v||"").toUpperCase();if(_curLang==="pt"&&_VF_ESTADO_PT[u])return _VF_ESTADO_PT[u];return u.toLowerCase().replace(/\b\w/g,c=>c.toUpperCase());}
 function _vfMeses(){return String(t('vf_meses')).split(",");}
@@ -1133,10 +1133,23 @@ function vfParams(ctx,st){
 
 async function vfFetch(ctx,st){
   const sheet=_vfSheet(ctx);if(!sheet)return null;
+  // 🐛 v224: `st` só vem preenchido quando quem chama é o PAINEL (vfRefresh,
+  // com VF.draft) — a contagem do que já está APLICADO (vfCountManual/
+  // vfAutoCount, fora do painel) chama sem 2º argumento. As duas dividiam UM
+  // seq só: abrir o painel e mexer num filtro enquanto uma contagem do
+  // aplicado terminava (ou vice-versa) fazia a resposta CERTA do painel ser
+  // descartada como "antiga" só porque uma chamada de OUTRO motivo tinha
+  // incrementado o contador — o painel ficava preso mostrando o número
+  // anterior (caso real: limpar tudo depois de escolher um estado, e o
+  // painel continuar contando como se o estado ainda estivesse marcado).
+  // Agora cada motivo tem o seu contador — só compete com ele mesmo.
+  const painel=!!st;
+  st=st||VF.st[ctx];
   const p=vfParams(ctx,st);p.set("sheet",sheet);p.set("hideSent","1");
   if(VF.busca.cargo)p.set("cargoBusca",VF.busca.cargo);
   if(VF.busca.cidade)p.set("cidadeBusca",VF.busca.cidade);
-  const seq=++VF.seq;
+  const chave=painel?"seq":"seqAplicado";
+  const seq=++VF[chave];
   // ⏱️ v181 LOTE 5: TODAS as opções do painel vêm desta rota — no celular em
   // rede ruim a promessa ficava pendurada e o painel abria vazio com spinner
   // eterno. 8s e o erro aparece clicável, igual a lista já fazia.
@@ -1147,7 +1160,7 @@ async function vfFetch(ctx,st){
     const r=await fetch("/api/vagas/filtros?"+p,{credentials:"include",signal:ctl?ctl.signal:undefined});
     d=await r.json();
   }finally{if(tmr)clearTimeout(tmr);}
-  if(seq!==VF.seq)return null; // resposta antiga — descarta
+  if(seq!==VF[chave])return null; // resposta antiga (do MESMO motivo) — descarta
   return d&&d.ok?d:null;
 }
 
@@ -1173,7 +1186,20 @@ function vfClose(){
   const voltar=VF.foco;VF.foco=null;
   if(voltar&&typeof voltar.focus==="function"&&document.contains(voltar))try{voltar.focus();}catch(e){}
 }
-function vfClearDraft(){VF.draft=_vfEmpty();if(VF.ctx==="auto")VF.draft.email=true;_vfBuildSecs();vfRefresh(true);}
+// 🐛 v224: "Limpar tudo" existia em 2 lugares (cabeçalho do painel = mexe só
+// no RASCUNHO; chip fora do painel/tela vazia = mexe só no filtro JÁ
+// APLICADO) sem nenhuma ponte entre os dois — limpar por um nunca refletia
+// no outro. Reaplicar depois de "limpar" pelo cabeçalho sem querer trazia
+// de volta o filtro antigo (o aplicado nunca tinha sido tocado), e limpar
+// pelo chip de fora enquanto o painel estava aberto editando outro filtro
+// não desmarcava as opções na tela (o rascunho nunca tinha sido tocado).
+// As duas agora sempre zeram OS DOIS estados — o rascunho só quando o
+// painel está mesmo aberto neste contexto.
+function vfClearDraft(){
+  VF.draft=_vfEmpty();if(VF.ctx==="auto")VF.draft.email=true;
+  _vfBuildSecs();vfRefresh(true);
+  const ctx=VF.ctx;VF.st[ctx]=_vfEmpty();vfSave(ctx);vfAfterChange(ctx);
+}
 function vfApply(){
   if(!VF.draft)return vfClose();
   const ctx=VF.ctx;VF.st[ctx]=_vfClone(VF.draft);vfSave(ctx);
@@ -1623,7 +1649,11 @@ function vfRemove(ctx,dim,v){
   else if(dim==="q")st.q="";
   vfSave(ctx);vfAfterChange(ctx);
 }
-function vfClear(ctx){VF.st[ctx]=_vfEmpty();vfSave(ctx);vfAfterChange(ctx);}
+function vfClear(ctx){
+  VF.st[ctx]=_vfEmpty();vfSave(ctx);
+  if(VF.draft&&VF.ctx===ctx){VF.draft=_vfEmpty();if(ctx==="auto")VF.draft.email=true;_vfBuildSecs();vfRefresh(true);}
+  vfAfterChange(ctx);
+}
 // Depois de aplicar/remover: manual → recarrega a lista; auto → contagem do robô
 // 🔎 v179: a busca textual passou a devolver SÓ quem casa de verdade
 // (q=welder devolvia 4.002 vagas de construção com 13 contendo a palavra).

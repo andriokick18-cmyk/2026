@@ -3421,6 +3421,44 @@ async function drillBloqueioComprasNovas() {
         /!st\.email\)push\("email"/.test(_appL5) && /else if\(dim==="email"\)st\.email=!st\.email;/.test(_appL5),
 
         "chip do e-mail desligado ausente");
+      // ═══ 🐛 v224 (achados do dono no modal "Filtrar vagas") ═══
+      // (1) "Limpar tudo" pequeno (fora do painel) e "Limpar tudo" do
+      // cabeçalho do painel viviam em mundos separados — um só mexia no
+      // filtro JÁ APLICADO (VF.st), o outro só no RASCUNHO (VF.draft).
+      check("🐛 v224 (estrutural): vfClearDraft() (cabeçalho do painel) zera o RASCUNHO e o filtro JÁ APLICADO juntos — antes só mexia no rascunho, e fechar o painel sem clicar Aplicar trazia o filtro antigo de volta",
+        /function vfClearDraft\(\)\{[\s\S]{0,200}VF\.st\[ctx\]=_vfEmpty\(\);vfSave\(ctx\);vfAfterChange\(ctx\);/.test(_appL5),
+        "vfClearDraft não zera mais o VF.st junto");
+      check("🐛 v224 (estrutural): vfClear(ctx) (chip fora do painel / lista vazia) zera o filtro aplicado E o RASCUNHO quando o painel está aberto no mesmo contexto — antes as opções ficavam marcadas na tela mesmo depois de 'limpar'",
+        /function vfClear\(ctx\)\{[\s\S]{0,220}if\(VF\.draft&&VF\.ctx===ctx\)\{VF\.draft=_vfEmpty\(\);/.test(_appL5),
+        "vfClear não sincroniza mais o VF.draft aberto");
+      // (2) Race condition: "Limpar tudo" do painel ficava preso mostrando a
+      // contagem de um filtro anterior (ex.: Michigan) porque o painel
+      // (preview ao vivo) e a contagem do já-aplicado (fora do painel)
+      // dividiam UM contador de sequência só — uma resposta de um motivo
+      // descartava a resposta fresca do outro motivo como se fosse "antiga".
+      check("🐛 v224 (estrutural): vfFetch tem contadores de sequência SEPARADOS pro painel (rascunho) e pro já-aplicado (fora do painel) — um não pode mais descartar a resposta fresca do outro como 'antiga'",
+        _appL5.includes("seqAplicado:0") && /const painel=!!st;/.test(_appL5) &&
+        /const chave=painel\?"seq":"seqAplicado";/.test(_appL5) && /if\(seq!==VF\[chave\]\)return null;/.test(_appL5),
+        "vfFetch voltou a usar um VF.seq só pros dois motivos");
+      // (3) Busca por palavra-chave: apóstrofo sozinho (ou qualquer busca que
+      // vira string vazia depois de tirar acento/pontuação) devolvia "Ver 0
+      // vagas" em vez de ignorar a busca — uma vaga real com apóstrofo no
+      // nome da empresa ("Olson's Greenhouses") nunca conseguia dar match
+      // com só um apóstrofo, mas também não devia zerar a planilha inteira.
+      const _semQ = (await get("/api/vagas/filtros?sheet=h2a-jun2026")).json;
+      const _soApostrofo = (await get("/api/vagas/filtros?sheet=h2a-jun2026&q=" + encodeURIComponent("'"))).json;
+      const _soPontuacao = (await get("/api/vagas/filtros?sheet=h2a-jun2026&q=" + encodeURIComponent("'!#$%")))
+        .json;
+      const _gibberish = (await get("/api/vagas/filtros?sheet=h2a-jun2026&q=zzzznenhumavagatemisso")).json;
+      check("🐛 v224: busca que é SÓ pontuação/acento (normaliza pra string vazia) é IGNORADA — nunca mais 'Ver 0 vagas' pra quem digitou um apóstrofo sozinho, igual uma empresa real da planilha pode ter no nome",
+        _soApostrofo.total === _semQ.total && _soPontuacao.total === _semQ.total,
+        JSON.stringify({ semQ: _semQ.total, apostrofo: _soApostrofo.total, pontuacao: _soPontuacao.total }));
+      check("🐛 v224: busca com letras de verdade que não bate com NADA continua devolvendo 0 honesto — a correção é só pra busca vazia depois de normalizar, nunca pra esconder um resultado zero real",
+        _gibberish.total === 0, `total=${_gibberish.total}`);
+      const _srvL224 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      check("🐛 v224 (estrutural): _normSearch (server.js) tem a guarda explícita pra busca vazia — searchSheet nunca mais monta `alvos=[]`/`direct=[]` incondicional quando a busca inteira era só pontuação",
+        /const ql=_normSearch\(qRaw\);[\s\S]{0,900}if \(!ql\) \{/.test(_srvL224),
+        "guarda de busca vazia sumiu de searchSheet");
       // (4) 🗓️ "Começa logo" entrega o que promete (caso 21)
       const st10 = (await get("/api/sheet-meta?sheet=h2a-jun2026&sort=start&top=10")).json;
       const _hj = new Date().toISOString().slice(0, 10);
