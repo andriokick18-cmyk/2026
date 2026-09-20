@@ -7279,6 +7279,32 @@ async function drillBloqueioComprasNovas() {
       _manifestV237o.includes('"url": "/?tab=jobs"') && !_manifestV237o.includes("seasonal"),
       "manifest.json ainda referencia uma aba inexistente");
 
+    // 🚨🚨 v237r (URGENTE, ordem direta do dono, 20/09/2026): "eu preciso de
+    // um botão pra sair da ADM e voltar pra página normal, sem deslogar" +
+    // "o usuário tem que ter lá embaixo um botão de sair da conta também".
+    // (1) index.html: a sidebar do dashboard comum não tinha NENHUM botão
+    // de logout direto no rodapé — só escondido dentro da aba Meu Perfil
+    // (regra 14: menu só com o essencial, mas isso tinha ido longe demais).
+    // (2) admin.html: só existia "Sair" (fazerLogout — chama /api/disconnect
+    // e destrói a sessão de verdade) — sem jeito de voltar pro site normal
+    // SEM deslogar. Painel admin e site normal usam a MESMA sessão/cookie
+    // (os 2 chamam o mesmo /api/disconnect pra sair de verdade), então
+    // "voltar sem deslogar" é só navegar pra "/" sem tocar em sessão nenhuma
+    // — voltarSiteNormal() faz exatamente isso, nunca chama /api/disconnect.
+    const _idxV237r = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+    const _admV237r = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
+    check("🚨 v237r: a sidebar do dashboard comum (index.html) tem um botão \"Sair\" direto no rodapé (onclick=confirmLogout()) — antes só existia escondido dentro da aba Meu Perfil",
+      /onclick="confirmLogout\(\)"[\s\S]{0,120}<i class="ti ti-logout">/.test(_idxV237r.slice(_idxV237r.indexOf('id="sb-prof"'))),
+      "não achou o botão Sair logo depois do cartão de perfil na sidebar");
+    check("🚨 v237r: admin.html tem 2 botões DISTINTOS no rodapé da sidebar — \"Voltar ao site\" (voltarSiteNormal, NUNCA chama /api/disconnect) e \"Sair\" (fazerLogout, chama /api/disconnect) — nunca confundidos",
+      /class="sb-back" onclick="voltarSiteNormal\(\)"/.test(_admV237r) &&
+      /class="sb-logout" onclick="fazerLogout\(\)"/.test(_admV237r) &&
+      /function voltarSiteNormal\(\)\{\s*location\.href="\/";\s*\}/.test(_admV237r.replace(/\n/g, " ")),
+      "algum dos 2 botões sumiu, ou voltarSiteNormal() não é a navegação simples esperada");
+    check("🚨 v237r (estrutural, negativo): voltarSiteNormal() NUNCA chama /api/disconnect — senão viraria um 2º jeito de deslogar disfarçado de 'voltar'",
+      (() => { const m = _admV237r.match(/function voltarSiteNormal\(\)\{[^}]*\}/); return !!m && !m[0].includes("disconnect"); })(),
+      "voltarSiteNormal() ganhou uma chamada a /api/disconnect — deixaria de ser 'voltar sem deslogar'");
+
     // 🔶 v215 (dono, 19/09/2026 — domínio migrado de verdade pra cá):
     // estrutural — o banner "já era assinante VIP?" pro site antigo
     // (h2bapply.onrender.com) é SEMPRE visível (nunca condicionado a

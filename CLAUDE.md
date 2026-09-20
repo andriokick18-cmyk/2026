@@ -3286,3 +3286,35 @@ checks) confirmada verde depois do fix do extrator. `npm test` 100%
 verde, `check-duplicates.js`/`check-xss-guard.js` sem achados. sw.js
 v101→v102 (app.js mudou).
 
+## v237r — 🚨 URGENTE: botão Sair no dashboard comum + botão "Voltar ao site" no admin (ordem direta do dono, 20/09/2026)
+
+2º pedido do mesmo print/áudio do dono: "o usuário tem que ter lá
+embaixo um botão de sair da conta também" (dashboard comum) e "eu
+preciso de um botão pra poder voltar pra página normal — só pra sair
+da ADM, sem deslogar" (painel admin, que hoje só tem "Sair", que
+desloga a conta inteira).
+
+(1) **Dashboard comum**: o botão de logout (`confirmLogout()`) já
+existia (v167), mas só dentro da aba Meu Perfil — a sidebar
+persistente da esquerda não tinha NENHUM atalho direto. Adicionado no
+RODAPÉ da sidebar (index.html), logo abaixo do cartão de perfil —
+sempre visível, sem precisar entrar em nenhuma aba.
+
+(2) **Painel admin**: `admin.html` e o site normal usam a MESMA
+sessão/cookie (`fazerLogout()` já chamava `/api/disconnect`, o MESMO
+endpoint do logout comum) — então "voltar sem deslogar" é só navegar
+pra `/` sem tocar na sessão. Nova função `voltarSiteNormal()` (só
+`location.href="/"`, NUNCA chama `/api/disconnect`) + botão "Voltar
+ao site" (`.sb-back`, cor azul neutra) no rodapé da sidebar do admin,
+ao lado do "Sair" (`.sb-logout`, vermelho) já existente — os 2 nunca
+se confundem visualmente nem funcionalmente.
+
+Testes: 3 checks estruturais — o botão Sair aparece logo depois do
+cartão de perfil na sidebar do dashboard comum; os 2 botões distintos
+existem no admin (`voltarSiteNormal`/`fazerLogout`, classes `.sb-back`/
+`.sb-logout`); e uma guarda NEGATIVA garantindo que `voltarSiteNormal()`
+NUNCA ganhe uma chamada a `/api/disconnect` no futuro (senão viraria
+um 2º logout disfarçado de "voltar"). `npm test` 100% verde,
+`check-duplicates.js`/`check-xss-guard.js` sem achados. sw.js
+v102→v103 (index.html e admin.html mudaram).
+

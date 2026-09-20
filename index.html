@@ -2444,6 +2444,15 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <i class="ti ti-chevron-right" style="font-size:14px;color:var(--t3);flex-shrink:0"></i>
         </button>
       </div>
+      <!-- 🚨 v237r (URGENTE, ordem do dono, 20/09/2026): antes o único jeito
+           de sair da conta era entrar na aba Meu Perfil — sem nenhum botão
+           direto na sidebar. Este fica sempre visível no rodapé, junto com
+           o resto do rodapé (tema/perfil). -->
+      <div style="padding:0 5px 8px">
+        <button onclick="confirmLogout()" style="display:flex;align-items:center;gap:7px;padding:9px 14px;border-radius:var(--r);border:none;background:var(--theme-btn-bg);color:var(--red);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;width:100%;transition:background .15s" onmouseenter="this.style.background='var(--redl)'" onmouseleave="this.style.background='var(--theme-btn-bg)'">
+          <i class="ti ti-logout"></i><span data-i18n="logout">Sair</span>
+        </button>
+      </div>
     </div>
 
     <!-- MAIN -->
