@@ -2619,7 +2619,7 @@ function manualCdSync(){
 async function _manualCdSave(off){
   try{
     const r=await fetch("/api/settings",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({manualCdOff:off})});
-    const d=await r.json();if(!d.ok&&!r.ok)throw new Error(d.error||"erro");
+    const d=await jsonSafe(r);if(!d.ok&&!r.ok)throw new Error(d.error||"erro");
     U.manualCdOff=off;if(off)window._manualCdUntil=0;
     manualCdSync();
     toast(off?t('cd_toast_off'):t('cd_toast_on'),off?"r":"g");
@@ -2680,7 +2680,7 @@ async function doSend(){
       toast(`⏳ Espere ${_lf}s pro próximo envio manual (1 por minuto).`,"r");
       return;
     }
-    const r=await fetch("/api/send",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(pl)});const d=await r.json();
+    const r=await fetch("/api/send",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(pl)});const d=await jsonSafe(r);
     // FIX: mostra TODOS os erros de forma visível — esconde spinner e reabilita botão ANTES de mostrar
     if(!d.ok){
       g("#m-sending").style.display="none";g("#m-send").disabled=false;
@@ -3027,7 +3027,7 @@ async function _removeSenderEmail(email){
   if(!confirm("Remover o Gmail extra "+email+"?")) return;
   try{
     const r=await fetch("/api/sender/"+encodeURIComponent(email),{method:"DELETE",credentials:"include"});
-    const d=await r.json();
+    const d=await jsonSafe(r);
     if(d.ok){
       U.senderEmails=(U.senderEmails||[]).filter(s=>s.email!==email);
       _renderProfileSenderSection();
@@ -3047,7 +3047,7 @@ async function saveProfile(){
     const body={name:CFG.name,country:CFG.country,phone:CFG.phone,city:CFG.city};
     if(newWhatsapp)body.whatsapp=newWhatsapp;
     const r=await fetch("/api/settings",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-    const d=await r.json();
+    const d=await jsonSafe(r);
     if(d.ok){
       // Feedback sucesso no botão
       if(saveBtn){saveBtn.innerHTML='<i class="ti ti-check"></i> Dados salvos!';}

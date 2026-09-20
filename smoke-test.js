@@ -4741,6 +4741,70 @@ async function drillBloqueioComprasNovas() {
         /for\(let _t=0;_t<3;_t\+\+\)/.test(_fnCheckStatus) && /jsonSafe\(r\)/.test(_fnCheckStatus) && /if\(!d\)\{showLanding\(\);return;\}/.test(_fnCheckStatus),
         `checkStatus() sem retry — ${_fnCheckStatus.length} chars capturados`);
     }
+
+    // ═══ 🚨 v237 (achados da 2ª rodada de auditoria — painel-admin/dinheiro):
+    // 4 fetch() cru sem jsonSafe no app.js (mesma classe de bug do v227/v229/
+    // v230/v232/v236 — deploy reiniciando devolve HTML e o r.json() cru
+    // estoura em vez de mostrar "servidor reiniciando, tente de novo").
+    {
+      const _appSrcV237 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _fnManualCdSave = (_appSrcV237.match(/async function _manualCdSave\(off\)\{[\s\S]*?\n\}\n/) || [""])[0];
+      const _fnDoSend = (_appSrcV237.match(/async function doSend\(\)\{[\s\S]*?\n\}\n/) || [""])[0];
+      const _fnRemoveSender = (_appSrcV237.match(/async function _removeSenderEmail\(email\)\{[\s\S]*?\n\}\n/) || [""])[0];
+      const _fnSaveProfile = (_appSrcV237.match(/async function saveProfile\(\)\{[\s\S]*?\n\}\n/) || [""])[0];
+      check("🚨 v237 (estrutural): _manualCdSave()/doSend()/_removeSenderEmail()/saveProfile() usam jsonSafe(r) — os 4 últimos fetch() do app.js que ainda faziam r.json() cru (deploy reiniciando quebrava o toggle de cooldown, o envio manual, remover Gmail extra e salvar perfil com erro genérico em vez de 'servidor reiniciando')",
+        /jsonSafe\(r\)/.test(_fnManualCdSave) && /jsonSafe\(r\)/.test(_fnDoSend) && /jsonSafe\(r\)/.test(_fnRemoveSender) && /jsonSafe\(r\)/.test(_fnSaveProfile),
+        `chars: cd=${_fnManualCdSave.length} send=${_fnDoSend.length} rm=${_fnRemoveSender.length} save=${_fnSaveProfile.length}`);
+    }
+
+    // ═══ 🧹 v237 (achado de auditoria — Média): /api/admin/push-user era
+    // código morto — validava {email,title} e devolvia ok:true SEM efeito
+    // colateral nenhum (nunca gravava nada, nunca chamava pushToUser).
+    check("🧹 v237 (estrutural): /api/admin/push-user foi removida — não sobrou rota fantasma que engana quem conectasse um botão a ela achando que enviou push de verdade (a rota real é /api/admin/message)",
+      !_srvSrc.includes('"/api/admin/push-user"'),
+      "/api/admin/push-user ainda existe no server.js");
+
+    // ═══ 🚨 v237 (achado de auditoria — Alta): /api/admin/user/full-update
+    // era uma 2ª porta pra dias de VIP/plano/pagamento que NUNCA chamava
+    // addCredito() (dias invisíveis no extrato — geraria acusação FALSA de
+    // "dias sem origem"), NUNCA chamava logAdminAction (invisível na
+    // auditoria, irreversível), sem trava de duplo-clique e sem carimbar
+    // vip.limits (13o). Zero chamador confirmado por grep em admin.html/
+    // app.js/smoke-test.js antes da remoção.
+    check("🚨 v237 (estrutural): /api/admin/user/full-update foi removida — 2ª porta pra dias de VIP sem addCredito/logAdminAction/trava de duplo-clique não existe mais; quem ajusta dias usa vip/set-expiry",
+      !_srvSrc.includes('"/api/admin/user/full-update"'),
+      "/api/admin/user/full-update ainda existe no server.js");
+
+    // ═══ 🚨 v237 (achado de auditoria — Alta): promover/rebaixar admin
+    // (set-user-field, field:"isAdmin") só exigia isAdminVip (inclui
+    // ADMIN_EMAILS_EXTRA) — qualquer admin auxiliar conseguia criar OUTRO
+    // admin, sem trilha nenhuma. Agora exige isAdminEmail hardcoded (mesma
+    // régua do delete-user/ban-email) e fica na auditoria.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "v237alvo@test.com", name: "V237 Alvo" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const v237negado = await req2("POST", "/api/admin/set-user-field", { email: "v237alvo@test.com", field: "isAdmin", value: true });
+    check("🚨 v237: admin NÃO-hardcoded (isAdminVip via ADMIN_EMAILS_EXTRA) é RECUSADO (403) tentando conceder isAdmin a outra conta pelo set-user-field",
+      v237negado.status === 403, `status=${v237negado.status} body=${v237negado.body.slice(0, 140)}`);
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "andrio.usa2026@gmail.com", name: "Dono", isAdmin: true });
+    const v237ok = await req2("POST", "/api/admin/set-user-field", { email: "v237alvo@test.com", field: "isAdmin", value: true });
+    const v237audit = await req2("GET", "/api/admin/audit");
+    const v237auditEntry = (v237audit.json?.audit || []).find(a => a.action === "set_is_admin" && a.targetEmail === "v237alvo@test.com");
+    check("🚨 v237: admin HARDCODED (ADMIN_EMAIL) consegue conceder isAdmin pelo set-user-field, E a ação fica registrada em /api/admin/audit (reversível pelo ↩️ — antes era invisível)",
+      v237ok.json?.ok === true && !!v237auditEntry && v237auditEntry.after?.isAdmin === true,
+      JSON.stringify({ ok: v237ok.json?.ok, achouAudit: !!v237auditEntry }).slice(0, 160));
+
+    // ═══ 🚨 v237 (achado de auditoria — Alta): vip/set-expiry era a ÚNICA
+    // rota que muda vip.manualExpires/autoExpires sem a trava de duplo-
+    // clique que vip/activate (v18-FIX) e set-plan (v141) já tinham — mesmo
+    // padrão _adminVipActivateLock, janela de 5s.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "v237exp@test.com", name: "V237 Exp" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "andrio.usa2026@gmail.com", name: "Dono", isAdmin: true });
+    const v237se1 = await req2("POST", "/api/admin/vip/set-expiry", { email: "v237exp@test.com", manualDays: 10 });
+    const v237se2 = await req2("POST", "/api/admin/vip/set-expiry", { email: "v237exp@test.com", manualDays: 10 });
+    check("🚨 v237: 1º clique em vip/set-expiry funciona normalmente", v237se1.json?.ok === true, v237se1.body.slice(0, 140));
+    check("🚨 v237: 2º clique em SEGUIDA no MESMO usuário é BLOQUEADO (409, mesma trava do set-plan/v141) — nunca mais duplica addCredito()/logAdminAction() por duplo-clique",
+      v237se2.status === 409 && v237se2.json?.duplicate === true, `status=${v237se2.status} body=${v237se2.body.slice(0, 140)}`);
+
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5c@test.com", name: "MC5 C" });
     const mc5d1 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-um").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     const mc5d2 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-dois").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });

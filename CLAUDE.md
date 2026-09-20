@@ -2573,3 +2573,77 @@ Testes: 1 check estrutural no smoke (loop de retry presente, com
 `npm test` 100% verde, `check-duplicates.js`/`check-xss-guard.js` sem
 achados. sw.js bumpado (v92→v93).
 
+## v237 — resto dos achados da 2ª rodada (painel-admin/dinheiro): a "2ª porta" pro plano de um cliente, promover admin sem trilha, e mais 4 jsonSafe (20/09/2026)
+
+Continuando a 2ª rodada de 3 auditorias paralelas (v236 fechou o
+achado de perfil/onboarding), esta leva fecha os achados restantes da
+auditoria de painel-admin/dinheiro, mais os 4 últimos `fetch()` do
+app.js que ainda faziam `r.json()` cru.
+
+**1) `jsonSafe` nos 4 pontos que sobraram** (`_manualCdSave`, `doSend`,
+`_removeSenderEmail`, `saveProfile`) — mesma classe do v227/v229/v230/
+v232/v236: deploy reiniciando devolve HTML, `r.json()` cru estoura, e
+em vez de "servidor reiniciando, tente de novo" o usuário via um erro
+genérico (ou, no caso do `doSend`, o botão de enviar podia ficar preso
+sem feedback nenhum). Com esses 4, não sobra mais `r.json()` cru
+alcançável por um fetch de rota autenticada no app.js.
+
+**2) `/api/admin/user/full-update` REMOVIDA — a "2ª porta" pro plano de
+um cliente (Alta).** Rota do "Client Control Center" antigo, sem
+NENHUM chamador em admin.html/app.js (confirmado por grep antes da
+remoção) — mas continuava viva no servidor, então qualquer script ou
+requisição direta ainda conseguia usá-la. Era estruturalmente perigosa
+de um jeito que nenhuma outra rota de VIP é: diferente de
+`vip/activate`, `set-plan` e `vip/set-expiry`, ela NUNCA chamava
+`addCredito()` — dias de VIP dados por ela ficavam invisíveis no
+extrato `vip.creditos`, e o Cérebro Contábil (auditarDias, régua 13r/
+Cérebro 2.0-P1) acusaria esses dias como "sem origem" mesmo sendo uma
+concessão legítima de admin — uma correção de fraude gerando uma
+acusação FALSA. Também nunca chamava `logAdminAction` (invisível em
+`/api/admin/audit`, irreversível pelo botão ↩️), não tinha trava de
+duplo-clique, e não carimbava `vip.limits` (13o — usuário cairia na
+tabela legada por engano). Os campos de "pagamento"
+(`paymentAmount`/`paymentMethod`/`paymentReceiver`) eram 100%
+decorativos: nunca tocavam `DB_FINANCEIRO.pagamentos`, nunca
+apareciam em Total Recebido/Sócios/DRE/Conferência — um admin podia
+preencher "R$250 · Pix" e ver `ok:true` achando que registrou uma
+entrada no caixa que nunca existiu. Quem precisa ajustar dias usa
+`vip/set-expiry` (que ganhou trava de idempotência no mesmo v237,
+abaixo); quem precisa registrar pagamento usa a rota real de
+contabilidade.
+
+**3) `/api/admin/push-user` REMOVIDA (Média) — código morto puro.**
+Validava `{email,title}` e devolvia `ok:true` sem NENHUM efeito
+colateral — nunca gravava nada, nunca chamava `pushToUser`. Zero
+chamador confirmado por grep. Deixá-la existindo era um risco: um
+botão futuro conectado a ela pareceria funcionar (200 OK) sem nunca
+avisar ninguém. A rota que funciona de verdade é `/api/admin/message`.
+
+**4) `set-user-field` (campo `isAdmin`) exige admin HARDCODED (Alta).**
+Promover/rebaixar outra conta pra admin só exigia `isAdminVip` — que
+inclui `ADMIN_EMAILS_EXTRA` — igual qualquer campo bobo (nome,
+telefone). Ou seja: qualquer admin auxiliar conseguia criar OUTRO
+admin, sem nenhuma trilha (`logAdminAction`) e portanto invisível em
+`/api/admin/audit` e irreversível pelo botão ↩️. Isso é mais sensível
+que deletar conta, que já exige `isAdminEmail(_sessAdminEmail(s))` —
+só os admins fixos (dono + Diego + a lista hardcoded), não a VIP. Agora
+o campo `isAdmin` tem a mesma trava + fica registrado no audit trail.
+
+**5) `vip/set-expiry` ganha a trava de duplo-clique (Alta).** Era a
+ÚNICA rota que muda `vip.manualExpires`/`autoExpires` sem a proteção
+`_adminVipActivateLock` que `vip/activate` (v18-FIX) e `set-plan`
+(13r, caso Cleiton) já tinham. Como "definir vencimento exato" é um
+`setUser` absoluto (não soma), um duplo-clique não dobrava os dias —
+mas duplicava o `addCredito()` da linha do tempo (Cérebro 2.0-P1) e o
+`logAdminAction`, inflando o teto explicável do auditor e poluindo a
+auditoria com 2 entradas idênticas pra 1 ação só. Mesmo padrão de
+trava, mesma janela de 5s.
+
+Testes: 7 checks novos no smoke — 3 estruturais (jsonSafe nos 4
+pontos; push-user sumiu; full-update sumiu) e 4 comportamentais
+(admin não-hardcoded recusado no set-user-field isAdmin; admin
+hardcoded consegue e fica no audit trail; 1º clique em set-expiry
+funciona; 2º clique em seguida no mesmo usuário é bloqueado com 409).
+`npm test` 100% verde (751 checks), `check-duplicates.js`/
+`check-xss-guard.js` sem achados. sw.js bumpado (v93→v94).
+

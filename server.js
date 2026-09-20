@@ -9667,6 +9667,19 @@ filtrar();
       const ALLOWED=['name','phone','city','country','isAdmin','whatsapp'];
       if(!ALLOWED.includes(field))return json(res,400,{error:"Campo não permitido: "+field});
       const target=getUser(email);if(!target)return json(res,404,{error:"Usuário não encontrado"});
+      // 🚨 v237 (achado de auditoria — Alta): promover/rebaixar admin é MAIS
+      // sensível que deletar conta (delete-user já exige o admin HARDCODED,
+      // isAdminEmail(_sessAdminEmail(s)) — não só isAdminVip, que também
+      // inclui ADMIN_EMAILS_EXTRA). Antes qualquer conta admin conseguia dar
+      // isAdmin:true pra QUALQUER outra conta, sem trilha nenhuma em
+      // logAdminAction (invisível em /api/admin/audit, irreversível pelo
+      // botão ↩️). Mesma trava + trilha que já protege o resto de "admin
+      // hardcoded only" no arquivo.
+      if(field==="isAdmin"){
+        if(!isAdminEmail(_sessAdminEmail(s)))return json(res,403,{error:"Só os admins fixos podem conceder ou remover acesso de admin."});
+        logAdminAction(s.user_email,"set_is_admin",email,{isAdmin:!!target.isAdmin},{isAdmin:!!value},
+          `${value?"Concedeu":"Removeu"} acesso de admin`);
+      }
       setUser(email,{[field]:value});
       return json(res,200,{ok:true});
     }catch(e){return json(res,500,{error:e.message});}
@@ -9778,16 +9791,13 @@ filtrar();
       return json(res,200,{ok:true});
     }catch(e){return json(res,500,{error:e.message});}
   }
-  // ── Admin: push para usuário ──────────────────────────────
-  if(pathname==="/api/admin/push-user"&&req.method==="POST"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Acesso negado."});
-    try{
-      const d=JSON.parse(await readBody(req));
-      const {email,title,body}=d;if(!email||!title)return json(res,400,{error:"email e title obrigatórios"});
-      return json(res,200,{ok:true});
-    }catch(e){return json(res,500,{error:e.message});}
-  }
+  // 🧹 v237 (achado de auditoria — Média): /api/admin/push-user foi
+  // REMOVIDA — validava {email,title} e devolvia ok:true SEM NENHUM efeito
+  // colateral (nunca gravava nada, nunca chamava pushToUser). Zero
+  // chamador em admin.html/app.js (confirmado por grep) — código morto que
+  // ia enganar quem conectasse um botão a ela achando que enviou algo. A
+  // rota que funciona de verdade pra avisar um usuário é /api/admin/
+  // message (grava adminMessage, lido por /api/my-message).
   // ── Admin: limpar PDFs ─────────────────────────────────────
   if(pathname==="/api/admin/reset-pdfs"&&req.method==="POST"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
@@ -12248,6 +12258,18 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
     if(pathname==="/api/admin/vip/set-expiry"&&req.method==="POST"){try{
       const d=JSON.parse(await readBody(req));
       if(!d.email)return json(res,400,{error:"email obrigatório."});
+      // 🚨 v237 (achado de auditoria — Alta): set-expiry era a ÚNICA rota que
+      // muda vip.manualExpires/autoExpires SEM a trava de duplo-clique que
+      // vip/activate (v18-FIX) e set-plan (13r) já têm — mesma _adminVipActivateLock,
+      // mesma janela de 5s. Duplo-clique/retry aqui não dobra os dias (é "definir
+      // vencimento exato", não "somar"), mas duplicava o addCredito() da linha do
+      // tempo (Cérebro 2.0-P1) e o logAdminAction, inflando o teto explicável e
+      // poluindo a auditoria com 2 entradas idênticas pra 1 ação só.
+      const _vipSetExpKey=s.user_email+"|"+String(d.email||"").toLowerCase();
+      if(_adminVipActivateLock.has(_vipSetExpKey))
+        return json(res,409,{error:"Ativação em andamento para este usuário. Aguarde alguns segundos e confira antes de tentar de novo.",duplicate:true});
+      _adminVipActivateLock.set(_vipSetExpKey,Date.now());
+      setTimeout(()=>_adminVipActivateLock.delete(_vipSetExpKey),5000);
       const target=getUser(d.email);
       if(!target)return json(res,404,{error:"Usuário não encontrado."});
       const now=Date.now();
@@ -13371,67 +13393,27 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}return json(res,200,{ok:true})
       }catch(e){return json(res,500,{error:e.message});}
     }
 
-    // ── ADMIN: Edição completa do cliente (Client Control Center) ────────────
-    if(pathname==="/api/admin/user/full-update"&&req.method==="POST"){
-      try{
-        const d=JSON.parse(await readBody(req));
-        if(!d.email)return json(res,400,{error:"email obrigatório."});
-        const target=getUser(d.email);if(!target)return json(res,404,{error:"Usuário não encontrado."});
-        // v172b (dono, 12/09): login do painel admin agora exige usuário+senha (scrypt,
-        // /api/admin-panel/login) — aqui só reaproveita a identidade da sessão já
-        // autenticada (e-mail de admin logado), sem pedir senha de novo por ação.
-        const editorKey=editorFromEmail(_sessAdminEmail(s));
-        const editorName=editorKey==="andrew"?"Andrew":"Diego";
-        const now=Date.now();
-        const upd={};
-        // Dados de perfil
-        if(d.name!==undefined)upd.name=String(d.name).slice(0,200);
-        if(d.phone!==undefined)upd.phone=String(d.phone).slice(0,50);
-        if(d.whatsapp!==undefined)upd.whatsapp=String(d.whatsapp).slice(0,50);
-        if(d.country!==undefined)upd.country=String(d.country).slice(0,100);
-        if(d.city!==undefined)upd.city=String(d.city).slice(0,100);
-        if(d.state!==undefined)upd.state=String(d.state).slice(0,100);
-        if(d.address!==undefined)upd.address=String(d.address).slice(0,300);
-        if(d.age!==undefined)upd.age=Math.max(0,Math.min(120,parseInt(d.age)||0));
-        if(d.adminNotes!==undefined)upd.adminNotes=String(d.adminNotes).slice(0,2000);
-        // Plano VIP
-        if(d.manualDays!==undefined||d.autoDays!==undefined){
-          const manualDays=Math.max(0,Math.min(3650,parseInt(d.manualDays||0,10)));
-          const autoDays=Math.max(0,Math.min(3650,parseInt(d.autoDays||0,10)));
-          const bonusDays=Math.max(0,Math.min(365,parseInt(d.bonusDays||0,10)));
-          const manualExpires=manualDays>0?now+manualDays*86400000:0;
-          const autoExpires=autoDays>0?now+autoDays*86400000:0;
-          let planName="free";
-          if(manualDays>0&&autoDays>0)planName="vipro";
-          else if(manualDays>0)planName="vip";
-          else if(autoDays>0)planName="pro";
-          const vip={...(target.vip||{}),active:planName!=="free",manualExpires,autoExpires,
-            adjustedAt:now,adjustedBy:editorName,adjustedByEmail:s.user_email,
-            note:d.vipNote||(target.vip?.note||""),
-            plan:planName,source:target.vip?.source||"admin",
-            bonusDays:bonusDays||(target.vip?.bonusDays||0),
-            usedCode:target.vip?.usedCode||null};
-          upd.plan=planName;
-          upd.vip=vip;
-        }
-        // Situação financeira
-        if(d.financialStatus!==undefined)upd.financialStatus=String(d.financialStatus).slice(0,50);
-        if(d.paymentNote!==undefined)upd.paymentNote=String(d.paymentNote).slice(0,500);
-        if(d.paymentDate!==undefined)upd.paymentDate=String(d.paymentDate).slice(0,50);
-        if(d.paymentAmount!==undefined)upd.paymentAmount=String(d.paymentAmount).slice(0,50);
-        if(d.paymentMethod!==undefined)upd.paymentMethod=String(d.paymentMethod).slice(0,50);
-        if(d.paymentReceiver!==undefined)upd.paymentReceiver=String(d.paymentReceiver).slice(0,50);
-        // Histórico de edições
-        const editEntry={at:now,by:editorName,byEmail:s.user_email,changes:Object.keys(upd).join(","),note:d.editNote||""};
-        const prevHistory=target.adminEditHistory||[];
-        upd.adminEditHistory=[...prevHistory.slice(-49),editEntry]; // mantém últimas 50
-        upd.lastValidatedAt=target.lastValidatedAt||null;
-        setUser(d.email,upd);
-        console.log(`[admin] ✅ Full-update de ${d.email} por ${editorName} (${s.user_email}): ${Object.keys(upd).join(",")}`);
-        trackJourney(d.email,'admin_edit',{detail:`Editado por ${editorName}`,meta:{fields:Object.keys(upd)}});
-        return json(res,200,{ok:true,editorName,editedFields:Object.keys(upd)});
-      }catch(e){return json(res,500,{error:e.message});}
-    }
+    // 🚨 v237 (achado de auditoria — Alta): /api/admin/user/full-update foi
+    // REMOVIDA — era uma "2ª porta" pra dias de VIP/plano/pagamento, exatamente
+    // a classe de rota que mod-admin-v2.js já reconhece e documenta ter
+    // removido de lá por ser perigosa (comentário no topo daquele arquivo).
+    // Diferente de TODA outra rota que mexe em dias de VIP (vip/activate,
+    // set-plan, vip/set-expiry), esta nunca chamava addCredito() — dias
+    // dados por ela ficavam invisíveis no extrato vip.creditos e CRIAVAM
+    // uma divergência de fraude FALSA (/api/admin/contabilidade flags
+    // daysLeft > diasCreditadosPagos, e esses dias nunca entravam nesse
+    // total); nunca chamava logAdminAction (invisível em /api/admin/audit,
+    // irreversível pelo botão ↩️); não tinha nenhuma trava de duplo-clique;
+    // não carimbava vip.limits (regra 13o — usuário caía na tabela legada
+    // por engano). Os campos de "pagamento" (paymentAmount/paymentMethod/
+    // paymentReceiver) eram 100% decorativos — nunca tocavam
+    // DB_FINANCEIRO.pagamentos, nunca apareciam em Total Recebido/Sócios/
+    // DRE/Conferência: um admin podia preencher "R$250 · Pix" e ver
+    // ok:true achando que registrou uma entrada no caixa que nunca existiu.
+    // Confirmado por grep: ZERO chamador em admin.html/app.js/smoke-test.js
+    // — nenhuma tela usava isso. Quem precisa ajustar dias usa vip/set-
+    // expiry (que ganhou trava de idempotência no mesmo v237); quem precisa
+    // registrar pagamento usa /api/admin/contabilidade/pagamento de verdade.
 
 
     // ── ADMIN: Live endpoint retorna adminEmail ────────────────
