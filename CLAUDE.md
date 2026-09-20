@@ -1944,3 +1944,52 @@ ZERO referência restante em qualquer arquivo `.js`/`.html`. `npm test`
 100% verde (mesma contagem de checks estruturais menos os removidos).
 sw.js bumpado (v82→v83).
 
+## v221 — 2 achados da auditoria ao vivo pós-v220 (dono, 20/09/2026)
+
+O dono testou o site publicado inteiro (todas as abas de usuário e
+admin) depois do v220 e reportou 4 pontos. 2 eram correções reais; 1
+já estava certo (documentado abaixo pra não ser reinvestigado à toa);
+1 é só um lembrete sem ação (robôs de planilha manuais desde o v217).
+
+**1) Badge "🌱 Aquecendo — 276/15 hoje" no Gmail do admin, sem
+sentido.** Causa raiz: `_warmupBadgeHTML()` (app.js) mostra o teto por
+dia-tier do aquecimento (15/40/100 — regra 13a/13a2, pensado pro
+CLIENTE) igual pra admin, cujo teto FUNCIONAL de verdade é outro
+(`ADMIN_AUTO_DAILY_LIMIT_PER_SENDER=450`/dia por Gmail, mostrado à
+parte em "Configurações de Admin"). O número em si não era falso — o
+Gmail realmente tinha poucos dias desde `gmailConnectedAt` — só a
+MÉTRICA era a errada pra admin: 276 dentro de 450 é normal (regra
+13a2: aquecimento nunca pausa envio), mas exibido como "276/15" parece
+um teto furado. Corrigido: pra `U.isAdmin`, o selo mantém a
+transparência (nunca some — regra 13a) mas troca a fração enganosa por
+um texto que diz o que é de verdade (preferência de rodízio, não
+trava; aponta pro teto real mostrado acima). Cliente comum não muda em
+nada.
+
+**2) Label "VIP Infinito · Máximo" no card de admin, sem sentido.**
+Achado confirmado pela versão em inglês do mesmo texto —
+`"Unlimited VIP · Máximo"` — uma combinação que não faz sentido em
+lugar nenhum (por que o status ilimitado do admin teria o nome de um
+plano de CLIENTE colado?). Era sobra do rename mecânico
+"DoublePro"→"Máximo" do v218, que bateu numa string que já não devia
+ter essa parte. A linha logo abaixo já explica os limites reais do
+admin em prosa ("Sem expiração · 450 envios/dia..."), então "· Máximo"
+não acrescentava informação — só sugeria (errado) que o status do
+admin depende do plano Máximo dos clientes. Corrigido: `pf_vip_infinito`
+virou só "VIP Infinito" (e "Unlimited VIP" em EN) nas 3 línguas +
+fallback estático do index.html.
+
+**3) Botão "Baixar App" sem feedback — investigado, NÃO é bug.**
+`installAppClick()` (app.js, v110) já cobre exatamente isso: app já
+instalado avisa; iPhone mostra "Compartilhar → Adicionar à Tela de
+Início"; Chrome/Android sem prompt nativo mostra "menu ⋮ → Instalar
+aplicativo". `toast()` e o container `#tw` conferidos, sem nenhum
+caminho que fique mudo sem erro de JS. Explicação mais provável do que
+o dono viu: o navegador de teste capturou o `beforeinstallprompt`
+nativo do Chrome, que é um diálogo do SISTEMA OPERACIONAL (fora do DOM
+da página) — não aparece como "mensagem do site". Nenhuma mudança de
+código feita aqui; registrado pra não reinvestigar à toa.
+
+Testes: `npm test` 100% verde, `check-duplicates.js` e
+`check-xss-guard.js` sem achados. sw.js bumpado (v83→v84).
+
