@@ -338,6 +338,16 @@ function openAuthGate(step,intent){
   if(intent){_agIntent=intent;gaEvent(intent==="signup"?"sign_up_intent":"login_intent",{method:"password"});}
   agRender(step||"choice");
 }
+// 🚨 v237 (achado de auditoria — Alta): #auth-gate não tinha NENHUM jeito de
+// fechar (sem botão X, sem clique-fora, sem Escape) — quem abria o card e
+// mudava de ideia (queria só ver preços/FAQ antes) ficava preso na tela até
+// dar F5 ou sair do site. agBack() só alternava de tela pra "choice", nunca
+// fechava o overlay.
+function closeAuthGate(){
+  const ov=g("#auth-gate"); if(!ov) return;
+  ov.classList.remove("open");
+  document.documentElement.classList.remove("ag-lock");
+}
 function agBack(){ agRender("choice"); }
 function agRender(step,data){
   const body=g("#ag-body"),back=g("#ag-back"); if(!body) return;
@@ -1304,7 +1314,11 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.addEventListener("keydown",(e)=>{
     if(e.key!=="Escape")return;
     const ov=g("#vf-overlay");
-    if(ov&&!ov.classList.contains("gone")){e.preventDefault();vfClose();}
+    if(ov&&!ov.classList.contains("gone")){e.preventDefault();vfClose();return;}
+    // 🚨 v237: mesma proteção pro #auth-gate (achado de auditoria — Alta,
+    // não tinha NENHUM jeito de fechar antes deste commit).
+    const ag=g("#auth-gate");
+    if(ag&&ag.classList.contains("open")){e.preventDefault();closeAuthGate();}
   });
   const fr=g("#filters-row");
   if(fr){fr.addEventListener("scroll",_vfSyncScrollHint,{passive:true});window.addEventListener("resize",_vfSyncScrollHint);setTimeout(_vfSyncScrollHint,300);}

@@ -2829,3 +2829,54 @@ filtros) — v236, v237, v237b, v237c, v237d, v237e, v237f.** Só sobram
 `add_pagamento`/`add_gasto` e a UI pra Sócios & Acerto, ambos adiados
 por escolha explícita dele.
 
+## 3ª rodada de auditoria paralela (20/09/2026) — auth/login, Gmail/envio, admin/planos/PWA
+
+Fechada a 2ª rodada, uma nova varredura (3 agentes paralelos, leitura
+only, instruídos a ler o final deste arquivo antes pra não repetir
+achado) cobriu 3 áreas ainda não auditadas a fundo: autenticação
+(landing/login/cadastro/recuperação de senha/sessão), Gmail/envio
+(conexão, manual, automático, watchdogs), e admin/planos/PWA (rotas
+`/api/admin/*` restantes, pedidos/VIP, service worker/manifest).
+13 achados reais (5 Alta, 6 Média, 2 Baixa). Corrigidos em ordem de
+severidade, um por vez, cada um testado e deployado separadamente.
+
+## v237g — #auth-gate (login/cadastro da landing) não tinha jeito de fechar (achado Alta de auth) (20/09/2026)
+
+O modal de entrada da landing (`#auth-gate`, onde moram login,
+cadastro e recuperação de senha) não tinha NENHUM jeito de fechar:
+`openAuthGate()` só adicionava as classes `open` (mostra o overlay) e
+`ag-lock` (trava o scroll do `<html>`), e não existia em lugar nenhum
+do repo um código que as removesse. `agBack()` só alternava entre as
+telas internas (login/signup/recuperar → "choice"), nunca fechava o
+overlay — e na tela "choice" o próprio botão de voltar fica
+`display:none`, ou seja, NUNCA existia um caminho de volta pra
+landing. Confirmado ao vivo pelo dono: a seta ← funciona como
+"voltar" dentro do card, mas não como "sair"; sem reparar nela (é
+pequena e de baixo contraste), a tela parece sem saída — só escapando
+com F5 ou saindo do site. Comparado com TODOS os outros ~10 overlays
+do site (`#vf-overlay`, `#modal`, `#profile-editor-overlay`, etc.),
+que já tinham os 3 jeitos padrão de fechar (X, clique-fora, Escape),
+`#auth-gate` era o único sem nenhum.
+
+Corrigido com o padrão idêntico ao resto do site: `closeAuthGate()`
+(nova função — remove as 2 classes) chamada por (1) um botão `.ag-close`
+(×) simétrico ao `.ag-back` já existente, (2) clique no fundo escuro
+fora do card (`onclick="if(event.target===this)closeAuthGate()"`,
+MESMA sintaxe copiada literalmente de todo outro overlay), e (3) tecla
+Escape, reaproveitando o ÚNICO listener global de `keydown` que já
+existia pro `#vf-overlay` (v182 LOTE 9) — nunca criando um 2º listener.
+De brinde, atendendo ao pedido do dono depois de testar: o contraste
+dos botões `.ag-back`/`.ag-close` subiu (fundo .07→.14, borda .12→.22,
+cor .7→.92) pra ficarem óbvios à primeira vista.
+
+`closeAuthGate` por coincidência é um nome que já existiu e foi
+removido como código morto no v198-LOTE16 (função sem chamador
+nenhum) — está na lista `_mortos` do guarda anti-ressurreição do
+smoke. Removido da lista de propósito (não é ressurreição acidental:
+tem 3 chamadores reais agora, cobertos por checks novos).
+
+Testes: 2 checks estruturais no smoke (a função remove as 2 classes
+certas; os 3 jeitos de fechar — X/clique-fora/Escape — presentes no
+HTML/JS). `npm test` 100% verde, `check-duplicates.js`/
+`check-xss-guard.js` sem achados. sw.js bumpado (v98→v99).
+

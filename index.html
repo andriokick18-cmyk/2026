@@ -1786,7 +1786,15 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
     .ag-input:focus{border-color:rgba(59,130,246,.65);background:rgba(59,130,246,.06)}
     .ag-input::placeholder{color:rgba(255,255,255,.3)}
     .ag-err{display:none;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);border-radius:11px;padding:10px 13px;font-size:12px;color:#fca5a5;line-height:1.5;margin-bottom:12px}
-    .ag-back{position:absolute;top:12px;left:12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:10px;width:32px;height:32px;color:rgba(255,255,255,.7);font-size:15px;cursor:pointer;display:none;align-items:center;justify-content:center}
+    /* 🚨 v237g (dono testou ao vivo, 20/09/2026): a seta ← já existia mas
+       "de tão discreta, parece tela sem saída" — contraste subiu nos 2
+       botões (.07→.14 fundo, .12→.22 borda, .7→.92 cor) pra ficarem óbvios
+       à primeira vista, não só pra quem procura com atenção. */
+    .ag-back{position:absolute;top:12px;left:12px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);border-radius:10px;width:32px;height:32px;color:rgba(255,255,255,.92);font-size:15px;cursor:pointer;display:none;align-items:center;justify-content:center}
+    /* 🚨 v237g (achado de auditoria — Alta): X pra fechar o card DE VERDADE —
+       a seta ← só troca de tela (login/signup→choice), nunca fecha o
+       overlay; o X é o único jeito de sair sem ESC/clique-fora. */
+    .ag-close{position:absolute;top:12px;right:12px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);border-radius:10px;width:32px;height:32px;color:rgba(255,255,255,.92);font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
     .ag-foot{font-size:10.5px;color:rgba(255,255,255,.4);text-align:center;line-height:1.6;margin-top:6px;padding:10px 6px 0;border-top:1px solid rgba(255,255,255,.07)}
     .ag-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
     .ag-grid2 .ag-input{margin-bottom:0}
@@ -1807,9 +1815,10 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
     .ag-box{background:rgba(59,130,246,.08);border:1.5px solid rgba(59,130,246,.3);border-radius:13px;padding:12px 13px;margin-bottom:12px}
     .ag-input[readonly]{opacity:.75}
   </style>
-  <div id="auth-gate">
+  <div id="auth-gate" onclick="if(event.target===this)closeAuthGate()">
     <div class="ag-modal">
       <button class="ag-back" id="ag-back" onclick="agBack()" aria-label="Voltar">←</button>
+      <button class="ag-close" onclick="closeAuthGate()" aria-label="Fechar">×</button>
       <div class="ag-logo"><img src="/icon-192.png?v=3" alt="" style="width:24px;height:24px;border-radius:6px;object-fit:cover"> H2BApply</div>
       <div id="ag-body"></div>
       <div class="ag-foot">🔒 Seus dados ficam protegidos com senha criptografada.</div>

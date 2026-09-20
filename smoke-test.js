@@ -1541,15 +1541,20 @@ async function drillBloqueioComprasNovas() {
         `perfis=${_prf16.json?.profiles?.length}`);
 
       // (2) ESTRUTURAL: nenhuma das peças apagadas pode reaparecer
+      // 🚨 v237g: "closeAuthGate" SAIU desta lista de propósito — não
+      // ressuscitou por acidente, foi REINTRODUZIDA com função real (achado
+      // de auditoria — Alta: #auth-gate não tinha jeito nenhum de fechar) e
+      // 3 chamadores de verdade (botão .ag-close, clique-fora, Escape),
+      // cobertos pelos checks v237g logo abaixo. 30 nomes agora, não 31.
       const _mortos = ["BUILTIN_TEMPLATES", "UTPL", "tplCurId", "renderTplList", "openTplPickerFor", "renderPickerList", "pickTemplate",
-        "closeAuthGate", "renderOnboardChecklist", "getPlanLabel", "getPlanClass", "peOnTypeChange", "toggleProfileStatus",
+        "renderOnboardChecklist", "getPlanLabel", "getPlanClass", "peOnTypeChange", "toggleProfileStatus",
         "_createInstallFab", "showInstallFab", "hideInstallFab", "showInstallBanner", "hideInstallBanner",
         "_showFirstLoginWelcome", "uploadCvFromDocs", "BLACKLIST_EMAILS", "blacklistCompany", "isBlacklisted",
         "renderEmailScore", "scoreEmailBody", "_setTxt", "_sSection", "_sTextNode", "_sTextNodeSub", "_sText", "updateLimChip"];
       const _semCom16 = (t2) => t2.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ");
       const _htmlSemCom16 = (t2) => _semCom16(t2.replace(/<!--[\s\S]*?-->/g, " "));
       const _vivos = _mortos.filter((n) => new RegExp("\\b" + n + "\\b").test(_semCom16(_app16)) || new RegExp("\\b" + n + "\\b").test(_htmlSemCom16(_idx16)));
-      check("🧹 v198-L16 (guarda negativa): nenhuma das 31 funções/constantes órfãs do front voltou — cada uma foi conferida por grep antes de sair (zero chamadores em app.js, index.html, h2b-extras-user.js, admin.html, tutorial e smoke)",
+      check("🧹 v198-L16 (guarda negativa): nenhuma das 30 funções/constantes órfãs do front voltou por acidente — cada uma foi conferida por grep antes de sair (zero chamadores em app.js, index.html, h2b-extras-user.js, admin.html, tutorial e smoke); \"closeAuthGate\" saiu da lista no v237g por ter voltado DE PROPÓSITO, com chamador real",
         _vivos.length === 0, `ressuscitaram: ${_vivos.join(", ")}`);
       check("🧹 v198-L16: o overlay 'Escolher Modelo' e o CSS órfão .tpl-card/.tpl-tag/.tpl-picker-* saíram do index.html — e o .tpl-var (em USO no editor de perfil) e o .profile-card continuam vivos",
         !/tpl-picker|tpl-card|tpl-tag|tpl-tab-btn/.test(_htmlSemCom16(_idx16)) &&
@@ -4896,6 +4901,27 @@ async function drillBloqueioComprasNovas() {
         /jsonSafe\(r\)/.test(_fnWppReq) &&
         !/_wppNum\.length<8/.test(_fnStartAuto) && !/digits\.length < 8/.test(_fnWppReq),
         `startAuto=${_fnStartAuto.length}chars wppRequiredSave=${_fnWppReq.length}chars`);
+    }
+
+    // ═══ 🚨 v237g (achado de uma 3ª rodada de auditoria — Alta, auth): o
+    // modal de login/cadastro/recuperação da landing (#auth-gate) não tinha
+    // NENHUM jeito de fechar — sem X, sem clique-fora, sem Escape. agBack()
+    // só trocava de tela (login/signup → choice), nunca fechava o overlay.
+    // Visitante que abria o card e mudava de ideia (queria só ver preços
+    // antes) ficava preso até dar F5 ou sair do site — bug de conversão
+    // grave no topo do funil.
+    {
+      const _idxV237g = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+      const _appSrcV237g = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _fnCloseAuthGate = (_appSrcV237g.match(/function closeAuthGate\(\)\{[\s\S]*?\n\}\n/) || [""])[0];
+      check("🚨 v237g: closeAuthGate() remove as classes 'open' (#auth-gate) e 'ag-lock' (<html>, trava de scroll) — a MESMA dupla que openAuthGate() adiciona",
+        /ov\.classList\.remove\("open"\)/.test(_fnCloseAuthGate) && /document\.documentElement\.classList\.remove\("ag-lock"\)/.test(_fnCloseAuthGate),
+        `closeAuthGate() ausente ou incompleta — ${_fnCloseAuthGate.length} chars capturados`);
+      check("🚨 v237g: #auth-gate tem os 3 jeitos padrão de fechar que TODO outro overlay do site já tinha — botão .ag-close (X), clique no fundo escuro (event.target===this) e Escape (mesmo listener global do #vf-overlay)",
+        /<div id="auth-gate" onclick="if\(event\.target===this\)closeAuthGate\(\)">/.test(_idxV237g) &&
+        /<button class="ag-close" onclick="closeAuthGate\(\)" aria-label="Fechar">×<\/button>/.test(_idxV237g) &&
+        /const ag=g\("#auth-gate"\);\s*\n\s*if\(ag&&ag\.classList\.contains\("open"\)\)\{e\.preventDefault\(\);closeAuthGate\(\);\}/.test(_appSrcV237g),
+        "botão X, clique-fora ou Escape do #auth-gate sumiu");
     }
 
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5c@test.com", name: "MC5 C" });
