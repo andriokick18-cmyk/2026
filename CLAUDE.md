@@ -3632,3 +3632,71 @@ vezes; um token inventado nunca vira sessão. `npm test` 100% verde,
 `check-duplicates.js`/`check-xss-guard.js` sem achados. Sem bump de
 sw.js (mudança 100% server-side).
 
+**🔐 Auditoria do teto de 100 usuários do OAuth (dono, 20/09/2026 —
+"a prioridade de tudo", medo de vazar slot pro Google Cloud sem a
+pessoa ter pagado)**: reli TODO o repo procurando qualquer caminho até
+`accounts.google.com` sem plano pago. Achado: só existem 3 rotas no
+repo inteiro que constroem essa URL — `/oauth/add-sender` e
+`/oauth/connect-send` (ambas com `isVipActive()` incondicional, antes
+de `CONFIGURED`, incluindo o `?reauth=1` fechado no v237w acima) e
+`/oauth/notif-connect` (admin-only). `/api/login` é 100% usuário+senha
+desde o v172c — nunca fala com o Google. `/oauth/start` (login por
+Google antigo) é um dead-end fechado desde o v172b, só redireciona pra
+"/". `mod-gmail.js` (renovação de token) só fala com
+`gmail.googleapis.com`/`oauth2.googleapis.com` — nunca com
+`accounts.google.com`, então renovar token de quem já conectou NUNCA
+consome slot novo do teto. Os "5 usuários" que o dono viu no Google
+Cloud Console provavelmente são contas de teste legítimas (a dele, a
+de notificação do admin, o `ndrkick.3@gmail.com` testado nesta mesma
+sessão) mais, possivelmente, uso real da brecha do `?reauth=1` que
+existiu até o v237w ser corrigido — o teto do Google é CUMULATIVO e
+NUNCA diminui (revogar não devolve o slot), mas depois do v237w
+nenhum caminho novo consegue mais consumir slot sem plano pago. Só
+investigação — nenhum código mudou aqui (o fix real já tinha ido no
+v237w). Testes já existentes (linhas 1949-1972 e 2350-2358 do
+smoke-test.js) travam permanentemente os 3 caminhos.
+
+**🌉 v238: soma de estatísticas da landing com o site antigo
+(h2bapply.onrender.com) + correção do "VIP ativo: 1"**: pedido do
+dono — a landing deve somar total de usuários/enviados/VIP com o
+histórico do site antigo (New-repository, ainda no ar só pra
+assinantes de antes terminarem os dias de VIP pagos), ao vivo e
+automático, mas SÓ os 3 números agregados — "nenhuma das informações
+dos usuários é para vir pra lá, apenas o número de quantidade e
+pronto". Achado: `h2bapply.onrender.com` já é o New-repository
+(confirmado pela migração de domínio v215/v216) e já expõe
+`/api/public-stats` PUBLICAMENTE, sempre só com números — este lado
+só CONSOME (GET, `?local=1` evita recursão com os irmãos ocultos de
+lá), nunca escreve nada no repo congelado. `_fetchStatsLegado()`
+(server.js, perto de `_publicStatsCache`) cacheia 30min (o Render free
+do site antigo hiberna — bater a cada 30s como a landing faz acordaria
+ele à toa) e falha-aberto total (site antigo fora do ar nunca derruba
+nem atrasa a landing daqui). `totalUsers`/`vipUsers`/`totalSent`/
+`totalAuto` somam com o legado; `todaySent`/`todayAuto` NUNCA somam
+(é "hoje" — o site antigo não recebe candidatura nova). Bug real
+corrigido junto: `/api/public-stats` contava o ADMIN como "VIP ativo"
+na vitrine PÚBLICA (`isVipActive()` dá VIP infinito pro admin de
+propósito, correto pro uso interno, mentira numa vitrine pro público)
+— `isAdminVip(u)` (a mesma união "isAdmin OU isAdminEmail" que já era
+a régua documentada de "quem conta como admin") agora exclui totalUsers
+e vipUsers dessa rota especificamente.
+
+**Bug de teste encontrado e corrigido durante o desenvolvimento**: a
+1ª versão do check assumia `vipUsers===0` logo após o boot — errado:
+existe um fixture `legadoplano@test.com` (VIP real, não-admin,
+pré-carregado antes até do boot) usado por outros testes, então
+`vipUsers=1` já era o valor CORRETO esperando por ele. Diagnosticado
+com um dump temporário de `DB_USERS` (removido antes do commit) que
+também confirmou que os 5.000 fixtures `perfuser*` (v43-PERF, só
+`plan:"vip"` solto, sem `vip.manualExpires`/`active`) não contam como
+VIP — `isVipActive()` já os ignora sozinho, do jeito certo.
+
+Testes: 5 checks novos (`vipUsers===1` — só o fixture real, prova que
+o admin não conta; rota responde normal com a ponte desligada no
+teste/fail-open; ponte nunca bate rede real durante `npm test`;
+`todaySent`/`todayAuto` nunca entram no merge; a ponte só faz GET,
+nunca escreve no New-repository). `npm test` 100% verde,
+`check-duplicates.js`/`check-xss-guard.js` sem achados. Sem bump de
+sw.js (mudança 100% server-side — nenhum arquivo servido ao cliente
+mudou).
+

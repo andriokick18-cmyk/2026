@@ -4734,6 +4734,40 @@ function _makeWarmupReleaser(key){
 // histórico inteiro e que a landing chama a cada 30s em toda aba aberta).
 let _publicStatsCache = null;
 
+// 🌉 v238 (dono, 20/09/2026 — "quero que puxe a informação pra landing
+// mostrar quantos usuários já teve cadastrado... amanhã a mesma coisa, ele
+// vai puxar automaticamente"): h2bapply.onrender.com é o site ANTIGO
+// (New-repository) — h2bapply.com migrou o DNS pra ESTE ambiente, mas o
+// antigo continua no ar só pra assinantes de antes terminarem os dias de
+// VIP que já pagaram (banner "ambiente velho" na landing). Ele JÁ expõe
+// /api/public-stats publicamente, e essa rota (auditada agora) só devolve
+// NÚMEROS agregados — nunca e-mail, nome ou qualquer dado de usuário —
+// ordem EXPRESSA do dono: "nenhuma das informações dos usuários é para vir
+// pra lá, apenas o número de quantidade e pronto". `?local=1` evita
+// qualquer recursão com os servidores-irmãos dele (mortos/ocultos, v156/
+// v157 de lá). Por isso este lado só CONSOME — nunca escreve nada no
+// New-repository, que continua congelado. Cache de 30min (o Render free do
+// site antigo hiberna — bater a cada 30s como a landing faz seria acordar
+// ele à toa por um número que não muda tão rápido) + fail-open total: site
+// antigo fora do ar/hibernando/sem rede nunca derruba nem atrasa a landing
+// daqui, só some a parcela dele da soma (ou usa o último valor bom).
+let _statsLegadoCache = null;
+async function _fetchStatsLegado(){
+  if(process.env.TEST_LOGIN_TOKEN)return null; // nunca bate rede de verdade no npm test
+  const agora=Date.now();
+  if(_statsLegadoCache && agora-_statsLegadoCache.em < 30*60_000)return _statsLegadoCache.dados;
+  try{
+    const r=await httpsReq({hostname:"h2bapply.onrender.com",path:"/api/public-stats?local=1",method:"GET",headers:{"User-Agent":"H2BApply-stats-bridge/1"}});
+    const b=r&&r.body;
+    if(r&&r.status===200&&b&&typeof b.totalUsers==="number"){
+      const dados={totalUsers:parseInt(b.totalUsers)||0,vipUsers:parseInt(b.vipUsers)||0,totalSent:parseInt(b.totalSent)||0,totalAuto:parseInt(b.totalAuto)||0};
+      _statsLegadoCache={em:agora,dados};
+      return dados;
+    }
+  }catch(e){/* fail-open: site antigo fora do ar, hibernando ou sem rede */}
+  return _statsLegadoCache?_statsLegadoCache.dados:null; // último valor bom conhecido, senão nada
+}
+
 // ── PERFORMANCE: debounce de persist para evitar escrita excessiva no disco ──
 // v191 LOTE 9: o mapa guarda {tid, data} — o PAYLOAD pendente junto com o
 // timer. Sem isso o flushAll do SIGTERM só sabia regravar uma lista FIXA de
@@ -13794,15 +13828,34 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}return json(res,200,{ok:true})
     if(_publicStatsCache && agora-_publicStatsCache.em < 60_000)
       return json(res,200,process.env.TEST_LOGIN_TOKEN?{..._publicStatsCache.dados,_calculos:_publicStatsCache.calculos}:_publicStatsCache.dados);
     const ds=todayStr();
-    const totalUsers=Object.keys(DB_USERS).length;
-    const vipUsers=Object.values(DB_USERS).filter(u=>isVipActive(u)).length;
+    // 🐛 v238-FIX (achado do dono, 20/09/2026 — "VIP ativo: 1" na landing
+    // sem NENHUM cliente pago ainda): isVipActive() dá VIP infinito pro
+    // admin de propósito (acesso interno sempre liberado) — mas contar
+    // isso como "cliente VIP" numa vitrine pública é mentira.
+    // 🚨 v238-FIX2 (achado no próprio npm test rodando este fix): a conta
+    // criada pelo login por senha do painel /admin (server.js ~8163) grava
+    // {email:_key,isAdmin:true} onde _key é o USUÁRIO interno ("andrio"),
+    // NUNCA um e-mail real — nem isAdminEmail(chave) nem isTestAccountEmail
+    // (emailContato) pegavam essa forma. isAdminVip(u) é a régua CORRETA
+    // (lê u.isAdmin OU isAdminEmail(u.email) — o comentário da linha 6339
+    // já documentava essa união como "todo mundo que conta como admin").
+    const _usersReais=Object.entries(DB_USERS).filter(([em,u])=>!isAdminVip(u)&&!_usuarioNaoEhReceita(em,u));
+    const totalUsers=_usersReais.length;
+    const vipUsers=_usersReais.filter(([,u])=>isVipActive(u)).length;
     const allHist=Object.values(DB_HIST);
     const _todayManual=allHist.reduce((n,a)=>n+a.filter(h=>h.dateStr===ds&&h.type==="manual").length,0);
     const todayAuto=allHist.reduce((n,a)=>n+a.filter(h=>h.dateStr===ds&&h.type==="auto").length,0);
-    const todaySent=_todayManual+todayAuto;
+    const todaySent=_todayManual+todayAuto; // v238: NUNCA soma com o site antigo (é "hoje", ele já não recebe candidatura nova)
     const totalSent=allHist.reduce((n,a)=>n+a.filter(h=>h.type!=="reply").length,0);
     const totalAuto=allHist.reduce((n,a)=>n+a.filter(h=>h.type==="auto").length,0);
-    const out={totalUsers,vipUsers,todaySent,todayAuto,totalSent,totalAuto};
+    const legado=await _fetchStatsLegado(); // v238: histórico do site antigo, só números agregados — ver comentário da função
+    const out={
+      totalUsers:totalUsers+(legado?.totalUsers||0),
+      vipUsers:vipUsers+(legado?.vipUsers||0),
+      todaySent,todayAuto,
+      totalSent:totalSent+(legado?.totalSent||0),
+      totalAuto:totalAuto+(legado?.totalAuto||0),
+    };
     _publicStatsCache={em:agora,dados:out,calculos:(_publicStatsCache?.calculos||0)+1};
     // só no npm test: prova que a 2ª chamada NÃO recalculou (o nº de cálculos
     // reais fica visível no corpo, nunca em produção).

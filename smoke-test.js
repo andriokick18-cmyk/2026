@@ -837,6 +837,31 @@ async function drillBloqueioComprasNovas() {
       ps2.status === 200 && ps2.json?._calculos === ps.json?._calculos && typeof ps.json?._calculos === "number" &&
       ps2.json?.totalUsers === ps.json?.totalUsers && ps2.json?.totalSent === ps.json?.totalSent,
       JSON.stringify({ calc1: ps.json?._calculos, calc2: ps2.json?._calculos }));
+    // 🐛 v238-FIX (achado do dono, 20/09/2026 — "VIP ativo: 1" na landing
+    // sem nenhum cliente pago ainda, só o admin): isVipActive() dá VIP
+    // infinito pro admin de propósito, mas /api/public-stats contava isso
+    // como "1 VIP ativo" numa vitrine PÚBLICA. Neste ponto do npm test o
+    // ÚNICO usuário genuinamente VIP-ativo é o fixture legadoplano@test.com
+    // (vip.manualExpires/autoExpires no futuro, linha ~185) — os 5.000
+    // fixtures "perfuser*" (v43-PERF) têm só um `plan:"vip"` solto, sem
+    // vip.manualExpires/active, então isVipActive() já os ignora por conta
+    // própria. Se o admin (isAdminVip) estivesse contando, o número seria
+    // 2+, não 1 — é exatamente essa contagem extra que o fix elimina.
+    check("🐛 v238-FIX: /api/public-stats NUNCA conta o admin como VIP ativo (só o fixture VIP de verdade — legadoplano@test.com — entra na vitrine pública)",
+      ps.json?.vipUsers === 1, `vipUsers=${ps.json?.vipUsers}`);
+    // 🌉 v238: no npm test a ponte pro site antigo (h2bapply.onrender.com)
+    // fica DESLIGADA de propósito (TEST_LOGIN_TOKEN presente — nunca bate
+    // rede de verdade no teste, mesma régua do Google/DOL falsos) — prova
+    // que o servidor tenta e falha-aberto sem quebrar a rota nem travar.
+    check("🌉 v238: /api/public-stats segue respondendo normal com a ponte pro site antigo desligada no teste (fail-open)",
+      ps.status === 200 && typeof ps.json?.totalUsers === "number" && typeof ps.json?.totalSent === "number");
+    const _srcV238 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+    check("🌉 v238: a ponte pro site antigo nunca é chamada durante o npm test (TEST_LOGIN_TOKEN corta a rede real)",
+      _srcV238.includes('if(process.env.TEST_LOGIN_TOKEN)return null; // nunca bate rede de verdade no npm test'));
+    check("🌉 v238: /api/public-stats NUNCA soma envios de HOJE com o site antigo (só total histórico) — todaySent/todayAuto ficam de fora do merge",
+      _srcV238.includes("todaySent,todayAuto,\n      totalSent:totalSent+(legado?.totalSent||0)"));
+    check("🌉 v238: a ponte com o site antigo só CONSOME (GET) — nenhuma escrita no New-repository congelado",
+      (() => { const i = _srcV238.indexOf("_fetchStatsLegado"); const bloco = _srcV238.slice(i, i + 1200); return bloco.includes('method:"GET"') && !bloco.includes('method:"POST"'); })());
     // (aba Notícias DOL removida nesta reconstrução — sem /api/noticias)
     // (/api/auth/where removida no v172c junto com o login por e-mail/Google
     // — cadastro/login viraram usuário+senha, ver bloco 🔐 v172c abaixo.)
