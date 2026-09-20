@@ -4675,9 +4675,15 @@ async function startAuto(overrideStartH, overrideEndH, _mode="now"){
   if(!activeProfiles.length){toast("Crie pelo menos 1 perfil ativo antes de iniciar!","r");return;}
 
   // ── VALIDAÇÃO: WhatsApp obrigatório para automático ──────────────
+  // 🚨 v237 (achado de auditoria — Baixa): era <8 dígitos — mais frouxo que
+  // o cadastro (#ag-s-whats exige <10, "com DDD, só números"). Um número
+  // salvo por AQUI ou pelo card wppRequiredSave (que tinha o MESMO <8)
+  // passava sem DDD e nunca funcionava de verdade pro empregador chamar —
+  // justamente o motivo do WhatsApp ser obrigatório. Mesma régua nos 3
+  // lugares agora.
   const _wppRaw=U.whatsapp||CFG?.phone||"";
   const _wppNum=_wppRaw.replace(/\D/g,"");
-  if(!_wppNum||_wppNum.length<8){
+  if(!_wppNum||_wppNum.length<10){
     toast("📱 WhatsApp obrigatório para usar o automático","r");
     setTimeout(()=>{
       if(confirm("⚠️ Cadastre seu WhatsApp antes de usar o Envio Automático.\n\nIsso permite que as empresas americanas entrem em contato com você diretamente.\n\nDeseja cadastrar agora?")){
@@ -8123,10 +8129,12 @@ async function wppRequiredSave(){
   if(!inp) return;
 
   const raw = inp.value.trim();
-  // Validação simples: mínimo 8 dígitos numéricos
+  // 🚨 v237 (achado de auditoria — Baixa): era <8 — mesma régua frouxa do
+  // cadastro (#ag-s-whats exige <10, "com DDD"). Alinhado com startAuto()
+  // e o cadastro — os 3 lugares que validam WhatsApp agora concordam.
   const digits = raw.replace(/\D/g,'');
-  if(digits.length < 8){
-    if(errEl){ errEl.style.display='block'; errEl.textContent='Informe um número válido (mínimo 8 dígitos)'; }
+  if(digits.length < 10){
+    if(errEl){ errEl.style.display='block'; errEl.textContent='Informe o WhatsApp com DDD, só números (ex.: 11999999999)'; }
     inp.style.borderColor = 'rgba(248,113,113,.6)';
     inp.focus();
     return;
@@ -8140,7 +8148,7 @@ async function wppRequiredSave(){
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ whatsapp: raw, phone: raw })
     });
-    const d = await r.json();
+    const d = await jsonSafe(r);
     if(d.ok){
       // Atualizar U em memória
       U.whatsapp = raw;

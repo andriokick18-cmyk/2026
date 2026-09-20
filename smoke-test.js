@@ -4879,6 +4879,25 @@ async function drillBloqueioComprasNovas() {
         `saveProfileFromEditor() sem o push em DOCS — ${_fnSaveFromEditor.length} chars capturados`);
     }
 
+    // ═══ 🚨 v237 (achado de auditoria — Baixa, perfil/onboarding): validação
+    // de WhatsApp divergia em 3 lugares. O cadastro (#ag-s-whats, server.js
+    // /api/cadastro) sempre exigiu ≥10 dígitos ("com DDD"), mas o gate do
+    // Envio Automático (startAuto) e o card "Cadastre seu WhatsApp"
+    // (wppRequiredSave) aceitavam a partir de 8 — um número sem DDD passava
+    // ali e nunca funcionava de verdade pro empregador chamar. Alinhados
+    // pra ≥10 nos 3 lugares.
+    {
+      const _appSrcV237f = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _fnStartAuto = (_appSrcV237f.match(/async function startAuto\(overrideStartH, overrideEndH, _mode="now"\)\{[\s\S]*?\n\}\n/) || [""])[0];
+      const _fnWppReq = (_appSrcV237f.match(/async function wppRequiredSave\(\)\{[\s\S]*?\n\}\n/) || [""])[0];
+      check("🚨 v237 (estrutural): startAuto() e wppRequiredSave() exigem ≥10 dígitos de WhatsApp (mesma régua do cadastro, 'com DDD') — não mais ≥8, que deixava passar número sem DDD",
+        /_wppNum\.length<10/.test(_fnStartAuto) &&
+        /digits\.length < 10/.test(_fnWppReq) &&
+        /jsonSafe\(r\)/.test(_fnWppReq) &&
+        !/_wppNum\.length<8/.test(_fnStartAuto) && !/digits\.length < 8/.test(_fnWppReq),
+        `startAuto=${_fnStartAuto.length}chars wppRequiredSave=${_fnWppReq.length}chars`);
+    }
+
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5c@test.com", name: "MC5 C" });
     const mc5d1 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-um").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
     const mc5d2 = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "MC5 C", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("pix-dois").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });

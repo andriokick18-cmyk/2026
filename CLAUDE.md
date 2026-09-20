@@ -2794,3 +2794,38 @@ Com este, todos os achados Alta e Média das 3 auditorias paralelas da
 2ª rodada estão fechados. Só sobram os 2 itens Baixa/decisão-de-produto
 já registrados no v237c/v237d.
 
+## v237f — validação de WhatsApp divergia em 3 lugares (achado Baixa de perfil/onboarding) (20/09/2026)
+
+Último item da 2ª rodada de auditorias. O cadastro (`#ag-s-whats`,
+validado tanto no front quanto em `/api/cadastro`) sempre exigiu ≥10
+dígitos numéricos ("com DDD, ex.: 11999999999") — mas 2 outros lugares
+que também aceitam/validam WhatsApp usavam uma régua mais frouxa, ≥8:
+o gate do Envio Automático (`startAuto()`, que bloqueia o automático
+sem WhatsApp) e o card "Cadastre seu WhatsApp" (`wppRequiredSave()`,
+mostrado a quem pulou o campo). Um número de 8-9 dígitos (sem DDD, ou
+faltando um dígito) passava nesses 2 lugares e nunca funcionava de
+verdade pro empregador americano chamar — exatamente o motivo do
+WhatsApp ser obrigatório.
+
+Alinhados os 3 pra ≥10 dígitos, mesma mensagem de erro do cadastro
+("com DDD, só números, ex.: 11999999999"). Não mexemos em
+`/api/settings` (rota genérica de salvar perfil) nem em `saveProfile()`
+(campo `#cfg-whatsapp` da tela de Perfil) — o campo `phone` nessa mesma
+rota já não tem mínimo nenhum (padrão deliberado do arquivo: validação
+rígida fica no cadastro, os consumidores downstream que decidem se
+aceitam o valor pra cada uso — automático, card de aviso etc.); mudar
+isso seria bem mais invasivo que o achado original pedia. De brinde,
+`wppRequiredSave()` passou a usar `jsonSafe`.
+
+Testes: 1 check estrutural no smoke (as 2 réguas em ≥10, nenhuma mais
+em ≥8, `jsonSafe` presente). `npm test` 100% verde,
+`check-duplicates.js`/`check-xss-guard.js` sem achados. sw.js bumpado
+(v97→v98).
+
+**Com este fecham TODOS os achados reais das 3 auditorias paralelas
+da 2ª rodada (painel-admin/dinheiro, perfil/onboarding, vagas/
+filtros) — v236, v237, v237b, v237c, v237d, v237e, v237f.** Só sobram
+2 itens de decisão do dono (não são bugs): duplicação de código em
+`add_pagamento`/`add_gasto` e a UI pra Sócios & Acerto, ambos adiados
+por escolha explícita dele.
+
