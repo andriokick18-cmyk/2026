@@ -7618,6 +7618,24 @@ const PIX_NAME = 'Diego Cardoso';
 
 let _planComp64 = null; // base64 do comprovante
 let _planCompType = 'image/jpeg';
+// 🚀 v240c (dono, 22/09/2026 — mesma lógica do v240b, agora pro comprovante):
+// o base64 já compactado (canvas ou PDF cru) vira um Blob binário puro e
+// sobe numa chamada PRÓPRIA (streaming, sem entrar no JSON gigante de
+// /api/pedido) — o servidor devolve um token curto que /api/pedido reivindica
+// depois. Evita bufferizar ~1-8MB de base64 dentro do corpo de outra rota.
+function _b64ToBlob(b64, mime){
+  const bin=atob(b64);
+  const bytes=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+  return new Blob([bytes],{type:mime||'application/octet-stream'});
+}
+async function _stageComprovante(){
+  const blob=_b64ToBlob(_planComp64,_planCompType);
+  const r=await fetch('/api/pedido/comprovante-stage',{method:'POST',credentials:'include',headers:{'Content-Type':_planCompType||'application/octet-stream'},body:blob});
+  const d=await jsonSafe(r);
+  if(!d.ok)throw new Error(d.error||'Falha ao enviar o comprovante.');
+  return d.token;
+}
 
 // window._planosData (cache de /api/planos), window._planoEscolhido
 // ('vip'|'vipro'|'doublepro') e window._diasEscolhido (30|60|90|365) —
@@ -7992,10 +8010,20 @@ async function submitPlanOrder() {
   if(statusEl) { statusEl.style.display = 'block'; statusEl.innerHTML = '<div style="font-size:12px;color:var(--t3)">Enviando pedido...</div>'; }
 
   try {
+    // v240c: sobe o comprovante primeiro (streamado) e manda só o token —
+    // se o upload falhar, nem tenta criar o pedido (mensagem clara, botão
+    // volta a ficar clicável, nada fica pela metade).
+    let comprovanteToken;
+    try{ comprovanteToken = await _stageComprovante(); }
+    catch(eUp){
+      if(statusEl) statusEl.innerHTML = '<div style="font-size:12px;color:var(--red)">Erro ao enviar o comprovante: ' + esc(eUp.message) + '</div>';
+      if(btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-send"></i> Enviar pedido'; }
+      return;
+    }
     const r = await fetch('/api/pedido', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tipo: 'plano', plano, dias, consentimento: true, userName: name, userWhatsapp: wpp, userCity: city, userState: state, nota, comprovante: _planComp64, comprovanteType: _planCompType, pagoEm: pagoEmTs }),
+      body: JSON.stringify({ tipo: 'plano', plano, dias, consentimento: true, userName: name, userWhatsapp: wpp, userCity: city, userState: state, nota, comprovanteToken, comprovanteType: _planCompType, pagoEm: pagoEmTs }),
     });
     const d = await r.json();
     if(d.ok) {
@@ -8124,7 +8152,12 @@ function mpReenviarComprovante(pid){
       b64=await new Promise((res,rej)=>{const rd=new FileReader();rd.onload=()=>res(rd.result.split(',')[1]);rd.onerror=rej;rd.readAsDataURL(file);});
     }
     try{
-      const r=await fetch('/api/pedido/'+encodeURIComponent(pid)+'/comprovante',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({comprovante:b64,comprovanteType:mime})}).then(x=>x.json());
+      // v240c: mesmo streaming (token) do envio inicial — nunca o base64
+      // inteiro dentro do JSON.
+      const stageR=await fetch('/api/pedido/comprovante-stage',{method:'POST',credentials:'include',headers:{'Content-Type':mime},body:_b64ToBlob(b64,mime)});
+      const stageD=await jsonSafe(stageR);
+      if(!stageD.ok)throw new Error(stageD.error||'Falha ao enviar o comprovante.');
+      const r=await fetch('/api/pedido/'+encodeURIComponent(pid)+'/comprovante',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({comprovanteToken:stageD.token,comprovanteType:mime})}).then(x=>x.json());
       if(!r.ok)throw new Error(r.error||'?');
       toast('📤 Comprovante atualizado — vamos reler agora','g');
       _mpLoaded=false;loadMeusPagamentos();

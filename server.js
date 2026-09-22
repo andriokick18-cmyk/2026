@@ -1203,6 +1203,7 @@ function boot() {
   _dedupeAndHealUserCvs(DB_USERS); // v20 (07/2026): remove PDFs duplicados e cura perfis com referência quebrada
   _migrateCvBlobsToDisk(DB_USERS); // v21 (07/2026): PDFs base64 saem do users.json → disco (RAM e persist leves)
   _sweepOrphanCvFiles(DB_USERS);   // v21 (07/2026): apaga PDFs órfãos do disco (lixo do antigo delete sem unlink)
+  _sweepOrphanStagedComprovantes(); // v240c: apaga comprovantes "em preparo" de um processo anterior (o Map de posse morreu com ele)
   _wipeCannedDefaults(DB_USERS);   // v22 (ordem do dono): remove texto enlatado de fábrica intocado — conteúdo é do usuário
   _migrarIdiomaParaPt(DB_USERS);   // 🇧🇷 v199 LOTE 17: conta presa em EN/ES volta pro português (o site não tem seletor)
   DB_HIST   = mig(HIST_FILE,   path.join(DATA_DIR, "h2b_history.json"), {});
@@ -2735,6 +2736,115 @@ function loadComprovante(pedido){
 function temComprovante(pedido){
   return !!(pedido&&(pedido.comprovanteArquivo||(typeof pedido.comprovante==="string"&&pedido.comprovante)));
 }
+
+// 🚀 v240c (dono, 22/09/2026 — mesma lógica do v240b/currículo, agora pro
+// comprovante de pagamento): em vez de bufferizar até ~8MB de base64 dentro
+// do JSON gigante de /api/pedido, o cliente sobe o arquivo cru (binário)
+// numa chamada PRÓPRIA, que streama e converte pra base64 em PEDAÇOS (nunca
+// o arquivo inteiro numa string só) direto pro disco — /api/pedido só
+// recebe de volta um TOKEN curto de posse. Formato final em disco (.b64,
+// texto base64) fica IDÊNTICO ao caminho legado — loadComprovante,
+// preCheckComprovante e todo o resto do site continuam lendo do jeito de
+// sempre, sem saber COMO o arquivo chegou lá.
+const COMPROVANTE_STAGE_MAX_BYTES = 8_025_000; // = 10_700_000 chars base64 * 0.75 (mesmo teto de sempre, em bytes crus)
+const STAGED_COMPROVANTE_TTL_MS = 2*3600_000; // 2h — sobra pra terminar um checkout sem pressa
+const STAGED_COMPROVANTES = new Map(); // token -> {email, path, createdAt} — em memória, mesmo padrão dos links de uso único (v237x)
+function _sweepStagedComprovantes(){
+  const agora=Date.now();
+  for(const [tok,entry] of STAGED_COMPROVANTES){
+    if(agora-entry.createdAt>STAGED_COMPROVANTE_TTL_MS){
+      try{fs.unlinkSync(entry.path);}catch{}
+      STAGED_COMPROVANTES.delete(tok);
+    }
+  }
+}
+// Varredura de boot: qualquer "_staged_*.b64" em disco nasceu de um processo
+// ANTERIOR (o Map de posse é só em memória — morre com o processo) — nunca
+// tem dono válido depois de um restart, então é sempre lixo seguro de apagar.
+function _sweepOrphanStagedComprovantes(){
+  try{
+    if(!fs.existsSync(COMPROVANTES_DIR))return;
+    let removed=0;
+    for(const f of fs.readdirSync(COMPROVANTES_DIR)){
+      if(!f.startsWith("_staged_"))continue;
+      try{fs.unlinkSync(path.join(COMPROVANTES_DIR,f));removed++;}catch{}
+    }
+    if(removed>0)console.log(`[comprovante-stage] 🧹 ${removed} comprovante(s) em preparo órfão(s) removido(s) do disco (processo anterior nunca terminou o checkout).`);
+  }catch(e){ console.warn("[comprovante-stage] varredura falhou:",e.message); }
+}
+// Streama o CORPO CRU da requisição (binário) direto pro disco JÁ em base64
+// — nunca monta o arquivo inteiro numa string/Buffer só. Alinha em múltiplos
+// de 3 bytes entre pedaços (resto guardado em `carry`) pra virar base64
+// válido sem costura errada entre um pedaço e o próximo.
+function stageComprovanteFromReq(req, email){
+  return new Promise((resolve, reject) => {
+    _sweepStagedComprovantes();
+    fs.mkdirSync(COMPROVANTES_DIR,{recursive:true});
+    const token=crypto.randomBytes(16).toString("hex");
+    const destPath=path.join(COMPROVANTES_DIR, `_staged_${token}.b64`);
+    const ws=fs.createWriteStream(destPath+".tmp");
+    let carry=Buffer.alloc(0), size=0, done=false;
+    const finish=(err,result)=>{ if(done)return; done=true; err?reject(err):resolve(result); };
+    const abort=(err)=>{
+      ws.destroy();
+      fs.unlink(destPath+".tmp",()=>{});
+      // Mesmo motivo do streaming de currículo: drena o resto do corpo em
+      // vez de só parar de ouvir, senão o próximo request no mesmo socket
+      // keep-alive quebra.
+      req.removeAllListeners("data");
+      req.on("data",()=>{});
+      req.resume();
+      finish(err);
+    };
+    req.on("data",chunk=>{
+      if(done)return;
+      size+=chunk.length;
+      if(size>COMPROVANTE_STAGE_MAX_BYTES){ abort(new Error("PAYLOAD_TOO_LARGE")); return; }
+      const buf=carry.length?Buffer.concat([carry,chunk]):chunk;
+      const usable=buf.length-(buf.length%3);
+      const toEncode=buf.subarray(0,usable);
+      carry=buf.subarray(usable);
+      if(toEncode.length){
+        if(!ws.write(toEncode.toString("base64")))req.pause();
+      }
+    });
+    ws.on("drain",()=>{ if(!done)req.resume(); });
+    req.on("end",()=>{
+      if(done)return;
+      const finalB64=carry.length?carry.toString("base64"):"";
+      ws.end(finalB64,()=>{
+        // Sem piso de tamanho (o caminho legado com d.comprovante também não
+        // tinha um — só recusa o VAZIO de verdade, nunca inventa um limite novo).
+        if(size===0){ try{fs.unlinkSync(destPath+".tmp");}catch{} return finish(new Error("TOO_SMALL")); }
+        try{ fs.renameSync(destPath+".tmp", destPath); }
+        catch(e){ return finish(e); }
+        STAGED_COMPROVANTES.set(token,{email,path:destPath,createdAt:Date.now()});
+        finish(null,{token});
+      });
+    });
+    req.on("error",abort);
+    ws.on("error",abort);
+  });
+}
+// Reivindica um comprovante já preparado (mesmo dono, ainda não expirado) e
+// MOVE (rename — sem reler o conteúdo) pro destino final. null = token
+// inválido/expirado/de outra conta (nunca deixa um usuário roubar o
+// comprovante preparado por outro).
+function claimStagedComprovante(token, email, destFilePath){
+  const entry=STAGED_COMPROVANTES.get(token);
+  if(!entry||entry.email!==email)return null;
+  STAGED_COMPROVANTES.delete(token);
+  try{
+    fs.mkdirSync(path.dirname(destFilePath),{recursive:true});
+    fs.renameSync(entry.path, destFilePath);
+    return path.basename(destFilePath);
+  }catch(e){
+    console.warn(`[comprovante-stage] falha ao mover ${token}: ${e.message}`);
+    try{fs.unlinkSync(entry.path);}catch{}
+    return null;
+  }
+}
+
 // Migração de boot, IDEMPOTENTE e de QUALQUER status (pedido aprovado ou
 // cancelado meses atrás é justamente o peso morto que sobrava na RAM).
 // Nada é apagado da memória antes do arquivo existir em disco.
@@ -8574,7 +8684,10 @@ filtrar();
       const d=JSON.parse((await readBody(req))||"{}");
       if(d.token!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});
       _migrarComprovantesParaDisco();
-      let arquivos=0;try{arquivos=fs.readdirSync(COMPROVANTES_DIR).length;}catch{}
+      // v240c: "_staged_*" é comprovante em PREPARO (ainda sem pedido dono —
+      // ver stageComprovanteFromReq) — não é um arquivo "de pedido" e não
+      // deve contar aqui, senão arquivos>comArquivo mesmo com a migração ok.
+      let arquivos=0;try{arquivos=fs.readdirSync(COMPROVANTES_DIR).filter(f=>!f.startsWith("_staged_")).length;}catch{}
       return json(res,200,{ok:true,arquivos,
         inlineNaRam:DB_PEDIDOS.filter(x=>typeof x.comprovante==="string"&&x.comprovante).length,
         comArquivo:DB_PEDIDOS.filter(x=>!!x.comprovanteArquivo).length});
@@ -10378,6 +10491,23 @@ filtrar();
     return json(res,200,{ok:true,precos:tabela,limites:PLAN_LIMITS_NEW,medianaAprovacaoHoras});
   }
 
+  // 🚀 v240c: sobe o comprovante (arquivo cru, streamado) ANTES de criar o
+  // pedido — devolve um token curto que /api/pedido (ou o reenvio) reivindica
+  // depois. Mesma trava de rate-limit do upload de currículo.
+  if(pathname==="/api/pedido/comprovante-stage"&&req.method==="POST"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Sessão expirada. Faça login novamente.",sessionExpired:true,code:"SESSION_EXPIRED"});
+    if(DATA_DIR==="/tmp")return json(res,503,{error:"⚠️ Servidor sem volume persistente (/tmp). O upload funcionaria agora, mas o arquivo SOME no próximo reinício. Configure DATA_DIR=/data com volume persistente antes de continuar.",diskVolatile:true});
+    if(rateLimit(s.user_email+"_comp_stage",10,3600_000))return json(res,429,{error:"Muitos envios de comprovante. Tente novamente em 1 hora."});
+    try{
+      const {token}=await stageComprovanteFromReq(req,s.user_email);
+      return json(res,200,{ok:true,token});
+    }catch(e){
+      if(e.message==="PAYLOAD_TOO_LARGE")return json(res,400,{error:"O comprovante passou de ~8MB — envie uma foto menor ou um print da tela do banco."});
+      if(e.message==="TOO_SMALL")return json(res,400,{error:"O arquivo do comprovante veio vazio ou corrompido — tente enviar de novo (foto ou print)."});
+      return json(res,500,{error:e.message});
+    }
+  }
+
   // ── PEDIDOS DE PLANO ───────────────────────────────────────
   // POST /api/pedido — usuário cria pedido de plano
   if(pathname==="/api/pedido"&&req.method==="POST"){
@@ -10558,6 +10688,13 @@ filtrar();
         const _arqC=saveComprovante(pedido.id,d.comprovante);
         if(!_arqC)return json(res,500,{error:"Não conseguimos guardar seu comprovante agora (falha ao gravar no servidor). Tente de novo em instantes — nada foi salvo pela metade."});
         pedido.comprovanteArquivo=_arqC;
+      }else if(typeof d.comprovanteToken==="string"&&d.comprovanteToken){
+        // 🚀 v240c: cliente novo subiu o comprovante ANTES (streamado, via
+        // /api/pedido/comprovante-stage) — só reivindica (rename, sem reler
+        // o conteúdo) em vez de gravar um base64 que chegou no corpo.
+        const _arqC=claimStagedComprovante(d.comprovanteToken,s.user_email,comprovantePath(pedido.id));
+        if(!_arqC)return json(res,400,{error:"O comprovante enviado expirou ou é inválido — volte e anexe o comprovante de novo."});
+        pedido.comprovanteArquivo=_arqC;
       }
       DB_PEDIDOS.unshift(pedido);
       persistPedidos();
@@ -10713,13 +10850,24 @@ filtrar();
       if(pd.status!=="pendente")return json(res,400,{error:"Só dá pra trocar o comprovante de um pedido ainda em análise."});
       const d=JSON.parse(await readBody(req));
       const c=d.comprovante;
-      if(!c||typeof c!=="string")return json(res,400,{error:"Envie o comprovante."});
-      if(c.length>10_700_000)return json(res,400,{error:"O comprovante passou de ~8MB — envie uma foto menor."});
-      if(!/^[A-Za-z0-9+/]/.test(c.slice(0,10)))return json(res,400,{error:"O arquivo veio corrompido — tente de novo."});
+      // 🚀 v240c: reenvio também aceita o token de um comprovante já
+      // streamado (/api/pedido/comprovante-stage), fonte única com a criação.
+      const _tokRe=typeof d.comprovanteToken==="string"&&d.comprovanteToken?d.comprovanteToken:null;
+      if(!_tokRe){
+        if(!c||typeof c!=="string")return json(res,400,{error:"Envie o comprovante."});
+        if(c.length>10_700_000)return json(res,400,{error:"O comprovante passou de ~8MB — envie uma foto menor."});
+        if(!/^[A-Za-z0-9+/]/.test(c.slice(0,10)))return json(res,400,{error:"O arquivo veio corrompido — tente de novo."});
+      }
       const _allowRe=['image/jpeg','image/jpg','image/png','image/webp','application/pdf'];
       pd.comprovanteAnteriorHash=pd.comprovanteHash||null; // trilha (nunca o base64 antigo — RAM)
-      const _arqRe=saveComprovante(pd.id,c); // v192 LOTE 10: disco, nunca RAM
-      if(!_arqRe)return json(res,500,{error:"Não conseguimos guardar o comprovante novo agora. Tente de novo em instantes — o anterior continua valendo."});
+      let _arqRe;
+      if(_tokRe){
+        _arqRe=claimStagedComprovante(_tokRe,s.user_email,comprovantePath(pd.id));
+        if(!_arqRe)return json(res,400,{error:"O comprovante enviado expirou ou é inválido — anexe de novo."});
+      }else{
+        _arqRe=saveComprovante(pd.id,c); // v192 LOTE 10: disco, nunca RAM
+        if(!_arqRe)return json(res,500,{error:"Não conseguimos guardar o comprovante novo agora. Tente de novo em instantes — o anterior continua valendo."});
+      }
       pd.comprovanteArquivo=_arqRe;
       pd.comprovante=null;
       pd.comprovanteType=_allowRe.includes(d.comprovanteType)?d.comprovanteType:'image/jpeg';

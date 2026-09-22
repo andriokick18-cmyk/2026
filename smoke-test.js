@@ -2466,6 +2466,63 @@ async function drillBloqueioComprasNovas() {
       _csBlock.includes("isVipActive(p)") && _csBlock.includes("scope:OAUTH_SCOPES"),
       _csBlock ? "" : "/oauth/connect-send não encontrado no server.js");
 
+    // 🚀 v240c: caminho NOVO do comprovante — streaming binário puro pra
+    // /api/pedido/comprovante-stage (sem base64 dentro do JSON gigante de
+    // /api/pedido), reivindicado por token na criação do pedido. Bloco
+    // isolado (contas próprias, nunca reaproveitadas depois) pra não mexer
+    // no teto de pendentes/dedup dos testes do caminho do dinheiro abaixo.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "compstream@test.com", name: "Comp Stream" });
+    const compBuf = Buffer.from("comprovante-streamado-de-teste-" + "x".repeat(200));
+    const stg1 = await reqBin("POST", "/api/pedido/comprovante-stage", compBuf, "image/jpeg");
+    check("🚀 v240c: /api/pedido/comprovante-stage aceita o binário puro e devolve um token",
+      stg1.status === 200 && stg1.json?.ok === true && typeof stg1.json?.token === "string" && stg1.json.token.length > 10,
+      JSON.stringify(stg1.json || stg1.body.slice(0, 120)));
+    const pdStream = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Comp Stream", userWhatsapp: "11 99999", userCity: "SP", comprovanteToken: stg1.json?.token, comprovanteType: "image/jpeg" });
+    check("🚀 v240c: /api/pedido reivindica o token e cria o pedido COM comprovante (sem mandar base64 nenhum no corpo)",
+      pdStream.json?.ok === true && !!pdStream.json?.pedidoId, pdStream.body.slice(0, 150));
+    const pdStreamId = pdStream.json?.pedidoId;
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const pdStreamGet = await get("/api/pedido/" + pdStreamId);
+    check("🚀 v240c: conteúdo do comprovante gravado por streaming é IDÊNTICO byte-a-byte ao enviado",
+      pdStreamGet.json?.pedido?.comprovante === compBuf.toString("base64"), `enviados=${compBuf.length}B`);
+    // Token já foi CONSUMIDO na criação acima — reuso tem que ser recusado.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "compstream@test.com", name: "Comp Stream" });
+    const pdStreamReuse = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Comp Stream", userWhatsapp: "11 99999", userCity: "SP", comprovanteToken: stg1.json?.token, comprovanteType: "image/jpeg" });
+    check("🚀 v240c: token de comprovante já usado é RECUSADO (400) — não dá pra reivindicar 2x",
+      pdStreamReuse.status === 400 && /expirou|inválido/i.test(pdStreamReuse.json?.error || ""),
+      `status=${pdStreamReuse.status} body=${pdStreamReuse.body.slice(0, 120)}`);
+    // Token de OUTRA conta nunca pode ser reivindicado — posse é por sessão,
+    // não só pelo token (staged ainda logado como compstream@test.com).
+    const stg2 = await reqBin("POST", "/api/pedido/comprovante-stage", Buffer.from("comprovante-de-outra-conta-xyz"), "image/jpeg");
+    check("🚀 v240c (pré-condição): o comprovante do teste de roubo foi staged com sucesso", stg2.status === 200 && !!stg2.json?.token, JSON.stringify(stg2.json || stg2.body.slice(0, 120)));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "compstreamladrao@test.com", name: "Ladrao" });
+    const pdRoubo = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Ladrao", userWhatsapp: "11 99999", userCity: "SP", comprovanteToken: stg2.json?.token, comprovanteType: "image/jpeg" });
+    check("🚀 v240c: token de comprovante de OUTRA conta nunca pode ser reivindicado (rouba a prova de pagamento de outro usuário)",
+      pdRoubo.status === 400, `status=${pdRoubo.status} body=${pdRoubo.body.slice(0, 120)}`);
+    // Limite de ~8MB também vale no caminho de comprovante, cortado no MEIO
+    // do stream (nunca bufferiza o excesso inteiro antes de recusar).
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "compstream@test.com", name: "Comp Stream" });
+    const compGigante = Buffer.alloc(8_025_001, 0x43);
+    const stgBig = await reqBin("POST", "/api/pedido/comprovante-stage", compGigante, "image/jpeg");
+    check("🚀 v240c: streaming recusa comprovante acima de ~8MB — corte NO MEIO do stream",
+      stgBig.status === 400 && /8MB/.test(stgBig.json?.error || ""), `status=${stgBig.status} body=${stgBig.body.slice(0, 120)}`);
+    const stgAfterBig = await reqBin("POST", "/api/pedido/comprovante-stage", Buffer.from("depois-do-grande-tudo-bem"), "image/jpeg");
+    check("🚀 v240c: conexão continua saudável depois de um comprovante recusado por tamanho (corpo excedente foi drenado, keep-alive não quebrou)",
+      stgAfterBig.status === 200 && stgAfterBig.json?.ok === true, JSON.stringify(stgAfterBig.json || stgAfterBig.body.slice(0, 120)));
+    // Reivindica o comprovante que sobreviveu ao teste de tamanho — prova
+    // que um upload recusado por ser grande demais não estraga o próximo.
+    const pdAfterBig = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Comp Stream", userWhatsapp: "11 99999", userCity: "SP", comprovanteToken: stgAfterBig.json?.token, comprovanteType: "image/jpeg" });
+    check("🚀 v240c: comprovante staged DEPOIS de um recusado por tamanho é reivindicado normalmente",
+      pdAfterBig.json?.ok === true && !!pdAfterBig.json?.pedidoId, pdAfterBig.body.slice(0, 150));
+    // O que sobrar em disco só pode ser o "stg2" (staged de propósito e nunca
+    // reivindicado — o dono nunca voltou a completar aquele pedido) — NUNCA
+    // um ".tmp" de escrita interrompida (a prova real de que abort() sempre
+    // limpa o que estava gravando quando corta por tamanho).
+    const restoComp = fs.readdirSync(path.join(DATA, "comprovantes"));
+    const tmpOrfaosComp = restoComp.filter((f) => f.endsWith(".tmp"));
+    check("🚀 v240c: nenhum '.tmp' de escrita interrompida sobra em disco (abort() sempre limpa o que estava gravando)",
+      tmpOrfaosComp.length === 0, `.tmp órfãos: ${JSON.stringify(tmpOrfaosComp)} — todo o diretório: ${JSON.stringify(restoComp)}`);
+
     // (Códigos Promocionais removidos por completo nesta reconstrução —
     // README: fora do escopo.)
     // ═══ CAMINHO DO DINHEIRO: comprador (não-admin) compra, admin aprova ═══
