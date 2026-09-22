@@ -4651,6 +4651,34 @@ async function drillBloqueioComprasNovas() {
       _srvSrc.includes("JSON.stringify(a[0]||{})") && !/JSON\.stringify\(DB_USERS\)/.test(_srvSrc.split("api/admin/memoria")[1]?.split("api/")[0] || "x") &&
       _srvSrc.includes("[mem] rss=") && _srvSrc.includes("setInterval(_memPulse,6*3600_000)"),
       "raio-x sem a guarda de amostra ou sem pulso");
+    // 🩹 v240 (achado real, 22/09/2026 — 2º alerta de OOM do Render): antes
+    // desta correção, "planilhas" só olhava SHEET_EXTRAS — as 3 planilhas
+    // NÚCLEO (jan/jul2025/h2a, a maioria das vagas residentes) nunca
+    // apareciam no raio-x, escondendo o maior consumidor de memória do
+    // processo. Prova que as 3 aparecem agora, com linhas reais > 0.
+    const _memPlKeys = (memX?.planilhas || []).map((p) => p.key);
+    check("🩹 v240: /api/admin/memoria mede as planilhas NÚCLEO (jan2026/jul2025/h2a) junto com as extras — antes ficavam de fora e o raio-x reportava 'nenhum ofensor' mesmo com ~16 mil vagas fora da conta",
+      ["jan2026", "jul2025", "h2a"].every((k) => _memPlKeys.includes(k)) &&
+      (memX.planilhas.find((p) => p.key === "jan2026")?.linhas || 0) > 0 &&
+      (memX.planilhas.find((p) => p.key === "jul2025")?.linhas || 0) > 0 &&
+      (memX.planilhas.find((p) => p.key === "h2a")?.linhas || 0) > 0,
+      JSON.stringify(memX?.planilhas));
+    // 🩹 v240 (estrutural): onlineMap (Map write-only, nunca lido em lugar
+    // nenhum, crescia 1 entrada por e-mail distinto a cada /api/status pra
+    // sempre) foi removido de vez — prova que não sobrou NENHUM `.set(` nem
+    // declaração de Map pra ele, e que markOnline() continua existindo (só
+    // perdeu a parte morta, o setUser({lastSeenAt}) real ficou).
+    check("🩹 v240: (estrutural) onlineMap (Map write-only, nunca lido) foi removido — markOnline() continua persistindo lastSeenAt de verdade",
+      !/const onlineMap\s*=\s*new Map/.test(_srvSrc) && /const markOnline = email/.test(_srvSrc) && /setUser\(email, \{ lastSeenAt: now \}\)/.test(_srvSrc),
+      "onlineMap ainda presente ou markOnline quebrado");
+    // 🩹 v240 (estrutural): healthState (Map real, usado em 10+ pontos —
+    // NUNCA remover a função) ganhou poda periódica (mesma cadência 6h da
+    // faxina do DB_SENT) — nunca mexe em quem tem automático ativo agora.
+    check("🩹 v240: (estrutural) healthState ganhou poda periódica (6h) que nunca remove usuário com automático ativo — getHealth() continua intacta (usada em 10+ pontos, nunca seria seguro apagar)",
+      _srvSrc.includes("for (const [email, h] of healthState)") &&
+      _srvSrc.includes("if (job?.active) continue;") &&
+      _srvSrc.includes("function getHealth(email)"),
+      "poda de healthState não encontrada ou getHealth foi removida por engano");
 
     // v164 (CÉREBRO AUTÔNOMO) e o painel /api/admin/cerebro/painel inteiro
     // dependiam do mod-cerebro.js, que não existe nesta reconstrução —

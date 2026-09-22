@@ -1069,12 +1069,19 @@ function relatorioExecutivoDre(dre){
 let DB_BLOCKED     = {emails:[]};               // Emails banidos permanentemente
 let DB_TRIAL_USED  = {phones:{},ips:{},googleIds:{}};  // Anti-abuse: {phones:{"+5511...":"email"}, ips:{"1.2.3.4":["email1","email2"]}, googleIds:{"108...":"email"}}
 
-// Online status (in-memory, reinicia com o servidor)
-const onlineMap = new Map(); // email → lastSeenAt (ms timestamp)
+// 🩹 v240 (achado real, 22/09/2026 — 2º alerta de OOM do Render, 512MB):
+// onlineMap crescia PRA SEMPRE, 1 entrada por e-mail distinto, a cada
+// /api/status chamado (todo carregamento de página de todo usuário logado)
+// — e nunca era LIDO em lugar nenhum do código (grep confirma: só .set(),
+// zero .get()/.has()/iteração). O status "online" de verdade que o painel
+// admin mostra vem de `sessions` (onlineEmails, derivado ao vivo), não
+// deste Map. Removido — o `setUser({lastSeenAt})` abaixo é o que
+// efetivamente persiste "visto por último" (já lido pela faxina do
+// DB_SENT, 6h). PROIBIDO reintroduzir um Map paralelo de "online" sem
+// antes checar se `sessions`/`lastSeenAt` já resolve o que for preciso.
 const markOnline = email => {
   if(!email) return;
   const now = Date.now();
-  onlineMap.set(email, now);
   // Persiste lastSeenAt no DB do usuário (sobrevive a reinícios)
   const p = getUser(email);
   if(p) setUser(email, { lastSeenAt: now });
@@ -9481,9 +9488,20 @@ filtrar();
       };
       // 2) Planilhas residentes: linhas reais + estimativa por AMOSTRA
       //    (stringify de 1 linha × nº de linhas — nunca da planilha inteira)
+      // 🩹 v240 (achado real, 22/09/2026 — auditoria do 2º alerta de OOM):
+      // esta lista só olhava SHEET_EXTRAS — as 3 planilhas NÚCLEO
+      // (SHEET_JAN/SHEET_JUL/SHEET_H2A, ~16.400 das ~19.000 vagas
+      // residentes) nunca apareciam aqui. O raio-x rodava "limpo" mesmo
+      // com o maior consumidor de memória do processo inteiro fora da
+      // conta — corrigido pra medir as 4 juntas, mesma técnica de amostra.
       const planilhas=[];
-      try{for(const k of Object.keys(SHEET_EXTRAS||{})){const a=SHEET_EXTRAS[k];if(!Array.isArray(a)||!a.length)continue;
-        const amostra=JSON.stringify(a[0]||{}).length;planilhas.push({key:k,linhas:a.length,mbEstimado:MB(amostra*a.length)});}}catch(e){}
+      try{
+        const _nucleo={jan2026:SHEET_JAN,jul2025:SHEET_JUL,h2a:SHEET_H2A};
+        for(const [k,a] of Object.entries(_nucleo)){if(!Array.isArray(a)||!a.length)continue;
+          const amostra=JSON.stringify(a[0]||{}).length;planilhas.push({key:k,linhas:a.length,mbEstimado:MB(amostra*a.length)});}
+        for(const k of Object.keys(SHEET_EXTRAS||{})){const a=SHEET_EXTRAS[k];if(!Array.isArray(a)||!a.length)continue;
+          const amostra=JSON.stringify(a[0]||{}).length;planilhas.push({key:k,linhas:a.length,mbEstimado:MB(amostra*a.length)});}
+      }catch(e){}
       planilhas.sort((a,b)=>b.mbEstimado-a.mbEstimado);
       // 3) Contagens dos bancos residentes (nunca stringify)
       const bancos={usuarios:Object.keys(DB_USERS||{}).length,pedidos:(DB_PEDIDOS||[]).length,
@@ -9506,8 +9524,9 @@ filtrar();
       const compMb=Math.round((comprovantes.pedidos.mb+comprovantes.pagamentos.mb+comprovantes.gastos.mb)*10)/10;
       const compN=comprovantes.pedidos.n+comprovantes.pagamentos.n+comprovantes.gastos.n;
       if(compMb>=30)dicas.push(`⚠️ ${compMb}MB de comprovantes base64 vivem PERMANENTEMENTE na RAM (${compN} arquivo(s)) — candidato nº1 a migrar pra disco com leitura sob demanda.`);
+      const planLinhas=planilhas.reduce((s2,p2)=>s2+p2.linhas,0);
       const planMb=planilhas.reduce((s2,p2)=>s2+p2.mbEstimado,0);
-      if(planMb>=100)dicas.push(`ℹ️ Planilhas extras somam ~${Math.round(planMb)}MB residentes (${planilhas.length} planilha(s)) — necessárias pra busca instantânea; histórica antiga pouco usada pode ser candidata a despublicar.`);
+      if(planMb>=40)dicas.push(`ℹ️ Planilhas (núcleo + extras) somam ~${Math.round(planMb)}MB estimados residentes, ${planLinhas} vaga(s) em ${planilhas.length} planilha(s) — necessárias pra busca instantânea; a estimativa é por AMOSTRA (1 linha × total) e tende a ficar ABAIXO do custo real de objeto em V8, então trate como piso, não teto.`);
       if(MB(mu.rss)-MB(mu.heapUsed)>=300)dicas.push(`ℹ️ rss ${MB(mu.rss)}MB vs heap usado ${MB(mu.heapUsed)}MB: a diferença é buffer/nativo/fragmentação — picos transientes (coleta ZIP, backup gzip) contam aqui.`);
       if(!dicas.length)dicas.push("✅ Nenhum ofensor óbvio de memória nos números medidos agora — se o rss estiver alto mesmo assim, o vilão é pico transiente (compare este raio-x logo após um deploy vs horas depois).");
       return json(res,200,{ok:true,
@@ -14207,8 +14226,6 @@ setInterval(_persistNotifCooldowns, 5*60*1000); // salva a cada 5min (não só n
 global._refillNotifiedAt = _DB_NOTIF_COOLDOWN.refillNotifiedAt; // usado por mod-sentinel.js (re-engajamento)
 
 const _notifSentAt = _DB_NOTIF_COOLDOWN.notifSentAt; // email → {stalled: ts, finished: ts} — evita spam
-const _notifEmailLog = []; // log global de todos os emails automáticos enviados (max 1000)
-
 
 // Estado de saúde por usuário
 const healthState = new Map(); // email → { lastSent, lastCheck, restarts, errors, status }
@@ -14221,6 +14238,25 @@ function getHealth(email) {
   if (!healthState.has(email)) healthState.set(email, { lastSent:0, lastCheck:0, restarts:0, errors:0, status:"ok", lastError:"", oauthOk:null, gmailOk:null, hasPdf:null, stalledAt:null });
   return healthState.get(email);
 }
+// 🩹 v240 (achado real, 22/09/2026 — 2º alerta de OOM do Render, 512MB):
+// healthState cresce PRA SEMPRE — 1 entrada por e-mail que já passou por
+// getHealth() (envio manual, watchdog, painel admin — 10+ pontos de
+// chamada) e NENHUM deles jamais dava .delete(). Poda periódica (mesmo
+// padrão/cadência da faxina do DB_SENT, 6h): nunca mexe em quem tem
+// automático rodando AGORA nem em quem foi tocado nos últimos 90 dias —
+// só limpa conta deletada ou realmente parada há muito tempo.
+setInterval(() => {
+  let removidos = 0;
+  for (const [email, h] of healthState) {
+    const u = getUser(email);
+    if (!u) { healthState.delete(email); removidos++; continue; }
+    const job = getAutoJob(email);
+    if (job?.active) continue;
+    const ultimoToque = Math.max(h.lastCheck || 0, h.lastSent || 0);
+    if (ultimoToque && (Date.now() - ultimoToque) > 90 * 86400_000) { healthState.delete(email); removidos++; }
+  }
+  if (removidos) console.log(`[mem-clean] healthState: ${removidos} entrada(s) antiga(s) removida(s)`);
+}, 6 * 60 * 60 * 1000);
 
 function pushGlobalEvent(type, email, msg, level="warn") {
   GLOBAL_EVENTS.unshift({ ts:Date.now(), date:toLocaleBRT(Date.now()), type, email, msg, level });
