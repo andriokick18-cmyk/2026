@@ -3209,6 +3209,13 @@ async function loadProfilesView(){
 
 // ── PROFILE PDF state ──────────────────────────────
 let profilePdfBase64=null,profilePdfName=null,profilePdfSize=0;
+// 🚀 v240b (dono, 22/09/2026 — streaming direto-pro-disco): o File cru fica
+// guardado aqui pra ser mandado como BINÁRIO puro no upload (nunca mais
+// base64 dentro de JSON — ver readProfilePdfFile). profilePdfBase64 continua
+// existindo só como SENTINELA de estado ("__pending__"/"__existing__"/null)
+// pros checks que já espalhados pelo arquivo — nenhum deles lê o CONTEÚDO
+// da string, só compara com essas constantes.
+let profilePdfFile=null;
 let peSubjects=[],peBodies=[];
 // v15: índices ativos de currículo/cover selecionados na lista da conta
 let _peResIdx=null,_peCoverIdx=null;
@@ -3232,7 +3239,7 @@ function _peHideCoverUpload(){
 }
 
 function clearProfilePdf(){
-  profilePdfBase64=null;profilePdfName=null;profilePdfSize=0;
+  profilePdfBase64=null;profilePdfName=null;profilePdfSize=0;profilePdfFile=null;
   const cur=g("#pe-pdf-current");if(cur)cur.style.display="none";
   const inp=g("#pe-pdf-input");if(inp)inp.value="";
   // Se não há activeCard visível, mostra a área de upload novamente
@@ -3243,7 +3250,7 @@ function clearProfilePdf(){
 // Remove o currículo vinculado via resumeIdx (card verde "ativo")
 function peRemoveResume(){
   _peResIdx=null;
-  profilePdfBase64=null;profilePdfName=null;profilePdfSize=0;
+  profilePdfBase64=null;profilePdfName=null;profilePdfSize=0;profilePdfFile=null;
   const card=g("#pe-res-active-card");if(card)card.style.display="none";
   const cur=g("#pe-pdf-current");if(cur)cur.style.display="none";
   // Desmarca qualquer radio selecionado nos slots
@@ -3262,21 +3269,20 @@ async function readProfilePdfFile(f){
   if(f.size>5*1024*1024){toast("Currículo maior que 5MB","r");return;}
   if(f.size<1000){toast("Arquivo muito pequeno ou corrompido","r");return;}
   try{const arr=await f.slice(0,5).arrayBuffer();const sig=new Uint8Array(arr);if(!(sig[0]===0x25&&sig[1]===0x50&&sig[2]===0x44&&sig[3]===0x46)){toast("Arquivo inválido: não é um PDF real","r");return;}}catch{}
-  const rd=new FileReader();
-  rd.onload=ev=>{
-    const b64=ev.target.result.split(",")[1];
-    profilePdfBase64=b64;profilePdfName=f.name;profilePdfSize=f.size;
-    // Limpa seleção de slot (novo upload substitui qualquer seleção anterior)
-    _peResIdx=null;
-    document.querySelectorAll('input[name="pe-res"]').forEach(r=>{r.checked=(r.value==="");});
-    const card=g("#pe-res-active-card");if(card)card.style.display="none";
-    const cur=g("#pe-pdf-current"),nm=g("#pe-pdf-name");
-    if(nm)nm.textContent=f.name+" ("+Math.round(f.size/1024)+"KB)";
-    if(cur)cur.style.display="flex";
-    _peHideResUpload();
-  };
-  rd.onerror=()=>toast("Erro ao ler o arquivo PDF","r");
-  rd.readAsDataURL(f);
+  // 🚀 v240b (dono, 22/09/2026 — streaming direto-pro-disco): guarda o File
+  // cru pra mandar como binário puro no upload — sem passar por base64 (o
+  // FileReader.readAsDataURL saiu; nunca serviu pra nada além de virar o
+  // body do fetch, e codificar em base64 só pra decodificar de volta no
+  // servidor era trabalho puro, tanto no navegador quanto no servidor).
+  profilePdfFile=f;profilePdfBase64="__pending__";profilePdfName=f.name;profilePdfSize=f.size;
+  // Limpa seleção de slot (novo upload substitui qualquer seleção anterior)
+  _peResIdx=null;
+  document.querySelectorAll('input[name="pe-res"]').forEach(r=>{r.checked=(r.value==="");});
+  const card=g("#pe-res-active-card");if(card)card.style.display="none";
+  const cur=g("#pe-pdf-current"),nm=g("#pe-pdf-name");
+  if(nm)nm.textContent=f.name+" ("+Math.round(f.size/1024)+"KB)";
+  if(cur)cur.style.display="flex";
+  _peHideResUpload();
 }
 
 // ── Ícone do perfil ──
@@ -3293,9 +3299,10 @@ function peSelectIcon(icon){
 
 // ── Cover Letter helpers ──
 let profileCoverBase64=null,profileCoverName=null,profileCoverSize=0;
+let profileCoverFile=null; // 🚀 v240b — mesmo padrão de profilePdfFile acima
 
 function clearProfileCover(){
-  profileCoverBase64=null;profileCoverName=null;profileCoverSize=0;
+  profileCoverBase64=null;profileCoverName=null;profileCoverSize=0;profileCoverFile=null;
   const cur=g("#pe-cover-current");if(cur)cur.style.display="none";
   const inp=g("#pe-cover-input");if(inp)inp.value="";
   const card=g("#pe-cover-active-card");
@@ -3305,7 +3312,7 @@ function clearProfileCover(){
 // Remove a cover letter vinculada via coverIdx (card roxo "ativo")
 function peRemoveCover(){
   _peCoverIdx=null;
-  profileCoverBase64=null;profileCoverName=null;profileCoverSize=0;
+  profileCoverBase64=null;profileCoverName=null;profileCoverSize=0;profileCoverFile=null;
   const card=g("#pe-cover-active-card");if(card)card.style.display="none";
   const cur=g("#pe-cover-current");if(cur)cur.style.display="none";
   document.querySelectorAll('input[name="pe-cover"]').forEach(r=>{r.checked=(r.value==="");});
@@ -3321,21 +3328,17 @@ async function readProfileCoverFile(f){
   // ~3MB (base64 até 4_200_000 chars) — este 10MB permitia escolher um
   // arquivo que SEMPRE ia falhar no upload real, sem avisar na hora certa.
   if(f.size>3*1024*1024){toast("Carta maior que 3MB","r");return;}
-  const rd=new FileReader();
-  rd.onload=ev=>{
-    const b64=ev.target.result.split(",")[1];
-    profileCoverBase64=b64;profileCoverName=f.name;profileCoverSize=f.size;
-    // Limpa seleção de slot
-    _peCoverIdx=null;
-    document.querySelectorAll('input[name="pe-cover"]').forEach(r=>{r.checked=(r.value==="");});
-    const card=g("#pe-cover-active-card");if(card)card.style.display="none";
-    const cur=g("#pe-cover-current"),nm=g("#pe-cover-name");
-    if(nm)nm.textContent=f.name+" ("+Math.round(f.size/1024)+"KB)";
-    if(cur)cur.style.display="flex";
-    _peHideCoverUpload();
-  };
-  rd.onerror=()=>toast("Erro ao ler Cover Letter","r");
-  rd.readAsDataURL(f);
+  // 🚀 v240b — mesmo padrão de readProfilePdfFile: guarda o File cru,
+  // manda binário puro no upload, nunca mais base64 dentro de JSON.
+  profileCoverFile=f;profileCoverBase64="__pending__";profileCoverName=f.name;profileCoverSize=f.size;
+  // Limpa seleção de slot
+  _peCoverIdx=null;
+  document.querySelectorAll('input[name="pe-cover"]').forEach(r=>{r.checked=(r.value==="");});
+  const card=g("#pe-cover-active-card");if(card)card.style.display="none";
+  const cur=g("#pe-cover-current"),nm=g("#pe-cover-name");
+  if(nm)nm.textContent=f.name+" ("+Math.round(f.size/1024)+"KB)";
+  if(cur)cur.style.display="flex";
+  _peHideCoverUpload();
 }
 
 
@@ -3626,8 +3629,8 @@ function openProfileEditor(id,visaType){
 
   // ── PDFs: inicializa estado e mostra cards corretos ───────
   // Reseta tudo primeiro
-  profilePdfName="";profilePdfBase64="";profilePdfSize=0;
-  profileCoverName="";profileCoverBase64="";profileCoverSize=0;
+  profilePdfName="";profilePdfBase64="";profilePdfSize=0;profilePdfFile=null;
+  profileCoverName="";profileCoverBase64="";profileCoverSize=0;profileCoverFile=null;
   _peResIdx=null; _peCoverIdx=null;
 
   // Currículo vinculado via resumeIdx (seleção da conta)
@@ -3716,11 +3719,11 @@ function _pePopulateResumeSlots(){
           _peResIdx=null;
           const card=g("#pe-res-active-card");if(card)card.style.display="none";
           const cur2=g("#pe-pdf-current");if(cur2)cur2.style.display="none";
-          profilePdfBase64=null;profilePdfName=null;profilePdfSize=0;
+          profilePdfBase64=null;profilePdfName=null;profilePdfSize=0;profilePdfFile=null;
         } else {
           // Selecionou um PDF da conta
           _peResIdx=parseInt(val,10);
-          profilePdfBase64=null;profilePdfName=null;profilePdfSize=0;
+          profilePdfBase64=null;profilePdfName=null;profilePdfSize=0;profilePdfFile=null;
           const cur2=g("#pe-pdf-current");if(cur2)cur2.style.display="none";
           const cvMeta=DOCS.find(c=>c.idx===_peResIdx);
           const nm=cvMeta?.name||"Currículo";
@@ -3751,10 +3754,10 @@ function _pePopulateCoverSlots(){
           _peCoverIdx=null;
           const card=g("#pe-cover-active-card");if(card)card.style.display="none";
           const cur2=g("#pe-cover-current");if(cur2)cur2.style.display="none";
-          profileCoverBase64=null;profileCoverName=null;profileCoverSize=0;
+          profileCoverBase64=null;profileCoverName=null;profileCoverSize=0;profileCoverFile=null;
         } else {
           _peCoverIdx=parseInt(val,10);
-          profileCoverBase64=null;profileCoverName=null;profileCoverSize=0;
+          profileCoverBase64=null;profileCoverName=null;profileCoverSize=0;profileCoverFile=null;
           const cur2=g("#pe-cover-current");if(cur2)cur2.style.display="none";
           const cvMeta=DOCS.find(c=>c.idx===_peCoverIdx);
           const nm=cvMeta?.name||"Cover Letter";
@@ -3931,8 +3934,11 @@ async function saveProfileFromEditor(){
   // Upload PDF se novo
   if(profilePdfBase64&&profilePdfBase64!=="__existing__"){
     try{
-      const r=await fetch("/api/cv/upload",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({base64:profilePdfBase64,name:profilePdfName,cvType:"resume"})});
+      // v241: manda o File cru (streaming direto pro disco no servidor) em vez
+      // de FileReader→base64→JSON — evita bufferizar o PDF inteiro 2x na RAM
+      // (cliente E servidor) numa hora de pico de uploads simultâneos.
+      const r=await fetch("/api/cv/upload?cvType=resume&name="+encodeURIComponent(profilePdfName),
+        {method:"POST",credentials:"include",headers:{"Content-Type":"application/pdf"},body:profilePdfFile});
       const d=await jsonSafe(r);
       if(d.ok){
         prf.resumeIdx=d.cv.idx;prf.pdfName=d.cv.name;prf.pdfSize=d.cv.size;
@@ -3954,8 +3960,9 @@ async function saveProfileFromEditor(){
   // Upload Cover Letter se nova
   if(profileCoverBase64&&profileCoverBase64!=="__existing__"){
     try{
-      const r=await fetch("/api/cv/upload",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({base64:profileCoverBase64,name:profileCoverName,cvType:"cover"})});
+      // v241: mesmo motivo do upload de currículo acima — File cru, sem base64/JSON.
+      const r=await fetch("/api/cv/upload?cvType=cover&name="+encodeURIComponent(profileCoverName),
+        {method:"POST",credentials:"include",headers:{"Content-Type":"application/pdf"},body:profileCoverFile});
       const d=await jsonSafe(r);
       if(d.ok){
         prf.coverIdx=d.cv.idx;prf.coverName=d.cv.name;prf.coverSize=d.cv.size;

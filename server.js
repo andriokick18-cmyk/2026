@@ -2603,6 +2603,96 @@ const saveCv = (e,i,b64) => {
   }
 };
 
+// v240b (dono, 22/09/2026 — 2º alerta de OOM 512MB, hipótese de upload
+// simultâneo grande bufferizado por inteiro): move o corpo do upload de
+// currículo/cover direto pro disco em stream, em vez de acumular tudo (até
+// 50MB, MAX_BODY_SIZE) num Buffer só na RAM antes de decodificar. O arquivo
+// cai já em CVS_DIR com nome único; saveCvFromFile só faz o rename final
+// (mesma convenção atômica tmp→destino do saveCv acima).
+const CV_MAX_BYTES = { resume: 5_250_000, cover: 3_150_000 }; // = os mesmos limites em base64*0.75 do JSON legado
+function streamBodyToTempFile(req, maxBytes){
+  return new Promise((resolve, reject) => {
+    const tmpPath = path.join(CVS_DIR, `_upload_${Date.now()}_${crypto.randomBytes(6).toString("hex")}.tmp`);
+    const ws = fs.createWriteStream(tmpPath);
+    let size = 0, done = false;
+    const finish = (err, result) => { if(done) return; done = true; err ? reject(err) : resolve(result); };
+    const abort = (err) => {
+      ws.destroy();
+      fs.unlink(tmpPath, () => {});
+      // Dreno o resto do corpo sem gravar mais nada (só descarta) — a conexão
+      // HTTP precisa terminar de "ouvir" o corpo até o fim antes da resposta
+      // de erro sair, senão o keep-alive corrompe a PRÓXIMA requisição no
+      // mesmo socket (o parser HTTP acha que sobrou corpo = começo do próximo
+      // request).
+      req.removeAllListeners("data");
+      req.on("data", () => {});
+      req.resume();
+      finish(err);
+    };
+    req.on("data", chunk => {
+      if(done) return;
+      size += chunk.length;
+      if(size > maxBytes){ abort(new Error("PAYLOAD_TOO_LARGE")); return; }
+      if(!ws.write(chunk)) req.pause();
+    });
+    ws.on("drain", () => { if(!done) req.resume(); });
+    req.on("end", () => { if(done) return; ws.end(() => finish(null, { tmpPath, size })); });
+    req.on("error", abort);
+    ws.on("error", abort);
+  });
+}
+function readFirstBytes(fp, n){
+  const fd = fs.openSync(fp, "r");
+  try { const buf = Buffer.alloc(n); const got = fs.readSync(fd, buf, 0, n, 0); return buf.slice(0, got); }
+  finally { fs.closeSync(fd); }
+}
+const saveCvFromFile = (e,i,tmpPath) => {
+  try {
+    fs.renameSync(tmpPath, cvPath(e,i));
+    return true;
+  } catch(err) {
+    console.warn(`[cv] Falha ao mover arquivo streamado (${err.message}) — tentando fallback em memória`);
+  }
+  // Mesma rede de segurança do saveCv: se o disco falhar, guarda no DB.
+  try {
+    const b64 = fs.readFileSync(tmpPath).toString("base64");
+    try { fs.unlinkSync(tmpPath); } catch {}
+    const p = getUser(e) || {};
+    const cvs = (p.cvs || []).map(c => parseInt(c.idx,10)===parseInt(i,10) ? {...c, b64} : c);
+    setUser(e, {cvs});
+    return true;
+  } catch(err2) {
+    console.warn(`[cv] Falha no fallback também: ${err2.message}`);
+    try { fs.unlinkSync(tmpPath); } catch {}
+    return false;
+  }
+};
+// Regras de negócio (dedup por nome+tipo, limite de slots, idx, journey,
+// formato da resposta) — fonte única pros 2 caminhos de persistência (JSON
+// legado com base64 e o novo stream-pro-disco), nunca duplicada entre eles.
+function _finalizeCvUpload(email, safeName, cvType, sizeBytes, persistFn, onDecline){
+  const p = getUser(email) || {}; const cvs = p.cvs || [];
+  // v20: upload do MESMO arquivo (mesmo nome+tipo) SUBSTITUI o existente.
+  const _dup = cvs.find(c => (c.cvType||"resume")===cvType && String(c.name||"").trim().toLowerCase()===safeName.trim().toLowerCase());
+  if(_dup){
+    _dup.size=sizeBytes; _dup.date=new Date().toISOString(); delete _dup.b64; setUser(email,{cvs});
+    if(!persistFn(_dup.idx)) return {status:500,body:{error:"Não conseguimos guardar seu currículo agora (falha ao gravar no servidor). Tente de novo em instantes — nada foi salvo pela metade."}};
+    trackJourney(email,'pdf_upload',{detail:`PDF substituído: ${safeName} ~${Math.round(sizeBytes/1024)}KB`,meta:{name:safeName,idx:_dup.idx,cvType,replaced:true}});
+    return {status:200,body:{ok:true,replaced:true,cv:{idx:_dup.idx,name:_dup.name,size:_dup.size,date:_dup.date,cvType}}};
+  }
+  const typeLimit = cvType==="cover"?MAX_COVERS:MAX_RESUMES;
+  const sameType = cvs.filter(c => (c.cvType||"resume")===cvType);
+  // Limite de slots batido ANTES de persistir: no caminho streamado o arquivo
+  // já está gravado num tmp — onDecline() é quem limpa esse órfão (persistFn
+  // nunca chega a ser chamado aqui).
+  if(sameType.length>=typeLimit){ if(onDecline) onDecline(); return {status:429,body:{error:`Limite de ${typeLimit} ${cvType==="cover"?"cover letters":"currículos"} atingido. Para liberar espaço: abra o editor de perfil → seção Currículo → clique no ícone 🗑️ ao lado de um PDF antigo.`,limitReached:true,cvType,limit:typeLimit}}; }
+  const idx = Date.now(); const meta = {idx,name:safeName,size:sizeBytes,date:new Date().toISOString(),cvType};
+  cvs.push(meta); setUser(email,{cvs});
+  if(!persistFn(idx)){ setUser(email,{cvs:cvs.filter(c=>c.idx!==idx)}); return {status:500,body:{error:"Não conseguimos guardar seu currículo agora (falha ao gravar no servidor). Tente de novo em instantes — nada foi salvo pela metade."}}; }
+  trackJourney(email,'pdf_upload',{detail:`PDF: ${safeName} ~${Math.round(sizeBytes/1024)}KB`,meta:{name:safeName,idx,cvType}});
+  return {status:200,body:{ok:true,cv:{idx:meta.idx,name:meta.name,size:meta.size,date:meta.date,cvType:meta.cvType}}};
+}
+
 // ── 🧾 v192 LOTE 10 — COMPROVANTES DE PEDIDO EM DISCO ─────────────────────
 // O arquivo guarda EXATAMENTE a string que antes vivia na memória (base64 puro
 // ou data URL): assim todo leitor — anexo do e-mail, Gemini, painel — continua
@@ -11201,30 +11291,45 @@ filtrar();
     // "salvei, funcionou na hora, mas depois sumiu". Mesmo aviso claro de
     // /api/auto/start, agora nas duas rotas mais usadas do fluxo de perfil.
     if(DATA_DIR==="/tmp")return json(res,503,{error:"⚠️ Servidor sem volume persistente (/tmp). O upload funcionaria agora, mas o arquivo SOME no próximo reinício. Configure DATA_DIR=/data com volume persistente antes de continuar.",diskVolatile:true});
-    if(rateLimit(s.user_email+"_cv",10,3600_000))return json(res,429,{error:"Muitos uploads. Tente novamente em 1 hora."});try{const d=JSON.parse(await readBody(req));if(!d.base64||!d.name)return json(res,400,{error:"base64 e name obrigatórios."});// Tamanho: base64 representa ~75% dos bytes reais
-const estimatedBytes=Math.round(d.base64.length*0.75);
-// Limite por tipo (ordem do dono): currículo até 5MB, carta até 3MB — base64
-// inflaciona ~33% sobre o binário real, então o corte é em base64.length.
-const _cvTypeChk=(d.cvType||"resume");const _cvMaxLen=_cvTypeChk==="cover"?4_200_000:7_000_000;
-if(d.base64.length>_cvMaxLen)return json(res,400,{error:_cvTypeChk==="cover"?"Carta maior que 3MB.":"Currículo maior que 5MB."});
-if(estimatedBytes<1000)return json(res,400,{error:"Arquivo muito pequeno ou corrompido."});// Valida magic bytes %PDF (mais robusto: verifica os 4 primeiros bytes do binário real)
-const pdfBuf=Buffer.from(d.base64.slice(0,8),"base64");if(pdfBuf.length<4||pdfBuf[0]!==0x25||pdfBuf[1]!==0x50||pdfBuf[2]!==0x44||pdfBuf[3]!==0x46)return json(res,400,{error:"Arquivo inválido: não é um PDF. Envie um arquivo .pdf válido."});// Nome seguro
-const safeName=String(d.name).replace(/[<>"'&\r\n\t]/g,"").slice(0,200);if(!safeName)return json(res,400,{error:"Nome do arquivo inválido."});const p=getUser(s.user_email)||{};const cvs=p.cvs||[];const cvType=d.cvType||"resume";
-// v20 (reclamação real, 07/2026): upload do MESMO arquivo (mesmo nome + mesmo
-// tipo) SUBSTITUI o existente em vez de duplicar. Antes cada re-upload (editor
-// de perfil, onboarding, aba Documentos) criava mais uma cópia — usuários
-// ficavam com o mesmo PDF 3x na lista. Substituir mantém o idx, então os
-// perfis que apontam pra ele continuam válidos.
-const _dup=cvs.find(c=>(c.cvType||"resume")===cvType&&String(c.name||"").trim().toLowerCase()===safeName.trim().toLowerCase());
-if(_dup){_dup.size=estimatedBytes;_dup.date=new Date().toISOString();delete _dup.b64;setUser(s.user_email,{cvs});
-// 🚨 v177-FIX5 (auditoria 14/09/2026): a rota respondia ok:true SEM olhar o
-// retorno de saveCv — se a gravação em disco E o fallback em memória
-// falhassem, o usuário via "currículo salvo" e o PDF não existia em lugar
-// nenhum (descobria só na hora de se candidatar).
-if(!saveCv(s.user_email,_dup.idx,d.base64))return json(res,500,{error:"Não conseguimos guardar seu currículo agora (falha ao gravar no servidor). Tente de novo em instantes — nada foi salvo pela metade."});trackJourney(s.user_email,'pdf_upload',{detail:`PDF substituído: ${safeName} ~${Math.round(estimatedBytes/1024)}KB`,meta:{name:safeName,idx:_dup.idx,cvType,replaced:true}});return json(res,200,{ok:true,replaced:true,cv:{idx:_dup.idx,name:_dup.name,size:_dup.size,date:_dup.date,cvType}});}
-const typeLimit=cvType==="cover"?MAX_COVERS:MAX_RESUMES;const sameType=cvs.filter(c=>(c.cvType||"resume")===cvType);if(sameType.length>=typeLimit)return json(res,429,{error:`Limite de ${typeLimit} ${cvType==="cover"?"cover letters":"currículos"} atingido. Para liberar espaço: abra o editor de perfil → seção Currículo → clique no ícone 🗑️ ao lado de um PDF antigo.`,limitReached:true,cvType,limit:typeLimit});const idx=Date.now();const meta={idx,name:safeName,size:estimatedBytes,date:new Date().toISOString(),cvType};cvs.push(meta);setUser(s.user_email,{cvs});
-if(!saveCv(s.user_email,idx,d.base64)){setUser(s.user_email,{cvs:cvs.filter(c=>c.idx!==idx)});return json(res,500,{error:"Não conseguimos guardar seu currículo agora (falha ao gravar no servidor). Tente de novo em instantes — nada foi salvo pela metade."});}trackJourney(s.user_email,'pdf_upload',{detail:`PDF: ${safeName} ~${Math.round(estimatedBytes/1024)}KB`,meta:{name:safeName,idx,cvType}});
-      return json(res,200,{ok:true,cv:{idx:meta.idx,name:meta.name,size:meta.size,date:meta.date,cvType:meta.cvType}});}catch(e){return json(res,500,{error:e.message});}}
+    if(rateLimit(s.user_email+"_cv",10,3600_000))return json(res,429,{error:"Muitos uploads. Tente novamente em 1 hora."});
+    const _ctype=(req.headers["content-type"]||"").toLowerCase();
+    if(_ctype.startsWith("application/json")){
+      // Caminho legado: cliente antigo em cache (Service Worker) ainda manda
+      // base64 dentro de JSON — mantido byte-a-byte igual antes, só a
+      // persistência final foi extraída pra _finalizeCvUpload (fonte única
+      // com o caminho novo abaixo).
+      try{
+        const d=JSON.parse(await readBody(req));if(!d.base64||!d.name)return json(res,400,{error:"base64 e name obrigatórios."});
+        const estimatedBytes=Math.round(d.base64.length*0.75);
+        const cvType=(d.cvType||"resume");const _cvMaxLen=cvType==="cover"?4_200_000:7_000_000;
+        if(d.base64.length>_cvMaxLen)return json(res,400,{error:cvType==="cover"?"Carta maior que 3MB.":"Currículo maior que 5MB."});
+        if(estimatedBytes<1000)return json(res,400,{error:"Arquivo muito pequeno ou corrompido."});
+        const pdfBuf=Buffer.from(d.base64.slice(0,8),"base64");if(pdfBuf.length<4||pdfBuf[0]!==0x25||pdfBuf[1]!==0x50||pdfBuf[2]!==0x44||pdfBuf[3]!==0x46)return json(res,400,{error:"Arquivo inválido: não é um PDF. Envie um arquivo .pdf válido."});
+        const safeName=String(d.name).replace(/[<>"'&\r\n\t]/g,"").slice(0,200);if(!safeName)return json(res,400,{error:"Nome do arquivo inválido."});
+        const _r=_finalizeCvUpload(s.user_email,safeName,cvType,estimatedBytes,idx=>saveCv(s.user_email,idx,d.base64));
+        return json(res,_r.status,_r.body);
+      }catch(e){return json(res,500,{error:e.message});}
+    }
+    // 🚀 v240b: caminho novo — o cliente manda o PDF cru como corpo binário
+    // (nunca mais base64 dentro de JSON) e streama direto pro disco, sem
+    // bufferizar o arquivo inteiro na RAM antes de gravar. Metadados (nome,
+    // tipo) vêm na query string porque o corpo é só o arquivo.
+    let cvType="resume";
+    try{
+      cvType=(u.searchParams.get("cvType")||"resume")==="cover"?"cover":"resume";
+      const safeName=String(u.searchParams.get("name")||"").replace(/[<>"'&\r\n\t]/g,"").slice(0,200);
+      if(!safeName)return json(res,400,{error:"Nome do arquivo inválido."});
+      const {tmpPath,size}=await streamBodyToTempFile(req,CV_MAX_BYTES[cvType]);
+      if(size<1000){try{fs.unlinkSync(tmpPath);}catch{}return json(res,400,{error:"Arquivo muito pequeno ou corrompido."});}
+      const sig=readFirstBytes(tmpPath,4);
+      if(sig.length<4||sig[0]!==0x25||sig[1]!==0x50||sig[2]!==0x44||sig[3]!==0x46){try{fs.unlinkSync(tmpPath);}catch{}return json(res,400,{error:"Arquivo inválido: não é um PDF. Envie um arquivo .pdf válido."});}
+      const _r=_finalizeCvUpload(s.user_email,safeName,cvType,size,idx=>saveCvFromFile(s.user_email,idx,tmpPath),()=>{try{fs.unlinkSync(tmpPath);}catch{}});
+      return json(res,_r.status,_r.body);
+    }catch(e){
+      if(e.message==="PAYLOAD_TOO_LARGE")return json(res,400,{error:cvType==="cover"?"Carta maior que 3MB.":"Currículo maior que 5MB."});
+      return json(res,500,{error:e.message});
+    }
+  }
   if(/^\/api\/cv\/\d+$/.test(pathname)&&req.method==="GET"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});const idx=parseInt(pathname.split("/").pop(),10);const p=getUser(s.user_email);if(!p?.cvs?.find(c=>c.idx===idx))return json(res,403,{error:"CV não encontrado."});const b64=loadCv(s.user_email,idx);if(!b64)return json(res,404,{error:"Arquivo não encontrado."});return json(res,200,{base64:b64,idx});}
   if(/^\/api\/cv\/\d+$/.test(pathname)&&req.method==="DELETE"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});const idx=parseInt(pathname.split("/").pop(),10);const p=getUser(s.user_email);if(!p?.cvs?.find(c=>c.idx===idx))return json(res,403,{error:"CV não encontrado."});deleteCv(s.user_email,idx);const _cleanProfiles=(p.profiles||[]).map(pr=>{const np={...pr};if(np.resumeIdx===idx){delete np.resumeIdx;delete np.pdfName;np.pdfSize=0;}if(np.coverIdx===idx){delete np.coverIdx;delete np.coverName;np.coverSize=0;}return np;});setUser(s.user_email,{cvs:(p.cvs||[]).filter(c=>c.idx!==idx),profiles:_cleanProfiles});return json(res,200,{ok:true});}
 

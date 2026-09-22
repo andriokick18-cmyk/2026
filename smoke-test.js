@@ -406,6 +406,31 @@ const req2 = (method, p, payload) => new Promise((resolve, reject) => {
   if (body) r.write(body);
   r.end();
 });
+// v240b: variante binária de req2 — manda um Buffer cru como corpo (com o
+// Content-Type que o caminho novo de /api/cv/upload espera), pra provar o
+// streaming direto-pro-disco sem passar por base64/JSON.
+const reqBin = (method, p, buf, contentType) => new Promise((resolve, reject) => {
+  const r = http.request(BASE + p, {
+    method,
+    headers: {
+      "Content-Type": contentType || "application/octet-stream",
+      "Content-Length": buf.length,
+      ...(COOKIE ? { Cookie: COOKIE } : {}),
+    },
+  }, (res) => {
+    const sc = res.headers["set-cookie"];
+    if (sc && sc.length) COOKIE = sc[0].split(";")[0];
+    let b = "";
+    res.on("data", (c) => (b += c));
+    res.on("end", () => {
+      let json = null; try { json = JSON.parse(b); } catch {}
+      resolve({ status: res.statusCode, body: b, json, headers: res.headers });
+    });
+  });
+  r.on("error", reject);
+  r.write(buf);
+  r.end();
+});
 // Variante de req2 que sobe o corpo DEVAGAR (2 pedaços com `gapMs` entre
 // eles) — o servidor começa a rodar o handler quando chegam os CABEÇALHOS,
 // então essa janela é a corrida real de uma rede lenta (4G): duas
@@ -2255,6 +2280,44 @@ async function drillBloqueioComprasNovas() {
     const upVid = await req2("POST", "/api/cv/upload", { base64: fakeVideo, name: "curriculo.pdf", cvType: "cover" });
     check("🛡️ v135: vídeo renomeado pra .pdf é RECUSADO (magic bytes %PDF obrigatórios) — impossível subir vídeo como cover",
       upVid.status === 400 && /não é um PDF/i.test(upVid.json?.error || ""), `status=${upVid.status} body=${upVid.body.slice(0, 120)}`);
+
+    // 🚀 v240b: caminho NOVO de /api/cv/upload — o corpo é o PDF cru (binário,
+    // Content-Type != application/json), streamado direto pro disco em vez de
+    // bufferizado inteiro na RAM. Mesma rota, mesmas regras de negócio (fonte
+    // única _finalizeCvUpload) — só a persistência muda.
+    const streamBuf1 = Buffer.from("%PDF-1.4 " + "stream ".repeat(300));
+    const upS1 = await reqBin("POST", "/api/cv/upload?cvType=resume&name=" + encodeURIComponent("Curriculo_Stream.pdf"), streamBuf1, "application/pdf");
+    check("🚀 v240b: upload streamado (binário puro) funciona e devolve o mesmo formato do caminho JSON legado",
+      upS1.status === 200 && upS1.json?.ok === true && upS1.json?.cv?.name === "Curriculo_Stream.pdf",
+      JSON.stringify(upS1.json || upS1.body.slice(0, 150)));
+    const readBackS = await req2("GET", `/api/cv/${upS1.json?.cv?.idx}`);
+    check("🚀 v240b: conteúdo gravado por streaming é IDÊNTICO byte-a-byte ao que foi enviado (rename atômico não corrompe nada)",
+      readBackS.json?.base64 === streamBuf1.toString("base64"), `enviados=${streamBuf1.length}B lidos=${Buffer.from(readBackS.json?.base64 || "", "base64").length}B`);
+    const upS2 = await reqBin("POST", "/api/cv/upload?cvType=resume&name=" + encodeURIComponent("Curriculo_Stream.pdf"), streamBuf1, "application/pdf");
+    check("🚀 v240b: re-upload streamado do MESMO nome também substitui (dedup idêntico ao caminho JSON — mesma fonte única)",
+      upS2.status === 200 && upS2.json?.replaced === true && upS2.json?.cv?.idx === upS1.json?.cv?.idx,
+      JSON.stringify(upS2.json || {}));
+    const streamVid = Buffer.concat([Buffer.from([0x00, 0x00, 0x00, 0x20]), Buffer.from("ftypmp42" + "videofake ".repeat(200))]);
+    const upSVid = await reqBin("POST", "/api/cv/upload?cvType=cover&name=" + encodeURIComponent("video.pdf"), streamVid, "application/pdf");
+    check("🚀 v240b: streaming também recusa vídeo disfarçado de PDF (magic bytes lidos de volta do arquivo já em disco)",
+      upSVid.status === 400 && /não é um PDF/i.test(upSVid.json?.error || ""), `status=${upSVid.status} body=${upSVid.body.slice(0, 120)}`);
+    const oversizedResume = Buffer.alloc(5_250_001, 0x41); oversizedResume.write("%PDF-1.4 ", 0);
+    const upSBig = await reqBin("POST", "/api/cv/upload?cvType=resume&name=" + encodeURIComponent("Grande.pdf"), oversizedResume, "application/pdf");
+    check("🚀 v240b: streaming recusa currículo acima de 5MB — corte NO MEIO do stream, nunca bufferiza o excesso inteiro antes de recusar",
+      upSBig.status === 400 && /maior que 5MB/i.test(upSBig.json?.error || ""), `status=${upSBig.status} body=${upSBig.body.slice(0, 120)}`);
+    // A requisição de 5MB+ acima teve que terminar de subir (drenada e
+    // descartada) pro socket keep-alive não quebrar a PRÓXIMA requisição —
+    // se essa próxima chamada trava/dá erro de conexão, o dreno falhou.
+    const upSAfterBig = await reqBin("POST", "/api/cv/upload?cvType=resume&name=" + encodeURIComponent("DepoisDoGrande.pdf"), streamBuf1, "application/pdf");
+    check("🚀 v240b: conexão continua saudável DEPOIS de um upload recusado por tamanho (corpo excedente foi drenado, não travou o keep-alive)",
+      upSAfterBig.status === 200 && upSAfterBig.json?.ok === true, JSON.stringify(upSAfterBig.json || upSAfterBig.body.slice(0, 120)));
+    const tmpOrfaosS = fs.readdirSync(path.join(DATA, "cvs")).filter((f) => f.startsWith("_upload_"));
+    check("🚀 v240b: arquivo temporário do upload recusado (>5MB) NÃO fica órfão em disco (limpo no abort do stream)",
+      tmpOrfaosS.length === 0, `órfãos: ${JSON.stringify(tmpOrfaosS)}`);
+    const oversizedCover = Buffer.alloc(3_150_001, 0x42); oversizedCover.write("%PDF-1.4 ", 0);
+    const upSBigCover = await reqBin("POST", "/api/cv/upload?cvType=cover&name=" + encodeURIComponent("CartaGrande.pdf"), oversizedCover, "application/pdf");
+    check("🚀 v240b: streaming recusa cover letter acima de 3MB (limite por tipo também vale no caminho novo)",
+      upSBigCover.status === 400 && /maior que 3MB/i.test(upSBigCover.json?.error || ""), `status=${upSBigCover.status} body=${upSBigCover.body.slice(0, 120)}`);
 
     // Perfil: salvar com cover "Nenhuma" e depois salvar SEM o campo (herança)
     const resumeIdx = up1.json?.cv?.idx;
@@ -5911,9 +5974,10 @@ async function drillBloqueioComprasNovas() {
       check("🚨 v177-FIX5 (estrutural): o freio de rajada do manual (20/60s) isenta admin, igual o cooldown de 1min já fazia (v120) — QA do admin não leva mais 429 dentro do próprio limite diário",
         _srvSrc.includes('if(!isAdminVip(p)&&rateLimit(s.user_email+"_send_burst",20,60_000))'),
         "burst do /api/send ainda não isenta admin");
-      check("🚨 v177-FIX5 (estrutural): /api/cv/upload confere o retorno do saveCv antes de responder ok — antes dizia 'salvo' mesmo com disco E fallback em memória falhando (o usuário só descobria na hora de se candidatar)",
-        (_srvSrc.match(/if\(!saveCv\(s\.user_email/g) || []).length === 2,
-        "uma das 2 gravações de currículo ainda responde ok:true sem olhar o retorno do saveCv");
+      check("🚨 v177-FIX5→v240b (estrutural): /api/cv/upload confere o retorno da persistência antes de responder ok — antes dizia 'salvo' mesmo com disco E fallback em memória falhando (o usuário só descobria na hora de se candidatar). v240b extraiu a checagem pra FONTE ÚNICA (_finalizeCvUpload), usada pelos 2 caminhos de persistência (JSON legado com saveCv + streaming novo com saveCvFromFile) em vez de duplicada em cada um",
+        (_srvSrc.match(/if\(!persistFn\(/g) || []).length === 2 &&
+        (_srvSrc.match(/_finalizeCvUpload\(s\.user_email/g) || []).length === 2,
+        "a checagem de persistência (persistFn) ou a fonte única (_finalizeCvUpload) não cobre mais os 2 caminhos de upload");
       // devolve a sessão pro usuário comum — o próximo check conta com isso
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
     }
