@@ -3769,7 +3769,11 @@ function _radarSanitiza(src){
     exp:(Array.isArray(o.exp)?o.exp:[]).map(x=>parseInt(x,10)).filter(n=>Number.isFinite(n)&&n>=0&&n<=600).slice(0,6),
     salarioMin:Number(o.salarioMin)>0?Number(o.salarioMin):0,
     vagasMin:Number(o.vagasMin)>0?Math.floor(Number(o.vagasMin)):0,
-    email:o.email===true,
+    // 🛡️ v276: mesmo padrão protetor do mod-filtros.js — só `false` EXPLÍCITO
+    // desliga (nunca avisa de vaga sem e-mail, impossível de aplicar); campo
+    // ausente/indefinido (radar legado, ou snapshot sem a chave) cai no
+    // padrão seguro, não no antigo "mostra tudo".
+    email:o.email!==false,
   };
 }
 function _radarFiltrosDe(r){

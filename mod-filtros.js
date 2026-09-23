@@ -296,7 +296,21 @@ function createFiltros(deps) {
       visa: [...new Set(_brutoVisa.map(v => _visaNorm(v)).filter(Boolean))],
 
       grupo: _brutoGrupo.filter(g => GRUPOS.includes(g)),
-      email: ["1", "true", "yes", "sim"].includes(String(first("email", "hasEmail") || "").toLowerCase()),
+      // 🛡️ v276 (bug real do dono, 23/09/2026: "vagas aparecem com o e-mail
+      // do empregador oculto/ausente — TODA vaga real tem e-mail, isso nunca
+      // deveria acontecer"). Causa raiz: parâmetro AUSENTE caía em `false`
+      // (mostra tudo, inclusive sem e-mail) — a única proteção era o padrão
+      // do CLIENTE (frágil contra localStorage antigo, chamada direta à API,
+      // ou caminho novo que esqueça o parâmetro). Agora o SERVIDOR também
+      // protege: ausente = esconder vaga sem e-mail por padrão (impossível
+      // se candidatar sem ele) — mesmo modelo do `ocultarEncerradas` logo
+      // acima. `email=0` explícito continua funcionando pra quem quer ver
+      // tudo de propósito.
+      email: (() => {
+        const raw = String(first("email", "hasEmail"));
+        if (raw === "") return true;
+        return !["0", "false", "no", "nao", "não"].includes(raw.toLowerCase());
+      })(),
     };
     for (const v of _brutoEstado) if (!normalizeStateName(v)) _marcar("estado", v, "estado desconhecido");
     for (const v of _brutoGrupo) if (!GRUPOS.includes(v)) _marcar("grupo", v, "grupo fora de A–H");
@@ -319,11 +333,10 @@ function createFiltros(deps) {
     if ((f.inicio && f.inicio.length) || (f.inicioAM && f.inicioAM.length)) n++;
     if (f.salarioMin > 0) n++;
     if (f.vagasMin > 0) n++;
-    if (f.email) n++;
-    // ⚠️ `ocultarEncerradas` de propósito NÃO conta: é o estado PADRÃO do app
-    // (esconder o que já terminou), declarado na tela por um chip próprio e
-    // permanente ("⏳ Escondendo N vagas com temporada encerrada — mostrar"),
-    // não uma escolha de filtro que o usuário fez.
+    // ⚠️ `ocultarEncerradas` e `email` de propósito NÃO contam: são o estado
+    // PADRÃO do app (esconder o que já terminou / o que não tem e-mail pra
+    // aplicar), cada um com chip próprio e permanente na tela, não uma
+    // escolha de filtro que o usuário fez (v276).
     return n;
   }
 

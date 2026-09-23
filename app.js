@@ -1169,17 +1169,17 @@ function vfLoad(ctx){
   VF.fac[ctx]=null;
 }
 // 🔍 v181 LOTE 5 — o badge "🔍 N filtros" contava o que a tela NUNCA envia
-// (tipo/ativa são decorativos fora da aba ao vivo) e ignorava o que ela
-// envia: o "só com e-mail" (o filtro mais consequente da tela — desligá-lo
-// inclui vaga em que é IMPOSSÍVEL se candidatar) e a busca do manual, que
-// agora vive em VF.st.manual.q. Agora espelha EXATAMENTE o `ativos()` do
-// motor (mod-filtros.js) pros mesmos filtros que vão na query.
+// (tipo/ativa são decorativos fora da aba ao vivo) e ignorava a busca do
+// manual, que agora vive em VF.st.manual.q. Agora espelha EXATAMENTE o
+// `ativos()` do motor (mod-filtros.js) pros mesmos filtros que vão na query.
+// 🛡️ v276: `email` NÃO conta — virou padrão PROTETOR do app (esconder vaga
+// sem e-mail, impossível de aplicar), com chip próprio e permanente na
+// tela, igual `ocultarEncerradas` — não é mais uma "escolha" do usuário.
 function vfAtivos(st,ctx){
   let n=0;if(!st)return 0;
   for(const k of ["estado","cidade","categoria","cargo","inicio","grupo"])if((st[k]||[]).length)n++;
   if(st.salarioMin>0)n++;if(st.vagasMin>0)n++;
   if(st.q)n++;
-  if(st.email)n++; // o motor conta `email` como filtro ativo — a tela não contava
   return n;
 }
 
@@ -1195,7 +1195,12 @@ function vfParams(ctx,st){
 
   if(st.salarioMin>0)p.set("salarioMin",String(st.salarioMin));
   if(st.vagasMin>0)p.set("vagasMin",String(st.vagasMin));
-  if(ctx==="auto"||st.email)p.set("email","1"); // o robô só manda pra quem tem e-mail
+  // 🛡️ v276: SEMPRE explícito (nunca omitido) — o robô só manda pra quem tem
+  // e-mail (auto=sempre 1); no manual, "0" é a única forma de o usuário ver
+  // de propósito vaga sem e-mail (o servidor agora protege por padrão
+  // quando o parâmetro nem chega, então depender de omissão não abre mais
+  // essa porta).
+  p.set("email",(ctx==="auto"||st.email)?"1":"0");
   // 🔎 v181 LOTE 5 (bug real do dono): o painel dizia "TEXAS 821" enquanto a
   // lista, com a MESMA busca, tinha 21 — `q` só era enviado no contexto
   // "auto", então o rodapé "Ver N vagas", a contagem de CADA opção e os chips

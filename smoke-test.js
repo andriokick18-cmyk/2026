@@ -3189,21 +3189,21 @@ async function drillBloqueioComprasNovas() {
     // gate de plano/Gmail novo — semeia os 2 pra chegar na parte testada.
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "matchtest@test.com", name: "Match Test", refreshToken: "rt-matchtest-test", vip: { manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000, active: true, plan: "doublepro" }, plan: "doublepro" });
     // Sem preferência ainda: pega a categoria do 1º resultado de uma planilha real.
-    const smBase = await get("/api/sheet-meta?sheet=jan2026&top=5");
+    const smBase = await get("/api/sheet-meta?sheet=jan2026&email=0&top=5");
     const _jobsBase = smBase.json?.jobs || [];
     check("🎯 v82: /api/sheet-meta expõe matchScore pra usuário logado (nunca null pra quem tem sessão)", _jobsBase.length > 0 && _jobsBase.every((j) => j.matchScore != null), JSON.stringify(_jobsBase.map((j) => j.matchScore)));
     const _alvo = _jobsBase[0];
     const _scoreAntes = _alvo?.matchScore;
     // Preferência de categoria = a categoria EXATA do próprio job alvo — depois confere que o MESMO job subiu de nota.
     await req2("POST", "/api/settings", { h2bProfile: { preferredArea: _alvo.category, englishLevel: "basic", experiencedH2B: false, h2bSeasons: 0, usaTrips: false, hasDriverLicense: false, availability: "immediate" } });
-    const smDepois = await get("/api/sheet-meta?sheet=jan2026&top=5");
+    const smDepois = await get("/api/sheet-meta?sheet=jan2026&email=0&top=5");
     const _alvoDepois = (smDepois.json?.jobs || []).find((j) => j.id === _alvo.id);
     check("🎯 v82: setar preferredArea igual à categoria da vaga AUMENTA o matchScore dessa vaga específica (mesma vaga, antes x depois)",
       _alvoDepois && _alvoDepois.matchScore > _scoreAntes,
       JSON.stringify({ antes: _scoreAntes, depois: _alvoDepois?.matchScore, categoria: _alvo.category }));
     check("🎯 v82: matchWhy explica o motivo (nunca uma caixa preta)", Array.isArray(_alvoDepois?.matchWhy) && _alvoDepois.matchWhy.some((w) => w.includes("categoria")), JSON.stringify(_alvoDepois?.matchWhy));
     // sort=match: a página inteira vem em ordem NÃO-crescente de matchScore.
-    const smMatchSort = await get("/api/sheet-meta?sheet=jan2026&top=25&sort=match");
+    const smMatchSort = await get("/api/sheet-meta?sheet=jan2026&email=0&top=25&sort=match");
     const _scores = (smMatchSort.json?.jobs || []).map((j) => j.matchScore);
     let _ordenado = true;
     for (let i = 0; i < _scores.length - 1; i++) if (_scores[i] < _scores[i + 1]) _ordenado = false;
@@ -3249,42 +3249,58 @@ async function drillBloqueioComprasNovas() {
     // calculada com os OUTROS filtros aplicados, contagem = verdade da lista,
     // dimensão sem dado na planilha honesta, gate Double Pro no servidor. ═══
     {
-      const vf0 = (await get("/api/vagas/filtros?sheet=jan2026")).json;
+      const vf0 = (await get("/api/vagas/filtros?sheet=jan2026&email=0")).json;
       check("🔍 v173: /api/vagas/filtros sem filtro → total = planilha inteira, facetas de estado/categoria/salário presentes",
         vf0?.ok === true && vf0.total === vf0.totalPlanilha && vf0.total > 1000 && vf0.facetas?.estado?.length > 5 && vf0.facetas?.categoria?.length > 3 && Array.isArray(vf0.facetas?.salario?.limiares),
         JSON.stringify({ total: vf0?.total, planilha: vf0?.totalPlanilha }).slice(0, 120));
       const e1 = vf0.facetas.estado[0], e2 = vf0.facetas.estado[1];
-      const vf1 = (await get(`/api/vagas/filtros?sheet=jan2026&estado=${encodeURIComponent(e1.v)}`)).json;
+      const vf1 = (await get(`/api/vagas/filtros?sheet=jan2026&email=0&estado=${encodeURIComponent(e1.v)}`)).json;
       check("🔍 v173: 1 estado marcado → total = contagem daquela opção (a contagem por opção é a verdade)", vf1.total === e1.n, `${vf1.total} vs ${e1.n}`);
-      const vf2 = (await get(`/api/vagas/filtros?sheet=jan2026&estado=${encodeURIComponent(e1.v)}&estado=${encodeURIComponent(e2.v)}`)).json;
+      const vf2 = (await get(`/api/vagas/filtros?sheet=jan2026&email=0&estado=${encodeURIComponent(e1.v)}&estado=${encodeURIComponent(e2.v)}`)).json;
       check("🔍 v173: 2 estados = OU (soma) — marcar uma 2ª opção do MESMO grupo nunca diminui", vf2.total === e1.n + e2.n && vf2.total >= vf1.total, `${vf2.total} vs ${e1.n}+${e2.n}`);
       check("🔍 v173: a faceta de estado ignora o próprio filtro de estado (contagem do 1º segue igual com 2 marcados)", vf2.facetas.estado.find(x => x.v === e1.v)?.n === e1.n, JSON.stringify(vf2.facetas.estado.slice(0, 2)));
       const cat = vf2.facetas.categoria.find(c => c.n > 0);
-      const vf3 = (await get(`/api/vagas/filtros?sheet=jan2026&estado=${encodeURIComponent(e1.v)}&estado=${encodeURIComponent(e2.v)}&categoria=${cat.v}`)).json;
+      const vf3 = (await get(`/api/vagas/filtros?sheet=jan2026&email=0&estado=${encodeURIComponent(e1.v)}&estado=${encodeURIComponent(e2.v)}&categoria=${cat.v}`)).json;
       check("🔍 v173: estado + categoria = E — total = contagem da categoria DENTRO dos estados (um filtro nunca 'elimina' o outro, só combina)", vf3.total === cat.n && vf3.total <= vf2.total, `${vf3.total} vs ${cat.n}`);
       const l20 = vf3.facetas.salario.limiares.find(l => l.v === 20);
-      const vf4 = (await get(`/api/vagas/filtros?sheet=jan2026&estado=${encodeURIComponent(e1.v)}&estado=${encodeURIComponent(e2.v)}&categoria=${cat.v}&salarioMin=20`)).json;
-      const sm4 = (await get(`/api/sheet-meta?sheet=jan2026&estado=${encodeURIComponent(e1.v)}&estado=${encodeURIComponent(e2.v)}&categoria=${cat.v}&salarioMin=20&top=1`)).json;
+      const vf4 = (await get(`/api/vagas/filtros?sheet=jan2026&email=0&estado=${encodeURIComponent(e1.v)}&estado=${encodeURIComponent(e2.v)}&categoria=${cat.v}&salarioMin=20`)).json;
+      const sm4 = (await get(`/api/sheet-meta?sheet=jan2026&email=0&estado=${encodeURIComponent(e1.v)}&estado=${encodeURIComponent(e2.v)}&categoria=${cat.v}&salarioMin=20&top=1`)).json;
       check("🔍 v173: salário ≥$20 → total = contagem do limiar E a LISTA (/api/sheet-meta) devolve o MESMO total — uma verdade só (13n)",
         vf4.total === l20.n && sm4.total === vf4.total, `facetas=${vf4.total} limiar=${l20.n} lista=${sm4.total}`);
-      const smLegacy = (await get(`/api/sheet-meta?sheet=jan2026&state=${encodeURIComponent(e1.v)},${encodeURIComponent(e2.v)}&category=${cat.v}&minWage=20&top=1`)).json;
+      const smLegacy = (await get(`/api/sheet-meta?sheet=jan2026&email=0&state=${encodeURIComponent(e1.v)},${encodeURIComponent(e2.v)}&category=${cat.v}&minWage=20&top=1`)).json;
       check("🔍 v173: nomes LEGADOS de parâmetro (state/category/minWage — front antigo em cache) continuam funcionando na lista", smLegacy.total === vf4.total, `${smLegacy.total} vs ${vf4.total}`);
-      const vfJ = (await get("/api/vagas/filtros?sheet=jul2026")).json;
+      const vfJ = (await get("/api/vagas/filtros?sheet=jul2026&email=0")).json;
       check("🔍 v173: jul2026 (Pending Processing) → disponibilidade honesta: salário=0, e-mail=0, cargo=0 — o front esconde/avisa em vez de mostrar '0 vagas' sem explicação",
         vfJ.disponibilidade?.salario === 0 && vfJ.disponibilidade?.email === 0 && vfJ.disponibilidade?.cargo === 0 && vfJ.total === vfJ.totalPlanilha, JSON.stringify(vfJ.disponibilidade).slice(0, 140));
       const vfJe = (await get("/api/vagas/filtros?sheet=jul2026&email=1")).json;
       check("🔍 v173: jul2026 com 'só com e-mail' → 0 (honesto), e a faceta diz quantas estão sem e-mail", vfJe.total === 0 && vfJe.facetas.email.sem === vfJ.totalPlanilha, JSON.stringify(vfJe.facetas.email));
-      const vfH = (await get("/api/vagas/filtros?sheet=h2a-jun2026")).json;
+      // 🛡️ v276 (bug real do dono, 23/09/2026: "vagas aparecem com o e-mail do
+      // empregador oculto — TODA vaga real tem e-mail, isso nunca deveria
+      // acontecer"). Antes, PARÂMETRO AUSENTE caía em "mostra tudo" — a única
+      // proteção era o padrão do CLIENTE (frágil: localStorage antigo,
+      // chamada direta à API, loadTabCounts() que nem manda o parâmetro).
+      // Prova aqui: SEM email nenhum na query (nem 0 nem 1) o SERVIDOR
+      // esconde sozinho — igual a pedir email=1 explícito.
+      const vfJdef = (await get("/api/vagas/filtros?sheet=jul2026")).json;
+      const smJdef = (await get("/api/sheet-meta?sheet=jul2026&top=25")).json;
+      check("🛡️ v276: parâmetro `email` AUSENTE (nem 0 nem 1) já esconde vaga sem e-mail por padrão — mesma proteção de email=1, sem depender do cliente mandar nada",
+        vfJdef.total === 0 && smJdef.total === 0 && (smJdef.jobs || []).length === 0,
+        JSON.stringify({ vfDef: vfJdef.total, smDef: smJdef.total, jobs: (smJdef.jobs || []).length }));
+      check("🛡️ v276: email=0 EXPLÍCITO continua funcionando pra quem quer ver tudo de propósito (opt-out preservado)",
+        vfJ.total === vfJ.totalPlanilha && vfJ.totalPlanilha === 2625, `vfJ.total=${vfJ.total} totalPlanilha=${vfJ.totalPlanilha}`);
+      check("🛡️ v276: `email` não conta mais em ativos() — é padrão PROTETOR do app (igual ocultarEncerradas), não escolha do usuário",
+        vfJdef.ativos === 0, `ativos=${vfJdef.ativos}`);
+      const vfH = (await get("/api/vagas/filtros?sheet=h2a-jun2026&email=0")).json;
       const mes = vfH.facetas.inicio.find(m => m.n > 0);
-      const vfHm = (await get(`/api/vagas/filtros?sheet=h2a-jun2026&inicio=${mes.v}`)).json;
+      const vfHm = (await get(`/api/vagas/filtros?sheet=h2a-jun2026&email=0&inicio=${mes.v}`)).json;
       check("🔍 v173: H-2A tem mês de início e cidade (disponibilidade > 0) e filtrar por mês bate com a contagem da faceta", vfH.disponibilidade.inicio > 0 && vfH.disponibilidade.cidade > 0 && vfHm.total === mes.n, `${vfHm.total} vs ${mes.n}`);
-      const vfCb = (await get("/api/vagas/filtros?sheet=h2a-jun2026&cidadeBusca=spring")).json;
+      const vfCb = (await get("/api/vagas/filtros?sheet=h2a-jun2026&email=0&cidadeBusca=spring")).json;
       check("🔍 v173: busca dentro da lista de cidades (cidadeBusca) filtra as opções no servidor", vfCb.facetas.cidade.length > 0 && vfCb.facetas.cidade.every(c => /spring/i.test(c.v)), JSON.stringify(vfCb.facetas.cidade.slice(0, 2)));
       // 💎 gate Double Pro no SERVIDOR: admin (DP) aplica grupo; usuário comum tem o parâmetro ignorado
       const gA = vfJ.facetas.grupo.find(x => x.v === "A");
-      const vfGadm = (await get("/api/vagas/filtros?sheet=jul2026&grupo=A")).json;
+      const vfGadm = (await get("/api/vagas/filtros?sheet=jul2026&email=0&grupo=A")).json;
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "vffree@test.com", name: "VF Free" });
-      const vfGfree = (await get("/api/vagas/filtros?sheet=jul2026&grupo=A")).json;
+      const vfGfree = (await get("/api/vagas/filtros?sheet=jul2026&email=0&grupo=A")).json;
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
       check("🔍 v173: 💎 grupo A–H é gate do SERVIDOR — admin/DoublePro filtra (total = contagem do grupo), usuário comum tem o parâmetro ignorado (total = planilha)",
         vfGadm.isDP === true && vfGadm.total === gA.n && vfGfree.isDP === false && vfGfree.total === vfJ.totalPlanilha, `adm=${vfGadm.total}/${gA?.n} free=${vfGfree.total}`);
@@ -3308,7 +3324,7 @@ async function drillBloqueioComprasNovas() {
         leg.estado.join() === "FLORIDA,TEXAS" && leg.categoria[0] === "landscape" && leg.salarioMin === 18 && leg.cargo[0] === "cook" && leg.inicio.join() === "6,7" && leg.grupo.join() === "A,B" && leg.cidade[0] === "Key West" && leg.vagasMin === 5 && leg.q === "hotel" && leg.status === undefined,
         JSON.stringify(leg).slice(0, 160));
       const rowsF = [{ c: "1", s: "FLORIDA", k: "food", w: "20", wunit: "h", e: "a@x.com", wk: 5 }, { c: "2", s: "FLORIDA", k: "food", w: "1500", wunit: "mo", e: "b@x.com", wk: 1 }, { c: "3", s: "TEXAS", k: "farm", w: "22", wunit: "h", e: "", wk: 10 }];
-      const facF = F.facetas(rowsF, F.parse(new URLSearchParams({ estado: "FLORIDA" })), {});
+      const facF = F.facetas(rowsF, F.parse(new URLSearchParams({ estado: "FLORIDA", email: "0" })), {}); // 🛡️ v276: email=0 pra não filtrar a linha 3 (sem e-mail) — o teste é sobre salário/estado, não sobre o padrão novo
       check("🔍 v173: motor — salário normalizado pra $/hora (1500/mês ≈ $8,67/h fica abaixo de $12), faceta de e-mail conta com/sem, estado ignora o próprio filtro",
         facF.total === 2 && facF.facetas.salario.limiares.find(l => l.v === 12).n === 1 && facF.facetas.email.com === 2 && facF.facetas.email.sem === 0 && facF.facetas.estado.find(x => x.v === "TEXAS").n === 1,
         JSON.stringify({ t: facF.total, l12: facF.facetas.salario.limiares.find(l => l.v === 12), em: facF.facetas.email, tx: facF.facetas.estado }).slice(0, 200));
@@ -3355,7 +3371,7 @@ async function drillBloqueioComprasNovas() {
     // vaga de $9,59/h virando $0,06/h. Todos os números abaixo foram MEDIDOS
     // no servidor real deste repositório (não copiados de relatório).
     {
-      const vfH = (await get("/api/vagas/filtros?sheet=h2a-jun2026")).json;
+      const vfH = (await get("/api/vagas/filtros?sheet=h2a-jun2026&email=0")).json;
       // (1) valor de faceta é OPACO — valor COM vírgula não pode ser
       // re-quebrado pelo servidor.
       // ⚠️ ATUALIZADO no v181 LOTE 7: a faceta de cargo passou a emitir a
@@ -3369,14 +3385,14 @@ async function drillBloqueioComprasNovas() {
       const _titulosComVirgula = ["Farmworkers and Laborers, Crop, Nursery, and Greenhouse", "Farmworkers, Farm & Ranch Animals"];
       const paresVirg = [];
       for (const tl of _titulosComVirgula) {
-        const sm = (await get(`/api/sheet-meta?sheet=h2a-jun2026&cargo=${encodeURIComponent(tl)}&top=1`)).json;
+        const sm = (await get(`/api/sheet-meta?sheet=h2a-jun2026&email=0&cargo=${encodeURIComponent(tl)}&top=1`)).json;
         const fam = (vfH.facetas.cargo || []).find((x) => String(x.label || "").toLowerCase() === tl.toLowerCase());
         paresVirg.push({ v: tl.slice(0, 30), faceta: fam ? fam.n : -1, lista: sm.total });
       }
       check("🎯 v179-L1: valor COM vírgula nunca é re-quebrado pelo servidor — o chip anunciava 217 e a lista devolvia 108 (v179); no v181 o cargo virou FAMÍLIA e o título literal com vírgula (valor legado) casa com a família inteira",
         paresVirg.length === 2 && paresVirg.every((p) => p.faceta > 0 && p.faceta === p.lista), JSON.stringify(paresVirg));
       const semVirg = (vfH.facetas.cargo || []).find((x) => x.n > 100);
-      const smSV = (await get(`/api/sheet-meta?sheet=h2a-jun2026&cargo=${encodeURIComponent(semVirg.v)}&top=1`)).json;
+      const smSV = (await get(`/api/sheet-meta?sheet=h2a-jun2026&email=0&cargo=${encodeURIComponent(semVirg.v)}&top=1`)).json;
       check("🎯 v179-L1: a opção que a faceta de cargo emite devolve exatamente o que ela anuncia (guarda do conserto acima)", smSV.total === semVirg.n, `${semVirg.v}: ${semVirg.n} vs ${smSV.total}`);
 
       // (2) parse(URL) e parse(objeto) — fila inicial do robô × refill
@@ -3394,9 +3410,9 @@ async function drillBloqueioComprasNovas() {
         FL1.parse(new URLSearchParams([["estado", "TEXAS,FLORIDA"]])).estado.length === 2 && FL1.parse(new URLSearchParams([["estado", "TEXAS"], ["estado", "FLORIDA"]])).estado.length === 2,
         JSON.stringify(FL1.parse(new URLSearchParams([["estado", "TEXAS,FLORIDA"]])).estado));
       // (3) cidade: chave canônica cidade|ESTADO
-      const vfLb = (await get("/api/vagas/filtros?sheet=h2a-jun2026&cidadeBusca=labelle")).json;
+      const vfLb = (await get("/api/vagas/filtros?sheet=h2a-jun2026&email=0&cidadeBusca=labelle")).json;
       const lbFl = (vfLb.facetas.cidade || []).find((c) => c.v === "labelle|FLORIDA");
-      const smLb = (await get(`/api/sheet-meta?sheet=h2a-jun2026&cidade=${encodeURIComponent("labelle|FLORIDA")}&top=2000`)).json;
+      const smLb = (await get(`/api/sheet-meta?sheet=h2a-jun2026&email=0&cidade=${encodeURIComponent("labelle|FLORIDA")}&top=2000`)).json;
       // MEDIDO: 65 na Flórida (+1 Labelle/GEORGIA). O relatório da auditoria
       // dizia "1 chip de 66" — os 66 incluíam a vaga da GEÓRGIA, que é outra
       // cidade; a verdade é 65 + 1, e é isso que a tela passa a mostrar.
@@ -3410,22 +3426,22 @@ async function drillBloqueioComprasNovas() {
         (vfLb.facetas.cidade || []).length === 2 && lbFl && lbFl.n === 65 && lbFl.label === "Labelle" && lbFl.estado === "FLORIDA" &&
         smLb.total === 65 && smLb.jobs.every((j) => j.state === "FLORIDA"),
         JSON.stringify(vfLb.facetas.cidade) + " lista=" + smLb.total);
-      const vfAmes = (await get("/api/vagas/filtros?sheet=h2a-jun2026&cidadeBusca=ames")).json;
+      const vfAmes = (await get("/api/vagas/filtros?sheet=h2a-jun2026&email=0&cidadeBusca=ames")).json;
       const ames = (vfAmes.facetas.cidade || []).find((c) => c.v === "ames|IOWA");
-      const smAmes = (await get(`/api/sheet-meta?sheet=h2a-jun2026&cidade=${encodeURIComponent("ames|IOWA")}&top=2000`)).json;
+      const smAmes = (await get(`/api/sheet-meta?sheet=h2a-jun2026&email=0&cidade=${encodeURIComponent("ames|IOWA")}&top=2000`)).json;
       check("🎯 v179-L1: marcar uma cidade não traz mais cidade de outro estado — 'Ames' casava por pedaço de texto e devolvia 24 (St James/LA, Lamesa/TX, Jamestown/ND, Amesbury/MA…); agora 12, todas Ames/IOWA",
         ames && ames.n === 12 && smAmes.total === 12 && smAmes.jobs.every((j) => j.state === "IOWA" && /^ames$/i.test(j.city || "")),
         `faceta ${ames && ames.n} lista ${smAmes.total} estados ${[...new Set(smAmes.jobs.map((j) => j.state))].join("/")}`);
       const divCid = [];
       for (const c of (vfH.facetas.cidade || []).slice(0, 30)) {
-        const sm = (await get(`/api/sheet-meta?sheet=h2a-jun2026&cidade=${encodeURIComponent(c.v)}&top=1`)).json;
+        const sm = (await get(`/api/sheet-meta?sheet=h2a-jun2026&email=0&cidade=${encodeURIComponent(c.v)}&top=1`)).json;
         if (sm.total !== c.n) divCid.push(`${c.v}: ${c.n}≠${sm.total}`);
       }
       check("🎯 v179-L1: varredura — nas 30 cidades mais comuns da H-2A, a contagem do chip é EXATAMENTE o que a lista devolve (antes ~500 das 2.569 opções mentiam)",
         divCid.length === 0 && (vfH.facetas.cidade || []).length >= 30, divCid.slice(0, 5).join(" | "));
       const regs = {};
       for (const nome of ["cape cod", "adirondacks", "vail", "outer banks"]) {
-        const sm = (await get(`/api/sheet-meta?sheet=h2a-jun2026&cidade=${encodeURIComponent(nome)}&top=1`)).json;
+        const sm = (await get(`/api/sheet-meta?sheet=h2a-jun2026&email=0&cidade=${encodeURIComponent(nome)}&top=1`)).json;
         regs[nome] = { faceta: (vfH.facetas.regiao || []).find((r) => r.v === nome)?.n, lista: sm.total };
       }
       check("🎯 v179-L1: região turística continua funcionando (texto livre, casamento amplo) e faceta === lista — cape cod 10, adirondacks 30, vail 12, outer banks 11",
@@ -3452,26 +3468,26 @@ async function drillBloqueioComprasNovas() {
         _semExcept === 0 && _chamou === 1, `com except=${_semExcept}, sem except=${_chamou}`);
       // (6) desempenho da rota que o painel chama a cada tecla
       const _med = async (p, n) => { const t = []; for (let i = 0; i < n; i++) { const t0 = Date.now(); await get(p + "&_cb=" + i + "_" + Date.now()); t.push(Date.now() - t0); } t.shift(); t.sort((a, b) => a - b); return t[Math.floor(t.length / 2)]; };
-      const medFil = await _med("/api/vagas/filtros?sheet=h2a-jun2026", 6);
-      const medBusca = await _med("/api/sheet-meta?sheet=jan2026&top=25&q=cook", 6);
+      const medFil = await _med("/api/vagas/filtros?sheet=h2a-jun2026&email=0", 6);
+      const medBusca = await _med("/api/sheet-meta?sheet=jan2026&email=0&top=25&q=cook", 6);
       // Medido neste repo depois da correção: ~39ms e ~37ms (antes 107ms e
       // 71ms). O teto é folgado de propósito pra não ficar instável no CI —
       // o que ele trava é a REGRESSÃO de ordem de grandeza.
       check("🎯 v179-L1: desempenho — a contagem ao vivo renormalizava a cidade 114 mil vezes por requisição (23 regiões × 4.964 linhas) e travava o processo inteiro; agora usa o índice",
         medFil < 75 && medBusca < 75, `filtros=${medFil}ms busca=${medBusca}ms`);
-      const vfCache1 = await get("/api/vagas/filtros?sheet=h2a-jun2026&estado=TEXAS");
-      const _t0c = Date.now(); const vfCache2 = await get("/api/vagas/filtros?sheet=h2a-jun2026&estado=TEXAS"); const _msc = Date.now() - _t0c;
+      const vfCache1 = await get("/api/vagas/filtros?sheet=h2a-jun2026&email=0&estado=TEXAS");
+      const _t0c = Date.now(); const vfCache2 = await get("/api/vagas/filtros?sheet=h2a-jun2026&email=0&estado=TEXAS"); const _msc = Date.now() - _t0c;
       check("🎯 v179-L1: cache curto (5s) da contagem ao vivo — a mesma pergunta repetida (cada tecla digitada no painel) não refaz o cálculo inteiro",
         vfCache1.json.total === vfCache2.json.total && _msc < 20, `${_msc}ms`);
       // (7) o índice enxerga o que o robô acabou de enriquecer
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
       const upEnr = await req2("POST", "/api/admin/sheet/upload", { name: "Enriquecer Teste", key: "enrich-teste", data: [{ c: "H-400-ENR-0001", e: "chefe@enrichteste.com", n: "Enriquecer Teste LLC", t: "Housekeeper", s: "MAINE" }] });
-      const vfE0 = (await get("/api/vagas/filtros?sheet=enrich-teste")).json;
+      const vfE0 = (await get("/api/vagas/filtros?sheet=enrich-teste&email=0")).json;
       const rEnr = await req2("POST", "/api/test/enriquecer-linha", {
         token: TEST_TOKEN, sheet: "enrich-teste", case: "H-400-ENR-0001",
         dol: { worksite_city: "Bar Harbor", worksite_state: "MAINE", begin_date: "2027-05-01", case_status: "Certified" },
       });
-      const vfE1 = (await get("/api/vagas/filtros?sheet=enrich-teste")).json;
+      const vfE1 = (await get("/api/vagas/filtros?sheet=enrich-teste&email=0")).json;
       const smE1 = (await get(`/api/sheet-meta?sheet=enrich-teste&cidade=${encodeURIComponent("bar harbor|MAINE")}&top=10`)).json;
       check("🎯 v179-L1: o que o robô de planilha acaba de enriquecer JÁ VALE nos filtros — as linhas são mutadas no lugar e o comprimento nunca muda, então o índice ficava congelado até o próximo boot (cidade/data/salário descobertos não filtravam nada)",
         upEnr.json?.ok === true && rEnr.json?.ok === true && vfE0.disponibilidade.cidade === 0 && vfE0.disponibilidade.inicio === 0 &&
@@ -3493,14 +3509,14 @@ async function drillBloqueioComprasNovas() {
     // ANTES landscape 1.279 / construction 4.005 · DEPOIS landscape 3.877 /
     // construction 1.438. jul2025: construction 502 → 330, landscape 244 → 417.
     {
-      const vfCat = (await get("/api/vagas/filtros?sheet=jan2026")).json;
+      const vfCat = (await get("/api/vagas/filtros?sheet=jan2026&email=0")).json;
       const cLand = (vfCat.facetas.categoria || []).find((c) => c.v === "landscape");
       const cConst = (vfCat.facetas.categoria || []).find((c) => c.v === "construction");
       check("🏷️ v179-L2: jan2026 depois do recategorizeAllSheets do boot — paisagismo voltou pra 🌿 Paisagismo (1.279 → 3.877) e 🏗️ Construção parou de inchar (4.005 → 1.438)",
         cLand && cConst && cLand.n >= 3500 && cConst.n <= 1600, `landscape=${cLand && cLand.n} construction=${cConst && cConst.n}`);
       // a vaga que o chip promete é a vaga que a lista entrega (mesma régua do lote 1)
-      const smConst = (await get("/api/sheet-meta?sheet=jan2026&categoria=construction&top=2000")).json;
-      const smConst2 = (await get("/api/sheet-meta?sheet=jan2026&categoria=construction&top=2000&skip=2000")).json;
+      const smConst = (await get("/api/sheet-meta?sheet=jan2026&email=0&categoria=construction&top=2000")).json;
+      const smConst2 = (await get("/api/sheet-meta?sheet=jan2026&email=0&categoria=construction&top=2000&skip=2000")).json;
       const titulosConst = [...smConst.jobs, ...smConst2.jobs].map((j) => j.title || "");
       check("🏷️ v179-L2: nenhuma vaga com 'landscap' no título continua dentro de 🏗️ Construção (eram 2.558 de 3.375) — e a contagem do chip é a da lista",
         smConst.total === cConst.n && titulosConst.filter((t) => /landscap/i.test(t)).length === 0,
@@ -3523,7 +3539,7 @@ async function drillBloqueioComprasNovas() {
         name: "Categoria Teste", key: "cat-teste",
         data: fixCat.map(([t, n], i) => ({ c: `H-400-CAT-${String(i).padStart(4, "0")}`, e: `chefe${i}@catteste.com`, n, t })),
       });
-      const smCat = (await get("/api/sheet-meta?sheet=cat-teste&top=50")).json;
+      const smCat = (await get("/api/sheet-meta?sheet=cat-teste&email=0&top=50")).json;
       const errosCat = [];
       for (const [t, n, esperado] of fixCat) {
         const j = (smCat.jobs || []).find((x) => x.title === t && x.company === n);
@@ -3546,7 +3562,7 @@ async function drillBloqueioComprasNovas() {
     // "cape cod" em jan2026 (planilha SEM cidade) 3.354 → 17 · nº do caso
     // 6.387 → 1 · forklift 1 → 416 · housing 0 → 145 · wheelbarrow 0 → 11.
     {
-      const _q = async (sheet, q, extra) => (await get(`/api/sheet-meta?sheet=${sheet}&q=${encodeURIComponent(q)}&top=${extra || 3}`)).json;
+      const _q = async (sheet, q, extra) => (await get(`/api/sheet-meta?sheet=${sheet}&email=0&q=${encodeURIComponent(q)}&top=${extra || 3}`)).json;
       const bw = await _q("jan2026", "welder");
       const bc = await _q("jan2026", "carpenter");
       const bb = await _q("jan2026", "bartender");
@@ -3560,13 +3576,13 @@ async function drillBloqueioComprasNovas() {
         Array.isArray(bw.sugestoes) && bw.sugestoes[0]?.categoria === "construction" && bw.sugestoes[0]?.n > 1000 &&
         bb.sugestoes[0]?.categoria === "food" && bw.jobs.every((j) => /welder/i.test(`${j.title} ${j.company} ${j.desc || ""}`)),
         JSON.stringify(bw.sugestoes));
-      const bwWage = (await get("/api/sheet-meta?sheet=jan2026&q=welder&sort=wage&top=6")).json;
+      const bwWage = (await get("/api/sheet-meta?sheet=jan2026&email=0&q=welder&sort=wage&top=6")).json;
       check("🔎 v179-L3: com outra ordenação a relevância não vira ruído — q=welder&sort=wage trazia Rebar Workers/Office Clerk nas 6 primeiras; agora as 6 são welder de verdade",
         bwWage.jobs.length === 6 && bwWage.jobs.every((j) => /welder/i.test(j.title || "")), JSON.stringify(bwWage.jobs.map((j) => j.title)));
       const bcc = await _q("jan2026", "cape cod");
       check("🔎 v179-L3: região só é procurada na CIDADE (e o parcial só casa no COMEÇO de uma palavra) — 'cape cod' numa planilha SEM cidade nenhuma devolvia 3.354 vagas, porque 'cape' casava dentro de 'landSCAPE' e 'dennis'/'orleans'/'sandwich' são nomes de empresa",
         bcc.total === 17, `${bcc.total}`);
-      const smCape = (await get("/api/sheet-meta?sheet=h2a-jun2026&cidade=cape%20cod&top=1")).json;
+      const smCape = (await get("/api/sheet-meta?sheet=h2a-jun2026&email=0&cidade=cape%20cod&top=1")).json;
       check("🔎 v179-L3: a região no FILTRO de cidade não regrediu (cape cod = 10 na H-2A)", smCape.total === 10, `${smCape.total}`);
       const id1 = await _q("jan2026", "H-400-26001-520313");
       const id2 = await _q("jan2026", "520313");
@@ -3584,7 +3600,7 @@ async function drillBloqueioComprasNovas() {
       // funções de 1.741 vagas. O relatório da auditoria pedia 72 e 416 ao
       // mesmo tempo, o que é contraditório: ou a descrição entra na busca ou
       // não. Entra — e a relevância põe o título na frente.)
-      const trt = (await get("/api/sheet-meta?sheet=h2a-jun2026&q=tractor&top=5")).json;
+      const trt = (await get("/api/sheet-meta?sheet=h2a-jun2026&email=0&q=tractor&top=5")).json;
       check("🔎 v179-L3: quem casa no TÍTULO vem primeiro — com a descrição no palheiro, 'tractor' passa de 72 pra 1.741 vagas e as primeiras da lista são as que têm a palavra no cargo",
         trt.total === 1741 && trt.jobs.slice(0, 5).every((j) => /tractor/i.test(`${j.title} ${j.company}`)), JSON.stringify(trt.jobs.map((j) => j.title)));
       const ptJar = await _q("jan2026", "jardinagem", 1), enLand = await _q("jan2026", "landscape", 1);
@@ -3595,7 +3611,7 @@ async function drillBloqueioComprasNovas() {
         `jardinagem=${ptJar.total}/landscape=${enLand.total} camareira=${ptCam.total}/housekeeper=${enHk.total} colheita=${ptCol.total}/harvest=${enHar.total}`);
       check("🇧🇷 v179-L3: busca em português NÃO vira 'categoria inteira' (o erro que este lote corrige) — jardinagem fica abaixo do acervo e ainda oferece a sugestão de categoria",
         ptJar.total < 9240 && (ptJar.sugestoes || []).length >= 0, `${ptJar.total} de 9240`);
-      const t3 = []; for (let i = 0; i < 6; i++) { const t0 = Date.now(); await get(`/api/sheet-meta?sheet=jan2026&top=25&q=cook&_cb=${i}_${Date.now()}`); t3.push(Date.now() - t0); }
+      const t3 = []; for (let i = 0; i < 6; i++) { const t0 = Date.now(); await get(`/api/sheet-meta?sheet=jan2026&email=0&top=25&q=cook&_cb=${i}_${Date.now()}`); t3.push(Date.now() - t0); }
       t3.shift(); t3.sort((a, b) => a - b);
       check("🔎 v179-L3: o palheiro é pré-calculado por LINHA (WeakMap), não montado dentro do filtro a cada requisição — lição do v162; medido 70,6ms → ~6ms mesmo com descrição/SOC no texto",
         t3[Math.floor(t3.length / 2)] < 40, `mediana ${t3[Math.floor(t3.length / 2)]}ms (${t3.join("/")})`);
@@ -3615,12 +3631,12 @@ async function drillBloqueioComprasNovas() {
       // fechou a FACETA, mas a rota continuava mandando vaga a vaga, em texto
       // puro, até pra quem não tem cookie nenhum.
       const _cookieGuardado = COOKIE; COOKIE = "";
-      const semCookie = (await get("/api/sheet-meta?sheet=jul2026&top=3")).json;
+      const semCookie = (await get("/api/sheet-meta?sheet=jul2026&email=0&top=3")).json;
       COOKIE = _cookieGuardado;
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "vazadp@test.com", name: "Sem DP" });
-      const gratis = (await get("/api/sheet-meta?sheet=jul2026&top=3")).json;
+      const gratis = (await get("/api/sheet-meta?sheet=jul2026&email=0&top=3")).json;
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "temdp@test.com", name: "Com DP", plan: "doublepro", vip: { plan: "doublepro", active: true, manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000, source: "pix" } });
-      const dp = (await get("/api/sheet-meta?sheet=jul2026&top=3")).json;
+      const dp = (await get("/api/sheet-meta?sheet=jul2026&email=0&top=3")).json;
       check("🔒 v179-L4: 💎 grupo da loteria e status no DOL saíam vaga a vaga pra QUALQUER um (até sem cookie) — o cadeado da tela era decorativo, bastava ler a resposta; agora null pra quem não é Double Pro, igual a faceta já faz",
         semCookie.jobs.every((j) => j.grupo === null && j.status === null) &&
         gratis.jobs.every((j) => j.grupo === null && j.status === null) &&
@@ -3642,29 +3658,29 @@ async function drillBloqueioComprasNovas() {
         m1.motivo === null && /ENCERRADA/.test(m2.motivo || "") && /RETIRADA/.test(m3.motivo || ""),
         `exp1=${JSON.stringify(m1.motivo)} temporadaVelha=${JSON.stringify(m2.motivo)} withdrawn=${JSON.stringify(m3.motivo)}`);
       // (3) parâmetro inválido não some calado
-      const inv = (await get("/api/vagas/filtros?sheet=h2a-jun2026&inicio=13&salarioMin=abc&grupo=Z")).json;
+      const inv = (await get("/api/vagas/filtros?sheet=h2a-jun2026&email=0&inicio=13&salarioMin=abc&grupo=Z")).json;
       check("🔒 v179-L4: parâmetro inválido sumia CALADO e a resposta devolvia a planilha inteira (inicio=13 → total 4.964 com ativos=0) — na tela é confusão, no robô o job.filters corrompido fazia o refill se realimentar com TUDO; agora cada descarte é declarado",
         inv.total === 4964 && Array.isArray(inv.ignorados) && inv.ignorados.length === 3 &&
         inv.ignorados.some((x) => x.param === "inicio") && inv.ignorados.some((x) => x.param === "salarioMin") && inv.ignorados.some((x) => x.param === "grupo"),
         JSON.stringify(inv.ignorados));
-      const topAbc = (await get("/api/sheet-meta?sheet=jul2025&top=abc")).json;
-      const skipAbc = (await get("/api/sheet-meta?sheet=jul2025&skip=abc&top=5")).json;
+      const topAbc = (await get("/api/sheet-meta?sheet=jul2025&email=0&top=abc")).json;
+      const skipAbc = (await get("/api/sheet-meta?sheet=jul2025&email=0&skip=abc&top=5")).json;
       check("🔒 v179-L4: top=abc virava NaN e a lista voltava VAZIA ao lado de um contador de milhares ('Nenhuma vaga encontrada' com total 2.206) — agora cai no padrão (25) e skip inválido vira 0",
         topAbc.jobs.length === 25 && topAbc.total === 2206 && skipAbc.skip === 0 && skipAbc.jobs.length === 5,
         `top=abc → ${topAbc.jobs.length} vagas / total ${topAbc.total}; skip=abc → skip ${skipAbc.skip}`);
       const vistos = new Set(); let dup = 0;
       for (let sk = 0; sk < 2206; sk += 500) {
-        const pg = (await get(`/api/sheet-meta?sheet=jul2025&sort=shuffle&top=500&skip=${sk}`)).json;
+        const pg = (await get(`/api/sheet-meta?sheet=jul2025&email=0&sort=shuffle&top=500&skip=${sk}`)).json;
         for (const j of pg.jobs) { if (vistos.has(j.caseNum)) dup++; else vistos.add(j.caseNum); }
       }
       check("🔒 v179-L4: `sort` vinha da URL sem lista branca — sort=shuffle reembaralhava a cada requisição e a paginação DUPLICAVA e PERDIA vaga (varredura real de jul2025: 1.465 únicas / 741 duplicadas); agora ordenação desconhecida cai no padrão estável",
         vistos.size === 2206 && dup === 0, `${vistos.size} únicas / ${dup} duplicadas`);
       // (4) o "de N vagas" das duas rotas tem que ser o MESMO número
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "denvagas@test.com", name: "Den Vagas" });
-      const semHist = (await get("/api/sheet-meta?sheet=morta-teste&hideSent=1&top=5")).json;
+      const semHist = (await get("/api/sheet-meta?sheet=morta-teste&email=0&hideSent=1&top=5")).json;
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "denvagas@test.com", sentTo: ["viva@mortateste.com", "velha@mortateste.com"] });
-      const comHist = (await get("/api/sheet-meta?sheet=morta-teste&hideSent=1&top=5")).json;
-      const vfHist = (await get("/api/vagas/filtros?sheet=morta-teste&hideSent=1")).json;
+      const comHist = (await get("/api/sheet-meta?sheet=morta-teste&email=0&hideSent=1&top=5")).json;
+      const vfHist = (await get("/api/vagas/filtros?sheet=morta-teste&email=0&hideSent=1")).json;
       check("🔒 v179-L4: o 'de N vagas' da lista usava a planilha BRUTA (remainingTotal) enquanto o painel já descontava enviadas/fila (totalBase) — os dois alimentam o MESMO 'de N' da MESMA tela e divergiam pra quem tem histórico; agora é o mesmo corte (regra 8), pela mesma função",
         semHist.remainingTotal === 3 && comHist.remainingTotal === 1 && comHist.remainingTotal === vfHist.totalBase,
         `sem histórico=${semHist.remainingTotal} · com 2 envios: lista=${comHist.remainingTotal} painel=${vfHist.totalBase}`);
@@ -3712,16 +3728,19 @@ async function drillBloqueioComprasNovas() {
       const { createFiltros: _cfL5 } = require(path.join(__dirname, "mod-filtros.js"));
       const FL5 = _cfL5({ normalizeStateName: (s) => String(s || "").toUpperCase().trim(), normBusca: (s) => String(s || "").toLowerCase().trim(), cityMatchNormFn: () => null, regioes: {}, grupoDe: (r) => r.g || "", searchSheet: (arr) => ({ total: arr.length, items: arr }), categoriaLabel: (k) => k });
       // espelho EXATO da vfAtivos(st) do app.js (contexto planilha, não ao vivo)
-      const vfAtivosFront = (st) => { let n = 0; for (const k of ["estado", "cidade", "categoria", "cargo", "inicio", "grupo"]) if ((st[k] || []).length) n++; if (st.salarioMin > 0) n++; if (st.vagasMin > 0) n++; if (st.q) n++; if (st.email) n++; return n; };
+      // 🛡️ v276: `email` NÃO conta mais — virou padrão protetor do app (igual
+      // ocultarEncerradas), não escolha do usuário.
+      const vfAtivosFront = (st) => { let n = 0; for (const k of ["estado", "cidade", "categoria", "cargo", "inicio", "grupo"]) if ((st[k] || []).length) n++; if (st.salarioMin > 0) n++; if (st.vagasMin > 0) n++; if (st.q) n++; return n; };
       const estados = [{}, { email: true }, { q: "cook" }, { q: "cook", email: true }, { estado: ["TEXAS"], q: "cook", email: true },
         { estado: ["TEXAS"], categoria: ["food"], salarioMin: 15, email: true }, { cidade: ["ames|IOWA"], vagasMin: 5 },
         { tipo: "agricultural", ativa: true, email: true }];
       const badge = estados.map((st) => { const p = new URLSearchParams(); for (const k of ["estado", "cidade", "categoria", "cargo", "grupo"]) (st[k] || []).forEach((v) => p.append(k, v)); (st.inicio || []).forEach((m) => p.append("inicio", String(m))); if (st.salarioMin > 0) p.set("salarioMin", String(st.salarioMin)); if (st.vagasMin > 0) p.set("vagasMin", String(st.vagasMin)); if (st.email) p.set("email", "1"); if (st.q) p.set("q", st.q); return { front: vfAtivosFront(st), motor: FL5.ativos(FL5.parse(p)) }; });
       check("🔍 v181-L5: o badge '🔍 N filtros' espelha EXATAMENTE o ativos() do motor nas 8 combinações — contava tipo/ativa (que a tela nunca envia fora da aba ao vivo) e ignorava o 'só com e-mail', o filtro mais consequente da tela",
         badge.every((b) => b.front === b.motor), JSON.stringify(badge));
-      check("🔍 v181-L5 (estrutural): o 'só com e-mail' DESLIGADO virou chip visível ('incluindo vagas sem e-mail — não dá pra se candidatar') e tirar o chip volta ao outro estado",
-        /if\(st\.email\)n\+\+;/.test(_appL5) && _appL5.includes("vf_chip_sem_email") &&
-        /!st\.email\)push\("email"/.test(_appL5) && /else if\(dim==="email"\)st\.email=!st\.email;/.test(_appL5),
+      check("🔍 v181-L5 (estrutural): o 'só com e-mail' DESLIGADO virou chip visível ('incluindo vagas sem e-mail — não dá pra se candidatar') e tirar o chip volta ao outro estado — e (🛡️ v276) `email` NÃO conta mais em ativos() nem manda '1'/omite: manda '1' OU '0' sempre explícito (opt-out nunca depende de omissão)",
+        !/if\(st\.email\)n\+\+;/.test(_appL5) && _appL5.includes("vf_chip_sem_email") &&
+        /!st\.email\)push\("email"/.test(_appL5) && /else if\(dim==="email"\)st\.email=!st\.email;/.test(_appL5) &&
+        /p\.set\("email",\(ctx==="auto"\|\|st\.email\)\?"1":"0"\);/.test(_appL5),
 
         "chip do e-mail desligado ausente");
       // ═══ 🐛 v224 (achados do dono no modal "Filtrar vagas") ═══
@@ -3748,11 +3767,11 @@ async function drillBloqueioComprasNovas() {
       // vagas" em vez de ignorar a busca — uma vaga real com apóstrofo no
       // nome da empresa ("Olson's Greenhouses") nunca conseguia dar match
       // com só um apóstrofo, mas também não devia zerar a planilha inteira.
-      const _semQ = (await get("/api/vagas/filtros?sheet=h2a-jun2026")).json;
-      const _soApostrofo = (await get("/api/vagas/filtros?sheet=h2a-jun2026&q=" + encodeURIComponent("'"))).json;
-      const _soPontuacao = (await get("/api/vagas/filtros?sheet=h2a-jun2026&q=" + encodeURIComponent("'!#$%")))
+      const _semQ = (await get("/api/vagas/filtros?sheet=h2a-jun2026&email=0")).json;
+      const _soApostrofo = (await get("/api/vagas/filtros?sheet=h2a-jun2026&email=0&q=" + encodeURIComponent("'"))).json;
+      const _soPontuacao = (await get("/api/vagas/filtros?sheet=h2a-jun2026&email=0&q=" + encodeURIComponent("'!#$%")))
         .json;
-      const _gibberish = (await get("/api/vagas/filtros?sheet=h2a-jun2026&q=zzzznenhumavagatemisso")).json;
+      const _gibberish = (await get("/api/vagas/filtros?sheet=h2a-jun2026&email=0&q=zzzznenhumavagatemisso")).json;
       check("🐛 v224: busca que é SÓ pontuação/acento (normaliza pra string vazia) é IGNORADA — nunca mais 'Ver 0 vagas' pra quem digitou um apóstrofo sozinho, igual uma empresa real da planilha pode ter no nome",
         _soApostrofo.total === _semQ.total && _soPontuacao.total === _semQ.total,
         JSON.stringify({ semQ: _semQ.total, apostrofo: _soApostrofo.total, pontuacao: _soPontuacao.total }));
@@ -3763,19 +3782,19 @@ async function drillBloqueioComprasNovas() {
         /const ql=_normSearch\(qRaw\);[\s\S]{0,900}if \(!ql\) \{/.test(_srvL224),
         "guarda de busca vazia sumiu de searchSheet");
       // (4) 🗓️ "Começa logo" entrega o que promete (caso 21)
-      const st10 = (await get("/api/sheet-meta?sheet=h2a-jun2026&sort=start&top=10")).json;
+      const st10 = (await get("/api/sheet-meta?sheet=h2a-jun2026&email=0&sort=start&top=10")).json;
       const _hj = new Date().toISOString().slice(0, 10);
       const faixas = (st10.jobs || []).map((j) => { const d = String(j.start || "").slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(d) ? (d >= _hj ? 0 : 1) : 2; });
-      const semSort = (await get("/api/sheet-meta?sheet=h2a-jun2026&top=1")).json;
+      const semSort = (await get("/api/sheet-meta?sheet=h2a-jun2026&email=0&top=1")).json;
       check("🗓️ v181-L5 (caso 21): 'Começa logo' entregava 'começou há mais tempo' (as 5 primeiras da H-2A eram de jan/fev — 8 meses atrás). Agora: nenhuma vaga já iniciada aparece antes de uma que ainda vai começar, e o total não muda",
         faixas.length === 10 && faixas.every((f, i) => i === 0 || f >= faixas[i - 1]) && faixas[0] === 0 && st10.total === semSort.total,
         JSON.stringify({ faixas, datas: (st10.jobs || []).map((j) => j.start), total: st10.total }));
-      const vfJan = (await get("/api/vagas/filtros?sheet=jan2026")).json;
+      const vfJan = (await get("/api/vagas/filtros?sheet=jan2026&email=0")).json;
       check("🗓️ v181-L5: em jan2026/jul2025 a data de início é VAZIA em 100% das linhas (disponibilidade.inicio 0) — a tela esconde 🗓️/Recentes em vez de acender um botão que não faz nada em 11.446 vagas",
         vfJan.disponibilidade.inicio === 0 && _appL5.includes("function _vfSyncSortBtns(") && /so-start","so-desc/.test(_appL5),
         `inicio=${vfJan.disponibilidade.inicio}`);
       // (5) "Recentes" virou ordenação REAL por data (decisão do dono)
-      const rec = (await get("/api/sheet-meta?sheet=h2a-jun2026&sort=desc&top=12")).json;
+      const rec = (await get("/api/sheet-meta?sheet=h2a-jun2026&email=0&sort=desc&top=12")).json;
       const datasRec = (rec.jobs || []).map((j) => String(j.start || "").slice(0, 10));
       const _srvL5 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
       check("🆕 v181-L5: 'Recentes' era literalmente a planilha AO CONTRÁRIO (list.reverse()) — ordem de arquivo vendida como data. Agora ordena de verdade pela data de início, da mais recente pra mais antiga, sem mudar o total",
@@ -3800,7 +3819,7 @@ async function drillBloqueioComprasNovas() {
       check("🚫 v209/v210 (estrutural): a faceta/filtro 'status no DOL' (Certified/Pending/Withdrawn/Denied/Expired) saiu por completo do app.js — nem _vfStatusLabel, nem vf_st_*, nem seção 'status' no VF_SECS",
         !_appL5.includes("_vfStatusLabel") && !_appL5.includes("vf_st_certified") && !/\{k:"status"/.test(_appL5),
         "resquício do facet de status sobrou no app.js");
-      const dpStatusIgnorado = (await get("/api/sheet-meta?sheet=jan2026&status=Certified&top=1")).json;
+      const dpStatusIgnorado = (await get("/api/sheet-meta?sheet=jan2026&email=0&status=Certified&top=1")).json;
       check("🚫 v209/v210: o parâmetro status=Certified agora é IGNORADO pelo servidor (não filtra mais nada) — jan2026 devolve o total INTEIRO da planilha, igual sem o parâmetro",
         dpStatusIgnorado.total === 9240, `${dpStatusIgnorado.total}`);
       check("🛑 v181-L5: o painel não fica mais mudo com spinner eterno quando a rede falha — erro clicável no corpo (mesmo padrão da lista) e timeout de 8s no fetch das opções; nenhum catch vazio no bloco VF",
@@ -3814,11 +3833,14 @@ async function drillBloqueioComprasNovas() {
     // regra geral "dimensão com 1 valor só não separa nada". Todos os números
     // abaixo foram medidos nas planilhas empacotadas deste repositório.
     {
-      const _t = async (qs) => (await get("/api/sheet-meta?" + qs + "&top=1")).json.total;
-      const vfJ = (await get("/api/vagas/filtros?sheet=jan2026")).json;
-      const vfJ25 = (await get("/api/vagas/filtros?sheet=jul2025")).json;
-      const vfH2a = (await get("/api/vagas/filtros?sheet=h2a-jun2026")).json;
-      const vfJ26 = (await get("/api/vagas/filtros?sheet=jul2026")).json;
+      // 🛡️ v276: email=0 sempre — os números abaixo foram medidos ANTES do
+      // servidor esconder vaga sem e-mail por padrão; o teste do padrão novo
+      // fica isolado logo depois (bloco jul2026), não aqui.
+      const _t = async (qs) => (await get("/api/sheet-meta?" + qs + "&top=1&email=0")).json.total;
+      const vfJ = (await get("/api/vagas/filtros?sheet=jan2026&email=0")).json;
+      const vfJ25 = (await get("/api/vagas/filtros?sheet=jul2025&email=0")).json;
+      const vfH2a = (await get("/api/vagas/filtros?sheet=h2a-jun2026&email=0")).json;
+      const vfJ26 = (await get("/api/vagas/filtros?sheet=jul2026&email=0")).json;
       // (1) EXPERIÊNCIA — caso 19: faceta = lista, teto acumulando
       const exp0 = vfJ.facetas.exp.find((x) => x.v === 0), exp3 = vfJ.facetas.exp.find((x) => x.v === 3);
       const l0 = await _t("sheet=jan2026&exp=0"), l3 = await _t("sheet=jan2026&exp=3"), l25 = await _t("sheet=jul2025&exp=0");
@@ -3831,7 +3853,7 @@ async function drillBloqueioComprasNovas() {
         vfJ26.disponibilidade.exp === 2625 && vfJ26.disponibilidade.expDistintos === 1 &&
         vfJ.disponibilidade.expDistintos === 15,
         JSON.stringify({ h2a: vfH2a.disponibilidade.exp, j26dist: vfJ26.disponibilidade.expDistintos, janDist: vfJ.disponibilidade.expDistintos }));
-      const vfExp0 = (await get("/api/vagas/filtros?sheet=jan2026&exp=0")).json;
+      const vfExp0 = (await get("/api/vagas/filtros?sheet=jan2026&email=0&exp=0")).json;
       const txExp = vfExp0.facetas.estado.find((x) => x.v === "TEXAS");
       check("🧰 v181-L6: a experiência cruza com as outras dimensões pela régua de sempre (E entre dimensões) — a contagem que a faceta de estado anuncia DENTRO de exp=0 é a que a lista devolve",
         txExp.n === (await _t("sheet=jan2026&exp=0&estado=TEXAS")), `faceta=${txExp.n}`);
@@ -3844,7 +3866,7 @@ async function drillBloqueioComprasNovas() {
       for (const r of _bundle) { const d = _isoOk(r.d), de = _isoOk(r.de); if (!d && !de) espSem++; else if (de && de < _hoje2) espEnc++; else if (d && d > _hoje2) espFut++; else espAb++; }
       const fT = Object.fromEntries((vfH2a.facetas.temporada || []).map((x) => [x.v, x.n]));
       const lEnc = await _t("sheet=h2a-jun2026&temporada=encerrada");
-      const encJobs = (await get(`/api/sheet-meta?sheet=h2a-jun2026&temporada=encerrada&top=2000`)).json.jobs || [];
+      const encJobs = (await get(`/api/sheet-meta?sheet=h2a-jun2026&email=0&temporada=encerrada&top=2000`)).json.jobs || [];
       check("🗓️ v181-L6 (caso 20): filtro novo de TEMPORADA na H-2A — nenhum filtro usava a data de FIM e 219+ vagas JÁ TERMINADAS eram listadas como qualquer outra. Faceta = lista, as 3 faixas + sem data fecham o total da planilha, e toda vaga 'encerrada' tem fim no passado",
         fT.encerrada === espEnc && fT.aberta === espAb && fT.futura === espFut && lEnc === espEnc &&
         fT.futura + fT.aberta + fT.encerrada + vfH2a.facetas.temporadaSemData === 4964 &&
@@ -3859,7 +3881,7 @@ async function drillBloqueioComprasNovas() {
       const semPadrao = await _t("sheet=h2a-jun2026");
       const padraoJan = await _t("sheet=jan2026&ocultarEncerradas=1");
       const padraoJ26 = await _t("sheet=jul2026&ocultarEncerradas=1");
-      const vfPadrao = (await get("/api/vagas/filtros?sheet=h2a-jun2026&ocultarEncerradas=1")).json;
+      const vfPadrao = (await get("/api/vagas/filtros?sheet=h2a-jun2026&email=0&ocultarEncerradas=1")).json;
       check("⏳ v181-L6 (decisão do dono): a lista esconde por PADRÃO a vaga cuja temporada já acabou (4.964 → 4.744 na H-2A: a pessoa gastava envio e limite diário com vaga que não existe mais) e mostra tudo em 1 clique — nunca esconde o que não dá pra afirmar (planilha sem data de fim fica intocada)",
         padrao === 4964 - espEnc && semPadrao === 4964 && padraoJan === 9240 && padraoJ26 === 2625,
         JSON.stringify({ padrao, semPadrao, jan: padraoJan, jul2026: padraoJ26 }));
@@ -3889,8 +3911,8 @@ async function drillBloqueioComprasNovas() {
           { c: "H-300-VISA-0004", n: "A2 LLC", s: "IOWA", e: "rh@a2visa.com", t: "Farm Worker" },
         ],
       });
-      const vfMix = (await get("/api/vagas/filtros?sheet=mista-visa")).json;
-      const listaA = (await get("/api/sheet-meta?sheet=mista-visa&visa=H-2A&top=10")).json;
+      const vfMix = (await get("/api/vagas/filtros?sheet=mista-visa&email=0")).json;
+      const listaA = (await get("/api/sheet-meta?sheet=mista-visa&email=0&visa=H-2A&top=10")).json;
       check("🛂 v181-L6: o tipo de visto virou dimensão do motor (com fallback pelo prefixo do case: H-300 → H-2A, H-400 → H-2B) e só é oferecida quando a planilha tem os DOIS — numa planilha mista a faceta soma o total e o filtro bate com ela",
         vfMix.disponibilidade.visaDistintos === 2 && vfMix.facetas.visa.length === 2 &&
         vfMix.facetas.visa.reduce((a, x) => a + x.n, 0) === 4 &&
@@ -3907,7 +3929,7 @@ async function drillBloqueioComprasNovas() {
         JSON.stringify({ mar, soma: somaMeses, lista: lMar }));
       check("📅 v181-L6: o formato ANTIGO (mês 1–12, que vive em job.filters de robô rodando e no aparelho de quem salvou filtro) continua casando — mês 3 de qualquer ano devolve o mesmo conjunto",
         lLegado === 1121 && (await _t("sheet=jul2026&inicio=10")) === 2625, `legado=${lLegado}`);
-      const igL6 = (await get("/api/vagas/filtros?sheet=h2a-jun2026&inicio=13&exp=abc&temporada=xxx&visa=H-9")).json;
+      const igL6 = (await get("/api/vagas/filtros?sheet=h2a-jun2026&email=0&inicio=13&exp=abc&temporada=xxx&visa=H-9")).json;
       check("📅 v181-L6: parâmetro inválido das dimensões novas continua DECLARADO (nunca some calado, senão um filtro corrompido vira 'a planilha inteira' pro robô)",
         igL6.total === 4964 && igL6.ignorados.length === 4 &&
         ["inicio", "exp", "temporada", "visa"].every((p) => igL6.ignorados.some((x) => x.param === p)),
@@ -3934,9 +3956,9 @@ async function drillBloqueioComprasNovas() {
     // tela. Agora a faceta agrupa por FAMÍLIA (SOC quando existe, senão o
     // título normalizado) — e o valor antigo continua casando.
     {
-      const _t7 = async (qs) => (await get("/api/sheet-meta?" + qs + "&top=1")).json.total;
-      const vfJ7 = (await get("/api/vagas/filtros?sheet=jan2026")).json;
-      const vfH7 = (await get("/api/vagas/filtros?sheet=h2a-jun2026")).json;
+      const _t7 = async (qs) => (await get("/api/sheet-meta?" + qs + "&top=1&email=0")).json.total; // 🛡️ v276
+      const vfJ7 = (await get("/api/vagas/filtros?sheet=jan2026&email=0")).json;
+      const vfH7 = (await get("/api/vagas/filtros?sheet=h2a-jun2026&email=0")).json;
       const land = (vfJ7.facetas.cargo || []).find((x) => x.v === "laborer landscape");
       check("🏷️ v181-L7: as 3 grafias de 'Landscape Laborer' (2.120 + 231 + 9) viraram UMA opção de 2.360 com o rótulo da grafia mais frequente — e clicar devolve exatamente os 2.360 que o chip anuncia",
         land && land.n === 2360 && land.label === "Landscape Laborer" && (await _t7("sheet=jan2026&cargo=" + encodeURIComponent("laborer landscape"))) === 2360,
@@ -3973,7 +3995,7 @@ async function drillBloqueioComprasNovas() {
       check("🏷️ v181-L7 (casos 1–2): nas 30 famílias mais comuns das 2 planilhas, a contagem do chip é EXATAMENTE o que a lista devolve — a regra da casa continua de pé depois de trocar o valor que a faceta emite",
         divergem7.length === 0, JSON.stringify(divergem7).slice(0, 300));
       // busca dentro da lista de cargos + multi-seleção somando
-      const busca7 = (await get("/api/vagas/filtros?sheet=jan2026&cargoBusca=cook")).json;
+      const busca7 = (await get("/api/vagas/filtros?sheet=jan2026&email=0&cargoBusca=cook")).json;
       const duas = (busca7.facetas.cargo || []).slice(0, 2);
       const soma = duas.reduce((a, x) => a + x.n, 0);
       const listaDuas = await _t7(`sheet=jan2026&cargo=${encodeURIComponent(duas[0].v)}&cargo=${encodeURIComponent(duas[1].v)}`);
@@ -4061,7 +4083,7 @@ async function drillBloqueioComprasNovas() {
         JSON.stringify((admL.json?.sheets || []).map((x) => [x.key, x.published])));
       const pub = await req2("POST", "/api/admin/sheet/coleta-publish", { key: "teste2099" });
       const sl2 = await get("/api/sheets-list");
-      const sm2 = await get("/api/sheet-meta?sheet=teste2099&skip=0&top=5");
+      const sm2 = await get("/api/sheet-meta?sheet=teste2099&email=0&skip=0&top=5");
       check("📢 v174: publicar libera a planilha pros usuários (lista + Manual abre as vagas)",
         pub.json?.ok === true && pub.json.count === 14 && (sl2.json?.sheets || []).some((x) => x.key === "teste2099" && x.count === 14) && Array.isArray(sm2.json?.jobs) && sm2.json.jobs.length > 0,
         `pub=${pub.body.slice(0, 80)} meta=${sm2.body.slice(0, 80)}`);
@@ -6147,7 +6169,7 @@ async function drillBloqueioComprasNovas() {
       });
       const _slDepois = (await get("/api/sheets-list")).json?.sheets || [];
       const _julDepois = _slDepois.filter((x) => x.key === "jul2025");
-      const _jobBi = (await get("/api/sheet-meta?sheet=jul2025&q=Builtin%20Import&top=5")).json;
+      const _jobBi = (await get("/api/sheet-meta?sheet=jul2025&email=0&q=Builtin%20Import&top=5")).json;
       check("📥 v180: importar numa planilha BUILT-IN (jul2025) atualiza a planilha de verdade e salva pelo funil único — sem criar planilha fantasma com a mesma chave em SHEET_EXTRAS",
         impBi.json?.ok === true && impBi.json.builtin === true && impBi.json.substituiu === true && impBi.json.adicionadas === 1 &&
         _julDepois.length === 1 && _julDepois[0].count === (_julAntes.count || 0) + 1 &&
@@ -6227,7 +6249,7 @@ async function drillBloqueioComprasNovas() {
       check("🧩 v182-L8 (33): `exp` volta a ser MESES — o número que já existia (6) sobrevive ao robô, os meses publicados pelo DOL são gravados (3) e o Sim/Não vai pra `expReq` sem nunca inventar um `exp`",
         r1.exp === 6 && r1.expReq === "sim" && r2.exp === 3 && r2.expReq === "sim" && r3.exp === undefined && r3.expReq === "sim",
         JSON.stringify([r1.exp, r1.expReq, r2.exp, r2.expReq, r3.exp, r3.expReq]));
-      const vfL8 = (await get("/api/vagas/filtros?sheet=enrich-l8")).json;
+      const vfL8 = (await get("/api/vagas/filtros?sheet=enrich-l8&email=0")).json;
       const ciL8 = (vfL8.facetas.cidade || []).map((c) => c.label).sort();
       const smL8 = (await get(`/api/sheet-meta?sheet=enrich-l8&cidade=${encodeURIComponent("franklin baldwin|LOUISIANA")}&top=10`)).json;
       check("🧩 v182-L8 (34): o que o robô acabou de gravar já vale nos filtros e a faceta de cidade só tem LUGAR (nenhum CEP, nenhum número de rua) — e o chip continua entregando exatamente o que promete",
@@ -6436,6 +6458,36 @@ async function drillBloqueioComprasNovas() {
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
       await req2("DELETE", "/api/admin/sheet/radar9-pobre");
       await req2("DELETE", "/api/admin/sheet/radar9-rico");
+      // 🛡️ v276 (mesmo bug real do dono, agora no Radar): o filtro salvo do
+      // Radar NEM SEMPRE tem `email` explícito (a tela nunca expôs esse
+      // campo pro usuário escolher) — _radarSanitiza defaultava `false`
+      // (mostra tudo, inclusive vaga IMPOSSÍVEL de aplicar por falta de
+      // e-mail do empregador). Agora só `false` EXPLÍCITO desliga; ausente
+      // cai no padrão protetor, igual a lista e a fila do robô.
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radar276@test.com", name: "Radar 276" });
+      const rd276 = await req2("POST", "/api/radar", { filtros: { estado: ["MASSACHUSETTS"], categoria: ["housekeeper"] } });
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      await req2("POST", "/api/admin/sheet/upload", {
+        name: "Radar 276 Sem Email", key: "radar276-sememail",
+        data: [{ c: "H-400-R276-0001", e: "", n: "Radar 276 Sem Email LLC", t: "Housekeeper", s: "MASSACHUSETTS", k: "housekeeper", w: "25.00", wunit: "h", wk: 5 }],
+      });
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radar276@test.com" });
+      const rd276semEmail = (await get("/api/radar")).json;
+      check("🛡️ v276: radar SEM `email` explícito no filtro salvo (nem true nem false) já esconde vaga sem e-mail do empregador — bate em tudo mais (estado/categoria) mas não conta como 'vaga nova' porque é impossível se candidatar",
+        rd276.json?.ok === true && (rd276semEmail.radar.novas || 0) === 0,
+        JSON.stringify({ save: rd276.json, novas: rd276semEmail.radar?.novas }));
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      await req2("POST", "/api/admin/sheet/upload", {
+        name: "Radar 276 Com Email", key: "radar276-comemail",
+        data: [{ c: "H-400-R276-0002", e: "rh@radar276.com", n: "Radar 276 Com Email LLC", t: "Housekeeper", s: "MASSACHUSETTS", k: "housekeeper", w: "25.00", wunit: "h", wk: 5 }],
+      });
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radar276@test.com" });
+      const rd276comEmail = (await get("/api/radar")).json;
+      check("🛡️ v276: a MESMA vaga COM e-mail conta normalmente — a proteção é só do campo e-mail, o resto do filtro (estado/categoria) segue funcionando igual",
+        rd276comEmail.radar.novas === 1, `novas=${rd276comEmail.radar.novas}`);
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      await req2("DELETE", "/api/admin/sheet/radar276-sememail");
+      await req2("DELETE", "/api/admin/sheet/radar276-comemail");
     }
 
     // ══════════════════════════════════════════════════════════════════════
