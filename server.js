@@ -7130,7 +7130,7 @@ const server=http.createServer(async(req,res)=>{
   li{margin-bottom:6px}
   a{color:var(--blue);text-decoration:none}
   .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;margin-bottom:20px}
-  .scope-box{background:var(--bluel);border:1.5px solid var(--blueb);border-radius:10px;padding:14px 16px;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:#93c5fd;margin:10px 0}
+  .scope-box{background:var(--bluel);border:1.5px solid var(--blueb);border-radius:10px;padding:14px 16px;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:#93c5fd;margin:10px 0;overflow-wrap:anywhere;word-break:break-all}
   .no-box{background:var(--greenl);border:1.5px solid var(--greenb);border-radius:10px;padding:14px 16px;font-size:14px;color:#86efac;margin:14px 0}
   .back-btn{display:inline-flex;align-items:center;gap:6px;background:#4f46e5;color:#fff;padding:10px 20px;border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;margin-bottom:24px}
   .footer{text-align:center;margin-top:40px;font-size:12px;color:var(--t3)}
