@@ -2295,7 +2295,7 @@ function mkSheetCard(j){
   const wkTag=j.workers&&j.workers>0?`<span class="tag tgr">👥 ${j.workers} vagas</span>`:"";
 
   const _inAutoQ=_autoQueueIds.has(j.id)||_autoQueueIds.has(j.caseNum);
-  return`<div class="jcard${isApplied||_inAutoQ?" applied":""}" id="jcard-${iid}" onclick="selSheetJob('${esc(j.id)}')"${(isApplied||_inAutoQ)?' style="display:none"':""}>
+  return`<div class="jcard${isApplied||_inAutoQ?" applied":""}" id="jcard-${iid}" onclick="selSheetJob('${esc(j.id)}')" role="button" tabindex="0"${(isApplied||_inAutoQ)?' style="display:none"':""}>
     <div class="jcard-cat-row" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;padding-right:26px">
       <span class="jcard-cat-badge" id="jctg-cat-${iid}"><i class="ti ${esc(catInfo.icon)}" style="font-size:9px"></i> ${esc(catInfo.name)}</span>
       ${j.wage&&j.wage!=="–"?`<span style="font-size:12px;font-weight:800;color:#10b981">💰 ${esc(j.wage)}</span>`:""}

@@ -6412,6 +6412,15 @@ async function drillBloqueioComprasNovas() {
         _appL9.includes("VF.foco=document.activeElement") && _appL9.includes('aria-pressed="${on?"true":"false"}"') &&
         /e\.key!=="Escape"[\s\S]{0,160}vfClose\(\)/.test(_appL9),
         "foco/Escape/aria-pressed não encontrados");
+      // 🦯 v278 (achado de auditoria — Alta): o .jcard (card de vaga — o
+      // elemento mais usado do site inteiro, listando TODAS as vagas)
+      // tinha só onclick, sem role/tabindex — inacessível por teclado, e
+      // mesmo focado por acaso não ativaria nada, porque o listener global
+      // de Enter/Espaço (v257, linha ~1343) só dispara pra role="button".
+      // Mesmo padrão já usado no log-entry (linha ~4236/5042).
+      check("🦯 v278: o card de vaga (.jcard) agora é focável por teclado (role=\"button\" tabindex=\"0\") — reusa o MESMO listener global de Enter/Espaço já existente, sem duplicar lógica",
+        _appL9.includes('onclick="selSheetJob(\'${esc(j.id)}\')" role="button" tabindex="0"'),
+        "jcard sem role=\"button\" tabindex=\"0\"");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&
@@ -7590,7 +7599,7 @@ async function drillBloqueioComprasNovas() {
     // cair pro meio dos atributos seguintes. (v223: mkCard()/selJob2() da aba
     // ao vivo saíram do site — só mkSheetCard() continua existindo.)
     check("🚨 v213 (estrutural): mkSheetCard() fecha a tag <div class=\"jcard\"...> com '>' antes da 1ª quebra de linha — nunca mais um card de vaga nasce sem fechar a tag de abertura (bug real: clique nunca abria o detalhe, filhos viravam irmãos soltos em #jlist)",
-      /onclick="selSheetJob\('\$\{esc\(j\.id\)\}'\)"\$\{\(isApplied\|\|_inAutoQ\)\?' style="display:none"':""\}>/.test(_appV209),
+      /onclick="selSheetJob\('\$\{esc\(j\.id\)\}'\)" role="button" tabindex="0"\$\{\(isApplied\|\|_inAutoQ\)\?' style="display:none"':""\}>/.test(_appV209),
       "a tag de abertura do card voltou a ficar sem '>' antes da quebra de linha");
 
     // 🚨 v237o (achado de auditoria — Média, admin/PWA): o atalho "Vagas H-2B"
