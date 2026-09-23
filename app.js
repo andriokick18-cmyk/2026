@@ -1357,6 +1357,27 @@ document.addEventListener("DOMContentLoaded",()=>{
     // no Escape, só clicando fora ou no X.
     const md=g("#modal");
     if(md&&!md.classList.contains("gone")){e.preventDefault();closeModal();return;}
+    // ♿ v281 (achado de auditoria — Alta): mesma proteção pros overlays que
+    // JÁ fecham no clique-fora mas nunca tiveram Escape — extensão do MESMO
+    // listener global (v182 LOTE 9), nunca um 2º listener. Ficam de fora de
+    // propósito os overlays sem clique-fora (#wpp-required-overlay,
+    // #terms-overlay, #cv-prompt-overlay, #success-overlay) — não têm X nem
+    // fecham clicando fora porque são gates obrigatórios ou confirmações
+    // com fluxo próprio; Escape neles seria abrir uma saída que o produto
+    // nunca ofereceu.
+    const pe=g("#profile-editor-overlay");
+    if(pe&&!pe.classList.contains("gone")){e.preventDefault();closeProfileEditor();return;}
+    const pf=g("#pf-overlay");
+    if(pf&&!pf.classList.contains("gone")){e.preventDefault();closePreflight();return;}
+    if(_isAutoModalOpen()){e.preventDefault();closeAutoModal();return;}
+    const ld=g("#log-detail-overlay");
+    if(ld&&ld.style.display==="flex"){e.preventDefault();closeLogDetail();return;}
+    const tro=g("#tour-overlay");
+    if(tro&&!tro.classList.contains("gone")){e.preventDefault();closeTour();return;}
+    const mm=g("#more-menu-overlay");
+    if(mm&&!mm.classList.contains("gone")){e.preventDefault();mm.classList.add("gone");return;}
+    const da=g("#del-acc-m");
+    if(da&&!da.classList.contains("gone")){e.preventDefault();closeDeleteAccountModal();return;}
     // 🚨 v237: mesma proteção pro #auth-gate (achado de auditoria — Alta,
     // não tinha NENHUM jeito de fechar antes deste commit).
     const ag=g("#auth-gate");

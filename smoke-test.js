@@ -6466,6 +6466,24 @@ async function drillBloqueioComprasNovas() {
           } catch (e) { return false; }
         }),
         "algum width/height não bate com o arquivo real (JPEG SOF)");
+      // ♿ v281 (achado de auditoria — Alta): 7 overlays que JÁ fechavam no
+      // clique-fora (X ou fundo escuro) nunca tinham Escape — só o
+      // #vf-overlay/#modal/#auth-gate (v182-L9/v279/v237) tinham. Extensão
+      // do MESMO listener global, nunca um 2º. #wpp-required-overlay,
+      // #terms-overlay, #cv-prompt-overlay e #success-overlay ficam de fora
+      // DE PROPÓSITO — são gates obrigatórios/confirmações sem clique-fora,
+      // Escape neles abriria uma saída que o produto nunca ofereceu.
+      check("♿ v281: Escape agora fecha os 7 overlays que já fechavam no clique-fora mas nunca tinham a tecla (Editor de Perfil, Confirmação do Automático, Modal do Robô, Detalhe do Log, Tour, Menu ☰, Excluir Conta)",
+        [
+          'const pe=g("#profile-editor-overlay");\n    if(pe&&!pe.classList.contains("gone")){e.preventDefault();closeProfileEditor();return;}',
+          'const pf=g("#pf-overlay");\n    if(pf&&!pf.classList.contains("gone")){e.preventDefault();closePreflight();return;}',
+          'if(_isAutoModalOpen()){e.preventDefault();closeAutoModal();return;}',
+          'const ld=g("#log-detail-overlay");\n    if(ld&&ld.style.display==="flex"){e.preventDefault();closeLogDetail();return;}',
+          'const tro=g("#tour-overlay");\n    if(tro&&!tro.classList.contains("gone")){e.preventDefault();closeTour();return;}',
+          'const mm=g("#more-menu-overlay");\n    if(mm&&!mm.classList.contains("gone")){e.preventDefault();mm.classList.add("gone");return;}',
+          'const da=g("#del-acc-m");\n    if(da&&!da.classList.contains("gone")){e.preventDefault();closeDeleteAccountModal();return;}',
+        ].every((s) => _appL9.includes(s)),
+        "algum overlay perdeu o fechamento por Escape");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&
