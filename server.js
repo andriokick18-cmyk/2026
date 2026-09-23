@@ -7105,26 +7105,39 @@ const server=http.createServer(async(req,res)=>{
 <title>Google User Data Usage — H2BApply</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1e293b;background:#f8fafc;line-height:1.7}
+  :root{
+    --bg:#0d0f1a;--surface:#161928;--sf2:#1c1f35;
+    --border:rgba(139,92,246,0.18);
+    --text:#e8eaf6;--t2:#a5a8cc;--t3:#7c7fb5;
+    --blue:#3b82f6;--bluel:rgba(59,130,246,.16);--blueb:rgba(59,130,246,.36);
+    --green:#10b981;--greenl:rgba(16,185,129,.16);--greenb:rgba(16,185,129,.35);
+  }
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--text);background:var(--bg);line-height:1.7}
+  .star-bg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+  .star-bg::before{content:"";position:absolute;inset:0;background:
+    radial-gradient(ellipse 900px 600px at 15% 30%,rgba(59,130,246,.1) 0%,transparent 70%),
+    radial-gradient(ellipse 700px 500px at 85% 70%,rgba(139,92,246,.08) 0%,transparent 70%),
+    radial-gradient(ellipse 500px 400px at 50% 0%,rgba(16,185,129,.04) 0%,transparent 60%)}
   .container{max-width:680px;margin:0 auto;padding:40px 20px}
   .logo{display:flex;align-items:center;gap:12px;margin-bottom:32px}
   .logo-icon{width:48px;height:48px;background:linear-gradient(135deg,#4f46e5,#0891b2);border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:24px;font-weight:800}
-  .logo-text{font-size:22px;font-weight:800;color:#1e293b}
-  h1{font-size:26px;font-weight:800;color:#1e293b;margin-bottom:8px}
-  .date{font-size:13px;color:#64748b;margin-bottom:28px}
-  h2{font-size:16px;font-weight:700;color:#1e293b;margin:22px 0 8px}
-  p{color:#475569;margin-bottom:12px;font-size:14.5px}
-  ul{color:#475569;margin:8px 0 12px 20px;font-size:14.5px}
+  .logo-text{font-size:22px;font-weight:800;color:var(--text)}
+  h1{font-size:26px;font-weight:800;color:var(--text);margin-bottom:8px}
+  .date{font-size:13px;color:var(--t2);margin-bottom:28px}
+  h2{font-size:16px;font-weight:700;color:var(--text);margin:22px 0 8px}
+  p{color:var(--t2);margin-bottom:12px;font-size:14.5px}
+  ul{color:var(--t2);margin:8px 0 12px 20px;font-size:14.5px}
   li{margin-bottom:6px}
-  a{color:#4f46e5;text-decoration:none}
-  .card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:26px;margin-bottom:20px}
-  .scope-box{background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:14px 16px;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:#1e3a8a;margin:10px 0}
-  .no-box{background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:10px;padding:14px 16px;font-size:14px;color:#166534;margin:14px 0}
+  a{color:var(--blue);text-decoration:none}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;margin-bottom:20px}
+  .scope-box{background:var(--bluel);border:1.5px solid var(--blueb);border-radius:10px;padding:14px 16px;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:#93c5fd;margin:10px 0}
+  .no-box{background:var(--greenl);border:1.5px solid var(--greenb);border-radius:10px;padding:14px 16px;font-size:14px;color:#86efac;margin:14px 0}
   .back-btn{display:inline-flex;align-items:center;gap:6px;background:#4f46e5;color:#fff;padding:10px 20px;border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;margin-bottom:24px}
-  .footer{text-align:center;margin-top:40px;font-size:12px;color:#94a3b8}
+  .footer{text-align:center;margin-top:40px;font-size:12px;color:var(--t3)}
 </style>
 </head>
 <body>
+<div class="star-bg"></div>
 <div class="container">
   <div class="logo">
     <div class="logo-icon">H</div>
@@ -7162,10 +7175,10 @@ const server=http.createServer(async(req,res)=>{
     <p>This page summarizes our Gmail data practices. For our complete privacy practices, see the <a href="/privacidade">Privacy Policy</a>.</p>
   </div>
   <div class="footer">
-    © 2026 H2BApply · <a href="/" style="color:#64748b">h2bapply.com</a>
-    &nbsp;|&nbsp; <a href="/privacidade" style="color:#64748b">Privacidade</a>
-    &nbsp;|&nbsp; <a href="/termos" style="color:#64748b">Termos</a>
-    <br><small style="color:#94a3b8">suporte@h2bapply.com</small>
+    © 2026 H2BApply · <a href="/" style="color:var(--blue)">h2bapply.com</a>
+    &nbsp;|&nbsp; <a href="/privacidade" style="color:var(--blue)">Privacidade</a>
+    &nbsp;|&nbsp; <a href="/termos" style="color:var(--blue)">Termos</a>
+    <br><small style="color:var(--t3)">suporte@h2bapply.com</small>
   </div>
 </div>
 </body>
