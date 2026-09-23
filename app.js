@@ -7936,6 +7936,7 @@ async function handleComprovante(ev) {
     const ph = g('#comp-placeholder');
     if(img && _ehImg) {
       img.src = dataUrl;
+      img.alt = 'Pré-visualização do comprovante selecionado: ' + file.name; // 🦯 achado de auditoria — alt vazio fixo escondia o único jeito de confirmar visualmente o arquivo certo; .alt é propriedade DOM, não innerHTML — nunca passar por esc() aqui
       if(preview) preview.style.display = 'block';
       if(ph) ph.style.display = 'none';
     } else {
