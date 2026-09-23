@@ -302,6 +302,9 @@ a{color:inherit;text-decoration:none}
 .warn-blue{background:var(--bluel);border:1.5px solid var(--blueb);color:#93c5fd}
 .warn-box i{font-size:18px;flex-shrink:0;margin-top:1px}
 
+.source-note{font-size:11px;color:var(--t4);margin-top:8px}
+.source-note a{color:var(--t3);text-decoration:underline}
+
 /* ── SECTORS ──────────────────────────────────────────── */
 .sectors-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
 .sector-card{
@@ -748,10 +751,16 @@ html{scroll-padding-top:72px}
       <div class="card-title"><i class="ti ti-receipt" style="color:var(--amber)"></i> Custos do trabalhador (você paga)</div>
       <div class="doc-list">
         <div class="doc-item"><i class="ti ti-coin" style="color:var(--amber)"></i><span>Taxa consular MRV</span><span>US$ 205 (~R$ 1.100–1.300)</span></div>
+        <div class="doc-item"><i class="ti ti-coin" style="color:var(--amber)"></i><span>Taxa de Integridade do Visto (nova)</span><span>US$ 250 (~R$ 1.350–1.600)</span></div>
         <div class="doc-item"><i class="ti ti-passport" style="color:var(--t2)"></i><span>Passaporte (se não tiver)</span><span>R$ 257,25 (normal) / R$ 515,50 (urgente)</span></div>
         <div class="doc-item"><i class="ti ti-map-pin" style="color:var(--t2)"></i><span>Deslocamento para o consulado</span><span>Varia conforme sua cidade</span></div>
         <div class="doc-item"><i class="ti ti-plane" style="color:var(--blue)"></i><span>Passagem aérea para os EUA</span><span>R$ 3.000–7.000 (ida)</span></div>
       </div>
+      <div style="margin-top:14px" class="warn-box warn-amber">
+        <i class="ti ti-alert-triangle"></i>
+        <div><strong>Taxa nova desde outubro/2025:</strong> a "Visa Integrity Fee" de US$ 250 foi criada pela lei federal conhecida como One Big Beautiful Bill Act (Lei Pública 119-21, sancionada em 04/07/2025) e passou a ser cobrada na <strong>emissão</strong> do visto (depois da entrevista aprovada), não junto com a taxa MRV. A lei prevê reembolso em casos específicos de cumprimento total das regras do visto, mas o processo ainda não está claro na prática. Confirme o valor exato e a forma de cobrança no site oficial <em>travel.state.gov</em> antes de planejar seu orçamento — a aplicação está sendo implantada de forma gradual, posto a posto.</div>
+      </div>
+      <div class="source-note">Fontes: Departamento de Estado dos EUA — <a href="https://travel.state.gov/content/travel/en/us-visas/visa-information-resources/fees/fees-visa-services.html" target="_blank" rel="noopener noreferrer">Fees for Visa Services (travel.state.gov)</a>; One Big Beautiful Bill Act, Lei Pública 119-21 (04/07/2025).</div>
       <div style="margin-top:14px" class="warn-box warn-green">
         <i class="ti ti-info-circle"></i>
         <div><strong>No H-2A:</strong> O empregador é frequentemente responsável pela passagem de ida ou pelo reembolso após o início do trabalho. Confirme isso no contrato antes de comprar.</div>
