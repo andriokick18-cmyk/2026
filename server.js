@@ -7352,21 +7352,28 @@ const server=http.createServer(async(req,res)=>{
 <title>Excluir Conta — H2BApply</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1e293b;background:#f8fafc;line-height:1.7}
+:root{
+  --bg:#0d0f1a;--surface:#161928;--sf2:#1c1f35;
+  --border:rgba(139,92,246,0.18);
+  --text:#e8eaf6;--t2:#a5a8cc;--t3:#7c7fb5;
+  --blue:#3b82f6;
+  --amberl:rgba(245,158,11,.16);--amberb:rgba(245,158,11,.36);
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--text);background:var(--bg);line-height:1.7}
 .container{max-width:640px;margin:0 auto;padding:40px 20px}
 .logo{display:flex;align-items:center;gap:12px;margin-bottom:32px}
 .logo-icon{width:48px;height:48px;background:linear-gradient(135deg,#4f46e5,#0891b2);border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;font-weight:800}
-h1{font-size:26px;font-weight:800;color:#1e293b;margin-bottom:8px}
-h2{font-size:16px;font-weight:700;color:#374151;margin:24px 0 8px}
-p{font-size:14px;color:#4b5563;margin-bottom:12px}
-ul{font-size:14px;color:#4b5563;margin:0 0 12px 20px}
+h1{font-size:26px;font-weight:800;color:var(--text);margin-bottom:8px}
+h2{font-size:16px;font-weight:700;color:var(--text);margin:24px 0 8px}
+p{font-size:14px;color:var(--t2);margin-bottom:12px}
+ul{font-size:14px;color:var(--t2);margin:0 0 12px 20px}
 ul li{margin-bottom:6px}
-.card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:24px;margin-bottom:20px}
-.warning{background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:14px;font-size:13px;color:#991b1b;margin-bottom:20px}
-.email-link{color:#4f46e5;font-weight:700}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:20px}
+.warning{background:var(--amberl);border:1.5px solid var(--amberb);border-radius:10px;padding:14px;font-size:13px;color:#fcd34d;margin-bottom:20px}
+.email-link{color:var(--blue);font-weight:700}
 .btn{display:inline-block;background:#4f46e5;color:#fff;padding:11px 24px;border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;margin-top:8px}
-.footer{text-align:center;margin-top:40px;font-size:12px;color:#94a3b8}
-.date{font-size:12px;color:#94a3b8;margin-top:4px}
+.footer{text-align:center;margin-top:40px;font-size:12px;color:var(--t3)}
+.date{font-size:12px;color:var(--t3);margin-top:4px}
 </style>
 </head>
 <body>
@@ -7374,13 +7381,13 @@ ul li{margin-bottom:6px}
   <div class="logo">
     <div class="logo-icon">H</div>
     <div>
-      <div style="font-size:20px;font-weight:800">H2BApply</div>
+      <div style="font-size:20px;font-weight:800;color:var(--text)">H2BApply</div>
       <div class="date">h2bapply.com</div>
     </div>
   </div>
 
   <h1>Exclusão de Conta e Dados</h1>
-  <p style="color:#64748b;margin-bottom:24px">Esta página explica o que acontece de verdade quando você pede pra excluir sua conta no H2BApply — e como pedir.</p>
+  <p style="color:var(--t2);margin-bottom:24px">Esta página explica o que acontece de verdade quando você pede pra excluir sua conta no H2BApply — e como pedir.</p>
 
   <div class="warning">
     ⚠️ <strong>Atenção:</strong> ao excluir sua conta, o acesso ao seu Gmail é revogado na hora, sua sessão é encerrada e a conta é <strong>desativada</strong> — some do app e de qualquer lista pública, e o envio automático para. Seu histórico de candidaturas e seus registros de pagamento são <strong>mantidos</strong> mesmo depois disso, por exigência da legislação brasileira (detalhes na nossa <a href="/privacidade" class="email-link">Política de Privacidade</a>, seção 6). A remoção definitiva desses dados é um pedido separado, feito pelo canal de contato abaixo.
@@ -7456,23 +7463,32 @@ ul li{margin-bottom:6px}
 <title>Contato — H2BApply</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1e293b;background:#f8fafc;line-height:1.7}
+  :root{
+    --bg:#0d0f1a;--surface:#161928;
+    --border:rgba(139,92,246,0.18);
+    --text:#e8eaf6;--t2:#a5a8cc;--t3:#7c7fb5;
+    --blue:#3b82f6;--bluel:rgba(59,130,246,.14);--blueb:rgba(59,130,246,.32);
+    --greenl:rgba(16,185,129,.13);
+    --purplel:rgba(139,92,246,.13);
+    --amberl:rgba(245,158,11,.16);--amberb:rgba(245,158,11,.36);
+  }
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--text);background:var(--bg);line-height:1.7}
   .container{max-width:600px;margin:0 auto;padding:40px 20px}
   .logo{display:flex;align-items:center;gap:12px;margin-bottom:32px}
   .logo-icon{width:48px;height:48px;background:linear-gradient(135deg,#4f46e5,#0891b2);border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:24px;font-weight:800}
-  .logo-text{font-size:22px;font-weight:800;color:#1e293b}
-  h1{font-size:28px;font-weight:800;color:#1e293b;margin-bottom:8px}
-  .sub{font-size:14px;color:#64748b;margin-bottom:28px}
-  .card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:28px;margin-bottom:16px}
-  .contact-item{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid #f1f5f9}
+  .logo-text{font-size:22px;font-weight:800;color:var(--text)}
+  h1{font-size:28px;font-weight:800;color:var(--text);margin-bottom:8px}
+  .sub{font-size:14px;color:var(--t2);margin-bottom:28px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;margin-bottom:16px}
+  .contact-item{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--border)}
   .contact-item:last-child{border-bottom:none}
   .contact-icon{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
-  .contact-label{font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em}
-  .contact-value{font-size:15px;font-weight:600;color:#1e293b}
-  .contact-value a{color:#4f46e5;text-decoration:none}
-  .footer{text-align:center;margin-top:32px;font-size:13px;color:#94a3b8}
+  .contact-label{font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.05em}
+  .contact-value{font-size:15px;font-weight:600;color:var(--text)}
+  .contact-value a{color:var(--blue);text-decoration:none}
+  .footer{text-align:center;margin-top:32px;font-size:13px;color:var(--t3)}
   .back-btn{display:inline-flex;align-items:center;gap:6px;background:#4f46e5;color:#fff;padding:10px 20px;border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;margin-bottom:24px}
-  .badge{display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;color:#1d4ed8;margin-bottom:20px}
+  .badge{display:inline-block;background:var(--bluel);border:1px solid var(--blueb);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;color:#93c5fd;margin-bottom:20px}
 </style>
 </head>
 <body>
@@ -7487,40 +7503,40 @@ ul li{margin-bottom:6px}
   <p class="sub">Estamos aqui para ajudar com dúvidas sobre o app, planos ou candidaturas.</p>
   <div class="card">
     <div class="contact-item">
-      <div class="contact-icon" style="background:#eff6ff">📧</div>
+      <div class="contact-icon" style="background:var(--bluel)">📧</div>
       <div>
         <div class="contact-label">Email de suporte</div>
         <div class="contact-value"><a href="mailto:suporte@h2bapply.com">suporte@h2bapply.com</a></div>
       </div>
     </div>
     <div class="contact-item">
-      <div class="contact-icon" style="background:#f0fdf4">💬</div>
+      <div class="contact-icon" style="background:var(--greenl)">💬</div>
       <div>
         <div class="contact-label">WhatsApp</div>
         <div class="contact-value"><a href="https://wa.me/5553981453496" target="_blank">+55 53 98145-3496</a></div>
       </div>
     </div>
     <div class="contact-item">
-      <div class="contact-icon" style="background:#fdf4ff">📸</div>
+      <div class="contact-icon" style="background:var(--purplel)">📸</div>
       <div>
         <div class="contact-label">Instagram</div>
         <div class="contact-value"><a href="https://instagram.com/andrio.k" target="_blank">@andrio.k</a></div>
       </div>
     </div>
     <div class="contact-item">
-      <div class="contact-icon" style="background:#fefce8">🌐</div>
+      <div class="contact-icon" style="background:var(--amberl)">🌐</div>
       <div>
         <div class="contact-label">Site</div>
         <div class="contact-value"><a href="https://h2bapply.com">h2bapply.com</a></div>
       </div>
     </div>
   </div>
-  <div class="card" style="background:#fefce8;border-color:#fde68a">
-    <h2 style="font-size:16px;color:#92400e;margin-bottom:10px">⚠️ Aviso sobre Gmail</h2>
-    <p style="font-size:14px;color:#78350f">O uso intensivo de uma única conta Gmail pode gerar bloqueio pelo Google. Manual e Turbo enviam pelo seu Gmail cadastrado (1 conta); o Máximo reveza entre 2 Gmails, o que reduz o volume por conta e o risco de bloqueio. <a href="/terms#gmail-aviso" style="color:#92400e;font-weight:700">Ver termos de uso →</a></p>
+  <div class="card" style="background:var(--amberl);border-color:var(--amberb)">
+    <h2 style="font-size:16px;color:#fcd34d;margin-bottom:10px">⚠️ Aviso sobre Gmail</h2>
+    <p style="font-size:14px;color:#fcd34d">O uso intensivo de uma única conta Gmail pode gerar bloqueio pelo Google. Manual e Turbo enviam pelo seu Gmail cadastrado (1 conta); o Máximo reveza entre 2 Gmails, o que reduz o volume por conta e o risco de bloqueio. <a href="/terms#gmail-aviso" style="color:#fcd34d;font-weight:700">Ver termos de uso →</a></p>
   </div>
   <div class="footer">
-    © 2026 H2BApply &nbsp;·&nbsp; <a href="/privacy" style="color:#94a3b8">Privacidade</a> &nbsp;·&nbsp; <a href="/terms" style="color:#94a3b8">Termos</a>
+    © 2026 H2BApply &nbsp;·&nbsp; <a href="/privacy" style="color:var(--t3)">Privacidade</a> &nbsp;·&nbsp; <a href="/terms" style="color:var(--t3)">Termos</a>
     <br><small>suporte@h2bapply.com</small>
   </div>
 </div>
