@@ -3283,7 +3283,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
               <div style="font-size:16px;font-weight:800" data-i18n="auto_confirm_btn">🚀 Confirmar Envio Automático</div>
               <div style="font-size:12px;color:var(--t3);margin-top:2px" id="pf-subtitle">–</div>
             </div>
-            <button aria-label="Fechar" title="Fechar" onclick="closePreflight()" style="background:none;border:none;cursor:pointer;color:var(--t3);padding:4px"><i class="ti ti-x" style="font-size:18px"></i></button>
+            <button class="mx-sm" aria-label="Fechar" title="Fechar" onclick="closePreflight()" style="background:none;border:none;cursor:pointer;color:var(--t3);padding:4px"><i class="ti ti-x" style="font-size:18px"></i></button>
           </div>
           <div class="mbody" style="padding:16px 16px 8px;overflow-y:auto;max-height:70dvh">
 
@@ -3931,7 +3931,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       <div class="vf-hd-t" id="vf-title">🔍 Filtrar vagas</div>
       <div style="display:flex;align-items:center;gap:6px">
         <button type="button" class="btn btn-secondary btn-sm" id="vf-clear" onclick="vfClearDraft()" data-i18n="vf_clear">Limpar tudo</button>
-        <button type="button" aria-label="Fechar" title="Fechar" onclick="vfClose()" style="background:none;border:none;cursor:pointer;color:var(--t3);padding:6px;min-width:36px;min-height:36px"><i class="ti ti-x" style="font-size:18px"></i></button>
+        <button type="button" class="mx-sm" aria-label="Fechar" title="Fechar" onclick="vfClose()" style="background:none;border:none;cursor:pointer;color:var(--t3);padding:6px"><i class="ti ti-x" style="font-size:18px"></i></button>
       </div>
     </div>
     <div class="vf-body" id="vf-body"></div>
@@ -4430,7 +4430,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
         <div style="font-size:17px;font-weight:800;color:var(--text);line-height:1.3;margin-bottom:3px" id="ld-title">–</div>
         <div style="font-size:13px;color:var(--t2);font-weight:600;display:flex;align-items:center;gap:5px"><i class="ti ti-building" style="font-size:12px"></i><span id="ld-company">–</span></div>
       </div>
-      <button aria-label="Fechar" title="Fechar" onclick="closeLogDetail()" style="background:var(--sf2);border:none;border-radius:50%;width:32px;height:32px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--t2)"><i class="ti ti-x" style="font-size:16px"></i></button>
+      <button class="mx-sm" aria-label="Fechar" title="Fechar" onclick="closeLogDetail()" style="background:var(--sf2);border:none;border-radius:50%;width:32px;height:32px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--t2)"><i class="ti ti-x" style="font-size:16px"></i></button>
     </div>
     <div id="ld-body" style="flex:1;overflow-y:auto;padding:14px 18px;display:flex;flex-direction:column;gap:10px"></div>
   </div>
@@ -4925,6 +4925,7 @@ strong,b{font-weight:700;color:inherit}
   #tour-prev,#tour-next{min-height:44px;padding:12px 18px} /* eram 30px (.btn-xs) — navegação do tour de boas-vindas */
   .sf-soc{min-width:44px;min-height:44px} /* eram 24px — ícones sociais do rodapé fixo (achado de auditoria) */
   .ln-footer-soc-btn{min-width:44px;min-height:44px} /* eram 36px — ícones sociais do rodapé da landing (achado de auditoria) */
+  .mx-sm{min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center} /* eram ~26-36px — fechar Preflight/Filtros/Detalhe do Log (achado de auditoria) */
 }
 
 /* ══════════════════════════════════════════
