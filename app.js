@@ -1335,6 +1335,15 @@ function _vfBuildSecs(){
 // tela. Um listener só, registrado no carregamento.
 document.addEventListener("DOMContentLoaded",()=>{
   document.addEventListener("keydown",(e)=>{
+    // 🦯 v257 (achado de auditoria — Média): <div role="button" tabindex="0">
+    // (cards da Home, incl. #home-auto-card) ficava FOCÁVEL por Tab mas Enter/
+    // Espaço não ativavam nada — diferente de um <button> nativo, um <div> não
+    // dispara onclick nessas teclas sozinho. Delegado aqui (1 listener só, o
+    // mesmo já usado pro Escape) pra valer pra qualquer role="button" atual ou
+    // futuro, sem precisar de onkeydown repetido em cada card.
+    if((e.key==="Enter"||e.key===" ")&&e.target?.getAttribute?.("role")==="button"){
+      e.preventDefault();e.target.click();return;
+    }
     if(e.key!=="Escape")return;
     const ov=g("#vf-overlay");
     if(ov&&!ov.classList.contains("gone")){e.preventDefault();vfClose();return;}

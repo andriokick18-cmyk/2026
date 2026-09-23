@@ -2590,22 +2590,22 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <!-- ══ STATS — 4 cards honestos (nunca inventa "respostas recebidas": app não lê inbox) ══ -->
           <div style="padding:16px 14px 0">
             <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px">
-              <div class="home-stat-card" onclick="sv('jobs')" style="cursor:pointer;border-radius:16px;padding:16px 4px 13px;text-align:center;background:var(--surface);border:1.5px solid var(--border);box-shadow:0 4px 14px rgba(15,23,42,.05)">
+              <div class="home-stat-card" onclick="sv('jobs')" role="button" tabindex="0" aria-label="Ver vagas disponíveis" style="cursor:pointer;border-radius:16px;padding:16px 4px 13px;text-align:center;background:var(--surface);border:1.5px solid var(--border);box-shadow:0 4px 14px rgba(15,23,42,.05)">
                 <div style="font-size:20px;line-height:1;margin-bottom:7px">💼</div>
                 <div style="color:var(--blue);font-size:20px;font-weight:900" id="home-stat-jobs">–</div>
                 <div style="font-size:9.5px;color:var(--t3);font-weight:800;text-transform:uppercase;letter-spacing:.03em;margin-top:4px;line-height:1.25" data-i18n="home_stat_jobs">Vagas Disponíveis</div>
               </div>
-              <div class="home-stat-card" onclick="sv('hist')" style="cursor:pointer;border-radius:16px;padding:16px 4px 13px;text-align:center;background:var(--surface);border:1.5px solid var(--border);box-shadow:0 4px 14px rgba(15,23,42,.05)">
+              <div class="home-stat-card" onclick="sv('hist')" role="button" tabindex="0" aria-label="Ver e-mails enviados" style="cursor:pointer;border-radius:16px;padding:16px 4px 13px;text-align:center;background:var(--surface);border:1.5px solid var(--border);box-shadow:0 4px 14px rgba(15,23,42,.05)">
                 <div style="font-size:20px;line-height:1;margin-bottom:7px">✈️</div>
                 <div style="color:var(--green);font-size:20px;font-weight:900" id="home-stat-total">–</div>
                 <div style="font-size:9.5px;color:var(--t3);font-weight:800;text-transform:uppercase;letter-spacing:.03em;margin-top:4px;line-height:1.25" data-i18n="home_stat_emails">E-mails Enviados</div>
               </div>
-              <div class="home-stat-card" onclick="sv('hist')" style="cursor:pointer;border-radius:16px;padding:16px 4px 13px;text-align:center;background:var(--surface);border:1.5px solid var(--border);box-shadow:0 4px 14px rgba(15,23,42,.05)">
+              <div class="home-stat-card" onclick="sv('hist')" role="button" tabindex="0" aria-label="Ver empresas contatadas" style="cursor:pointer;border-radius:16px;padding:16px 4px 13px;text-align:center;background:var(--surface);border:1.5px solid var(--border);box-shadow:0 4px 14px rgba(15,23,42,.05)">
                 <div style="font-size:20px;line-height:1;margin-bottom:7px">🏢</div>
                 <div style="color:#ef4444;font-size:20px;font-weight:900" id="home-stat-companies">–</div>
                 <div style="font-size:9.5px;color:var(--t3);font-weight:800;text-transform:uppercase;letter-spacing:.03em;margin-top:4px;line-height:1.25" data-i18n="home_stat_companies">Empresas Contatadas</div>
               </div>
-              <div class="home-stat-card" onclick="openAutoModal()" style="cursor:pointer;border-radius:16px;padding:16px 4px 13px;text-align:center;background:var(--surface);border:1.5px solid var(--border);box-shadow:0 4px 14px rgba(15,23,42,.05)">
+              <div class="home-stat-card" onclick="openAutoModal()" role="button" tabindex="0" aria-label="Abrir Envio Automático" style="cursor:pointer;border-radius:16px;padding:16px 4px 13px;text-align:center;background:var(--surface);border:1.5px solid var(--border);box-shadow:0 4px 14px rgba(15,23,42,.05)">
                 <div style="font-size:20px;line-height:1;margin-bottom:7px">🤖</div>
                 <div style="color:var(--purple);font-size:20px;font-weight:900" id="home-stat-auto">–</div>
                 <div style="font-size:9.5px;color:var(--t3);font-weight:800;text-transform:uppercase;letter-spacing:.03em;margin-top:4px;line-height:1.25" data-i18n="auto_send">Envio Automático</div>
