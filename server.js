@@ -3838,8 +3838,8 @@ function renderStatePage(entry,topCats,overallCount){
 <meta name="twitter:description" content="${fmtN(count)} vagas H-2B/H-2A certificadas pelo DOL em ${titleCase}, salário médio ${fmtUsd(avgWage)}/hora.">
 <meta name="twitter:image" content="https://h2bapply.com/og-image.png">
 <link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=3">
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=3">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=4">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=4">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&family=Sora:wght@700;800&display=swap" rel="stylesheet">
 <link rel="preload" as="style" href="/vendor/tabler-icons.min.css" onload="this.onload=null;this.rel='stylesheet'" onerror="this.onerror=null;this.href='/vendor/tabler-icons.min.css';this.rel='stylesheet'">
@@ -3894,7 +3894,7 @@ footer a{color:var(--blue);font-weight:600}
 </head>
 <body>
 <header class="top-bar">
-  <a href="/" class="logo-row"><img src="/apple-touch-icon.png" alt="H2BApply logo"><span>H2BApply</span></a>
+  <a href="/" class="logo-row"><img src="/apple-touch-icon.png?v=4" alt="H2BApply logo"><span>H2BApply</span></a>
   <a href="/?cadastro=1" class="btn-login" onclick="gtag('event','sign_up_intent',{method:'password',source:'vagas-h2b-${entry.slug}-nav'})"><i class="ti ti-rocket"></i> Começar grátis</a>
 </header>
 <section class="hero">
@@ -3999,8 +3999,8 @@ function renderCategoryPage(entry,topStates,overallCount){
 <meta name="twitter:description" content="${fmtN(count)} vagas H-2B/H-2A certificadas pelo DOL na área de ${catName}, salário médio ${fmtUsd(avgWage)}/hora.">
 <meta name="twitter:image" content="https://h2bapply.com/og-image.png">
 <link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=3">
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=3">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=4">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=4">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&family=Sora:wght@700;800&display=swap" rel="stylesheet">
 <link rel="preload" as="style" href="/vendor/tabler-icons.min.css" onload="this.onload=null;this.rel='stylesheet'" onerror="this.onerror=null;this.href='/vendor/tabler-icons.min.css';this.rel='stylesheet'">
@@ -4055,7 +4055,7 @@ footer a{color:var(--blue);font-weight:600}
 </head>
 <body>
 <header class="top-bar">
-  <a href="/" class="logo-row"><img src="/apple-touch-icon.png" alt="H2BApply logo"><span>H2BApply</span></a>
+  <a href="/" class="logo-row"><img src="/apple-touch-icon.png?v=4" alt="H2BApply logo"><span>H2BApply</span></a>
   <a href="/?cadastro=1" class="btn-login" onclick="gtag('event','sign_up_intent',{method:'password',source:'vagas-h2b-cat-${catKey}-nav'})"><i class="ti ti-rocket"></i> Começar grátis</a>
 </header>
 <section class="hero">
@@ -6827,8 +6827,9 @@ const server=http.createServer(async(req,res)=>{
   // SANITIZADO (só [a-z0-9-].jpg), nunca traversal.
   if(pathname.startsWith("/img/")){
     const nomeImg=pathname.slice("/img/".length);
-    if(!/^[a-z0-9-]+\.jpg$/.test(nomeImg)){res.writeHead(404);return res.end();}
-    try{const img=fs.readFileSync(path.join(__dirname,"img",nomeImg));res.writeHead(200,{"Content-Type":"image/jpeg","Cache-Control":"public, max-age=604800"});return res.end(img);}catch{res.writeHead(404);return res.end();}
+    const mImg=/^[a-z0-9-]+\.(jpg|png)$/.exec(nomeImg);
+    if(!mImg){res.writeHead(404);return res.end();}
+    try{const img=fs.readFileSync(path.join(__dirname,"img",nomeImg));res.writeHead(200,{"Content-Type":mImg[1]==="png"?"image/png":"image/jpeg","Cache-Control":"public, max-age=604800"});return res.end(img);}catch{res.writeHead(404);return res.end();}
   }
   if(pathname==="/h2bapply-funciona"||pathname==="/h2bapply-funciona.html")return serveHtml("h2bapply-funciona.html"); // SEO: página "H2BApply funciona?" (como funciona, confiança, preços, FAQ)
   if(pathname==="/h2b-e-golpe"||pathname==="/h2b-e-golpe.html")return serveHtml("h2b-e-golpe.html"); // SEO/confiança: página "H2B é golpe?" — golpes comuns, regra federal anti-taxa-de-recrutamento, como verificar vaga real
