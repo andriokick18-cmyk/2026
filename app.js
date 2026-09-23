@@ -3217,6 +3217,7 @@ let profilePdfBase64=null,profilePdfName=null,profilePdfSize=0;
 // da string, só compara com essas constantes.
 let profilePdfFile=null;
 let peSubjects=[],peBodies=[];
+let peLastFocusedSubj=null; // 🐛 v254: índice do campo de assunto realmente focado — peInsertSubjVar() inseria sempre no ÚLTIMO campo, ignorando qual a pessoa estava editando
 // v15: índices ativos de currículo/cover selecionados na lista da conta
 let _peResIdx=null,_peCoverIdx=null;
 
@@ -3377,7 +3378,7 @@ function peRenderSubjects(){
         <span style="font-size:11px;font-weight:800;color:var(--t2)">Título ${i+1}${i<3?' <span style="color:var(--red)">*</span>':' <span style="color:var(--t3);font-weight:600">(extra)</span>'}</span>
         ${i>=3?`<button type="button" aria-label="Remover título" title="Remover título" onclick="peRemoveSubject(${i})" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:12px;padding:0 4px"><i class="ti ti-trash"></i></button>`:""}
       </div>
-      <input class="input" style="font-size:13px" value="${esc(s)}" oninput="peSubjects[${i}]=this.value;peUpdateSubjPreview();peRenderSubjCount()" placeholder="Ex.: Application for {vaga} — {nome}">
+      <input class="input" style="font-size:13px" value="${esc(s)}" oninput="peSubjects[${i}]=this.value;peUpdateSubjPreview();peRenderSubjCount()" onfocus="peLastFocusedSubj=${i}" placeholder="Ex.: Application for {vaga} — {nome}">
     </div>`).join("");
   peUpdateSubjPreview();
   const warn=g("#pe-subjects-warn");if(warn)warn.style.display="none";
@@ -3391,12 +3392,19 @@ function peAddSubject(){
 function peRemoveSubject(i){if(i<3){toast("Os 3 primeiros títulos são obrigatórios","r");return;}peSubjects.splice(i,1);peRenderSubjects();}
 function peInsertSubjVar(v){
   const inputs=g("#pe-subjects-list").querySelectorAll("input");
-  const last=inputs[inputs.length-1];if(!last)return;
-  const s=last.selectionStart,e=last.selectionEnd;
-  last.value=last.value.slice(0,s)+v+last.value.slice(e);
-  last.selectionStart=last.selectionEnd=s+v.length;
-  peSubjects[peSubjects.length-1]=last.value;
-  peRenderSubjects();
+  if(!inputs.length)return;
+  // 🐛 v254: usa o campo que a pessoa realmente estava editando (onfocus grava
+  // o índice em peLastFocusedSubj) — clicar no botão de variável tira o foco
+  // do input ANTES do onclick rodar, então document.activeElement já não serve;
+  // sem nenhum campo focado ainda (1ª ação da tela), cai no último como sempre foi.
+  const idx=(peLastFocusedSubj!=null&&peLastFocusedSubj>=0&&peLastFocusedSubj<inputs.length)?peLastFocusedSubj:inputs.length-1;
+  const alvo=inputs[idx];
+  const s=alvo.selectionStart??alvo.value.length,e=alvo.selectionEnd??alvo.value.length;
+  alvo.value=alvo.value.slice(0,s)+v+alvo.value.slice(e);
+  alvo.selectionStart=alvo.selectionEnd=s+v.length;
+  alvo.focus();
+  peSubjects[idx]=alvo.value;
+  peUpdateSubjPreview();peRenderSubjCount();
 }
 function peUpdateSubjPreview(){
   const wrap=g("#pe-subj-preview-wrap"),txt=g("#pe-subj-preview-text");if(!wrap||!txt)return;
