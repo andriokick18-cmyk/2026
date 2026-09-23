@@ -400,11 +400,9 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 /* ══════════ APP ══════════ */
 #app{display:none;flex-direction:column;height:100dvh;overflow:hidden}
 /* Header */
-.app-hdr{background:linear-gradient(90deg,#ffffff 0%,#f5f7ff 60%,#edf0ff 100%);border-bottom:1px solid rgba(99,102,241,.18);padding:0 13px;height:52px;display:flex;align-items:center;gap:9px;flex-shrink:0;z-index:50;box-shadow:0 2px 12px rgba(99,102,241,.08)}
 .app-logo-icon{width:28px;height:28px;background:#0a1226;border-radius:7px;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;box-shadow:0 2px 8px rgba(79,70,229,.35)}
 .app-logo-icon img{width:100%;height:100%;object-fit:cover;display:block}
 .app-logo-text{font-family:'Sora',sans-serif;font-size:16px;font-weight:900;letter-spacing:-.02em;background:linear-gradient(135deg,#7c3aed,#a855f7 60%,#c084fc);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:#7c3aed}
-.hdr-right{margin-left:auto;display:flex;align-items:center;gap:7px}
 
 
 
@@ -1636,9 +1634,10 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
   border-bottom:1px solid var(--border);
   padding:0 14px;height:56px;
   display:flex;align-items:center;gap:8px;
+  flex-shrink:0;
   box-shadow:0 1px 8px rgba(0,0,0,.06);
 }
-.hdr-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-shrink:0}
 
 /* Avatar no header — estilo Instagram */
 
