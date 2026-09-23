@@ -6962,7 +6962,7 @@ const LANG_DICT = {
     "logs_auto_title":"📋 Logs do Envio Automático","logs_auto_sub":"Histórico completo de todos os envios automáticos",
     // 🌐 Etapa 1 do i18n profissional (12/08)
     "home_welcome":"Bem-vindo(a) de volta! Pronto para enviar muitas candidaturas hoje?",
-    "home_hero_badge":"Vagas sazonais em todo os EUA","home_hero_h1a":"Trabalhe nos EUA","home_hero_h1b":"com mais oportunidades",
+    "home_hero_badge":"Vagas sazonais em todos os EUA","home_hero_h1a":"Trabalhe nos EUA","home_hero_h1b":"com mais oportunidades",
     "home_stat_jobs":"Vagas Disponíveis","home_stat_companies":"Empresas Contatadas","home_stat_emails":"E-mails Enviados",
     "home_activity_title":"Atividade Recente","home_tips_title":"Dicas para mais respostas",
     "home_tip1":"Use um currículo em inglês claro e objetivo.","home_tip2":"Envie para muitas vagas — o volume aumenta suas chances.",
