@@ -257,19 +257,19 @@ footer a{color:var(--blue);font-weight:600}
     </div>
     <div class="faq-list">
       <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">Quem define o salário de uma vaga H-2B ou H-2A?<i class="ti ti-chevron-down faq-arrow"></i></button>
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">Quem define o salário de uma vaga H-2B ou H-2A?<i class="ti ti-chevron-down faq-arrow"></i></button>
         <div class="faq-a"><div class="faq-a-inner">O Departamento do Trabalho dos EUA (DOL) certifica, antes da vaga ser anunciada, o salário mínimo obrigatório para aquela função e região (prevailing wage / AEWR). O empregador não pode pagar menos que esse valor.</div></div>
       </div>
       <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">Os números desta página são reais ou estimados?<i class="ti ti-chevron-down faq-arrow"></i></button>
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">Os números desta página são reais ou estimados?<i class="ti ti-chevron-down faq-arrow"></i></button>
         <div class="faq-a"><div class="faq-a-inner">São calculados ao vivo a partir das planilhas públicas de certificação do DOL — a mesma base de dados usada na busca de vagas dentro do H2BApply. Não são números fixos nem estimativas de mercado.</div></div>
       </div>
       <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">Posso negociar um salário maior que o certificado?<i class="ti ti-chevron-down faq-arrow"></i></button>
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">Posso negociar um salário maior que o certificado?<i class="ti ti-chevron-down faq-arrow"></i></button>
         <div class="faq-a"><div class="faq-a-inner">O valor certificado é o piso obrigatório, não um teto — mas negociação acima dele depende inteiramente do empregador específico. A maioria das vagas paga exatamente o valor certificado.</div></div>
       </div>
       <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">O salário é o mesmo em todo o país?<i class="ti ti-chevron-down faq-arrow"></i></button>
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">O salário é o mesmo em todo o país?<i class="ti ti-chevron-down faq-arrow"></i></button>
         <div class="faq-a"><div class="faq-a-inner">Não. O valor certificado varia por estado, região e função — por isso esta página mostra a média separada por categoria de trabalho e por estado.</div></div>
       </div>
     </div>
@@ -311,10 +311,12 @@ function toggleFaq(btn) {
   const isOpen = btn.classList.contains('open');
   document.querySelectorAll('.faq-q.open').forEach(q => {
     q.classList.remove('open');
+    q.setAttribute('aria-expanded', 'false');
     q.closest('.faq-item').querySelector('.faq-a').style.maxHeight = '0';
   });
   if (!isOpen) {
     btn.classList.add('open');
+    btn.setAttribute('aria-expanded', 'true');
     answer.style.maxHeight = answer.scrollHeight + 'px';
   }
 }

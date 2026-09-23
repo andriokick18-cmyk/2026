@@ -784,7 +784,7 @@ html{scroll-padding-top:72px}
 
     <div class="faq-list">
       <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
           Preciso saber inglês para tirar o visto H-2B ou H-2A?
           <i class="ti ti-chevron-down faq-arrow"></i>
         </button>
@@ -795,7 +795,7 @@ html{scroll-padding-top:72px}
         </div>
       </div>
       <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
           Tenho visto negado no passado. Posso tentar o H-2B?
           <i class="ti ti-chevron-down faq-arrow"></i>
         </button>
@@ -806,7 +806,7 @@ html{scroll-padding-top:72px}
         </div>
       </div>
       <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
           Posso levar minha família comigo nos EUA?
           <i class="ti ti-chevron-down faq-arrow"></i>
         </button>
@@ -817,7 +817,7 @@ html{scroll-padding-top:72px}
         </div>
       </div>
       <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
           Posso trocar de empregador dentro dos EUA?
           <i class="ti ti-chevron-down faq-arrow"></i>
         </button>
@@ -828,7 +828,7 @@ html{scroll-padding-top:72px}
         </div>
       </div>
       <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
           Qual é o prazo total do processo, do início à chegada nos EUA?
           <i class="ti ti-chevron-down faq-arrow"></i>
         </button>
@@ -839,7 +839,7 @@ html{scroll-padding-top:72px}
         </div>
       </div>
       <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
           Posso renovar o visto e voltar em outra temporada?
           <i class="ti ti-chevron-down faq-arrow"></i>
         </button>
@@ -850,7 +850,7 @@ html{scroll-padding-top:72px}
         </div>
       </div>
       <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
           Como encontro um empregador americano que patrocine meu visto?
           <i class="ti ti-chevron-down faq-arrow"></i>
         </button>
@@ -861,7 +861,7 @@ html{scroll-padding-top:72px}
         </div>
       </div>
       <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
           O visto H-2B tem cotas — e se acabar antes do meu pedido?
           <i class="ti ti-chevron-down faq-arrow"></i>
         </button>
@@ -872,7 +872,7 @@ html{scroll-padding-top:72px}
         </div>
       </div>
       <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
           Posso trabalhar como autônomo ou abrir empresa com esses vistos?
           <i class="ti ti-chevron-down faq-arrow"></i>
         </button>
@@ -972,12 +972,14 @@ function toggleFaq(btn) {
   // Close all
   document.querySelectorAll('.faq-q.open').forEach(q => {
     q.classList.remove('open');
+    q.setAttribute('aria-expanded', 'false');
     q.closest('.faq-item').querySelector('.faq-a').style.maxHeight = '0';
   });
 
   // Open this one if it was closed
   if (!isOpen) {
     btn.classList.add('open');
+    btn.setAttribute('aria-expanded', 'true');
     answer.style.maxHeight = answer.scrollHeight + 'px';
   }
 }
