@@ -6496,6 +6496,13 @@ async function drillBloqueioComprasNovas() {
     // devolvia os e-mails de 2.000 empregadores em texto puro — 5 requisições
     // e qualquer um levava os 9.240 da planilha inteira. A regra "ZERO envio
     // grátis" protegia o ENVIO; a lista de contatos estava aberta.
+    // 🔓 v277 (dono, 23/09/2026): "free NUNCA pode enviar, mas o e-mail tem
+    // que estar disponível pra pessoa copiar se ela quiser" — o LOTE 10
+    // tinha ido longe demais gateando o endereço a isVipActive, misturando
+    // "não pode enviar pelo app" (regra de sempre) com "não pode ver o
+    // contato". Agora só quem NÃO TEM CONTA NENHUMA (scraper sem cookie)
+    // continua vendo mascarado — qualquer sessão logada, free inclusive, vê
+    // o endereço completo.
     // ══════════════════════════════════════════════════════════════════════
     {
       const URL10 = "/api/sheet-meta?sheet=jan2026&top=3&email=1&hideSent=0";
@@ -6511,17 +6518,27 @@ async function drillBloqueioComprasNovas() {
       check("🔒 v182-L10: SEM cookie nenhum (scraper) o endereço sai MASCARADO — e `hasEmail` continua true, porque é dele que a tela, a contagem e o 'só com e-mail' dependem, nunca do texto do endereço",
         anon && anon.jobs.length === 3 && anon.jobs.every((j) => _mascarado(j.email) && j.hasEmail === true && j.emailBloqueado === true),
         JSON.stringify(anon && anon.jobs.map((j) => j.email)));
-      check("🔒 v182-L10: sessão GRÁTIS também recebe mascarado (é o mesmo ativo que o cliente paga pra ter) — na aba, o card mostra '🔒 liberado com plano ativo' em vez do texto mascarado cru",
-        gratis.jobs.every((j) => _mascarado(j.email) && j.hasEmail === true),
-        JSON.stringify({ lista: gratis.jobs[0].email }));
+      check("🔓 v277: sessão GRÁTIS (logada, mas sem plano) recebe o endereço COMPLETO — free não pode ENVIAR pelo app (gate separado, continua valendo), mas pode VER e copiar o contato do empregador",
+        gratis.jobs.every((j) => j.email && !j.email.includes("•") && j.email.includes("@") && !j.emailBloqueado && j.hasEmail === true),
+        JSON.stringify({ lista: gratis.jobs[0].email, bloqueado: gratis.jobs[0].emailBloqueado }));
       check("🔒 v182-L10: sessão com PLANO ATIVO recebe o endereço COMPLETO na lista (é com ele que o modal de envio manual é preenchido)",
         pagante.jobs.every((j) => j.email && !j.email.includes("•") && j.email.includes("@") && !j.emailBloqueado),
         JSON.stringify({ lista: pagante.jobs[0].email }));
-      check("🔒 v182-L10: admin recebe completo (opera o site) e o CONJUNTO devolvido é idêntico nos 4 casos — mascarar não muda a contagem, nem a ordem, nem quem entra na lista",
+      check("🔒 v182-L10 + v277: admin recebe completo e o CONJUNTO devolvido é idêntico nos 4 casos — mascarar (só o anônimo, agora) não muda a contagem, nem a ordem, nem quem entra na lista",
         admin.jobs.every((j) => j.email && !j.email.includes("•")) &&
         anon.total === gratis.total && gratis.total === pagante.total && pagante.total === admin.total &&
-        JSON.stringify(anon.jobs.map((j) => j.caseNum)) === JSON.stringify(pagante.jobs.map((j) => j.caseNum)),
+        JSON.stringify(anon.jobs.map((j) => j.caseNum)) === JSON.stringify(pagante.jobs.map((j) => j.caseNum)) &&
+        JSON.stringify(gratis.jobs.map((j) => j.email)) === JSON.stringify(pagante.jobs.map((j) => j.email)),
         `totais anon=${anon.total} gratis=${gratis.total} pagante=${pagante.total} admin=${admin.total}`);
+      // 🔓 v277: a prateleira "Pra Você" usa o MESMO podeVerEmailVaga — prova
+      // separada porque é o 2º (e único outro) consumidor da função.
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "gratis10@test.com" });
+      const pvGratis = await get("/api/jobs/pra-voce");
+      const _pvGratisJobs = pvGratis.json?.jobs || [];
+      check("🔓 v277: 'Pra Você' pra sessão GRÁTIS também devolve o e-mail COMPLETO (mesma régua da lista principal — podeVerEmailVaga não distingue mais free de VIP)",
+        pvGratis.json?.ok === true && _pvGratisJobs.length >= 1 &&
+        _pvGratisJobs.every((j) => j.email && !j.email.includes("•") && j.email.includes("@") && !j.emailBloqueado),
+        JSON.stringify({ n: _pvGratisJobs.length, primeiro: _pvGratisJobs[0]?.email }));
       // o filtro "só com e-mail" não pode depender do mascaramento
       const fAnon = (await getSemCookie("/api/vagas/filtros?sheet=jan2026&email=1")).json;
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "pagante10@test.com" });
@@ -6547,9 +6564,13 @@ async function drillBloqueioComprasNovas() {
       const _appL10 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
       check("🔒 v182-L10 (estrutural): a máscara é função ÚNICA (mascararEmail + podeVerEmailVaga) e está em TODA rota que devolve vaga com e-mail — lista e 'pra você' (v223: detalhe/lote/vagas ao vivo saíram do site — só planilhas a partir de agora)",
         _srvL10.includes("function mascararEmail(") && _srvL10.includes("function podeVerEmailVaga(") && _srvL10.includes("function jobComEmailVisivel(") &&
-        (_srvL10.match(/podeVerEmailVaga\(req\)/g) || []).length >= 2 && _srvL10.includes("isAdminVip(u) || isVipActive(u)") &&
+        (_srvL10.match(/podeVerEmailVaga\(req\)/g) || []).length >= 2 &&
         !/email:emailVal\|\|null/.test(_srvL10),
         "alguma rota voltou a devolver o e-mail cru");
+      check("🔓 v277 (estrutural): a régua mudou de 'plano ativo' pra 'sessão logada de verdade' — nem podeVerEmailVaga nem _verEmailMeta checam mais isAdminVip/isVipActive (só existência de sessão+usuário); o texto do gate antigo não pode voltar",
+        !_srvL10.includes("isAdminVip(u) || isVipActive(u)") && !/_verEmailMeta=!!\(_uMeta&&\(isAdminVip/.test(_srvL10) &&
+        _srvL10.includes("const _verEmailMeta=!!_uMeta;"),
+        "o gate voltou a exigir plano pago pra ver o e-mail");
       check("🔒 v182-L10 (estrutural): a fila do robô é montada com a LINHA REAL do servidor (não com o JSON da tela) e endereço mascarado nunca entra nela",
         _srvL10.includes('let emailRaw = (rowPri?.e||"").trim() || (meta.email||"").trim()') && _srvL10.includes('if(emailRaw.includes("•")) emailRaw = "";') &&
         _appL10.includes("email_locked") && _appL10.includes("j.hasEmail&&j.emailBloqueado"),

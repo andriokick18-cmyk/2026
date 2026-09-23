@@ -1814,11 +1814,20 @@ function _vagaSnapshot(r,verEmail){
 // devolvia os e-mails de 2.000 empregadores em texto puro — 5 requisições e
 // qualquer scraper levava os 9.240 da planilha inteira. A regra "ZERO envio
 // grátis" protegia o ENVIO; a lista de contatos estava aberta.
-// Agora o endereço COMPLETO só viaja pra sessão com plano ativo (isVipActive)
-// ou admin. Pra visitante/grátis vai mascarado ("k••••@gmail.com") com
-// `hasEmail:true` preservado: contagem, filtros e "só com e-mail" continuam
-// IDÊNTICOS, porque nenhum deles lê o endereço — só a existência dele (o corte
-// e as facetas rodam no servidor, sobre a linha real).
+// 🔓 v277 (dono, 23/09/2026 — usuários free reclamando de e-mail oculto):
+// "free NUNCA pode enviar, mas o e-mail tem que estar disponível pra pessoa
+// copiar se ela quiser". O v182 LOTE 10 tinha ido longe demais — gateava o
+// endereço a `isVipActive`, misturando "não pode ENVIAR pelo app" (regra
+// de sempre, plano free tem manualLimit/autoLimit=0) com "não pode VER o
+// contato". Agora o endereço COMPLETO viaja pra QUALQUER sessão logada
+// (free, VIP ou admin — `podeVerEmailVaga`/`_verEmailMeta` só perguntam se
+// existe sessão de usuário de verdade). Só o scraper SEM COOKIE NENHUM
+// continua vendo mascarado ("k••••@gmail.com") — a proteção original contra
+// harvest anônimo em massa (curl sem conta) permanece de pé; `hasEmail`
+// continua preservado pra quem está mascarado: contagem, filtros e "só com
+// e-mail" continuam IDÊNTICOS, porque nenhum deles lê o endereço — só a
+// existência dele (o corte e as facetas rodam no servidor, sobre a linha
+// real).
 function mascararEmail(e){
   const s2=String(e||"").trim().toLowerCase();
   const i=s2.indexOf("@");
@@ -1834,11 +1843,14 @@ function jobComEmailVisivel(job,ver){
   return {...job,email:mascararEmail(e),emailBloqueado:true};
 }
 // Uma pergunta só, usada por TODA rota que devolve vaga com e-mail.
+// 🔓 v277: QUALQUER sessão de usuário de verdade vê o e-mail — free inclusive
+// (não pode ENVIAR pelo app, mas pode COPIAR o contato). Só quem não tem
+// conta nenhuma (scraper sem cookie) continua mascarado.
 function podeVerEmailVaga(req){
   try{
     const sess=getSess(req); if(!sess?.user_email) return false;
     const u=getUser(sess.user_email); if(!u) return false;
-    return isAdminVip(u) || isVipActive(u);
+    return true;
   }catch(e){ return false; }
 }
 // 🎯 v139: cache do ranking "pra você" (10min por usuário) — só o RANKING é
@@ -8291,7 +8303,7 @@ filtrar();
     const _uMeta=_sMeta?.user_email?getUser(_sMeta.user_email):null;
     const _dpMeta=_isDoublePro(_uMeta);
     const _corteMeta=hideSent?_excluirEnviadosFn(_sMeta?.user_email):null;
-    const _verEmailMeta=!!(_uMeta&&(isAdminVip(_uMeta)||isVipActive(_uMeta)));
+    const _verEmailMeta=!!_uMeta; // 🔓 v277: qualquer sessão logada vê o e-mail (free inclusive) — só quem não tem conta nenhuma fica mascarado
     const preFiltered=FILTROS.filtrar(baseArr,f,{except:["q"],excluir:_corteMeta,isDP:_dpMeta});
     // 🎯 v82: contexto de match (perfil H2B + perfil por visto) do usuário
     // logado — null pra visitante sem sessão/perfil, cai sempre no
@@ -8329,8 +8341,10 @@ filtrar();
         wageRaw:r.w||null, wageMax:r.wmax||null,
         wageInfo:r.winfo||null,
         workers:r.wk||null,
-        // 🔒 v182 LOTE 10: `hasEmail` (o que a TELA e os filtros usam) nunca muda;
-        // o endereço só sai inteiro pra plano ativo/admin.
+        // 🔓 v277 (dono, 23/09/2026): `hasEmail` (o que a TELA e os filtros
+        // usam) nunca muda; o endereço sai inteiro pra QUALQUER sessão
+        // logada (free pode copiar, mesmo sem poder enviar pelo app) — só
+        // scraper sem cookie nenhum continua vendo mascarado.
         email:(emailVal?(_verEmailMeta?emailVal:mascararEmail(emailVal)):null), hasEmail:!!(emailVal&&emailVal.includes("@")),
         emailBloqueado:!_verEmailMeta&&!!emailVal,
         phone:r.ph||null, phone2:r.ph2||null,
