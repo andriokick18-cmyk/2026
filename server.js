@@ -7380,23 +7380,30 @@ ul li{margin-bottom:6px}
   </div>
 
   <h1>Exclusão de Conta e Dados</h1>
-  <p style="color:#64748b;margin-bottom:24px">Esta página explica como solicitar a exclusão da sua conta e de todos os seus dados pessoais na plataforma H2BApply.</p>
+  <p style="color:#64748b;margin-bottom:24px">Esta página explica o que acontece de verdade quando você pede pra excluir sua conta no H2BApply — e como pedir.</p>
 
   <div class="warning">
-    ⚠️ <strong>Atenção:</strong> A exclusão de conta é permanente e irreversível. Todos os seus dados serão removidos e não poderão ser recuperados.
+    ⚠️ <strong>Atenção:</strong> ao excluir sua conta, o acesso ao seu Gmail é revogado na hora, sua sessão é encerrada e a conta é <strong>desativada</strong> — some do app e de qualquer lista pública, e o envio automático para. Seu histórico de candidaturas e seus registros de pagamento são <strong>mantidos</strong> mesmo depois disso, por exigência da legislação brasileira (detalhes na nossa <a href="/privacidade" class="email-link">Política de Privacidade</a>, seção 6). A remoção definitiva desses dados é um pedido separado, feito pelo canal de contato abaixo.
   </div>
 
   <div class="card">
-    <h2>📋 O que será removido</h2>
+    <h2>📋 O que acontece na hora</h2>
     <ul>
-      <li>Seu perfil e informações pessoais (nome, email, cidade, WhatsApp)</li>
-      <li>Todos os currículos e arquivos enviados</li>
-      <li>Histórico completo de candidaturas enviadas</li>
-      <li>Templates de email e perfis de candidatura</li>
-      <li>Configurações da conta e preferências</li>
-      <li>Dados de plano e assinatura</li>
-      <li>Autorização de acesso ao Gmail (revogada automaticamente)</li>
+      <li>Seu perfil e informações pessoais somem do app e de qualquer lista pública</li>
+      <li>Autorização de acesso ao Gmail é revogada automaticamente no Google</li>
+      <li>Envio automático e manual param imediatamente</li>
+      <li>Sua conta fica desativada — se você entrar de novo com o <strong>mesmo e-mail</strong>, ela é restaurada automaticamente, com tudo como estava</li>
     </ul>
+  </div>
+
+  <div class="card">
+    <h2>🗂️ O que é mantido por exigência legal</h2>
+    <p>Não é opção comercial — é o Código Civil e normas fiscais brasileiras que exigem a guarda de registros financeiros/contábeis por um prazo determinado:</p>
+    <ul>
+      <li>Histórico de candidaturas enviadas</li>
+      <li>Registros de pagamento e pedido</li>
+    </ul>
+    <p>Quer a remoção definitiva desses dados em vez da desativação? Peça pelo canal de contato abaixo — atendemos dentro do prazo legal, respeitada a guarda obrigatória de registros financeiros.</p>
   </div>
 
   <div class="card">
@@ -7424,9 +7431,9 @@ ul li{margin-bottom:6px}
   </div>
 
   <div class="card">
-    <h2>⏱️ Prazo de exclusão</h2>
-    <p>Após a solicitação, seus dados são excluídos <strong>em até 30 dias</strong>. Durante esse período, sua conta fica desativada e você não recebe nenhuma comunicação da plataforma.</p>
-    <p>Dados de logs de sistema (sem informação pessoal) podem ser mantidos por até 90 dias por questões de segurança.</p>
+    <h2>⏱️ Prazo</h2>
+    <p>A desativação da conta é <strong>imediata</strong>. A remoção definitiva dos dados pessoais que não têm guarda legal obrigatória (perfil, currículos, configurações) acontece em até 30 dias após o pedido feito pelo canal de contato. Durante esse período você não recebe nenhuma comunicação da plataforma.</p>
+    <p>Registros financeiros e histórico de candidaturas continuam mantidos pelo prazo exigido pela legislação, mesmo depois desse pedido — nunca é opção comercial, é obrigação legal.</p>
   </div>
 
   <div class="footer">
