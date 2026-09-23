@@ -6980,24 +6980,36 @@ const server=http.createServer(async(req,res)=>{
 <title>Política de Privacidade — H2BApply</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1e293b;background:#f8fafc;line-height:1.7}
+  :root{
+    --bg:#0d0f1a;--surface:#161928;--sf2:#1c1f35;
+    --border:rgba(139,92,246,0.18);
+    --text:#e8eaf6;--t2:#a5a8cc;--t3:#7c7fb5;
+    --blue:#3b82f6;
+  }
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--text);background:var(--bg);line-height:1.7}
+  .star-bg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+  .star-bg::before{content:"";position:absolute;inset:0;background:
+    radial-gradient(ellipse 900px 600px at 15% 30%,rgba(59,130,246,.1) 0%,transparent 70%),
+    radial-gradient(ellipse 700px 500px at 85% 70%,rgba(139,92,246,.08) 0%,transparent 70%),
+    radial-gradient(ellipse 500px 400px at 50% 0%,rgba(16,185,129,.04) 0%,transparent 60%)}
   .container{max-width:760px;margin:0 auto;padding:40px 20px}
   .logo{display:flex;align-items:center;gap:12px;margin-bottom:32px}
   .logo-icon{width:48px;height:48px;background:linear-gradient(135deg,#4f46e5,#0891b2);border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:24px;font-weight:800}
-  .logo-text{font-size:22px;font-weight:800;color:#1e293b}
-  h1{font-size:28px;font-weight:800;color:#1e293b;margin-bottom:8px}
-  .date{font-size:13px;color:#64748b;margin-bottom:32px}
-  h2{font-size:18px;font-weight:700;color:#1e293b;margin:28px 0 10px}
-  p{color:#475569;margin-bottom:12px;font-size:15px}
-  ul{color:#475569;margin:8px 0 12px 20px;font-size:15px}
+  .logo-text{font-size:22px;font-weight:800;color:var(--text)}
+  h1{font-size:28px;font-weight:800;color:var(--text);margin-bottom:8px}
+  .date{font-size:13px;color:var(--t2);margin-bottom:32px}
+  h2{font-size:18px;font-weight:700;color:var(--text);margin:28px 0 10px}
+  p{color:var(--t2);margin-bottom:12px;font-size:15px}
+  ul{color:var(--t2);margin:8px 0 12px 20px;font-size:15px}
   li{margin-bottom:6px}
-  a{color:#4f46e5;text-decoration:none}
-  .card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:28px;margin-bottom:24px}
-  .footer{text-align:center;margin-top:40px;font-size:13px;color:#94a3b8}
+  a{color:var(--blue);text-decoration:none}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;margin-bottom:24px}
+  .footer{text-align:center;margin-top:40px;font-size:13px;color:var(--t3)}
   .back-btn{display:inline-flex;align-items:center;gap:6px;background:#4f46e5;color:#fff;padding:10px 20px;border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;margin-bottom:24px}
 </style>
 </head>
 <body>
+<div class="star-bg"></div>
 <div class="container">
   <div class="logo">
     <div class="logo-icon">H</div>
@@ -7033,7 +7045,7 @@ const server=http.createServer(async(req,res)=>{
     </ul>
     <p><strong>Este serviço NÃO lê, NÃO armazena e NÃO tem acesso à sua caixa de entrada.</strong> A única permissão solicitada é a de enviar as candidaturas que você mesmo escolher e autorizar.</p>
     <p><strong>Nunca lemos, armazenamos ou compartilhamos o conteúdo de seus emails pessoais.</strong> O acesso é restrito às funcionalidades descritas acima e está em conformidade com a <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank">Política de Dados de Usuário do Google API</a>, incluindo os requisitos de Uso Limitado.</p>
-    <p style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;font-size:13.5px"><em>Google API Limited Use Disclosure (English):</em> H2BApply's use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank">Google API Services User Data Policy</a>, including the Limited Use requirements. This application only requests the <code>gmail.send</code> scope, used exclusively to send job application emails that the user explicitly composes and authorizes. It does not read, store, or access the user's inbox in any way. We do not use Google user data for advertising, we do not sell it, and no humans read it except with explicit user consent or for security purposes as permitted by the policy.</p>
+    <p style="background:var(--sf2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:13.5px"><em>Google API Limited Use Disclosure (English):</em> H2BApply's use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank">Google API Services User Data Policy</a>, including the Limited Use requirements. This application only requests the <code>gmail.send</code> scope, used exclusively to send job application emails that the user explicitly composes and authorizes. It does not read, store, or access the user's inbox in any way. We do not use Google user data for advertising, we do not sell it, and no humans read it except with explicit user consent or for security purposes as permitted by the policy.</p>
 
     <h2>4. Compartilhamento de dados</h2>
     <p>Não vendemos, alugamos ou compartilhamos seus dados pessoais com terceiros, exceto:</p>
@@ -7068,11 +7080,11 @@ const server=http.createServer(async(req,res)=>{
     </ul>
   </div>
   <div class="footer">
-    © 2026 H2BApply · <a href="/" style="color:#64748b">h2bapply.com</a>
-    &nbsp;|&nbsp; <a href="/privacy" style="color:#64748b">Privacidade</a>
-    &nbsp;|&nbsp; <a href="/terms" style="color:#64748b">Termos</a>
-    &nbsp;|&nbsp; <a href="/contact" style="color:#64748b">Contato</a>
-    <br><small style="color:#94a3b8">suporte@h2bapply.com</small>
+    © 2026 H2BApply · <a href="/" style="color:var(--blue)">h2bapply.com</a>
+    &nbsp;|&nbsp; <a href="/privacy" style="color:var(--blue)">Privacidade</a>
+    &nbsp;|&nbsp; <a href="/terms" style="color:var(--blue)">Termos</a>
+    &nbsp;|&nbsp; <a href="/contact" style="color:var(--blue)">Contato</a>
+    <br><small style="color:var(--t3)">suporte@h2bapply.com</small>
   </div>
 </div>
 </body>
@@ -7171,25 +7183,38 @@ const server=http.createServer(async(req,res)=>{
 <title>Termos de Uso — H2BApply</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1e293b;background:#f8fafc;line-height:1.7}
+  :root{
+    --bg:#0d0f1a;--surface:#161928;--sf2:#1c1f35;
+    --border:rgba(139,92,246,0.18);
+    --text:#e8eaf6;--t2:#a5a8cc;--t3:#7c7fb5;
+    --blue:#3b82f6;
+    --amberl:rgba(245,158,11,.16);--amberb:rgba(245,158,11,.36);
+  }
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--text);background:var(--bg);line-height:1.7}
+  .star-bg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+  .star-bg::before{content:"";position:absolute;inset:0;background:
+    radial-gradient(ellipse 900px 600px at 15% 30%,rgba(59,130,246,.1) 0%,transparent 70%),
+    radial-gradient(ellipse 700px 500px at 85% 70%,rgba(139,92,246,.08) 0%,transparent 70%),
+    radial-gradient(ellipse 500px 400px at 50% 0%,rgba(16,185,129,.04) 0%,transparent 60%)}
   .container{max-width:760px;margin:0 auto;padding:40px 20px}
   .logo{display:flex;align-items:center;gap:12px;margin-bottom:32px}
   .logo-icon{width:48px;height:48px;background:linear-gradient(135deg,#4f46e5,#0891b2);border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:24px;font-weight:800}
-  .logo-text{font-size:22px;font-weight:800;color:#1e293b}
-  h1{font-size:28px;font-weight:800;color:#1e293b;margin-bottom:8px}
-  .date{font-size:13px;color:#64748b;margin-bottom:32px}
-  h2{font-size:18px;font-weight:700;color:#1e293b;margin:28px 0 10px}
-  p{color:#475569;margin-bottom:12px;font-size:15px}
-  ul{color:#475569;margin:8px 0 12px 20px;font-size:15px}
+  .logo-text{font-size:22px;font-weight:800;color:var(--text)}
+  h1{font-size:28px;font-weight:800;color:var(--text);margin-bottom:8px}
+  .date{font-size:13px;color:var(--t2);margin-bottom:32px}
+  h2{font-size:18px;font-weight:700;color:var(--text);margin:28px 0 10px}
+  p{color:var(--t2);margin-bottom:12px;font-size:15px}
+  ul{color:var(--t2);margin:8px 0 12px 20px;font-size:15px}
   li{margin-bottom:6px}
-  a{color:#4f46e5;text-decoration:none}
-  .card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:28px;margin-bottom:24px}
-  .footer{text-align:center;margin-top:40px;font-size:13px;color:#94a3b8}
+  a{color:var(--blue);text-decoration:none}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;margin-bottom:24px}
+  .footer{text-align:center;margin-top:40px;font-size:13px;color:var(--t3)}
   .back-btn{display:inline-flex;align-items:center;gap:6px;background:#4f46e5;color:#fff;padding:10px 20px;border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;margin-bottom:24px}
-  .warning{background:#fef3c7;border:1.5px solid #fde68a;border-radius:10px;padding:14px 16px;font-size:14px;color:#92400e;margin-bottom:16px}
+  .warning{background:var(--amberl);border:1.5px solid var(--amberb);border-radius:10px;padding:14px 16px;font-size:14px;color:#fcd34d;margin-bottom:16px}
 </style>
 </head>
 <body>
+<div class="star-bg"></div>
 <div class="container">
   <div class="logo">
     <div class="logo-icon">H</div>
@@ -7292,11 +7317,11 @@ const server=http.createServer(async(req,res)=>{
     </ul>
   </div>
   <div class="footer">
-    © 2026 H2BApply · <a href="/" style="color:#64748b">h2bapply.com</a>
-    &nbsp;|&nbsp; <a href="/privacy" style="color:#64748b">Privacidade</a>
-    &nbsp;|&nbsp; <a href="/terms" style="color:#64748b">Termos</a>
-    &nbsp;|&nbsp; <a href="/contact" style="color:#64748b">Contato</a>
-    <br><small style="color:#94a3b8">suporte@h2bapply.com</small>
+    © 2026 H2BApply · <a href="/" style="color:var(--blue)">h2bapply.com</a>
+    &nbsp;|&nbsp; <a href="/privacy" style="color:var(--blue)">Privacidade</a>
+    &nbsp;|&nbsp; <a href="/terms" style="color:var(--blue)">Termos</a>
+    &nbsp;|&nbsp; <a href="/contact" style="color:var(--blue)">Contato</a>
+    <br><small style="color:var(--t3)">suporte@h2bapply.com</small>
   </div>
 </div>
 </body>
