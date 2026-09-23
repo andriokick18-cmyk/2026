@@ -4299,7 +4299,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
 
 <!-- ══ MODAL CANDIDATURA ══ -->
 <div class="overlay gone" id="modal" onclick="if(event.target===this)closeModal()">
-  <div class="modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="m-title">
     <div class="mhandle"></div>
     <div class="mhdr">
       <div><div class="mttl" id="m-title">Enviar Candidatura</div><div class="msub" id="m-sub">–</div></div>

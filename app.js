@@ -75,6 +75,7 @@ function _inAuto(cn){
 let _autoQueueIds=new Set(); // IDs de vagas na fila automática (ocultas do manual)
 let selJob=null,curJob=null;
 let _currentModalJob=null; // alias para curJob — atualizado por openModal
+let _modalFoco=null; // ♿ v279 — elemento que abriu #modal, pra devolver foco ao fechar
 let tab="jan2026"; // v223: aba "Vagas ao Vivo" removida (ordem do dono) — só planilhas
 let sJobs=[],sTotal=0,sTrueTotal=0,sSkip=0,sDone=false,sLoading=false;
 // 🚨 v237 (achado de auditoria — Alta, race de loadSheetMeta): contador de
@@ -1352,6 +1353,10 @@ document.addEventListener("DOMContentLoaded",()=>{
     if(e.key!=="Escape")return;
     const ov=g("#vf-overlay");
     if(ov&&!ov.classList.contains("gone")){e.preventDefault();vfClose();return;}
+    // ♿ v279: mesma proteção pro #modal (Enviar Candidatura) — não fechava
+    // no Escape, só clicando fora ou no X.
+    const md=g("#modal");
+    if(md&&!md.classList.contains("gone")){e.preventDefault();closeModal();return;}
     // 🚨 v237: mesma proteção pro #auth-gate (achado de auditoria — Alta,
     // não tinha NENHUM jeito de fechar antes deste commit).
     const ag=g("#auth-gate");
@@ -2556,6 +2561,13 @@ async function openModal(jobId){
   /* v22: ai-btn removido */
   g("#m-sending").style.display="none";g("#m-send").disabled=false;
   g("#modal").classList.remove("gone");
+  // ♿ v279 (achado de auditoria — Alta): mesmo padrão do vfOpen/vfClose (LOTE
+  // 9) — o modal de candidatura tinha role=dialog nenhum e o foco continuava
+  // parado onde estava (geralmente atrás do overlay), sem trap nenhum; ao
+  // fechar, a pessoa perdia a posição na lista de vagas. Agora o foco entra
+  // no modal ao abrir e VOLTA pro elemento que abriu (o .jcard) ao fechar.
+  _modalFoco=document.activeElement;
+  setTimeout(()=>{const alvo=g("#modal .mx");if(alvo&&typeof alvo.focus==="function")alvo.focus();},60);
 }
 
 
@@ -2674,7 +2686,7 @@ function buildCvSlots(){
   const cs=g("#m-cov-slots");if(cs){cs.innerHTML=mkSlots(cov,"cover",activeCovIdx);cs.querySelectorAll("input[name='cover']").forEach(r=>r.addEventListener("change",()=>{cs.querySelectorAll(".cv-slot").forEach(s=>s.classList.remove("sel"));r.closest(".cv-slot")?.classList.add("sel");activeCovIdx=r.value==="none"?null:parseInt(r.value,10);}));}
 }
 
-function closeModal(){g("#modal").classList.add("gone");curJob=null;_currentModalJob=null;const ms=g("#m-sending");const mb=g("#m-send");if(ms)ms.style.display="none";if(mb)mb.disabled=false;} // FIX: reseta estado do botão ao fechar
+function closeModal(){g("#modal").classList.add("gone");curJob=null;_currentModalJob=null;const ms=g("#m-sending");const mb=g("#m-send");if(ms)ms.style.display="none";if(mb)mb.disabled=false;const voltar=_modalFoco;_modalFoco=null;if(voltar&&typeof voltar.focus==="function"&&document.contains(voltar))try{voltar.focus();}catch(e){}} // FIX: reseta estado do botão ao fechar; ♿ v279: devolve foco pro .jcard que abriu
 
 /* ═══ ⏱️ v120 (ORDEM DO DONO, 05/08): cooldown do MANUAL é editável ═══
    O 1 min entre envios manuais continua sendo o PADRÃO, mas o usuário vê

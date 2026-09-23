@@ -6421,6 +6421,24 @@ async function drillBloqueioComprasNovas() {
       check("🦯 v278: o card de vaga (.jcard) agora é focável por teclado (role=\"button\" tabindex=\"0\") — reusa o MESMO listener global de Enter/Espaço já existente, sem duplicar lógica",
         _appL9.includes('onclick="selSheetJob(\'${esc(j.id)}\')" role="button" tabindex="0"'),
         "jcard sem role=\"button\" tabindex=\"0\"");
+      // ♿ v279 (achado de auditoria — Alta): o modal de candidatura (#modal,
+      // o fluxo de conversão mais importante do site) não tinha contrato de
+      // diálogo (role/aria-modal/aria-labelledby) nem gestão de foco — quem
+      // chegava até ele pelo teclado (agora possível desde o v278) abria um
+      // "diálogo" mudo pra leitor de tela, com o foco preso atrás do overlay,
+      // e ao fechar perdia a posição na lista. Mesmo padrão do vfOpen/vfClose
+      // (LOTE 9, linha ~1247/1262).
+      check("♿ v279: #modal ganhou role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"m-title\" (mesmo padrão do #vf-modal)",
+        /<div class="modal" role="dialog" aria-modal="true" aria-labelledby="m-title">/.test(_idxL9),
+        "#modal sem contrato de diálogo (role/aria-modal/aria-labelledby)");
+      check("♿ v279: openModal() guarda o foco de origem e move o foco pro modal ao abrir; closeModal() devolve o foco — mesmo padrão do vfOpen/vfClose",
+        _appL9.includes('_modalFoco=document.activeElement;') &&
+        _appL9.includes('setTimeout(()=>{const alvo=g("#modal .mx");if(alvo&&typeof alvo.focus==="function")alvo.focus();},60);') &&
+        /const voltar=_modalFoco;_modalFoco=null;if\(voltar&&typeof voltar\.focus==="function"&&document\.contains\(voltar\)\)try\{voltar\.focus\(\);\}catch\(e\)\{\}/.test(_appL9),
+        "openModal/closeModal sem gestão de foco");
+      check("♿ v279: Escape fecha #modal também (só fechava por clique fora ou no X) — mesmo listener global já usado pro #vf-overlay e #auth-gate",
+        /const md=g\("#modal"\);\s*\n\s*if\(md&&!md\.classList\.contains\("gone"\)\)\{e\.preventDefault\(\);closeModal\(\);return;\}/.test(_appL9),
+        "Escape não fecha #modal");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&
