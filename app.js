@@ -5340,7 +5340,7 @@ async function loadPublicStats(){
   try{
     const r=await fetch("/api/public-stats");const d=await r.json();
     const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=(v||0).toLocaleString("pt-BR");};
-    set("ps-users",d.totalUsers);set("ps-today",d.todaySent);set("ps-auto-today",d.todayAuto);
+    set("ps-users",d.totalUsers);set("ps-today",d.last7Sent);set("ps-auto-today",d.last7Auto);
     set("ps-total",d.totalSent);set("ps-total-auto",d.totalAuto);set("ps-vip",d.vipUsers);
   }catch{}
 }

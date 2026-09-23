@@ -2564,6 +2564,19 @@ function addCredito(email, c){
 }
 
 const todayStr = () => todayStrBRT();
+// Array de "DD/MM/YYYY" (BRT) dos últimos `n` dias, hoje incluso — MESMA
+// formatação de todayStrBRT(), pra nunca dessincronizar do que addHist já
+// grava em h.dateStr. Usado pra janelas tipo "últimos 7 dias" na vitrine
+// pública (v243) sem inventar uma 2ª forma de calcular data.
+function _ultimosDiasStr(n){
+  const out=[];
+  const hoje=_nowBRTMod();
+  for(let i=0;i<n;i++){
+    const d=new Date(hoje.getTime()-i*86400_000);
+    out.push(`${String(d.getUTCDate()).padStart(2,"0")}/${String(d.getUTCMonth()+1).padStart(2,"0")}/${d.getUTCFullYear()}`);
+  }
+  return out;
+}
 // Manual = type "manual" apenas (NÃO conta auto, NÃO conta reply)
 const countManualToday = h => (h||[]).filter(x=>(x.dateStr||"")===todayStr()&&x.type==="manual").length;
 // Auto = type "auto" apenas
@@ -14133,7 +14146,6 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}return json(res,200,{ok:true})
     const agora=Date.now();
     if(_publicStatsCache && agora-_publicStatsCache.em < 60_000)
       return json(res,200,process.env.TEST_LOGIN_TOKEN?{..._publicStatsCache.dados,_calculos:_publicStatsCache.calculos}:_publicStatsCache.dados);
-    const ds=todayStr();
     // 🐛 v238-FIX (achado do dono, 20/09/2026 — "VIP ativo: 1" na landing
     // sem NENHUM cliente pago ainda): isVipActive() dá VIP infinito pro
     // admin de propósito (acesso interno sempre liberado) — mas contar
@@ -14149,16 +14161,22 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}return json(res,200,{ok:true})
     const totalUsers=_usersReais.length;
     const vipUsers=_usersReais.filter(([,u])=>isVipActive(u)).length;
     const allHist=Object.values(DB_HIST);
-    const _todayManual=allHist.reduce((n,a)=>n+a.filter(h=>h.dateStr===ds&&h.type==="manual").length,0);
-    const todayAuto=allHist.reduce((n,a)=>n+a.filter(h=>h.dateStr===ds&&h.type==="auto").length,0);
-    const todaySent=_todayManual+todayAuto; // v238: NUNCA soma com o site antigo (é "hoje", ele já não recebe candidatura nova)
+    // 🎨 v243 (dono, 23/09/2026 — achado num print: "Envios Hoje" e
+    // "Automáticos" apareciam 0 de manhã cedo, bem do lado da venda do
+    // "Robô automático 24/7" na Home, passando a impressão de robô parado).
+    // "Hoje" zera todo santo dia até o 1º envio; "últimos 7 dias" só chega a
+    // zero se o site inteiro ficar uma semana sem NENHUM envio — nunca
+    // aconteceu em produção. Mesmo dado (DB_HIST), só a janela mudou.
+    const _dias7=new Set(_ultimosDiasStr(7));
+    const last7Sent=allHist.reduce((n,a)=>n+a.filter(h=>_dias7.has(h.dateStr)&&h.type!=="reply").length,0);
+    const last7Auto=allHist.reduce((n,a)=>n+a.filter(h=>_dias7.has(h.dateStr)&&h.type==="auto").length,0);
     const totalSent=allHist.reduce((n,a)=>n+a.filter(h=>h.type!=="reply").length,0);
     const totalAuto=allHist.reduce((n,a)=>n+a.filter(h=>h.type==="auto").length,0);
     const legado=await _fetchStatsLegado(); // v238: histórico do site antigo, só números agregados — ver comentário da função
     const out={
       totalUsers:totalUsers+(legado?.totalUsers||0),
       vipUsers:vipUsers+(legado?.vipUsers||0),
-      todaySent,todayAuto,
+      last7Sent,last7Auto,
       totalSent:totalSent+(legado?.totalSent||0),
       totalAuto:totalAuto+(legado?.totalAuto||0),
     };

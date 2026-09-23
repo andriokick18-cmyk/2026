@@ -864,6 +864,16 @@ async function drillBloqueioComprasNovas() {
       hl.status === 200 && hlJson && hlJson.ok === true, hl.body.slice(0, 120));
     const ps = await get("/api/public-stats");
     check("GET /api/public-stats responde 200 (landing pública)", ps.status === 200, `status=${ps.status}`);
+    // 🎨 v243 (dono, 23/09/2026): "Envios Hoje"/"Automáticos" na vitrine da
+    // Home zeravam de manhã cedo, bem do lado da venda do robô 24/7 — vira
+    // last7Sent/last7Auto (janela de 7 dias, quase nunca zera). O rename é
+    // TOTAL (nunca os dois nomes juntos) e a janela nunca pode contar mais
+    // que o total histórico — invariante barato que pega dupla-contagem.
+    check("🎨 v243: /api/public-stats devolve last7Sent/last7Auto (nunca mais todaySent/todayAuto) e a janela de 7 dias nunca excede o total histórico",
+      typeof ps.json?.last7Sent === "number" && typeof ps.json?.last7Auto === "number" &&
+      ps.json?.todaySent === undefined && ps.json?.todayAuto === undefined &&
+      ps.json.last7Sent <= ps.json?.totalSent && ps.json.last7Auto <= ps.json?.totalAuto,
+      JSON.stringify({ last7Sent: ps.json?.last7Sent, last7Auto: ps.json?.last7Auto, totalSent: ps.json?.totalSent, totalAuto: ps.json?.totalAuto }));
     // ⚡ v190 LOTE 8: esta rota varre TODOS os usuários e TODO o histórico de
     // todos, é pública (sem cookie nem rate-limit) e a landing chama a cada
     // 30s em CADA aba aberta — era a varredura completa do banco dezenas de
@@ -896,8 +906,8 @@ async function drillBloqueioComprasNovas() {
     const _srcV238 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
     check("🌉 v238: a ponte pro site antigo nunca é chamada durante o npm test (TEST_LOGIN_TOKEN corta a rede real)",
       _srcV238.includes('if(process.env.TEST_LOGIN_TOKEN)return null; // nunca bate rede de verdade no npm test'));
-    check("🌉 v238: /api/public-stats NUNCA soma envios de HOJE com o site antigo (só total histórico) — todaySent/todayAuto ficam de fora do merge",
-      _srcV238.includes("todaySent,todayAuto,\n      totalSent:totalSent+(legado?.totalSent||0)"));
+    check("🌉 v238→v243: /api/public-stats NUNCA soma os últimos 7 dias com o site antigo (só total histórico) — last7Sent/last7Auto ficam de fora do merge",
+      _srcV238.includes("last7Sent,last7Auto,\n      totalSent:totalSent+(legado?.totalSent||0)"));
     check("🌉 v238: a ponte com o site antigo só CONSOME (GET) — nenhuma escrita no New-repository congelado",
       (() => { const i = _srcV238.indexOf("_fetchStatsLegado"); const bloco = _srcV238.slice(i, i + 1200); return bloco.includes('method:"GET"') && !bloco.includes('method:"POST"'); })());
     // (aba Notícias DOL removida nesta reconstrução — sem /api/noticias)
