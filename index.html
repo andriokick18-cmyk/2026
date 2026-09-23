@@ -2857,21 +2857,21 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
               <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
                 <div class="field-row">
                   <div class="field">
-                    <label data-i18n="full_name">Nome completo *</label>
+                    <label for="cfg-name" data-i18n="full_name">Nome completo *</label>
                     <input class="input" id="cfg-name" type="text" placeholder="Seu nome completo">
                   </div>
                   <div class="field">
-                    <label data-i18n="country">País</label>
+                    <label for="cfg-country" data-i18n="country">País</label>
                     <input class="input" id="cfg-country" type="text" placeholder="Brazil">
                   </div>
                 </div>
                 <div class="field-row">
                   <div class="field">
-                    <label>Cidade</label>
+                    <label for="cfg-city">Cidade</label>
                     <input class="input" id="cfg-city" type="text" placeholder="Sua cidade">
                   </div>
                   <div class="field">
-                    <label style="display:flex;align-items:center;gap:5px">
+                    <label for="cfg-phone" style="display:flex;align-items:center;gap:5px">
                       WhatsApp
                       <span style="font-size:9px;font-weight:800;background:#ef4444;color:#fff;padding:1px 5px;border-radius:99px" data-i18n="required_lbl">OBRIGATÓRIO</span>
                     </label>
@@ -3347,7 +3347,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
               <div style="font-size:12px;font-weight:600;color:var(--t2);margin-bottom:8px"><i class="ti ti-clock"></i> <span data-i18n="g_205">Horário (Brasília)</span></div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
                 <div>
-                  <label style="font-size:11px;color:var(--t3);font-weight:600;display:block;margin-bottom:3px" data-i18n="g_55">Iniciar às</label>
+                  <label for="pf-sh" style="font-size:11px;color:var(--t3);font-weight:600;display:block;margin-bottom:3px" data-i18n="g_55">Iniciar às</label>
                   <select class="input" id="pf-sh" style="font-size:13px" onchange="pfUpdatePreview()">
                     <option value="0">00:00</option><option value="1">01:00</option><option value="2">02:00</option>
                     <option value="3">03:00</option><option value="4">04:00</option><option value="5">05:00</option>
@@ -3360,7 +3360,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
                   </select>
                 </div>
                 <div>
-                  <label style="font-size:11px;color:var(--t3);font-weight:600;display:block;margin-bottom:3px" data-i18n="g_56">Parar às</label>
+                  <label for="pf-eh" style="font-size:11px;color:var(--t3);font-weight:600;display:block;margin-bottom:3px" data-i18n="g_56">Parar às</label>
                   <select class="input" id="pf-eh" style="font-size:13px" onchange="pfUpdatePreview()">
                     <option value="10">10:00</option><option value="11">11:00</option><option value="12">12:00</option>
                     <option value="13">13:00</option><option value="14">14:00</option><option value="15">15:00</option>
@@ -3599,26 +3599,26 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
               </div>
               <div id="plan-dados-form" style="display:flex;flex-direction:column;gap:12px">
                 <div>
-                  <label style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:5px" data-i18n="full_name">Nome completo *</label>
+                  <label for="plan-form-name" style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:5px" data-i18n="full_name">Nome completo *</label>
                   <input class="input" id="plan-form-name" type="text" placeholder="Seu nome completo" autocomplete="name">
                 </div>
                 <div>
-                  <label style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:5px">WhatsApp * <span style="color:var(--t3);font-weight:400">(com DDD)</span></label>
+                  <label for="plan-form-wpp" style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:5px">WhatsApp * <span style="color:var(--t3);font-weight:400">(com DDD)</span></label>
                   <input class="input" id="plan-form-wpp" type="tel" placeholder="53 9 8145-3496" inputmode="tel">
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
                   <div>
-                    <label style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:5px">Cidade *</label>
+                    <label for="plan-form-city" style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:5px">Cidade *</label>
                     <input class="input" id="plan-form-city" type="text" placeholder="Sua cidade">
                   </div>
                   <div>
-                    <label style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:5px">Estado *</label>
+                    <label for="plan-form-state" style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:5px">Estado *</label>
                     <input class="input" id="plan-form-state" type="text" placeholder="SP, RS, MG...">
                   </div>
                 </div>
               </div>
               <div>
-                <label style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:5px" data-i18n="notes_lbl">Observações</label>
+                <label for="plan-form-nota" style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:5px" data-i18n="notes_lbl">Observações</label>
                 <textarea class="input" id="plan-form-nota" rows="2" placeholder="Alguma observação? Ex: quero começar no dia X..."></textarea>
               </div>
             </div>
@@ -3659,7 +3659,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
               </div>
               <div id="comp-status" style="margin-top:8px;display:none"></div>
               <div style="margin-top:14px">
-                <label style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:5px"><span data-i18n="g_211">📅 Data em que você pagou</span> <span style="color:var(--red)">*</span></label>
+                <label for="plan-form-pago-em" style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:5px"><span data-i18n="g_211">📅 Data em que você pagou</span> <span style="color:var(--red)">*</span></label>
                 <input class="input" id="plan-form-pago-em" type="date" style="color-scheme:light dark">
                 <div style="font-size:11px;color:var(--t3);margin-top:4px;line-height:1.5">Coloque a <strong>mesma data que aparece no comprovante</strong><span data-i18n="g_212">. É por ela que conferimos o seu pagamento.</span></div>
               </div>
@@ -4007,7 +4007,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
              no wizard antigo (removido); agora moram aqui, opcionais. -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
           <div class="field" style="margin:0">
-            <label style="font-size:11px;font-weight:700;color:var(--t2)" data-i18n="pe_eng_lbl">🗣️ Seu inglês (opcional)</label>
+            <label for="pe-english" style="font-size:11px;font-weight:700;color:var(--t2)" data-i18n="pe_eng_lbl">🗣️ Seu inglês (opcional)</label>
             <select class="input" id="pe-english" style="font-size:12.5px"><option value="none" data-i18n="pe_eng_none">Não falo</option><option value="basic" data-i18n="pe_eng_basic">Básico</option><option value="intermediate" data-i18n="pe_eng_inter">Intermediário</option><option value="advanced" data-i18n="pe_eng_adv">Avançado</option></select>
           </div>
           <div class="field" style="margin:0;display:flex;align-items:flex-end">
@@ -4318,7 +4318,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       </div>
       <!-- Aviso de erro — no topo para sempre ficar visível -->
       <div id="m-sender-box" style="display:none;margin-bottom:8px">
-        <label style="font-size:11px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px" data-i18n="send_by">📧 Enviar por</label>
+        <label for="m-sender" style="font-size:11px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px" data-i18n="send_by">📧 Enviar por</label>
         <select class="input" id="m-sender" style="font-size:12.5px"></select>
       </div>
       <div id="m-warn"></div>
@@ -5160,7 +5160,7 @@ html, body, #app, .bottom-nav, .sidebar{
       <p id="terms-scroll-hint" style="display:none"></p>
       <div id="terms-check-row" onclick="termsToggleCheck()">
         <input type="checkbox" id="terms-checkbox" onclick="event.stopPropagation();_termsScrolled=true;_termsChecked=this.checked;var b=document.getElementById('terms-accept');if(b){if(this.checked){b.classList.add('active');b.style.cursor='pointer';}else{b.classList.remove('active');b.style.cursor='not-allowed';}}">
-        <label id="terms-check-label">Li e <strong>aceito os Termos de Uso</strong> da H2BApply (v3.0), incluindo a ausência de garantias de emprego ou visto, autorização de envio automático via Gmail, e minha responsabilidade pelos dados enviados. Tenho ao menos 18 anos.</label>
+        <label id="terms-check-label" for="terms-checkbox">Li e <strong>aceito os Termos de Uso</strong> da H2BApply (v3.0), incluindo a ausência de garantias de emprego ou visto, autorização de envio automático via Gmail, e minha responsabilidade pelos dados enviados. Tenho ao menos 18 anos.</label>
       </div>
       <div id="terms-btns">
         <button id="terms-decline" onclick="termsDecline()">Não aceito</button>
@@ -5261,7 +5261,7 @@ html, body, #app, .bottom-nav, .sidebar{
     </div>
     <!-- Campo de telefone -->
     <div style="margin-bottom:16px">
-      <label style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px">📱 WhatsApp (com DDI)</label>
+      <label for="wpp-required-input" style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px">📱 WhatsApp (com DDI)</label>
       <input id="wpp-required-input" type="tel" inputmode="tel"
         placeholder="+55 11 99999-9999"
         style="width:100%;background:#1e293b;border:2px solid rgba(37,211,102,.3);border-radius:12px;padding:14px 16px;font-size:16px;color:#fff;font-family:inherit;outline:none;box-sizing:border-box;transition:.15s"
