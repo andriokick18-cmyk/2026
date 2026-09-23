@@ -6439,6 +6439,33 @@ async function drillBloqueioComprasNovas() {
       check("♿ v279: Escape fecha #modal também (só fechava por clique fora ou no X) — mesmo listener global já usado pro #vf-overlay e #auth-gate",
         /const md=g\("#modal"\);\s*\n\s*if\(md&&!md\.classList\.contains\("gone"\)\)\{e\.preventDefault\(\);closeModal\(\);return;\}/.test(_appL9),
         "Escape não fecha #modal");
+      // 🖼️ v280 (achado de auditoria — Média/Alta): as 19 fotos reais da
+      // landing (hero + galeria "Veja o site por dentro") não tinham
+      // width/height — sem espaço reservado, o navegador empurrava o
+      // conteúdo seguinte quando cada imagem terminava de carregar (CLS).
+      // A imagem do hero (.ln-preview-main) é candidata a LCP, carregada
+      // com loading="eager" pra 100% dos visitantes não logados.
+      const _landingImgs = [...(_idxL9.matchAll(/src="\/tut-img\/(landing-[\w-]+\.jpg)"([^>]*)>/g))];
+      check("🖼️ v280: as 22 tags <img> das fotos reais da landing (hero+thumbs+galeria) TODAS declaram width/height — nunca mais layout pulando quando a foto termina de carregar",
+        _landingImgs.length === 22 && _landingImgs.every(([, , attrs]) => /width="\d+"/.test(attrs) && /height="\d+"/.test(attrs)),
+        `${_landingImgs.filter(([, , attrs]) => !(/width="\d+"/.test(attrs) && /height="\d+"/.test(attrs))).length} sem dimensão de ${_landingImgs.length}`);
+      check("🖼️ v280: width/height batem com o tamanho REAL do arquivo em tutorial-img/ (nunca um valor chutado que distorce a proporção)",
+        _landingImgs.every(([, fname, attrs]) => {
+          const wh = attrs.match(/width="(\d+)" height="(\d+)"/);
+          if (!wh) return false;
+          try {
+            const buf = fs.readFileSync(path.join(__dirname, "tutorial-img", fname));
+            // JPEG SOF0/SOF2 marker (0xFFC0/0xFFC2): 2 bytes h, 2 bytes w, logo após o marcador+len+precisão
+            for (let i = 2; i < buf.length - 9; i++) {
+              if (buf[i] === 0xff && (buf[i + 1] === 0xc0 || buf[i + 1] === 0xc2)) {
+                const h = buf.readUInt16BE(i + 5), w = buf.readUInt16BE(i + 7);
+                return String(h) === wh[2] && String(w) === wh[1];
+              }
+            }
+            return false;
+          } catch (e) { return false; }
+        }),
+        "algum width/height não bate com o arquivo real (JPEG SOF)");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&
