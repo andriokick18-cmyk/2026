@@ -6539,6 +6539,15 @@ async function drillBloqueioComprasNovas() {
         _idxL9.includes('class="mob-back" role="button" tabindex="0" aria-label="Voltar às vagas" onclick="closeMobDetail()"') &&
         _appL9.includes('const mdt=g("#mob-detail");\n    if(mdt&&mdt.classList.contains("show")){e.preventDefault();closeMobDetail();return;}'),
         "painel de detalhe mobile continua sem saída por teclado");
+      // ♿ v287 (achado de auditoria contínua — Média): #m-cd-pill (v120,
+      // configuração de proteção de 1min entre envios manuais — desligar
+      // arrisca bloqueio do Gmail) é o ÚNICO ponto da UI que expõe essa
+      // configuração (grep confirmou: nenhuma tela de Perfil/Config tem
+      // equivalente). <div onclick> sem role/tabindex — usuário de teclado
+      // não alcançava essa configuração de segurança da própria conta.
+      check("♿ v287: #m-cd-pill ganha role=button tabindex=0 aria-label (reusa a delegação Enter/Espaço global)",
+        _idxL9.includes('id="m-cd-pill" role="button" tabindex="0" aria-label="Configurações de proteção de envio manual"'),
+        "pill de proteção de envio manual sem role=button/tabindex");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&
