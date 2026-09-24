@@ -6621,6 +6621,15 @@ async function drillBloqueioComprasNovas() {
         _appL9.includes('id="ag-s-user" type="text" autocapitalize="off"') &&
         _appL9.includes('id="ag-s-email" type="email" inputmode="email"'),
         "campo de usuário do cadastro ainda mostra teclado de e-mail no mobile");
+      // 🧹 v294 (achado de auditoria contínua — limpeza): .btn-ghost em
+      // admin.html era CSS morto — nunca aplicado a nenhum elemento
+      // (zero class="...btn-ghost..." em markup ou JS, confirmado por
+      // grep no repo inteiro). Único selector da família .btn-* sem uso
+      // real (btn-primary/green/red/sm todos usados).
+      check("🧹 v294: .btn-ghost removido de admin.html (CSS morto — as demais variantes .btn-* continuam vivas)",
+        !_admL9.includes(".btn-ghost{") &&
+        _admL9.includes(".btn-primary{") && _admL9.includes(".btn-green{") && _admL9.includes(".btn-red{"),
+        ".btn-ghost morto não foi removido, ou uma variante viva foi afetada por engano");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&
