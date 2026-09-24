@@ -6596,6 +6596,19 @@ async function drillBloqueioComprasNovas() {
       check("📋 v291: tutorial-conteudo.html (Passo 17) não promete mais 90 dias/1 ano — alinhado com PLANO_PRECO_TAB (só 30/60)",
         !_tutL9.includes("90 dias ou 1 ano") && _tutL9.includes("escolha o plano e o período (<b>30 ou 60 dias</b>)"),
         "tutorial ainda promete período de plano que não existe mais");
+      // 📋 v292 (achado de auditoria contínua — COPY, mesma classe do
+      // v291): tutorial-conteudo.html (Passo 8) ainda listava a aba
+      // "Vagas ao Vivo" (busca ao vivo no DOL) como opção de planilha —
+      // removida no v223 (app.js:79/2432-2436, "só planilhas a partir de
+      // agora"); faltava também citar a planilha real Jul 2026 (já
+      // citada certo em como-usar.html). E como-usar.html tinha 1
+      // <img alt="Tela de diamantes e planos"> sobrevivente do sistema
+      // de diamantes (removido v170) bem na seção que já fala só de PIX
+      // direto — o texto ao redor tinha sido corrigido, só o alt ficou.
+      check("📋 v292: tutorial-conteudo.html não cita mais 'Vagas ao Vivo' (cita Jul 2026 no lugar) e como-usar.html não tem mais alt de 'diamantes'",
+        !_tutL9.includes("Vagas ao Vivo") && _tutL9.includes("Escolha a <b>planilha</b> no topo: Jul 2026,") &&
+        !fs.readFileSync(path.join(__dirname, "como-usar.html"), "utf8").includes('alt="Tela de diamantes e planos"'),
+        "texto stale sobre planilha/aba removida ou alt de diamantes ainda presente");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&
