@@ -6496,6 +6496,20 @@ async function drillBloqueioComprasNovas() {
           'const da=g("#del-acc-m");\n    if(da&&!da.classList.contains("gone")){e.preventDefault();closeDeleteAccountModal();return;}',
         ].every((s) => _appL9.includes(s)),
         "algum overlay perdeu o fechamento por Escape");
+      // 🦯 v283 (achado de auditoria — Alta): admin.html inteiro tinha 33
+      // <label> e ZERO for= — leitor de tela anunciava "campo de edição"
+      // sem dizer QUAL campo (Valor, Plano, Categoria…), em TODO o fluxo
+      // de trabalho do admin (aprovar pedido, ativar VIP, importar
+      // planilha, lançar gasto/pagamento). Clicar no texto do label também
+      // não focava o campo, sem o for=.
+      const _admL9 = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
+      const _admLabels = [..._admL9.matchAll(/<label\b([^>]*)>([\s\S]*?)<\/label>/g)];
+      const _admSemAssoc = _admLabels.filter(([, attrs, inner]) => !/\bfor="/.test(attrs) && !/<(input|select|textarea)\b/.test(inner));
+      check("🦯 v283: admin.html — todo <label> agora tem for= (associação explícita) ou envolve o próprio campo (checkbox/radio) — só os 2 labels de GRUPO de radio ('Pago por'/'Recebido por', sem 1 campo único pra apontar) ficam de fora, registrados",
+        _admLabels.length >= 33 && _admSemAssoc.length === 2 &&
+        _admSemAssoc.every(([full]) => /Pago por|Recebido por/.test(full)) &&
+        _admL9.includes('<select id="pend-status" aria-label="Filtrar por status"'),
+        `total=${_admLabels.length} sem-associação=${JSON.stringify(_admSemAssoc.map(([f]) => f))}`);
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&

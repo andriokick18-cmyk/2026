@@ -243,10 +243,10 @@ tbody tr:hover{background:var(--glass2)}
     <div class="gate-title">Painel Administrativo</div>
     <div class="gate-text">Entre com o usuário e a senha do painel para acessar a contabilidade do H2BApply.</div>
     <form id="gate-login-form" onsubmit="return fazerLoginPainel(event)" style="text-align:left">
-      <label style="display:block;font-size:12px;font-weight:700;color:var(--t2);margin-bottom:6px">Usuário</label>
+      <label for="gl-user" style="display:block;font-size:12px;font-weight:700;color:var(--t2);margin-bottom:6px">Usuário</label>
       <input id="gl-user" name="username" type="text" autocomplete="username" required
         style="width:100%;padding:11px 13px;border-radius:9px;border:1px solid var(--border2);background:var(--glass);color:var(--text);font-size:14.5px;margin-bottom:14px">
-      <label style="display:block;font-size:12px;font-weight:700;color:var(--t2);margin-bottom:6px">Senha</label>
+      <label for="gl-pass" style="display:block;font-size:12px;font-weight:700;color:var(--t2);margin-bottom:6px">Senha</label>
       <input id="gl-pass" name="password" type="password" autocomplete="current-password" required
         style="width:100%;padding:11px 13px;border-radius:9px;border:1px solid var(--border2);background:var(--glass);color:var(--text);font-size:14.5px;margin-bottom:16px">
       <div id="gl-err" style="display:none;font-size:12.5px;color:var(--red);margin-bottom:14px"></div>
@@ -407,7 +407,7 @@ tbody tr:hover{background:var(--glass2)}
                 <i class="ti ti-search"></i>
                 <input type="search" id="pend-search" placeholder="Nome, e-mail ou nº do pedido…" oninput="renderPendentes(STATE.pendentes)">
               </div>
-              <select id="pend-status" onchange="carregarPendentes()" style="width:auto;min-width:150px">
+              <select id="pend-status" aria-label="Filtrar por status" onchange="carregarPendentes()" style="width:auto;min-width:150px">
                 <option value="pendente">Pendentes</option>
                 <option value="ativo">Aprovados</option>
                 <option value="cancelado">Cancelados</option>
@@ -519,11 +519,11 @@ tbody tr:hover{background:var(--glass2)}
           <div class="panel-body">
             <p class="pl-help">Baixa o feed oficial do seasonaljobs.dol.gov, tira duplicadas e vagas sem e-mail, e salva em <b>rascunho</b> — você revisa e publica com 1 clique na lista abaixo. Datas em branco = tudo que o feed trouxer.</p>
             <div class="pl-form">
-              <div class="field"><label>Visto</label><select id="dc-visa"><option value="H-2B">H-2B</option><option value="H-2A">H-2A</option></select></div>
-              <div class="field"><label>Chave (única, sem espaços)</label><input type="text" id="dc-key" placeholder="ex.: h2b-outono-2026" maxlength="40"></div>
-              <div class="field"><label>Nome que o usuário vê</label><input type="text" id="dc-name" placeholder="ex.: H-2B Outono 2026" maxlength="80"></div>
-              <div class="field"><label>Início da vaga — de</label><input id="dc-from" type="date"></div>
-              <div class="field"><label>Início da vaga — até</label><input id="dc-to" type="date"></div>
+              <div class="field"><label for="dc-visa">Visto</label><select id="dc-visa"><option value="H-2B">H-2B</option><option value="H-2A">H-2A</option></select></div>
+              <div class="field"><label for="dc-key">Chave (única, sem espaços)</label><input type="text" id="dc-key" placeholder="ex.: h2b-outono-2026" maxlength="40"></div>
+              <div class="field"><label for="dc-name">Nome que o usuário vê</label><input type="text" id="dc-name" placeholder="ex.: H-2B Outono 2026" maxlength="80"></div>
+              <div class="field"><label for="dc-from">Início da vaga — de</label><input id="dc-from" type="date"></div>
+              <div class="field"><label for="dc-to">Início da vaga — até</label><input id="dc-to" type="date"></div>
             </div>
             <div class="pl-actions">
               <button class="btn btn-primary" id="dc-start-btn" onclick="plColetaStart()"><i class="ti ti-download"></i> Coletar agora</button>
@@ -592,10 +592,10 @@ tbody tr:hover{background:var(--glass2)}
     <div class="modal-head"><div class="modal-title"><i class="ti ti-file-upload"></i> Importar planilha (JSON)</div><button class="modal-close" onclick="fecharModal('modal-import-pl')"><i class="ti ti-x"></i></button></div>
     <div class="modal-body">
       <p class="pl-help">Arquivo no mesmo formato do "Baixar JSON": uma lista de vagas com <b>c</b> (case number) e <b>e</b> (e-mail). O arquivo é lido aqui no navegador e você vê o resumo antes de qualquer coisa ser enviada.</p>
-      <div class="field"><label>Arquivo .json</label><input type="file" id="ip-file" accept=".json,application/json" onchange="plImportarLer()"></div>
+      <div class="field"><label for="ip-file">Arquivo .json</label><input type="file" id="ip-file" accept=".json,application/json" onchange="plImportarLer()"></div>
       <div class="pl-form">
-        <div class="field"><label>Chave da planilha</label><input type="text" id="ip-key" placeholder="ex.: jul2026" maxlength="40"></div>
-        <div class="field"><label>Nome que o usuário vê</label><input type="text" id="ip-name" placeholder="ex.: Julho 2026 (H-2B)" maxlength="80"></div>
+        <div class="field"><label for="ip-key">Chave da planilha</label><input type="text" id="ip-key" placeholder="ex.: jul2026" maxlength="40"></div>
+        <div class="field"><label for="ip-name">Nome que o usuário vê</label><input type="text" id="ip-name" placeholder="ex.: Julho 2026 (H-2B)" maxlength="80"></div>
       </div>
       <div id="ip-resumo" class="pl-note"></div>
     </div>
@@ -629,7 +629,7 @@ tbody tr:hover{background:var(--glass2)}
     <div class="modal-body">
       <div id="vip-quem" style="margin-bottom:12px"></div>
       <div class="field">
-        <label>Plano</label>
+        <label for="vip-plano">Plano</label>
         <select id="vip-plano">
           <option value="vip">Manual (só manual)</option>
           <option value="vipro">Turbo (manual + automático)</option>
@@ -637,16 +637,16 @@ tbody tr:hover{background:var(--glass2)}
         </select>
       </div>
       <div class="field">
-        <label>Dias de envio MANUAL</label>
+        <label for="vip-manual">Dias de envio MANUAL</label>
         <input type="number" id="vip-manual" min="0" max="365" value="30">
       </div>
       <div class="field">
-        <label>Dias de envio AUTOMÁTICO</label>
+        <label for="vip-auto">Dias de envio AUTOMÁTICO</label>
         <input type="number" id="vip-auto" min="0" max="365" value="0">
         <div class="hint">Manual não tem automático — deixe 0. Turbo normalmente usa o mesmo número do manual (100/100); Máximo é 50 manual + 300 automático.</div>
       </div>
       <div class="field">
-        <label>Motivo / observação (fica no extrato do usuário)</label>
+        <label for="vip-nota">Motivo / observação (fica no extrato do usuário)</label>
         <input type="text" id="vip-nota" maxlength="160" placeholder="Ex.: reposição dos 15 dias que sobraram">
       </div>
       <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:11px 12px;font-size:12.5px;color:var(--t2);line-height:1.6">
@@ -670,7 +670,7 @@ tbody tr:hover{background:var(--glass2)}
     <form id="form-gasto" onsubmit="salvarGasto(event)">
       <div class="modal-body">
         <div class="field">
-          <label>Valor (R$) *</label>
+          <label for="gs-valor">Valor (R$) *</label>
           <input type="number" id="gs-valor" min="0.01" step="0.01" placeholder="0,00" required>
         </div>
         <div class="field">
@@ -681,7 +681,7 @@ tbody tr:hover{background:var(--glass2)}
           </div>
         </div>
         <div class="field">
-          <label>Categoria</label>
+          <label for="gs-categoria">Categoria</label>
           <input type="text" id="gs-categoria" list="gs-categoria-list" placeholder="Ex.: Anúncios, Servidor, Google Workspace…" maxlength="40">
           <datalist id="gs-categoria-list">
             <option value="Servidor / Hospedagem">
@@ -693,15 +693,15 @@ tbody tr:hover{background:var(--glass2)}
           </datalist>
         </div>
         <div class="field">
-          <label>Data do gasto</label>
+          <label for="gs-data">Data do gasto</label>
           <input type="date" id="gs-data">
         </div>
         <div class="field">
-          <label>Descrição</label>
+          <label for="gs-descricao">Descrição</label>
           <textarea id="gs-descricao" maxlength="300" placeholder="Detalhes do gasto (opcional)"></textarea>
         </div>
         <div class="field">
-          <label>Comprovante (imagem ou PDF, opcional)</label>
+          <label for="gs-comprovante">Comprovante (imagem ou PDF, opcional)</label>
           <input type="file" id="gs-comprovante" accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf" onchange="previewArquivo(this,'gs-preview','gs-filename')">
           <div class="file-name" id="gs-filename"></div>
           <img class="img-preview" id="gs-preview" alt="Pré-visualização do comprovante">
@@ -721,11 +721,11 @@ tbody tr:hover{background:var(--glass2)}
     <form id="form-pagamento" onsubmit="salvarPagamento(event)">
       <div class="modal-body">
         <div class="field">
-          <label>Valor (R$) *</label>
+          <label for="pg-valor">Valor (R$) *</label>
           <input type="number" id="pg-valor" min="0.01" step="0.01" placeholder="0,00" required>
         </div>
         <div class="field">
-          <label>E-mail ou usuário do cliente (opcional)</label>
+          <label for="pg-email">E-mail ou usuário do cliente (opcional)</label>
           <!-- 🐛 v172c: type="email" bloqueava o submit (validação nativa do
                navegador) pra cliente cadastrado por usuário+senha (username
                sem @) — o servidor (POST /api/admin/contabilidade/pagamento)
@@ -734,11 +734,11 @@ tbody tr:hover{background:var(--glass2)}
           <div class="hint">Deixe vazio para uma entrada avulsa sem cliente associado — nesse caso a nota abaixo é obrigatória.</div>
         </div>
         <div class="field">
-          <label>Nome</label>
+          <label for="pg-nome">Nome</label>
           <input type="text" id="pg-nome" placeholder="Nome de quem pagou" maxlength="200">
         </div>
         <div class="field">
-          <label id="pg-nota-label">Nota</label>
+          <label id="pg-nota-label" for="pg-nota">Nota</label>
           <textarea id="pg-nota" maxlength="300" placeholder="Descreva a origem desta entrada"></textarea>
         </div>
         <div class="field">
@@ -750,11 +750,11 @@ tbody tr:hover{background:var(--glass2)}
           </div>
         </div>
         <div class="field">
-          <label>Data do pagamento</label>
+          <label for="pg-data">Data do pagamento</label>
           <input type="date" id="pg-data">
         </div>
         <div class="field">
-          <label>Comprovante (imagem ou PDF, opcional)</label>
+          <label for="pg-comprovante">Comprovante (imagem ou PDF, opcional)</label>
           <input type="file" id="pg-comprovante" accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf" onchange="previewArquivo(this,'pg-preview','pg-filename')">
           <div class="file-name" id="pg-filename"></div>
           <img class="img-preview" id="pg-preview" alt="Pré-visualização do comprovante">
