@@ -6561,6 +6561,18 @@ async function drillBloqueioComprasNovas() {
         _idxL9.includes('[data-theme="dark"] .stab-cnt{background:var(--sf3)!important;color:var(--t2)!important}') &&
         _idxL9.includes('[data-theme="dark"] .stab.active .stab-cnt{background:var(--bluel)!important;color:#93c5fd!important;border-color:var(--blueb)!important}'),
         "badges de contagem por fonte continuam ilegíveis no tema escuro");
+      // 🚨 v289 (achado de auditoria contínua — CRÍTICA, mesmo padrão do
+      // v288 aplicado ao fluxo de candidatura): [data-theme="dark"]
+      // .cv-slot (linhas de currículo/carta/perfil dentro do modal
+      // "Enviar Candidatura") só reclamava background, nunca color. O
+      // bloco "v14 LIGHT OVERRIDES" força color:#1e1b4b (!important) e o
+      // nome do currículo/perfil (app.js mkSlots, sem color próprio)
+      // herdava esse valor. Contraste calculado: #1e1b4b sobre var(--sf2)
+      // dark (#1c1f35) = ~1.01:1 — texto PRATICAMENTE INVISÍVEL bem no
+      // centro da ação de candidatar-se.
+      check("🚨 v289: [data-theme=dark] .cv-slot reclama color e border-color também — nome do currículo/perfil visível no tema escuro",
+        _idxL9.includes('[data-theme="dark"] .cv-slot{background:var(--sf2)!important;color:var(--text)!important;border-color:var(--border2)!important}'),
+        "linhas de currículo/perfil continuam ilegíveis no tema escuro");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&
