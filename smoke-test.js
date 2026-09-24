@@ -6630,6 +6630,16 @@ async function drillBloqueioComprasNovas() {
         !_admL9.includes(".btn-ghost{") &&
         _admL9.includes(".btn-primary{") && _admL9.includes(".btn-green{") && _admL9.includes(".btn-red{"),
         ".btn-ghost morto não foi removido, ou uma variante viva foi afetada por engano");
+      // 📱 v295 (achado de auditoria contínua — UX mobile, continuação do
+      // v293): #cfg-phone (WhatsApp em Perfil/Configurações, OBRIGATÓRIO)
+      // e #plan-form-wpp (checkout de plano) tinham type="tel"
+      // inputmode="tel" mas SEM autocomplete="tel" — o campo gêmeo do
+      // cadastro (#ag-s-whats) já tinha. Sem o atributo, o navegador não
+      // oferece autofill do número salvo nesses 2 pontos.
+      check("📱 v295: #cfg-phone e #plan-form-wpp ganham autocomplete=tel (paridade com #ag-s-whats do cadastro)",
+        _idxL9.includes('id="cfg-phone" type="tel" inputmode="tel" autocomplete="tel"') &&
+        _idxL9.includes('id="plan-form-wpp" type="tel" placeholder="53 9 8145-3496" inputmode="tel" autocomplete="tel"'),
+        "campos de WhatsApp fora do cadastro continuam sem autocomplete=tel");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&

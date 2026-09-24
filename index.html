@@ -2877,7 +2877,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
                       <span style="font-size:9px;font-weight:800;background:#ef4444;color:#fff;padding:1px 5px;border-radius:99px" data-i18n="required_lbl">OBRIGATÓRIO</span>
                     </label>
                     <div style="position:relative">
-                      <input class="input" id="cfg-phone" type="tel" inputmode="tel" placeholder="+55 (00) 99999-9999" oninput="document.getElementById('wpp-ok-badge').style.display=this.value.replace(/\D/g,'').length>=8?'flex':'none'">
+                      <input class="input" id="cfg-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+55 (00) 99999-9999" oninput="document.getElementById('wpp-ok-badge').style.display=this.value.replace(/\D/g,'').length>=8?'flex':'none'">
                       <span id="wpp-ok-badge" style="display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);background:#10b981;color:#fff;font-size:10px;font-weight:800;padding:1px 7px;border-radius:99px;align-items:center;gap:3px"><i class="ti ti-check" style="font-size:10px"></i> OK</span>
                     </div>
                   </div>
@@ -3605,7 +3605,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
                 </div>
                 <div>
                   <label for="plan-form-wpp" style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:5px">WhatsApp * <span style="color:var(--t3);font-weight:400">(com DDD)</span></label>
-                  <input class="input" id="plan-form-wpp" type="tel" placeholder="53 9 8145-3496" inputmode="tel">
+                  <input class="input" id="plan-form-wpp" type="tel" placeholder="53 9 8145-3496" inputmode="tel" autocomplete="tel">
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
                   <div>
