@@ -6585,6 +6585,17 @@ async function drillBloqueioComprasNovas() {
         fs.readFileSync(path.join(__dirname, "guia.html"), "utf8").includes("function toggleFaq(") &&
         fs.readFileSync(path.join(__dirname, "h2b-e-golpe.html"), "utf8").includes("function toggleFaq("),
         "toggleFaq morto não foi removido, ou uma cópia viva foi afetada por engano");
+      // 📋 v291 (achado de auditoria contínua — COPY, autocontradição no
+      // mesmo tutorial): o Passo 17 de tutorial-conteudo.html prometia
+      // período "30/60/90 dias ou 1 ano" pra comprar plano — a
+      // reestruturação v218 (20/09/2026, server.js PLANO_PRECO_TAB) matou
+      // 90/365 dias, só sobrou 30/60. O Passo 16, 2 blocos acima no MESMO
+      // arquivo, já dizia certo ("30 ou 60 dias") — contradição interna
+      // confirmada, não só desatualização.
+      const _tutL9 = fs.readFileSync(path.join(__dirname, "tutorial-conteudo.html"), "utf8");
+      check("📋 v291: tutorial-conteudo.html (Passo 17) não promete mais 90 dias/1 ano — alinhado com PLANO_PRECO_TAB (só 30/60)",
+        !_tutL9.includes("90 dias ou 1 ano") && _tutL9.includes("escolha o plano e o período (<b>30 ou 60 dias</b>)"),
+        "tutorial ainda promete período de plano que não existe mais");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&
