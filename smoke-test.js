@@ -6609,6 +6609,18 @@ async function drillBloqueioComprasNovas() {
         !_tutL9.includes("Vagas ao Vivo") && _tutL9.includes("Escolha a <b>planilha</b> no topo: Jul 2026,") &&
         !fs.readFileSync(path.join(__dirname, "como-usar.html"), "utf8").includes('alt="Tela de diamantes e planos"'),
         "texto stale sobre planilha/aba removida ou alt de diamantes ainda presente");
+      // 📱 v293 (achado de auditoria contínua — UX mobile): #ag-s-user
+      // (nome de usuário do cadastro — valida [a-z0-9_.]{3,30}, "sem @"
+      // explícito no placeholder E na mensagem de erro) tinha
+      // inputmode="email" — cópia colada do campo #ag-s-email logo
+      // acima. No mobile isso mostra o teclado de e-mail (com @ em
+      // destaque) exatamente no campo onde @ é proibido, logo depois do
+      // usuário digitar um e-mail de verdade no campo anterior.
+      check("📱 v293: #ag-s-user (usuário do cadastro) sem inputmode=email — #ag-s-email continua correto",
+        !_appL9.includes('id="ag-s-user" type="text" inputmode="email"') &&
+        _appL9.includes('id="ag-s-user" type="text" autocapitalize="off"') &&
+        _appL9.includes('id="ag-s-email" type="email" inputmode="email"'),
+        "campo de usuário do cadastro ainda mostra teclado de e-mail no mobile");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&

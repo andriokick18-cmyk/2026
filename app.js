@@ -452,7 +452,7 @@ function agRender(step,data){
       </div>
       <div style="height:1px;background:rgba(255,255,255,.12);margin:4px 0 12px"></div>
       <label class="ag-lbl" for="ag-s-user">Nome de usuário <b>*</b></label>
-      <input class="ag-input" id="ag-s-user" type="text" inputmode="email" autocapitalize="off" placeholder="Ex.: joaosilva (sem espaço, sem @)" autocomplete="username" onkeydown="if(event.key==='Enter'){const p=g('#ag-s-pass');if(p)p.focus();}">
+      <input class="ag-input" id="ag-s-user" type="text" autocapitalize="off" placeholder="Ex.: joaosilva (sem espaço, sem @)" autocomplete="username" onkeydown="if(event.key==='Enter'){const p=g('#ag-s-pass');if(p)p.focus();}">
       <label class="ag-lbl" for="ag-s-pass">Senha <b>*</b></label>
       <input class="ag-input" id="ag-s-pass" type="password" placeholder="Mínimo 8 caracteres (pode ser só números)" autocomplete="new-password" onkeydown="if(event.key==='Enter')agSubmitSignup()">
       <div class="ag-err" id="ag-err"></div>
