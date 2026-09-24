@@ -6573,6 +6573,18 @@ async function drillBloqueioComprasNovas() {
       check("🚨 v289: [data-theme=dark] .cv-slot reclama color e border-color também — nome do currículo/perfil visível no tema escuro",
         _idxL9.includes('[data-theme="dark"] .cv-slot{background:var(--sf2)!important;color:var(--text)!important;border-color:var(--border2)!important}'),
         "linhas de currículo/perfil continuam ilegíveis no tema escuro");
+      // 🧹 v290 (achado de auditoria contínua — limpeza): toggleFaq() em
+      // app.js e .faq-item/.faq-item:hover em index.html eram código
+      // morto — a FAQ de index.html migrou pra <details>/<summary>
+      // nativo há tempos, sem nenhuma referência a essas classes/função
+      // (zero call sites confirmados). As 4 páginas standalone (guia,
+      // quanto-ganha, h2b-e-golpe, h2bapply-funciona) têm suas PRÓPRIAS
+      // cópias locais, ativas e intocadas por este fix.
+      check("🧹 v290: toggleFaq()/.faq-item removidos de app.js/index.html (mortos há tempos) — as cópias locais das 4 páginas standalone continuam vivas",
+        !_appL9.includes("function toggleFaq(") && !_idxL9.includes(".faq-item{") &&
+        fs.readFileSync(path.join(__dirname, "guia.html"), "utf8").includes("function toggleFaq(") &&
+        fs.readFileSync(path.join(__dirname, "h2b-e-golpe.html"), "utf8").includes("function toggleFaq("),
+        "toggleFaq morto não foi removido, ou uma cópia viva foi afetada por engano");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&

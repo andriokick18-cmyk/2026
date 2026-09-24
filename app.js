@@ -6645,13 +6645,6 @@ console.debug("[v14+] Novas funcionalidades carregadas: pipeline, templates, sta
 //  BLOCO 4: ONBOARDING + FAQ + MELHORIAS
 // ════════════════════════════════════════════════════
 
-// ── FAQ toggle ──────────────────────────────────────
-function toggleFaq(el){
-  const isOpen=el.classList.contains("open");
-  document.querySelectorAll(".faq-item").forEach(f=>f.classList.remove("open"));
-  if(!isOpen)el.classList.add("open");
-}
-
 // ══ 📄 v175 — JANELA PÓS-CADASTRO "Cadastre seu currículo agora" ══════════
 // (ordem do dono, 13/09/2026). Substitui o wizard antigo de 6 passos, que
 // pedia de novo nome/idade/WhatsApp já dados no cadastro ("a pessoa não
