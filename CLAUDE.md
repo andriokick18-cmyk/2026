@@ -3880,3 +3880,75 @@ de sempre). `npm test` 100% verde (isolado, sem processo concorrente),
 `check-xss-guard.js` sem achados. Sem bump de sw.js (mudança 100%
 server-side).
 
+
+## v282 — Enriquecimento de planilha volta a rodar sozinho, mas só 1x por boot (dono, 24/09/2026)
+
+Achado ao vivo do dono no painel de Envio Automático: a planilha "Julho
+2026 (H-2B)" — a "MAIS NOVA" do site — mostrava só 1.267 vagas disponíveis
+de um total de 2.625, porque o robô de Enriquecimento (que preenche
+e-mail/cidade/datas/descrição vaga a vaga, consultando o ETA Case Number
+na API do DOL) é 100% manual desde o v217 (19/09/2026) e ninguém tinha
+clicado "Enriquecer" pra essa planilha depois do último upload/seed.
+
+**Ordem do dono** (texto quase completo): *"eu preciso que todas as
+vagas sempre estejam disponível com um e-mail disponível... se a pessoa
+for premium, ela envia automático o envio manual, se ela não for
+premium, ela consegue ter acesso aos 2.600... eu quero que o site nunca
+perca essas vagas... eu não quero clicar em nada... eu quero que o
+deploy seja feito, ele identifica se tem e-mail, se vaga não tiver o
+e-mail, ele tem que ir lá e tem que preencher a vaga com o e-mail...
+isso não pode falhar"*.
+
+**Por que isso não é "desfazer o v217"**: o v217 matou um **vigia
+recorrente** (`setInterval` a cada 30min, rodando o dia inteiro, todo
+dia, mesmo sem nada mudar) porque "o DOL só publica temporada nova
+poucas vezes por ano" — gastar rede/CPU o tempo todo pra manter uma
+planilha "fresca" que não muda entre temporadas não fazia sentido. O
+pedido de hoje é outro: garantir que TODA vaga publicada tenha e-mail
+disponível, sem depender de alguém lembrar de clicar — e como este repo
+já publica (= reinicia o processo) a CADA COMMIT, um boot já É, na
+prática, o "de vez em quando" que o v217 previa, só que automático.
+
+**O que mudou** (`server.js`, logo depois de `PLANILHAS.iniciarAgendadores()`):
+um `setTimeout` de boot (~15s depois de subir, mesma folga que o v174
+original já dava) chama `PLANILHAS.autoEnrichCycle()` — função que já
+existia desde o v174, só não era mais chamada sozinha desde o v217.
+`autoEnrichCycle()`:
+- Lê `filaEnriquecimento()` — a MESMA fila por impacto que o painel
+  admin já usa (sem e-mail primeiro; jul2026, com 1.358 vagas sem
+  e-mail, entra na frente de jan2026/jul2025, que já têm 100% de e-mail
+  e só falta cidade/data/descrição).
+- Se não sobrar NADA pendente em nenhuma planilha publicada, sai rápido
+  e não faz mais nada até o próximo boot.
+- Se sobrar, processa planilha por planilha, vaga por vaga, com o MESMO
+  motor educado de sempre (1 vaga por vez, backoff em 403/429, rotação
+  de User-Agent, salva no disco a cada vaga) — se o PRÓXIMO deploy
+  interromper no meio (este repo publica bastante), o próximo boot
+  RETOMA pelo disco, nunca começa do zero.
+
+**O que NÃO mudou** (guarda estrutural do v217 continua de pé):
+`iniciarAgendadores()` continua SEM nenhum `setTimeout`/`setInterval`
+dentro dela — o hook novo mora em `server.js`, fora dessa função, de
+propósito, pra a guarda antiga do smoke ("iniciarAgendadores() não
+registra timer nenhum") continuar provando algo de verdade em vez de
+precisar ser enfraquecida. Os outros 3 robôs (vagas novas H-2A, H-2A do
+mês, H-2B do mês) continuam 100% manuais — o pedido do dono foi
+especificamente sobre e-mail/dado da vaga faltando, não sobre esses 3.
+`statusPainel().agendado` continua `false` (não existe vigia
+recorrente) — o painel mostra "rodando agora: enriquecimento" quando o
+boot disparar o ciclo, exatamente como já mostrava pra um clique manual
+(mesmo campo `enrich.running`, nenhuma tela nova precisou ser escrita).
+
+**Nunca mais que 1 corrida por boot**: se `autoEnrichCycle()` terminar
+de varrer tudo ANTES do próximo deploy, ele não volta a rodar sozinho —
+só o próximo boot dispara de novo. Não é `setInterval`, é `setTimeout`
+único que sai da função quando a fila zera.
+
+Testes: guarda estrutural nova provando (a) o hook de boot existe em
+`server.js`, chama `autoEnrichCycle` dentro de um `setTimeout` (nunca
+`setInterval`) logo depois de `PLANILHAS.iniciarAgendadores()`; (b) a
+guarda antiga do v217 (`iniciarAgendadores()` sem timer nenhum) continua
+verde, provando que as duas coisas são mesmo separadas. `npm test` 100%
+verde, `check-duplicates.js`/`check-xss-guard.js` sem achados. Sem bump
+de sw.js (mudança 100% server-side — nenhum arquivo servido ao cliente
+mudou).

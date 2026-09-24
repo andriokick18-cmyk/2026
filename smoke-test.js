@@ -4234,6 +4234,18 @@ async function drillBloqueioComprasNovas() {
       const _plStatusAg = await get("/api/admin/planilhas/status");
       check("🚫 v217: /api/admin/planilhas/status devolve agendado:false (o painel mostra \"Só manual\") mesmo em produção — não só no npm test",
         _plStatusAg.json?.agendado === false, JSON.stringify(_plStatusAg.json?.agendado));
+
+      // 📧 v282 (dono, 24/09/2026 — "eu preciso que todas as vagas sempre
+      // estejam disponível com um e-mail disponível... depois do deploy,
+      // automaticamente... eu não quero clicar em nada"): 1 disparo de
+      // enriquecimento por BOOT — mas fora de iniciarAgendadores(), pra guarda
+      // acima continuar provando algo de verdade (nunca um setInterval).
+      const _bootHookBlock = _srvPl.slice(_srvPl.indexOf("PLANILHAS.iniciarAgendadores();"), _srvPl.indexOf("PLANILHAS.iniciarAgendadores();") + 2500);
+      check("📧 v282 (estrutural, guarda permanente): existe 1 hook de BOOT (setTimeout, nunca setInterval) logo depois de PLANILHAS.iniciarAgendadores() chamando autoEnrichCycle() — garante e-mail das vagas sem precisar de clique do admin, mas sem virar vigia recorrente",
+        /setTimeout\(/.test(_bootHookBlock) && !/setInterval\(/.test(_bootHookBlock) && /PLANILHAS\.autoEnrichCycle\(\)/.test(_bootHookBlock),
+        _bootHookBlock.slice(0, 200));
+      check("📧 v282 (estrutural): autoEnrichCycle() continua com o guard isTest — o hook de boot nunca bate rede real no npm test (mesma proteção que já existia pro clique manual)",
+        /async function autoEnrichCycle\(\)\s*\{[\s\S]{0,200}if\s*\(isTest\)/.test(_modPl));
     }
 
     // 💳 v175: os pedidos criados acima (blocos de compra) geraram aviso por

@@ -44,8 +44,22 @@
      do admin, não um agendador. Objetivo do site (ordem do dono): apenas
      funcionar, enviar, cadastrar e vender — nenhuma dessas 4 depende de
      robô de vaga rodando sozinho. PROIBIDO reintroduzir agendamento
-     automático (T()/I() em iniciarAgendadores) sem ordem EXPRESSA e NOVA
+     RECORRENTE (T()/I() em iniciarAgendadores) sem ordem EXPRESSA e NOVA
      do dono. Ver docs/DECISIONS.md (19/09/2026).
+
+   • v282 (dono, 24/09/2026 — achado ao vivo: Julho 2026 só com 1.267 de
+     2.625 vagas liberadas, porque ninguém tinha clicado Enriquecer desde
+     o v217. "eu preciso que todas as vagas sempre estejam disponível com
+     um e-mail disponível... depois do deploy, automaticamente... eu não
+     quero clicar em nada... isso não pode falhar"): 2ª exceção automática,
+     bem mais estreita que o vigia de 30min que o v217 matou. server.js
+     dispara autoEnrichCycle() (função já existia, só não era mais chamada
+     sozinha) UMA VEZ, ~15s depois de CADA boot — e como este repo publica
+     a cada commit, todo deploy já é um recheck natural. autoEnrichCycle()
+     sai rápido se não houver nada pendente; se houver, processa a fila por
+     IMPACTO (sem e-mail primeiro) até esvaziar ou o PRÓXIMO deploy
+     interromper (retoma pelo disco). Nunca um setInterval — o boot dispara
+     UMA corrida, não um relógio. Ver docs/DECISIONS.md (24/09/2026).
    ═══════════════════════════════════════════════════════════════════════ */
 "use strict";
 
@@ -646,17 +660,22 @@ function createPlanilhas(deps) {
   }
 
   // ══════════════════════════════════════════════════════════════════════
-  //  ⏰ AGENDADORES — DESLIGADOS DE PROPÓSITO (v217, dono, 19/09/2026). O DOL
-  //  só publica temporada nova poucas vezes por ano — nenhum destes 4 robôs
-  //  (enriquecimento, vagas novas H-2A, H-2A do mês, H-2B do mês) roda mais
-  //  sozinho por relógio. Continuam 100% funcionais, só que por CLIQUE do
-  //  admin (aba Planilhas & Robôs) — rotas /api/admin/enrich/start,
-  //  /api/admin/sheet/coleta-start, /api/admin/sheet/h2a-bimestral-run,
-  //  /api/admin/sheet/h2b-mensal-run, /api/admin/sheet/h2a-novas-run. A
-  //  ÚNICA automação que sobrevive é o enriquecimento disparado 3s após um
-  //  UPLOAD manual (server.js) — é parte do MESMO clique do admin, nunca um
-  //  agendador por relógio. PROIBIDO reintroduzir T()/I() aqui sem ordem
-  //  EXPRESSA e NOVA do dono.
+  //  ⏰ AGENDADORES RECORRENTES — DESLIGADOS DE PROPÓSITO (v217, dono,
+  //  19/09/2026). O DOL só publica temporada nova poucas vezes por ano —
+  //  nenhum destes 4 robôs (enriquecimento, vagas novas H-2A, H-2A do mês,
+  //  H-2B do mês) roda mais SOZINHO POR RELÓGIO (setInterval/vigia). Ainda
+  //  rodam por CLIQUE do admin (aba Planilhas & Robôs) — rotas
+  //  /api/admin/enrich/start, /api/admin/sheet/coleta-start,
+  //  /api/admin/sheet/h2a-bimestral-run, /api/admin/sheet/h2b-mensal-run,
+  //  /api/admin/sheet/h2a-novas-run — E, desde o v282 (dono, 24/09/2026 —
+  //  "eu não quero clicar em nada... isso não pode falhar"), por UM disparo
+  //  automático de enriquecimento a CADA BOOT/deploy (server.js, logo depois
+  //  da chamada de iniciarAgendadores() abaixo, chamando autoEnrichCycle()
+  //  direto) — nunca um setInterval, só um setTimeout de boot que sai rápido
+  //  quando não há nada pendente. PROIBIDO reintroduzir T()/I() (timer
+  //  RECORRENTE) AQUI DENTRO desta função sem ordem EXPRESSA e NOVA do
+  //  dono — o hook de boot do v282 mora fora, de propósito, pra essa guarda
+  //  continuar provando algo de verdade.
   // ══════════════════════════════════════════════════════════════════════
   function iniciarAgendadores() {
     console.log(isTest

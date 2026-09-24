@@ -15547,6 +15547,32 @@ server.listen(PORT,"0.0.0.0",()=>{
   // esconder o boot deste módulo, mas não registra timer algum.
   PLANILHAS.iniciarAgendadores();
 
+  // ── 📧 v282 (dono, 24/09/2026 — achado ao vivo: Julho 2026 estava com só
+  // 1.267 de 2.625 vagas liberadas, porque o robô de Enriquecimento é manual
+  // desde o v217 e ninguém tinha clicado. Ordem: "eu preciso que todas as
+  // vagas sempre estejam disponível com um e-mail disponível... depois do
+  // deploy, automaticamente... eu não quero clicar em nada... isso não pode
+  // falhar"): UM único disparo automático por boot — não reabre o agendador
+  // recorrente que o v217 matou de propósito ("robôs só precisa 2 vezes por
+  // ano"). A diferença: aquilo era um vigia rodando o dia inteiro sem
+  // necessidade; isto é 1 varredura no boot (= a cada deploy, que aqui
+  // acontece a cada commit) que só faz alguma coisa SE sobrar vaga pendente
+  // de e-mail/cidade/data/descrição — filaEnriquecimento() (mesma fila do
+  // painel, por impacto: sem e-mail primeiro) decide sozinha, e
+  // autoEnrichCycle() (mod-planilhas.js, existe desde o v174, só nunca mais
+  // era chamado sozinho desde o v217) já sabe ser educado com o DOL (1 vaga
+  // por vez, backoff, salva a cada vaga) e retomar pelo disco se o PRÓXIMO
+  // deploy interromper no meio — nada se perde entre um boot e outro. Fila
+  // vazia = autoEnrichCycle() sai rápido e NÃO volta a rodar até o próximo
+  // boot — nunca um setInterval. `iniciarAgendadores()` continua sem
+  // NENHUM timer (guarda estrutural do v217 intacta); este é um hook de
+  // BOOT separado, do mesmo padrão da Migração de Segurança e da
+  // Regularização logo acima (setTimeout de boot, não "agendador").
+  setTimeout(() => {
+    console.log("[auto-enrich-boot] 🚀 varredura automática pós-deploy (v282, ordem do dono 24/09/2026) — só mexe no que estiver pendente");
+    PLANILHAS.autoEnrichCycle().catch(e => console.error("[auto-enrich-boot] erro:", e.message));
+  }, 15000); // 15s após boot — mesma folga que o enriquecimento original (v174) já dava
+
   // 📊 Resumo Diário do Dono — push às 8h BRT com os números de ontem.
   scheduleResumoDono();
 
