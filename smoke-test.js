@@ -6529,6 +6529,16 @@ async function drillBloqueioComprasNovas() {
       check("🚨 v285: #comp-drop-area (comprovante do pagamento) ganha role=button tabindex=0 aria-label — reusa a MESMA delegação global de Enter/Espaço, sem JS novo",
         _idxL9.includes('id="comp-drop-area" role="button" tabindex="0" aria-label="Selecionar comprovante do pagamento" onclick="document.getElementById(\'comp-file-input\').click()"'),
         "upload de comprovante sem role=button/tabindex");
+      // ♿ v286 (achado de auditoria contínua — Alta, ARMADILHA de teclado):
+      // .mob-back (botão "Voltar às vagas" do painel full-screen de
+      // detalhe de vaga no mobile) só fechava por clique — sem role,
+      // tabindex nem Escape. Como .jcard já é focável (#164), um usuário
+      // de teclado CONSEGUE abrir esse painel mas ficava PRESO dentro
+      // dele, sem nenhum jeito de voltar pela lista.
+      check("♿ v286: .mob-back ganha role=button tabindex=0 aria-label (reusa a delegação Enter/Espaço) e #mob-detail entra na lista de fechamento por Escape",
+        _idxL9.includes('class="mob-back" role="button" tabindex="0" aria-label="Voltar às vagas" onclick="closeMobDetail()"') &&
+        _appL9.includes('const mdt=g("#mob-detail");\n    if(mdt&&mdt.classList.contains("show")){e.preventDefault();closeMobDetail();return;}'),
+        "painel de detalhe mobile continua sem saída por teclado");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&

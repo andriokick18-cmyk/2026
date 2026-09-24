@@ -1378,6 +1378,14 @@ document.addEventListener("DOMContentLoaded",()=>{
     if(mm&&!mm.classList.contains("gone")){e.preventDefault();mm.classList.add("gone");return;}
     const da=g("#del-acc-m");
     if(da&&!da.classList.contains("gone")){e.preventDefault();closeDeleteAccountModal();return;}
+    // ♿ v286 (achado de auditoria contínua — Alta, ARMADILHA de teclado):
+    // #mob-detail (painel full-screen de detalhe de vaga no mobile) só
+    // fechava pelo clique no .mob-back — sem Escape e (até o v285-anterior
+    // deste mesmo achado) sem tabindex nele. Como o .jcard já é focável
+    // (v278/#164), um usuário de teclado conseguia ABRIR esse painel mas
+    // ficava PRESO dentro dele.
+    const mdt=g("#mob-detail");
+    if(mdt&&mdt.classList.contains("show")){e.preventDefault();closeMobDetail();return;}
     // 🚨 v237: mesma proteção pro #auth-gate (achado de auditoria — Alta,
     // não tinha NENHUM jeito de fechar antes deste commit).
     const ag=g("#auth-gate");
