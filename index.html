@@ -4388,12 +4388,12 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
         <div class="h2b-ov-title">Avalie o H2BApply</div>
         <div class="h2b-ov-txt" style="margin-bottom:14px">Sua avaliação pode aparecer na página inicial para ajudar outros brasileiros a decidir. Um admin revisa antes de publicar.</div>
       </div>
-      <div id="review-stars" style="display:flex;gap:6px;justify-content:center;margin-bottom:14px;font-size:30px">
-        <span class="review-star" data-v="1" onclick="reviewSetStar(1)" style="cursor:pointer">☆</span>
-        <span class="review-star" data-v="2" onclick="reviewSetStar(2)" style="cursor:pointer">☆</span>
-        <span class="review-star" data-v="3" onclick="reviewSetStar(3)" style="cursor:pointer">☆</span>
-        <span class="review-star" data-v="4" onclick="reviewSetStar(4)" style="cursor:pointer">☆</span>
-        <span class="review-star" data-v="5" onclick="reviewSetStar(5)" style="cursor:pointer">☆</span>
+      <div id="review-stars" aria-label="Nota de 1 a 5 estrelas" style="display:flex;gap:6px;justify-content:center;margin-bottom:14px;font-size:30px">
+        <span class="review-star" data-v="1" role="button" tabindex="0" aria-pressed="false" aria-label="1 estrela" onclick="reviewSetStar(1)" style="cursor:pointer">☆</span>
+        <span class="review-star" data-v="2" role="button" tabindex="0" aria-pressed="false" aria-label="2 estrelas" onclick="reviewSetStar(2)" style="cursor:pointer">☆</span>
+        <span class="review-star" data-v="3" role="button" tabindex="0" aria-pressed="false" aria-label="3 estrelas" onclick="reviewSetStar(3)" style="cursor:pointer">☆</span>
+        <span class="review-star" data-v="4" role="button" tabindex="0" aria-pressed="false" aria-label="4 estrelas" onclick="reviewSetStar(4)" style="cursor:pointer">☆</span>
+        <span class="review-star" data-v="5" role="button" tabindex="0" aria-pressed="false" aria-label="5 estrelas" onclick="reviewSetStar(5)" style="cursor:pointer">☆</span>
       </div>
       <textarea class="input" id="review-text" maxlength="600" rows="4" placeholder="Conte sua experiência com o H2BApply (mínimo 15 caracteres)..." style="resize:vertical;min-height:80px;margin-bottom:10px"></textarea>
       <input class="input" id="review-name" type="text" maxlength="40" placeholder="Nome a exibir (opcional — padrão: seu primeiro nome)" style="margin-bottom:10px">

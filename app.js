@@ -2893,8 +2893,10 @@ let _reviewStarVal=0;
 function reviewSetStar(v){
   _reviewStarVal=v;
   document.querySelectorAll(".review-star").forEach(el=>{
-    el.textContent=(parseInt(el.dataset.v,10)<=v)?"★":"☆";
-    el.style.color=(parseInt(el.dataset.v,10)<=v)?"#f59e0b":"";
+    const marcada=parseInt(el.dataset.v,10)<=v;
+    el.textContent=marcada?"★":"☆";
+    el.style.color=marcada?"#f59e0b":"";
+    el.setAttribute("aria-pressed",marcada?"true":"false");
   });
 }
 async function openReviewModal(){

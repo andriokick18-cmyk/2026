@@ -6510,6 +6510,15 @@ async function drillBloqueioComprasNovas() {
         _admSemAssoc.every(([full]) => /Pago por|Recebido por/.test(full)) &&
         _admL9.includes('<select id="pend-status" aria-label="Filtrar por status"'),
         `total=${_admLabels.length} sem-associação=${JSON.stringify(_admSemAssoc.map(([f]) => f))}`);
+      // 🦯 v284 (achado de auditoria contínua — Alta): as 5 estrelas de
+      // #review-stars (avaliação do H2BApply) eram <span> com só onclick —
+      // sem tabindex/role/aria-label. submitReview() BLOQUEIA o envio sem
+      // _reviewStarVal, que só é setado por clique — usuário de teclado
+      // nunca conseguia avaliar (feature 100% inoperável, não só difícil).
+      check("🦯 v284: #review-stars — as 5 estrelas viram role=button tabindex=0 aria-label (reusa a delegação global de Enter/Espaço já existente, zero JS novo) e reviewSetStar() mantém aria-pressed sincronizado",
+        [1, 2, 3, 4, 5].every((n) => _idxL9.includes(`data-v="${n}" role="button" tabindex="0" aria-pressed="false" aria-label="${n} estrela${n > 1 ? "s" : ""}" onclick="reviewSetStar(${n})"`)) &&
+        _appL9.includes('el.setAttribute("aria-pressed",marcada?"true":"false");'),
+        "estrelas de avaliação sem role=button/aria-pressed");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&
