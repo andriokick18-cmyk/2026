@@ -6548,6 +6548,19 @@ async function drillBloqueioComprasNovas() {
       check("♿ v287: #m-cd-pill ganha role=button tabindex=0 aria-label (reusa a delegação Enter/Espaço global)",
         _idxL9.includes('id="m-cd-pill" role="button" tabindex="0" aria-label="Configurações de proteção de envio manual"'),
         "pill de proteção de envio manual sem role=button/tabindex");
+      // ♿ v288 (achado de auditoria contínua — Alta, WCAG AA): .stab-cnt
+      // (contador de vagas por fonte, sidebar) no tema escuro renderizava
+      // com contraste 1.92:1 (badge inativo) / ~2.3:1 (ativo) — o bloco
+      // "v14 LIGHT OVERRIDES" (!important, linha ~916) hardcoda color pro
+      // valor do tema CLARO e o rescue dark (linha ~136) só reclamava
+      // background, nunca color. Números praticamente invisíveis no
+      // tema escuro. Contraste calculado independentemente: #4c4f82 sobre
+      // #222644 = 1.92:1 (abaixo do AA 4.5:1); var(--t2) dark (#a5a8cc)
+      // sobre var(--sf3) dark (#222644) = 6.35:1 (fix, AA folgado).
+      check("♿ v288: [data-theme=dark] .stab-cnt e .stab.active .stab-cnt reclamam color também (não só background) — contador de vagas legível no tema escuro",
+        _idxL9.includes('[data-theme="dark"] .stab-cnt{background:var(--sf3)!important;color:var(--t2)!important}') &&
+        _idxL9.includes('[data-theme="dark"] .stab.active .stab-cnt{background:var(--bluel)!important;color:#93c5fd!important;border-color:var(--blueb)!important}'),
+        "badges de contagem por fonte continuam ilegíveis no tema escuro");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&
