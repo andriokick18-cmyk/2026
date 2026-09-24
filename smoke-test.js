@@ -6640,6 +6640,18 @@ async function drillBloqueioComprasNovas() {
         _idxL9.includes('id="cfg-phone" type="tel" inputmode="tel" autocomplete="tel"') &&
         _idxL9.includes('id="plan-form-wpp" type="tel" placeholder="53 9 8145-3496" inputmode="tel" autocomplete="tel"'),
         "campos de WhatsApp fora do cadastro continuam sem autocomplete=tel");
+      // 📋 v296 (achado de auditoria contínua — COPY/SEO, mesma classe do
+      // v291/v292): h2bapply-funciona.html tinha o FAQ "Posso cancelar um
+      // plano pago quando quiser?" (visível NA PÁGINA e duplicado no
+      // JSON-LD FAQPage, que o Google pode mostrar como rich snippet)
+      // citando "30, 60 ou 90 dias, ou 1 ano" — período removido no v218
+      // (20/09/2026). A própria página já dizia certo 31 linhas acima,
+      // na seção de preços ("períodos de 30 ou 60 dias").
+      const _hfL9 = fs.readFileSync(path.join(__dirname, "h2bapply-funciona.html"), "utf8");
+      check("📋 v296: h2bapply-funciona.html — FAQ visível E JSON-LD FAQPage não citam mais 90 dias/1 ano de plano",
+        !_hfL9.includes("90 dias, ou 1 ano") &&
+        (_hfL9.match(/você paga por um período \(30 ou 60 dias\)/g) || []).length === 2,
+        "FAQ ou JSON-LD ainda citam período de plano removido");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&
