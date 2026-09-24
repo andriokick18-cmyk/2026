@@ -6519,6 +6519,16 @@ async function drillBloqueioComprasNovas() {
         [1, 2, 3, 4, 5].every((n) => _idxL9.includes(`data-v="${n}" role="button" tabindex="0" aria-pressed="false" aria-label="${n} estrela${n > 1 ? "s" : ""}" onclick="reviewSetStar(${n})"`)) &&
         _appL9.includes('el.setAttribute("aria-pressed",marcada?"true":"false");'),
         "estrelas de avaliação sem role=button/aria-pressed");
+      // 🚨 v285 (achado de auditoria contínua — CRÍTICA, caminho de
+      // monetização): #comp-drop-area (upload do comprovante de pagamento,
+      // PASSO 4 obrigatório da compra de plano) era um <div onclick> puro —
+      // o <input type=file> real é display:none (fora da tab order) e o
+      // div não tinha role/tabindex. submitPlanOrder() (app.js) BLOQUEIA o
+      // pedido sem _planComp64 — usuário de teclado NUNCA conseguia sequer
+      // abrir o seletor de arquivo, travando toda compra de plano paga.
+      check("🚨 v285: #comp-drop-area (comprovante do pagamento) ganha role=button tabindex=0 aria-label — reusa a MESMA delegação global de Enter/Espaço, sem JS novo",
+        _idxL9.includes('id="comp-drop-area" role="button" tabindex="0" aria-label="Selecionar comprovante do pagamento" onclick="document.getElementById(\'comp-file-input\').click()"'),
+        "upload de comprovante sem role=button/tabindex");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&
