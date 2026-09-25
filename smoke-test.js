@@ -1668,6 +1668,30 @@ async function drillBloqueioComprasNovas() {
         _errosJs.length === 0, _errosJs.join(" | ").slice(0, 300));
     }
 
+    // 🩺 v319 (achado de auditoria contínua) — /diagnostico (ferramenta de
+    // suporte do dono: "tire um print desta tela inteira e envie") tinha 2
+    // dos 6 testes quebrados desde o 1º commit do repo, nunca revisitados
+    // (git log mostra 1 commit só nesse arquivo, contra ~150 no sw.js no
+    // mesmo período): (1) o regex da versão do cache procurava "h2bapply-vN"
+    // mas o CACHE_NAME real SEMPRE foi "h2bapply-2026-vN" — o teste #2
+    // ficava vermelho em TODA execução, mesmo com o servidor 100% em dia;
+    // (2) o teste #5 checava conexão com cdn.jsdelivr.net, CDN que o produto
+    // parou de usar desde o v40 (ícones self-hosted em /vendor/ por causa de
+    // rede móvel BR que bloqueia jsdelivr/unpkg) — testava uma dependência
+    // que o app nem tem mais, e podia mandar quem lê o print atrás da causa
+    // errada.
+    {
+      const _diagHtml = (await get("/diagnostico")).body;
+      const _swReal319 = fs.readFileSync(path.join(__dirname, "sw.js"), "utf8");
+      const _mSw319 = _swReal319.match(/h2bapply-(?:2026-)?v(\d+)/);
+      check("🩺 v319: diagnostico.html usa o MESMO padrão de regex que bate com o CACHE_NAME de verdade do sw.js publicado (antes, sem o '2026-', o teste #2 nunca casava e ficava vermelho pra sempre)",
+        _diagHtml.includes("/h2bapply-(?:2026-)?v(\\d+)/") && !!_mSw319 && parseInt(_mSw319[1], 10) > 9,
+        "regexPresente=" + _diagHtml.includes("/h2bapply-(?:2026-)?v(\\d+)/") + " matchReal=" + JSON.stringify(_mSw319));
+      check("🩺 v319: diagnostico.html não busca mais cdn.jsdelivr.net — o teste #5 aponta pro caminho self-hosted de verdade (/vendor/tabler-icons.min.css)",
+        !_diagHtml.includes('fetch("https://cdn.jsdelivr.net') && _diagHtml.includes('fetch("/vendor/tabler-icons.min.css'),
+        "aindaBuscaCdn=" + _diagHtml.includes('fetch("https://cdn.jsdelivr.net'));
+    }
+
     // Rota admin SEM sessão tem que negar — o portão global é vital
     const adm = await get("/api/admin/users");
     check("GET /api/admin/users sem sessão → bloqueado (401/403)",

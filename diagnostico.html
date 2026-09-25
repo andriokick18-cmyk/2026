@@ -32,7 +32,7 @@ img.avtest{width:34px;height:34px;border-radius:50%;object-fit:cover}
 <div class="test wait" id="t-sw"><div class="st">⏳</div><div class="tx"><b>2. Versão do cache (Service Worker)</b><span id="t-sw-d">Consultando...</span></div></div>
 <div class="test wait" id="t-font"><div class="st">⏳</div><div class="tx"><b>3. Fonte de ícones (Tabler) carregou?</b><span id="t-font-d">Testando...</span><div class="icon-demo"><i class="ti ti-rocket"></i><i class="ti ti-mail"></i><i class="ti ti-search"></i><i class="ti ti-user"></i><i class="ti ti-settings"></i></div><span style="font-size:11px;opacity:.6">↑ Você deve ver 5 desenhos acima (foguete, carta, lupa, pessoa, engrenagem)</span></div></div>
 <div class="test wait" id="t-img"><div class="st">⏳</div><div class="tx"><b>4. Fotos do Google carregam?</b><span id="t-img-d">Testando imagem externa...</span><div style="margin-top:6px"><img class="avtest" id="img-google" referrerpolicy="no-referrer" alt="G" src="https://lh3.googleusercontent.com/a/default-user=s64-c"></div></div></div>
-<div class="test wait" id="t-cdn"><div class="st">⏳</div><div class="tx"><b>5. CDN de ícones acessível da sua rede?</b><span id="t-cdn-d">Testando conexão com jsdelivr...</span></div></div>
+<div class="test wait" id="t-cdn"><div class="st">⏳</div><div class="tx"><b>5. Fonte de ícones (self-hosted) responde?</b><span id="t-cdn-d">Testando /vendor/tabler-icons.min.css...</span></div></div>
 <div class="test wait" id="t-server"><div class="st">⏳</div><div class="tx"><b>6. Servidor respondendo?</b><span id="t-server-d">Consultando /api/public-stats...</span></div></div>
 
 <div id="resumo" style="background:#1e293b">Aguarde... rodando testes</div>
@@ -56,9 +56,17 @@ async function run(){
       const regs=await navigator.serviceWorker.getRegistrations();
       if(regs.length){
         const r2=await fetch("/sw.js?nocache="+Date.now(),{cache:"no-store"});const sw=await r2.text();
-        const m=sw.match(/h2bapply-v(\d+)/);
+        // 🩺 achado de auditoria contínua: o nome do cache é "h2bapply-2026-vN"
+        // desde o 1º commit deste repo — o regex antigo (`h2bapply-vN`, sem o
+        // "2026-") NUNCA bateu, então este teste ficava vermelho SEMPRE, em
+        // TODA execução, mesmo com o servidor 100% atualizado (confirmado:
+        // ~149 commits mudaram sw.js desde então e este arquivo nunca foi
+        // revisado). Sem um piso de versão fixo pra não precisar editar este
+        // arquivo a cada release — o que importa aqui é só confirmar que dá
+        // pra ler a versão publicada no servidor.
+        const m=sw.match(/h2bapply-(?:2026-)?v(\d+)/);
         results.sw=m?m[1]:"?";
-        set("t-sw", m&&+m[1]>=9, m?("Versão do sw.js no servidor: v"+m[1]+(+m[1]>=9?" ✔":" (esperado v9+ — servidor está com código antigo)")) : "sw.js sem versão identificável");
+        set("t-sw", !!m, m?("Versão do cache no servidor: v"+m[1]+" ✔") : "sw.js sem versão identificável");
       } else { results.sw="nenhum"; set("t-sw", true, "Nenhum service worker registrado (sem cache travado) ✔"); }
     } else { set("t-sw", true, "Navegador sem SW"); }
   }catch(e){set("t-sw",false,"Erro: "+e.message);}
@@ -74,13 +82,19 @@ async function run(){
   await new Promise(res=>{const done=ok=>{results.gimg=ok;set("t-img",ok,ok?"Imagens do Google carregam ✔":"Imagens do Google BLOQUEADAS nesta rede/aparelho");res();};
     if(gi.complete&&gi.naturalWidth>0)return done(true);
     gi.onload=()=>done(true);gi.onerror=()=>done(false);setTimeout(()=>done(gi.naturalWidth>0),5000);});
-  // 5. CDN acessível
+  // 5. Fonte de ícones self-hosted acessível — achado de auditoria contínua:
+  // este teste checava cdn.jsdelivr.net, mas os ícones saíram de CDN externo
+  // desde o v40 (reclamação real do dono: redes móveis brasileiras bloqueiam
+  // jsdelivr/unpkg) — /vendor/tabler-icons.min.css é servido pelo PRÓPRIO
+  // site desde então (KB-048). Testar o jsdelivr não dizia nada sobre o app
+  // de verdade: um print com essa linha vermelha mandava quem lê atrás de um
+  // CDN que o produto nem usa mais.
   try{
     const t0=Date.now();
-    const r=await fetch("https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.29.0/package.json",{cache:"no-store"});
+    const r=await fetch("/vendor/tabler-icons.min.css?nocache="+Date.now(),{cache:"no-store"});
     results.cdn=r.ok;
-    set("t-cdn", r.ok, r.ok?("CDN acessível ("+(Date.now()-t0)+"ms) ✔"):"CDN respondeu erro "+r.status);
-  }catch(e){results.cdn=false;set("t-cdn",false,"CDN INACESSÍVEL desta rede: "+e.message);}
+    set("t-cdn", r.ok, r.ok?("Fonte de ícones respondeu ("+(Date.now()-t0)+"ms) ✔"):"Erro "+r.status+" ao buscar a fonte de ícones");
+  }catch(e){results.cdn=false;set("t-cdn",false,"Fonte de ícones INACESSÍVEL desta rede: "+e.message);}
   // 6. Servidor
   try{
     const r=await fetch("/api/public-stats",{cache:"no-store"});const d=await r.json();
@@ -94,7 +108,7 @@ async function run(){
     R.textContent="🔴 CAUSA: o código novo NÃO está no servidor. O deploy não subiu os arquivos. Refaça o upload do zip garantindo TODOS os arquivos.";
   } else if(results.codigo==="novo-completo" && !results.font && !results.cdn){
     R.style.background="#451a03";R.style.border="1px solid #f59e0b";
-    R.textContent="🟠 Código novo OK, mas sua REDE bloqueia o CDN de ícones. A blindagem vai ativar o modo emoji automaticamente no app.";
+    R.textContent="🟠 Código novo OK, mas sua REDE não conseguiu buscar a fonte de ícones deste servidor. A blindagem vai ativar o modo emoji automaticamente no app.";
   } else if(results.codigo==="novo-completo" && results.font){
     R.style.background="#052e16";R.style.border="1px solid #16a34a";
     R.textContent="🟢 TUDO OK no servidor e nesta rede! Se o app ainda parece quebrado, é cache: feche o app/aba, reabra, ou teste em aba anônima.";
