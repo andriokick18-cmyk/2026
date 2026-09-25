@@ -144,13 +144,34 @@ function createNotif(deps) {
     pend.set(k, { hash: hashCode(codigo), exp: now + CODIGO_TTL_MS, tentativas: 0, envios: [...(prev.envios || []).filter(t => now - t < JANELA_ENVIOS_MS), now], ultimoEnvio: now });
     return { codigo, expiraEm: CODIGO_TTL_MS / 1000, reenvioEm: REENVIO_MS / 1000 };
   }
-  function confirmarCodigo(finalidade, email, codigo) {
-    const k = key(finalidade, email); const v = pend.get(k);
+  function confirmarCodigo(finalidade, email, codigo, opts) {
+    const k = key(finalidade, email); let v = pend.get(k);
     // 🚨 v177-FIX7 (auditoria 14/09/2026): os códigos vivem SÓ na memória do
     // processo, e este repo faz deploy a cada commit (o Render também acorda do
     // zero no plano free) — quem estava no meio do cadastro levava um "peça um
     // código novo" sem nunca entender o porquê. A mensagem agora NOMEIA a causa.
-    if (!v) return { ok: false, motivo: "nenhum código pedido pra esse e-mail — clique em Enviar verificação. (Se você acabou de pedir um, o site foi reiniciado no meio do cadastro: peça outro código, o formulário continua preenchido.)" };
+    if (!v) {
+      // 🔒 v335 (achado de auditoria contínua, SEGURANÇA): opts.simularSeAusente
+      // fecha um vazamento de enumeração de e-mail em /api/senha/redefinir — a
+      // entrada em `pend` só nasce pra CONTA REAL (gerarCodigo só roda dentro do
+      // `if(u&&...)` de /senha/enviar-codigo), então "nenhum código pedido" só
+      // acontecia pra e-mail SEM conta, enquanto "código incorreto" só acontecia
+      // pra e-mail COM conta — 2 mensagens diferentes revelavam a existência da
+      // conta em 2 requisições, sem medir tempo nenhum (o oposto do que v237m/
+      // v237q já tinham fechado na rota de ENVIO, mas nunca tocaram a de
+      // REDEFINIR). Com o opt-in, uma entrada FAKE (hash impossível de acertar)
+      // nasce na hora e segue o MESMO caminho de "código incorreto" até o
+      // cancelamento na 5ª tentativa — byte a byte igual a uma conta real. Só a
+      // finalidade "senha" usa isso (server.js passa a opção); "cadastro" já
+      // revela existência de conta de propósito em outro ponto do fluxo
+      // (/api/email/enviar-codigo 409), então continua com a mensagem antiga.
+      if (opts && opts.simularSeAusente) {
+        v = { hash: hashCode(crypto.randomBytes(4).toString("hex")), exp: Date.now() + CODIGO_TTL_MS, tentativas: 0 };
+        pend.set(k, v);
+      } else {
+        return { ok: false, motivo: "nenhum código pedido pra esse e-mail — clique em Enviar verificação. (Se você acabou de pedir um, o site foi reiniciado no meio do cadastro: peça outro código, o formulário continua preenchido.)" };
+      }
+    }
     if (Date.now() > v.exp) { pend.delete(k); return { ok: false, motivo: "código expirado (vale 5 minutos) — peça um novo", expirado: true }; }
     const c = String(codigo || "").replace(/\D/g, "");
     if (c.length !== 6 || hashCode(c) !== v.hash) {

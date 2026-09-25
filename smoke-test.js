@@ -1204,6 +1204,27 @@ async function drillAdminSettingsLegado() {
     check("🔑 v175: recuperação — resposta GENÉRICA igual pra e-mail sem conta e com conta (sem enumeração); o código de senha só sai pra quem tem conta",
       _recNo.status === 200 && _recOk.status === 200 && _recNo.body === _recOk.body && /^\d{6}$/.test(_codRec || "") && !lerOutbox().some((x) => x.to === "ninguem.v175@gmail.com"),
       `no=${_recNo.status} ok=${_recOk.status} cod=${_codRec}`);
+    // 🔒 v335 (achado de auditoria contínua, SEGURANÇA): a anti-enumeração de
+    // cima só cobre /senha/enviar-codigo (v237m/v237q) — /senha/redefinir
+    // NUNCA tinha o mesmo tratamento. confirmarCodigo() só cria entrada em
+    // `pend` pra CONTA REAL (gerarCodigo só roda dentro do `if(u&&...)` do
+    // enviar-codigo), então um código ERRADO devolvia "nenhum código pedido"
+    // pra e-mail sem conta e "código incorreto" pra e-mail com conta — 2
+    // mensagens diferentes, 2 requisições, sem medir tempo nenhum, revelando
+    // se o e-mail tem conta (achado real: e-mail é população-alvo de golpe
+    // de imigração, ver h2b-e-golpe.html). Corrigido com
+    // opts.simularSeAusente: e-mail sem conta ganha uma entrada FAKE (hash
+    // impossível de acertar) e cai no MESMO caminho de "código incorreto".
+    const _redefEnumOk = await req2("POST", "/api/senha/redefinir", { email: "fulano.v175@gmail.com", codigo: "000000", novaSenha: "novasenha123" });
+    const _redefEnumNo = await req2("POST", "/api/senha/redefinir", { email: "ninguem.v175@gmail.com", codigo: "000000", novaSenha: "novasenha123" });
+    check("🔒 v335: código ERRADO em /senha/redefinir devolve a MESMA resposta (byte a byte) pra e-mail COM conta e SEM conta — antes eram mensagens diferentes ('nenhum código pedido' × 'código incorreto'), vazando a existência da conta",
+      _redefEnumOk.status === 400 && _redefEnumNo.status === 400 && _redefEnumOk.body === _redefEnumNo.body && /código incorreto/.test(_redefEnumOk.json?.error || ""),
+      JSON.stringify({ comConta: _redefEnumOk.json, semConta: _redefEnumNo.json, corpoIgual: _redefEnumOk.body === _redefEnumNo.body }));
+    const _srv335 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+    check("🔒 v335 (estrutural): só a rota de SENHA passa simularSeAusente — /api/email/confirmar (finalidade 'cadastro') continua sem a opção, porque já revela existência de conta de propósito em outro ponto do fluxo (409 no /api/email/enviar-codigo)",
+      _srv335.includes('NOTIF.confirmarCodigo("senha",email,d.codigo,{simularSeAusente:true})') &&
+      _srv335.includes('NOTIF.confirmarCodigo("cadastro",email,d.codigo)'),
+      "o call site de cadastro ganhou simularSeAusente, ou o de senha perdeu");
     // 🚨 v237m (achado de auditoria — Média, auth): a anti-enumeração de cima
     // provava só o caso feliz (conta existe × não existe, 1 pedido cada).
     // O vazamento real era noutro lugar: pedir um 2º código pro MESMO e-mail

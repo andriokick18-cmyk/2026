@@ -8840,7 +8840,9 @@ filtrar();
       const email=String(d.email||"").trim().toLowerCase();
       const nova=String(d.novaSenha||"");
       if(nova.length<8)return json(res,400,{error:"A nova senha precisa ter pelo menos 8 caracteres."});
-      const r=NOTIF.confirmarCodigo("senha",email,d.codigo);
+      // 🔒 v335: simularSeAusente fecha a enumeração — e-mail sem conta some,
+      // até neste código de erro, atrás da MESMA resposta de "código incorreto".
+      const r=NOTIF.confirmarCodigo("senha",email,d.codigo,{simularSeAusente:true});
       if(!r.ok)return json(res,400,{error:r.motivo});
       const u=_findUserByEmail(email);
       if(!u||isAdminVip(u))return json(res,400,{error:"Conta não encontrada."}); // v177-FIX: mesma régua acima — cobre conta admin dos 2 formatos
