@@ -13205,8 +13205,23 @@ if(pathname==="/api/admin/contabilidade"&&req.method==="GET"){
       // 🔎 checagem de consistência simples: dias restantes > total creditado
       // como "pago" = suspeita (dias apareceram sem crédito registrado que
       // os explique). Só flaga quando há dias restantes de verdade.
+      // 🩺 v329 (achado de auditoria contínua): autoAtivarProvisorio() (o
+      // caminho FELIZ padrão desde o v177 — todo Pix que o Gemini confere
+      // ativa na hora, janela de AUTO_ATIVA_DIAS=3d aguardando confirmação
+      // do admin) nunca chamava addCredito(), então TODO pagante nessa
+      // janela de ~3 dias tinha diasCreditadosPagos=0 e caía aqui como
+      // suspeita — o mesmo ⚠️ de uma fraude real, num estado que já é
+      // monitorado à parte (badge âmbar "já ativo (provisório) — revisar"
+      // em Pedidos Pendentes, com sua própria fila). Repetir o alerta aqui
+      // não soma revisão nenhuma — só ensina o admin a ignorar o ⚠️ por
+      // fadiga (a maioria das ocorrências vira compra normal ainda não
+      // confirmada), justamente o risco de deixar uma divergência real
+      // passar batido. `source==="auto-provisorio"` é o MESMO carimbo que
+      // autoAtivarProvisorio() já grava (linha ~15137) — nenhum vocabulário
+      // novo.
+      const isProvisorioVivo=String(vip.source||"")==="auto-provisorio";
       const regraId="dias_maior_creditado";
-      const rawSuspeita=(daysLeft!=null&&daysLeft>0&&diasCreditadosPagos<daysLeft);
+      const rawSuspeita=!isProvisorioVivo&&(daysLeft!=null&&daysLeft>0&&diasCreditadosPagos<daysLeft);
       // a assinatura carrega os NÚMEROS exatos da divergência atual — o
       // cálculo roda sempre do zero (nunca cacheia o resultado), só a
       // DECISÃO do admin sobre ESSES números específicos é que persiste.

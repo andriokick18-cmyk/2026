@@ -5713,6 +5713,35 @@ async function drillBloqueioComprasNovas() {
       !!v328row && v328row.diasCreditadosCortesia >= 3,
       JSON.stringify({ diasCreditadosCortesia: v328row?.diasCreditadosCortesia }));
 
+    // 🩺 v329 (achado de auditoria contínua): autoAtivarProvisorio() (o
+    // caminho FELIZ padrão desde o v177 — todo Pix que o Gemini confere
+    // ativa na hora, aguardando confirmação do admin por até
+    // AUTO_ATIVA_DIAS=3 dias) nunca chamava addCredito() — todo pagante
+    // nessa janela tinha diasCreditadosPagos=0 e caía como "suspeita de
+    // divergência" em /api/admin/contabilidade, o MESMO ⚠️ de uma fraude
+    // real, duplicando (com ruído) o badge âmbar que Pedidos Pendentes já
+    // mostra pra esse exato estado — fadiga de alerta que esconde
+    // divergências de verdade.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "prov329@test.com", name: "Provisorio 329", plan: "vip", vip: { active: true, plan: "vip", source: "auto-provisorio", manualExpires: Date.now() + 3 * 86400000, autoExpires: 0 } });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "andrio.usa2026@gmail.com", name: "Dono", isAdmin: true });
+    const v329cont = (await req2("GET", "/api/admin/contabilidade")).json;
+    const v329row = (v329cont?.usuarios || []).find(u => u.email === "prov329@test.com");
+    check("🩺 v329: ativação provisória automática (vip.source='auto-provisorio') NÃO dispara mais o ⚠️ de suspeita de fraude em /api/admin/contabilidade — o mesmo estado já tem revisão dedicada (badge âmbar em Pedidos Pendentes)",
+      !!v329row && v329row.daysLeft > 0 && v329row.diasCreditadosPagos === 0 && v329row.suspeita === false,
+      JSON.stringify({ daysLeft: v329row?.daysLeft, diasCreditadosPagos: v329row?.diasCreditadosPagos, suspeita: v329row?.suspeita }));
+
+    // Contraste: a exceção é ESPECÍFICA de auto-provisorio — uma
+    // divergência de verdade (dias sem crédito pago, fora da janela
+    // provisória) continua acusando ⚠️ normalmente, a régua não virou um
+    // passe livre geral.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "divreal329@test.com", name: "Divergencia Real 329", plan: "vip", vip: { active: true, plan: "vip", source: "admin", manualExpires: Date.now() + 3 * 86400000, autoExpires: 0 } });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "andrio.usa2026@gmail.com", name: "Dono", isAdmin: true });
+    const v329cont2 = (await req2("GET", "/api/admin/contabilidade")).json;
+    const v329row2 = (v329cont2?.usuarios || []).find(u => u.email === "divreal329@test.com");
+    check("🩺 v329: a exceção é ESPECÍFICA de auto-provisorio — uma divergência de verdade (dias sem crédito pago, fora da janela provisória) continua acusando ⚠️, a régua não virou um passe livre geral",
+      !!v329row2 && v329row2.daysLeft > 0 && v329row2.suspeita === true,
+      JSON.stringify({ daysLeft: v329row2?.daysLeft, suspeita: v329row2?.suspeita }));
+
     // ═══ 🚨 v237 (achado de auditoria — Alta, vagas/filtros): loadSheetMeta()
     // (a busca manual de vagas, aba planilha) não tinha NENHUMA proteção
     // contra resposta de um fetch antigo chegando depois de uma troca de
