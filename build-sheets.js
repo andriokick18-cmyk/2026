@@ -39,6 +39,11 @@ const path   = require("path");
 const zlib   = require("zlib");
 const os     = require("os");
 const { dedupeVagas, verifyIntegrity, buildManifest } = require("./mod-vagas-integrity.js");
+// 💵 v316 — unidade do salário reaproveitada de mod-planilhas.js (fonte única
+// desde o v182 LOTE 8: "nunca duplicar"). Sem require circular de verdade —
+// mod-planilhas.js só toca build-sheets.js dentro de função (runDolColeta/
+// runH2aNovasCycle), nunca no topo do módulo.
+const { unidadeSalario } = require("./mod-planilhas.js");
 
 // ─── Configuração ─────────────────────────────────────────────────────────────
 const OUT_DIR = path.join(__dirname);
@@ -196,7 +201,16 @@ function toCompact(rec) {
   const employer = (rec.employer_business_name || rec.employer_trade_name || "").trim();
   const state = (rec.worksite_state || rec.employer_state || "").toUpperCase().trim();
   const wage = rec.basic_rate_from ? String(parseFloat(rec.basic_rate_from).toFixed(2)) : "";
-  const wunit = rec.pay_range_desc === "Month" ? "mês" : "h";
+  // 💵 v316 — auditoria contínua achou este toCompact() (usado de verdade por
+  // runDolColeta/runH2aNovasCycle em mod-planilhas.js) com uma cópia BUGADA e
+  // mais velha do mapeamento que o v182 LOTE 8 já tinha corrigido em
+  // mod-planilhas.js: só tratava "Month" (perdendo Week/Bi-Weekly/Year/Piece
+  // Rate — todos viravam "hora" na régua única de salário) e, pro próprio
+  // "Month", gravava "mês" em vez do código canônico "mo" — wageHora()
+  // (mod-filtros.js) confere com un.startsWith("mo"), então "mês" NUNCA
+  // batia e o valor mensal também caía errado no fallback genérico de hora.
+  // Reusa unidadeSalario() — nunca uma 3ª tabela duplicada.
+  const wunit = unidadeSalario(rec.pay_range_desc) || "h";
   const workers = parseInt(rec.total_positions || 0) || 0;
   const caseNum = (rec.case_number || rec.case_id || "").trim();
   const visa = caseNum.startsWith("H-300") ? "H-2A"

@@ -6519,6 +6519,35 @@ async function drillBloqueioComprasNovas() {
       check("🧩 v182-L8 (32): a vaga paga por peça sai do filtro de salário em vez de entrar com valor falso",
         vfL8.facetas.salario.semSalario >= 1 && (vfL8.facetas.salario.limiares.find((l) => l.v === 12) || {}).n === 2,
         JSON.stringify(vfL8.facetas.salario).slice(0, 160));
+      // 🧩 v316 (auditoria contínua) — o v182 LOTE 8 acima corrigiu a unidade de
+      // salário SÓ no robô de enriquecimento (mod-planilhas.js). O robô de coleta
+      // mensal do DOL (runDolColeta/runH2aNovasCycle) usa outro caminho —
+      // build-sheets.js:toCompact() — que tinha sua PRÓPRIA cópia mais velha e
+      // bugada do mapeamento: só tratava "Month" e mesmo assim gravava "mês" (não
+      // o código canônico "mo"), então nem o caso tratado batia com o
+      // un.startsWith("mo") de wageHora(). Tudo o mais (Week/Bi-Weekly/Year/Piece
+      // Rate) virava "h" na marra — o EXATO bug que o comentário do v182 LOTE 8 em
+      // mod-planilhas.js já descrevia ("$800/semana virava $4,62/h"), só que nunca
+      // tinha sido corrigido aqui. Corrigido reaproveitando unidadeSalario() —
+      // nunca uma 3ª tabela duplicada.
+      const bsL316 = require(path.join(__dirname, "build-sheets.js"));
+      const _mkRec316 = (desc, rate) => ({
+        case_number: "H-400-26099-999999", job_title: "Cook", employer_business_name: "Teste 316 LLC",
+        worksite_state: "TX", worksite_city: "Austin", begin_date: "2026-10-01", end_date: "2027-03-31",
+        apply_email: "rh@teste316.com", total_positions: 5, case_status: "certified",
+        pay_range_desc: desc, basic_rate_from: rate,
+      });
+      const c316w = bsL316.toCompact(_mkRec316("Week", "800"));
+      const c316bw = bsL316.toCompact(_mkRec316("Bi-Weekly", "1600"));
+      const c316y = bsL316.toCompact(_mkRec316("Year", "41600"));
+      const c316pr = bsL316.toCompact(_mkRec316("Piece Rate", "3"));
+      const c316mo = bsL316.toCompact(_mkRec316("Month", "300")); // valor baixo de propósito: discrimina "mo" (piso $300, mesma proteção do caso real "Field Workers w=9.59 mo" citado em mod-filtros.js) do fallback genérico que "mês" caía antes (300/173≈1,73 — outro número)
+      check("🧩 v316: toCompact() do robô de coleta mensal (build-sheets.js) agora grava a unidade CANÔNICA de salário — antes só 'Month' era tratado e TUDO o mais (Week/Bi-Weekly/Year/Piece Rate) virava 'h' na marra",
+        c316w.wunit === "w" && c316bw.wunit === "bw" && c316y.wunit === "y" && c316pr.wunit === "pr" && c316mo.wunit === "mo",
+        JSON.stringify([c316w.wunit, c316bw.wunit, c316y.wunit, c316pr.wunit, c316mo.wunit]));
+      check("🧩 v316: com a unidade certa, wageHora() (mesma régua única do filtro/sort) fecha a conta de verdade — $800/semana agora é $20/h (não mais $4,62/h) e o caso 'Month' cai no piso da unidade CERTA (300, não os ~$1,73 do fallback genérico que 'mês' caía antes — prova que 'mo' e 'mês' tomam ramos DIFERENTES em wageHora)",
+        _wh8(c316w) === 20 && _wh8(c316bw) === 20 && _wh8(c316y) === 20 && _wh8(c316pr) === 0 && _wh8(c316mo) === 300,
+        JSON.stringify([_wh8(c316w), _wh8(c316bw), _wh8(c316y), _wh8(c316pr), _wh8(c316mo)]));
       // (31→v208) o frescor foi RETIRADO por decisão de produto (19/09/2026) —
       // vaga já completa nunca mais é reconsultada. planilhasPublicadas() (o que
       // sobrou daquele item, sem a parte de reconferência) continua listando
