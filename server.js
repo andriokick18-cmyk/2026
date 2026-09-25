@@ -3647,6 +3647,65 @@ function detectCategory(titulo, empresa) {
   return "other";
 }
 
+// ═══ 🌾 v332 (achado de auditoria contínua) — categorizador PRÓPRIO do H-2A ═══
+// detectCategory() acima só conhece a taxonomia H-2B (CATEGORY_KEYWORDS/
+// JOB_TITLE_TO_CAT — paisagismo, construção, hotelaria...); recategorizeAllSheets
+// pula H-2A DE PROPÓSITO ("usa uma taxonomia agrícola própria de 20
+// categorias que não existe em CATEGORY_KEYWORDS") — decisão certa, mas o
+// buraco que ela deixa nunca foi preenchido: build-sheets.js#detectCategoryBest
+// (usado por toCompact(), a função que categoriza TODA vaga nova) também só
+// conhece a mesma taxonomia H-2B — nenhum código em todo o repo sabia dizer
+// "🚜 Operador de Máquinas" (equipment_op) ou "🐑 Pastor de Ovelhas"
+// (sheepherder) pra uma vaga H-2A nova. O fallback `if(!c.k) c.k =
+// detectCategory(...)` em mod-planilhas.js (runDolColeta/runH2aNovasCycle)
+// nunca disparava (detectCategoryBest do build-sheets.js SEMPRE devolve algo,
+// no mínimo "other") — E mesmo se disparasse, detectCategory() acima
+// devolveria uma categoria H-2B errada. Toda vaga H-2A nova (o único jeito de
+// entrar é o robô "Vagas Novas H-2A" — o dataset empacotado é de jun/2026)
+// nascia categorizada errado, pra sempre, sem nenhum self-heal (ao contrário
+// do H-2B, que se autocorrige em todo boot).
+// Regras testadas contra as 4.964 vagas reais de h2a_jun2026_compact.json
+// (83,8% de acerto contra a classificação já existente nesse arquivo — o
+// resto é ambiguidade real do próprio título, tipo "Farm Worker" puro, que
+// nem humano decide sem o código SOC, que o DOL nem manda pro nosso feed).
+// Prioridade: termo mais ESPECÍFICO primeiro (sheepherder/mecânico/
+// carpinteiro/etc. vencem "farmworker" genérico); "crop" é o padrão quando
+// nada específico bate — é de longe a categoria mais comum (42% dos dados
+// reais) e é o sentido natural de um título tipo "Farm Worker"/"Farmworker"
+// sem mais nada que o qualifique.
+const H2A_CATEGORY_RULES = [
+  ["sheepherder", ["sheepherder", "goatherder", "goat sheepherder", "sheep herder", "cattleherder", "cattle herder", "range herder", "livestock herder", "stocker herder", "calver stocker"]],
+  ["mechanic", ["mechanic", "equipment mechanic", "service technician", "installation maintenance and repair", "maintenance and repair worker"]],
+  ["ironworker", ["structural steel worker", "ironworker", "iron worker"]],
+  ["carpenter", ["carpenter", "carpenter helper"]],
+  ["fence", ["fence installer", "fence builder", "fencer"]],
+  // equipment_op ANTES de truck_driver/driver: combos como "Ag Equipment
+  // Operator/Truck Driver" e "Equipment Operator/Mechanic/Farmworker/
+  // Irrigator" são operador de máquina na base real — o papel de operador
+  // vence quando aparece junto de motorista/irrigador/mecânico no título.
+  ["equipment_op", ["equipment operator", "ag equipment operator", "agricultural equipment operator", "harvest equipment operator", "harvest eq operator"]],
+  ["truck_driver", ["truck driver", "cdl driver"]],
+  ["driver", ["shuttle driver", "chauffeur", "bus driver", "van driver", "field walker"]],
+  ["grader_sorter", ["grader", "sorter", "grader sorter"]],
+  ["packer", ["packer", "packaging worker", "packers and packagers", "bag stacker"]],
+  ["cook", ["cook", "camp cook", "cafeteria"]],
+  ["meat", ["butcher", "slaughter", "meat processing", "meat cutter"]],
+  ["inspector", ["inspector"]],
+  ["supervisor", ["supervisor", "crew leader", "crew boss", "farm manager"]],
+  ["irrigation", ["irrigator", "irrigation worker", "irrigation laborer"]],
+  ["nursery", ["nursery worker", "greenhouse worker", "plant nursery"]],
+  ["construction", ["construction laborer", "construction worker", "framer", "farm construction", "farm facility construction", "const labor"]],
+  ["logging", ["logging worker", "timber worker", "forestry worker", "reforestation"]],
+  ["livestock", ["livestock", "dairy", "cattle", "rancher", "ranch worker", "ranch hand", "beekeeper", "poultry", "hog", "swine", "hydroponic"]],
+];
+function detectCategoryH2A(titulo) {
+  const t = _normTitulo(titulo);
+  if (t) for (const [cat, frases] of H2A_CATEGORY_RULES) {
+    for (const frase of frases) { if (_chaveInteira(t, frase)) return cat; }
+  }
+  return "crop";
+}
+
 function getSheet(n) { return n==="jan2026"?SHEET_JAN:n==="jul2025"?SHEET_JUL:(n==="h2a-jun2026"||n==="h2ajun2026")?SHEET_H2A:SHEET_EXTRAS[n]||[]; }
 
 // ── v51 (dono, 25/07): qual é a planilha H-2B mais RECENTE? ─────────────────
@@ -6773,7 +6832,7 @@ const PLANILHAS = _createPlanilhas({
   getSheet, getSheetH2A: () => SHEET_H2A, setSheetH2A: (arr) => { SHEET_H2A = arr; },
   getExtras: () => SHEET_EXTRAS, getMeta: () => DB_SHEETS_META,
   enrichBot: _enrichBot, enrichLog: _enrichLog, saveSheet: _saveEnrichedSheet,
-  httpsReq, botLog, pushToUser, ADMIN_EMAILS, detectCategory, limparCidade,
+  httpsReq, botLog, pushToUser, ADMIN_EMAILS, detectCategory, detectCategoryH2A, limparCidade,
   dedupe: _vagasDedupe, verify: _vagasVerify, manifest: _vagasManifest,
   // 📡 v189 LOTE 7: o nome diz o que a função faz — CONTA vaga nova que
   // combina com o filtro salvo. Não notifica ninguém (não há canal).
@@ -15366,8 +15425,15 @@ function recategorizeAllSheets(){
   function fixArray(arr,label){
     let fixed=0;
     for(const r of arr){
-      if(String(r.visa||"").toUpperCase().includes("H-2A")) continue; // H-2A tem taxonomia própria — nunca tocar aqui
-      const novo=detectCategory(r.t,r.n);
+      // 🌾 v332: H-2A usa uma taxonomia agrícola própria de 20 categorias
+      // (crop, livestock, equipment_op, sheepherder...) que não existe em
+      // CATEGORY_KEYWORDS — rodar detectCategory() nela destruiria a
+      // classificação. Antes disso significava "nunca tocar", e qualquer
+      // vaga H-2A que tivesse entrado aqui (jan2026/jul2025/extras — o
+      // destino de toda coleta manual do admin, mesmo H-2A) por causa do
+      // bug de toCompact() ficava com a categoria H-2B errada pra sempre.
+      // Agora usa o categorizador próprio, mesmo padrão do H-2B abaixo.
+      const novo=String(r.visa||"").toUpperCase().includes("H-2A") ? detectCategoryH2A(r.t) : detectCategory(r.t,r.n);
       if(r.k!==novo){ r.k=novo; fixed++; }
     }
     if(fixed>0) console.log(`[recat] 🔧 ${label}: ${fixed}/${arr.length} vagas recategorizadas (título passou a valer, não só empresa)`);
@@ -15375,11 +15441,19 @@ function recategorizeAllSheets(){
   }
   totalFixed+=fixArray(SHEET_JAN,"jan2026");
   totalFixed+=fixArray(SHEET_JUL,"jul2025");
-  // H-2A NÃO entra aqui: usa uma taxonomia agrícola própria de 20 categorias
-  // (crop, livestock, equipment_op, sheepherder...) que não existe em
-  // CATEGORY_KEYWORDS. Rodar detectCategory() nele destruiria essa
-  // classificação especializada — só H-2B (jan2026/jul2025/extras) usa
-  // CATEGORY_KEYWORDS.
+  // ⚠️ SHEET_H2A (a planilha "H-2A jun2026" dedicada, getSheet("h2a-jun2026"))
+  // continua DE FORA deste self-heal de propósito — ela mistura o dataset
+  // original empacotado (já vem com a categoria certa, aferida à mão/fonte
+  // externa antes de existir qualquer categorizador neste repo) com vagas
+  // novas que o robô "Vagas Novas H-2A" for anexando (essas já nascem
+  // corrigidas na entrada — mod-planilhas.js). detectCategoryH2A() acerta
+  // ~84% contra esse mesmo dataset original (medido, não estimado) — rodar
+  // por cima da planilha inteira trocaria uma fração de rótulos BONS pelo
+  // palpite do heurístico. Se um dia precisar auditar quantas vagas JÁ
+  // ficaram erradas nela antes deste fix (o robô roda só em produção), é
+  // uma pergunta de auditoria SÓ-LEITURA separada — nunca uma reescrita em
+  // massa (mesma régua do 13p/v310: corrigir o código pra frente é uma
+  // decisão; corrigir dado antigo é OUTRA, e essa nunca é automática aqui).
   for(const[key,arr] of Object.entries(SHEET_EXTRAS)){
     const n=fixArray(arr,`extra:${key}`);
     if(n>0){

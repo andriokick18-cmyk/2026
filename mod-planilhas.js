@@ -164,7 +164,7 @@ function createPlanilhas(deps) {
     saveSheet,           // (key, rows) → grava planilha (atômico, /data)
     httpsReq,            // ({hostname,path,method,headers}) → {status,body}
     botLog, pushToUser, ADMIN_EMAILS,
-    detectCategory, dedupe, verify, manifest,
+    detectCategory, detectCategoryH2A, dedupe, verify, manifest,
     limparCidade,        // v182: régua ÚNICA de limpeza de cidade (server.js, ao lado do mapa de estados)
     registrarVagasNovasNoRadar,
     isTest,              // true no npm test (TEST_LOGIN_TOKEN) — agendadores desligados
@@ -493,7 +493,15 @@ function createPlanilhas(deps) {
         if (visaStrict && String(c.visa || "").toUpperCase() !== visa) { outroVisto++; continue; }
         if (beginFrom && c.d && c.d < beginFrom) { foraJanela++; continue; }
         if (beginTo && c.d && c.d > beginTo) { foraJanela++; continue; }
-        if (!c.k) c.k = detectCategory(c.t, c.n);
+        // 🌾 v332: bs.toCompact() SEMPRE devolve algo em c.k (detectCategoryBest
+        // do build-sheets.js tem fallback "other" — nunca vazio), então este
+        // `if(!c.k)` nunca disparava, nem pra H-2B nem pra H-2A. Pior: mesmo
+        // se disparasse, detectCategory() (a função canônica de H-2B) também
+        // não conhece a taxonomia H-2A. H-2A usa SEMPRE detectCategoryH2A()
+        // aqui (nunca confia no c.k que toCompact() já atribuiu, que é da
+        // taxonomia errada).
+        if (String(c.visa || "").toUpperCase() === "H-2A") c.k = detectCategoryH2A(c.t);
+        else if (!c.k) c.k = detectCategory(c.t, c.n);
         compact.push(c);
       }
       dcLog(`✅ ${compact.length} vagas válidas (${descartadas} sem e-mail/qualidade${foraJanela ? `, ${foraJanela} fora da janela de datas` : ""}${outroVisto ? `, ${outroVisto} de outro visto` : ""})`);
@@ -611,7 +619,10 @@ function createPlanilhas(deps) {
         const c = bs.toCompact(rec);
         if (String(c.visa || "").toUpperCase() !== "H-2A") { outroVisto++; continue; }
         if (have.has(String(c.c || "").trim().toUpperCase())) { jaTinha++; continue; }
-        if (!c.k) c.k = detectCategory(c.t, c.n);
+        // 🌾 v332: daqui pra baixo é SEMPRE H-2A (filtro da linha acima) —
+        // usa o categorizador próprio (mesmo motivo do runDolColeta: c.k já
+        // vem da taxonomia H-2B errada, e o fallback antigo nunca disparava).
+        c.k = detectCategoryH2A(c.t);
         novas.push(c);
       }
       // sai inativa: (a) o feed traz o case com status morto → atualiza; (b) temporada acabou.

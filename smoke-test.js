@@ -106,6 +106,10 @@ const feedSrv = http.createServer((rq, rs) => {
   if (fs.existsSync(path.join(DATA, "h2a_feed_404_todos.flag")) || (fs.existsSync(path.join(DATA, "h2a_feed_404_hoje.flag")) && _dataUrl === new Date().toISOString().slice(0, 10))) { rs.writeHead(404); return rs.end("not found"); }
   const vagas = [];
   for (let i = 1; i <= 14; i++) vagas.push(h2a ? _mkVagaH2A(i) : _mkVaga(i));
+  // 🌾 v332: override opcional do título da 1ª vaga H-2A — prova o
+  // categorizador H-2A de ponta a ponta (feed → toCompact → detectCategoryH2A)
+  // sem mudar o título padrão "Farm Worker" usado por todos os outros testes.
+  if (h2a) { try { const _tov = fs.readFileSync(path.join(DATA, "h2a_feed_title_override.txt"), "utf8").trim(); if (_tov) vagas[0].job_title = _tov; } catch { } }
   vagas.push(h2a ? _mkVagaH2A(1) : _mkVaga(1)); // duplicada de propósito
   vagas.push({ ...(h2a ? _mkVagaH2A(15) : _mkVaga(15)), apply_email: "" }); // sem e-mail — deve cair fora
   // v50: com o arquivo-bandeira presente, a vaga 14 vem RETIRADA (withdrawn)
@@ -4597,15 +4601,64 @@ async function drillBloqueioComprasNovas() {
         plStPub.json?.coleta?.key === "teste2099" && plStPub.json?.coleta?.published === true, JSON.stringify(plStPub.json?.coleta));
       const pub2 = await req2("POST", "/api/admin/sheet/coleta-publish", { key: "teste2099" });
       check("📢 v174: publicar de novo é idempotente (jaPublicada) — o radar nunca é avisado 2x", pub2.json?.ok === true && pub2.json.jaPublicada === true, pub2.body.slice(0, 100));
+
+      // 🌾 v332: mesmo achado do "Vagas Novas H-2A" (abaixo), mas no OUTRO
+      // caminho de entrada — "Coleta do DOL" manual (runDolColeta) também
+      // categoriza toda vaga nova via bs.toCompact(), a mesma função que só
+      // conhece a taxonomia H-2B. Prova o categorizador H-2A neste caminho
+      // também (visa:"H-2A" no coleta-start). Roda DEPOIS de toda a checagem
+      // de "teste2099" acima — coleta-start reescreve dolColeta.key (última
+      // rodada), e os checks de v177-FIX2 logo acima dependem de teste2099
+      // continuar sendo essa última rodada.
+      fs.writeFileSync(path.join(DATA, "h2a_feed_title_override.txt"), "Summer Range Goatherder");
+      const csA = await req2("POST", "/api/admin/sheet/coleta-start", { visa: "H-2A", sheetKey: "testeh2a332", sheetName: "Teste H-2A 332" });
+      let stCA = null;
+      for (let i = 0; i < 40; i++) { await new Promise((r) => setTimeout(r, 250)); stCA = (await get("/api/admin/sheet/coleta-status")).json; if (stCA && stCA.running === false && stCA.finishedAt && stCA.key === "testeh2a332") break; }
+      fs.unlinkSync(path.join(DATA, "h2a_feed_title_override.txt"));
+      const _h2aColetaCat = (await get(`/api/sheet-meta?sheet=testeh2a332&email=0&top=20`)).json;
+      const _h2aColetaRow = (_h2aColetaCat?.jobs || []).find((j) => j.caseNum === "H-300-260001-222222");
+      check("🌾 v332: 'Coleta do DOL' manual (runDolColeta) também usa detectCategoryH2A pra vaga H-2A — 'Summer Range Goatherder' vira sheepherder (🐑), não a taxonomia H-2B",
+        csA.json?.ok === true && stCA?.running === false && !stCA?.error && _h2aColetaRow?.category === "sheepherder",
+        JSON.stringify({ coleta: stCA?.error, achou: !!_h2aColetaRow, category: _h2aColetaRow?.category }));
+      // 🌾 v332 (estrutural): recategorizeAllSheets() (roda em TODO boot,
+      // self-heal do H-2B há muito tempo) ganhou o mesmo tratamento pra
+      // H-2A dentro de jan2026/jul2025/extras — onde qualquer vaga H-2A que
+      // tivesse entrado por engano (mesmo bug de ingestão) ficava com a
+      // categoria H-2B errada PRA SEMPRE, sem nenhum self-heal. SHEET_H2A
+      // (a planilha dedicada, que mistura o dataset original já bem rotulado
+      // com o que o robô for anexando — esse já nasce certo na entrada) fica
+      // DE FORA de propósito, pra nunca trocar um rótulo bom pelo palpite
+      // do heurístico (~84% de acerto, medido contra o dataset real).
+      const _srv332 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      check("🌾 v332 (estrutural): recategorizeAllSheets() usa detectCategoryH2A() pra linha H-2A (nunca mais 'nunca tocar aqui' sem alternativa) e SHEET_H2A continua fora do self-heal automático (decisão documentada, não esquecimento)",
+        _srv332.includes('detectCategoryH2A(r.t) : detectCategory(r.t,r.n)') &&
+        !/fixArray\(SHEET_H2A/.test(_srv332) &&
+        _srv332.includes("function detectCategoryH2A(titulo)"),
+        "padrão de recategorização H-2A não encontrado como esperado");
+
       // 🌾 VAGAS NOVAS H-2A — o total esperado sai do PRÓPRIO bundle com a
       // MESMA regra de inatividade (status morto OU temporada encerrada).
       const _h2aBundle = JSON.parse(fs.readFileSync(path.join(__dirname, "h2a_jun2026_compact.json"), "utf8"));
       const _hojeISO = new Date().toISOString().slice(0, 10);
       const _deadRe = /denied|withdrawn|invalidat|expired|cancel/i;
       const h2aVivas = _h2aBundle.filter((r) => !_deadRe.test(String(r.st || "")) && !(r.de && /^\d{4}-\d{2}-\d{2}$/.test(r.de) && r.de < _hojeISO)).length;
+      // 🌾 v332 (achado de auditoria contínua): toCompact() (build-sheets.js)
+      // só conhece a taxonomia H-2B — TODA vaga H-2A nova nascia categorizada
+      // errado (ex.: "Ag Equipment Operator" virava "driver" em vez de
+      // "equipment_op") e nunca se autocorrigia (H-2A é de propósito ignorado
+      // por recategorizeAllSheets, decisão certa — mas ninguém preenchia o
+      // buraco). A 1ª vaga do feed fake ganha um título distintivo só pra
+      // esta rodada, pra provar o categorizador novo de ponta a ponta.
+      fs.writeFileSync(path.join(DATA, "h2a_feed_title_override.txt"), "Ag Equipment Operator");
       const hn1 = await req2("POST", "/api/admin/sheet/h2a-novas-run", {});
+      fs.unlinkSync(path.join(DATA, "h2a_feed_title_override.txt"));
       check("🌾 v174: Vagas Novas H-2A sincroniza — entram as 14 novas do feed, saem as de temporada encerrada",
         hn1.json?.ok === true && hn1.json.added === 14 && hn1.json.total === h2aVivas + 14, `esperado total=${h2aVivas + 14} | ` + hn1.body.slice(0, 160));
+      const _h2aNovaCat = (await get(`/api/sheet-meta?sheet=h2a-jun2026&email=0&q=${encodeURIComponent("H-300-2600" + "01" + "-222222")}&top=5`)).json;
+      const _h2aNovaRow = (_h2aNovaCat?.jobs || []).find((j) => j.caseNum === "H-300-260001-222222");
+      check("🌾 v332: vaga H-2A nova ('Ag Equipment Operator') entra com a categoria H-2A certa (equipment_op — 🚜 Operador de Máquinas), não mais com a taxonomia H-2B (teria virado 'driver')",
+        _h2aNovaRow?.category === "equipment_op",
+        JSON.stringify({ achou: !!_h2aNovaRow, category: _h2aNovaRow?.category }));
       const hn2 = await req2("POST", "/api/admin/sheet/h2a-novas-run", {});
       check("🌾 v174: 2ª rodada não duplica NADA (0 novas, total estável)",
         hn2.json?.ok === true && hn2.json.added === 0 && hn2.json.jaTinha >= 14 && hn2.json.total === h2aVivas + 14, hn2.body.slice(0, 160));
