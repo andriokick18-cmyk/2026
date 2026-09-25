@@ -7643,6 +7643,18 @@ async function drillBloqueioComprasNovas() {
         _admL6.includes('api("/api/admin/vip/revoke"') && !_admL6.includes("/api/admin/revoke-vip") &&
         !_srvL6.includes('pathname==="/api/admin/revoke-vip"'),
         "faltou peça do painel do lote 6 ou a rota duplicada voltou");
+      // 🩺 v321 (achado de auditoria contínua) — /api/admin/audit e
+      // /api/admin/audit/revert (já provados end-to-end alguns checks acima,
+      // v188-L6) existiam há ~150 releases sem NENHUMA tela que os chamasse —
+      // o próprio modal de Plano/VIP avisa "Toda ação fica no Audit Log e
+      // pode ser revertida", mas não havia como ver o log nem reverter nada
+      // pelo painel. Corrigido reaproveitando abrirModalInfo() (mesmo modal
+      // genérico de outras telas de detalhe) — nenhuma UI nova duplicada.
+      check("🩺 v321: a sidebar tem o link de Auditoria e as 3 funções que leem/revertem o Audit Log de verdade (carregarAuditoria→GET /api/admin/audit, reverterAuditoria→POST /api/admin/audit/revert) — antes a promessa da UI ('fica no Audit Log e pode ser revertida') não tinha tela nenhuma por trás",
+        _admL6.includes('onclick="carregarAuditoria()"') && _admL6.includes("function carregarAuditoria(") &&
+        _admL6.includes('api("/api/admin/audit")') && _admL6.includes("function reverterAuditoria(") &&
+        _admL6.includes('api("/api/admin/audit/revert"'),
+        "faltou peça da UI de Auditoria");
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     }
 

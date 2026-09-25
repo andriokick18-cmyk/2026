@@ -297,6 +297,14 @@ tbody tr:hover{background:var(--glass2)}
            só quem já conhecia a URL de cor achava a tela. Avaliações ficavam
            pendentes pra sempre, a seção de prova social da landing nunca populava. -->
       <button class="sb-item" data-view="reviews" onclick="location.href='/admin-reviews'"><i class="ti ti-star"></i> Avaliações <span class="pill" id="pill-reviews" style="display:none">0</span></button>
+      <!-- 🩺 achado de auditoria contínua: GET /api/admin/audit + POST
+           /api/admin/audit/revert existem desde o v19 (15/07/2026), com 16
+           pontos do sistema gravando nele (inclusive promover admin, banir
+           e-mail, conceder/revogar VIP) — e o próprio modal de Plano/VIP
+           avisa "Toda ação fica no Audit Log e pode ser revertida", mas
+           NENHUMA tela lia o log nem chamava o revert. Um admin que errasse
+           a mão num VIP não tinha como desfazer, apesar do que a tela dizia. -->
+      <button class="sb-item" data-view="auditoria" onclick="carregarAuditoria()"><i class="ti ti-history"></i> Auditoria</button>
     </nav>
     <div class="sb-foot">
       <div class="sb-user">
@@ -1648,6 +1656,57 @@ function abrirModal(id){
 }
 function fecharModal(id){
   document.getElementById(id).classList.remove("open");
+}
+
+// 🩺 achado de auditoria contínua: /api/admin/audit + /api/admin/audit/revert
+// existiam há ~150 releases sem NENHUMA tela — o modal de Plano/VIP promete
+// "Toda ação fica no Audit Log e pode ser revertida" mas não havia como ver
+// o log nem reverter nada pelo painel. Reusa abrirModalInfo() (mesmo modal
+// genérico usado por outras telas de detalhe) — nenhuma UI nova duplicada.
+async function carregarAuditoria(){
+  try{
+    var d=await api("/api/admin/audit");
+    renderAuditoria(d.audit||[]);
+  }catch(e){
+    toast(e.message,"err");
+  }
+}
+function renderAuditoria(lista){
+  var html='<div style="max-height:62vh;overflow:auto">';
+  if(!lista.length){
+    html+='<div style="padding:20px;text-align:center;color:var(--t3)">Nenhuma ação registrada ainda.</div>';
+  }else{
+    html+='<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="text-align:left;border-bottom:1px solid var(--border2);color:var(--t3)">'
+      +'<th style="padding:6px 8px">Quando</th><th style="padding:6px 8px">Admin</th><th style="padding:6px 8px">Ação</th>'
+      +'<th style="padding:6px 8px">Alvo</th><th style="padding:6px 8px">Detalhe</th><th style="padding:6px 8px"></th></tr></thead><tbody>';
+    lista.forEach(function(a){
+      var podeReverter=!a.reverted&&a.before&&a.targetEmail;
+      html+='<tr style="border-bottom:1px solid var(--border)">'
+        +'<td style="padding:6px 8px;white-space:nowrap">'+esc(fmtData(a.ts))+'</td>'
+        +'<td style="padding:6px 8px">'+esc(a.admin||"—")+'</td>'
+        +'<td style="padding:6px 8px">'+esc(a.action||"—")+'</td>'
+        +'<td style="padding:6px 8px">'+esc(a.targetEmail||"—")+'</td>'
+        +'<td style="padding:6px 8px;max-width:320px">'+esc(a.detail||"")
+          +(a.reverted?' <span style="color:var(--t3)">(revertida por '+esc(a.revertedBy||"?")+' em '+esc(fmtData(a.revertedAt))+')</span>':'')+'</td>'
+        +'<td style="padding:6px 8px">'+(podeReverter?('<button class="btn btn-sm" onclick="reverterAuditoria(\''+esc(a.id)+'\')">↩️ Reverter</button>'):'')+'</td>'
+        +'</tr>';
+    });
+    html+='</tbody></table>';
+  }
+  html+='</div>';
+  abrirModalInfo("📋 Auditoria de ações do admin",html);
+}
+async function reverterAuditoria(id){
+  var motivo=prompt("Motivo da reversão (fica registrado na auditoria):");
+  if(motivo===null)return;
+  if(motivo.trim().length<3){toast("Motivo precisa ter pelo menos 3 caracteres.","err");return;}
+  try{
+    await api("/api/admin/audit/revert",{method:"POST",body:{id:id,motivo:motivo.trim()}});
+    toast("✅ Ação revertida.","ok");
+    carregarAuditoria();
+  }catch(e){
+    toast(e.message,"err");
+  }
 }
 
 function marcarRadio(rowId,input){
