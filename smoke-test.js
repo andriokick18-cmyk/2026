@@ -7127,6 +7127,27 @@ async function drillAdminSettingsLegado() {
       check("🧩 v316: com a unidade certa, wageHora() (mesma régua única do filtro/sort) fecha a conta de verdade — $800/semana agora é $20/h (não mais $4,62/h) e o caso 'Month' cai no piso da unidade CERTA (300, não os ~$1,73 do fallback genérico que 'mês' caía antes — prova que 'mo' e 'mês' tomam ramos DIFERENTES em wageHora)",
         _wh8(c316w) === 20 && _wh8(c316bw) === 20 && _wh8(c316y) === 20 && _wh8(c316pr) === 0 && _wh8(c316mo) === 300,
         JSON.stringify([_wh8(c316w), _wh8(c316bw), _wh8(c316y), _wh8(c316pr), _wh8(c316mo)]));
+      // 🌾 v338 (achado de auditoria contínua — raiz do bug do v332): o v332
+      // (acima) já provou que a vaga H-2A nasce com a categoria certa quando
+      // passa pelo robô "Vagas Novas H-2A" — mas isso só funcionava porque
+      // mod-planilhas.js SOBRESCREVE c.k depois de chamar bs.toCompact(). A
+      // própria toCompact() (aqui testada direto, sem passar pelo robô)
+      // continuava só conhecendo a taxonomia H-2B — o standalone
+      // build-sheets.js#main() (cron do cabeçalho do arquivo) e qualquer
+      // chamador futuro que esquecesse de repetir a sobrescrita herdariam o
+      // mesmo bug calado. Corrigido na RAIZ: toCompact() decide o
+      // categorizador pelo `visa` que ela mesma calcula.
+      const c338h2a = bsL316.toCompact({ case_number: "H-300-26099-888888", job_title: "Ag Equipment Operator", employer_business_name: "Teste 338 Farm LLC", worksite_state: "TX", apply_email: "rh@teste338a.com", total_positions: 3, case_status: "certified" });
+      const c338h2b = bsL316.toCompact({ case_number: "H-400-26099-888889", job_title: "Landscape Laborer", employer_business_name: "Teste 338 Landscape LLC", worksite_state: "TX", apply_email: "rh@teste338b.com", total_positions: 3, case_status: "certified" });
+      check("🌾 v338: toCompact() SOZINHA (sem passar por nenhum robô) já categoriza H-2A com o categorizador certo — 'Ag Equipment Operator' vira 'equipment_op' (era 'driver', taxonomia H-2B errada, antes desta correção)",
+        c338h2a.k === "equipment_op" && c338h2a.visa === "H-2A",
+        JSON.stringify(c338h2a));
+      check("🌾 v338: toCompact() continua usando o categorizador H-2B pra vaga H-2B — 'Landscape Laborer' vira 'landscape', nunca a taxonomia H-2A",
+        c338h2b.k === "landscape" && c338h2b.visa === "H-2B",
+        JSON.stringify(c338h2b));
+      check("🌾 v338: detectCategoryH2A exportada bate EXATAMENTE com a de server.js (mesma tabela H2A_CATEGORY_RULES, nunca 2 fontes divergentes)",
+        bsL316.detectCategoryH2A("Sheep Herder") === "sheepherder" && bsL316.detectCategoryH2A("Farm Worker") === "crop",
+        JSON.stringify({ sheep: bsL316.detectCategoryH2A("Sheep Herder"), farm: bsL316.detectCategoryH2A("Farm Worker") }));
       // (31→v208) o frescor foi RETIRADO por decisão de produto (19/09/2026) —
       // vaga já completa nunca mais é reconsultada. planilhasPublicadas() (o que
       // sobrou daquele item, sem a parte de reconferência) continua listando

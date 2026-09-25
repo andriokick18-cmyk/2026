@@ -178,6 +178,61 @@ function detectCategoryBest(title, employer) {
   return detectCategoryFromTitle(title) || detectCategoryFromEmployer(employer) || "other";
 }
 
+// ═══ 🌾 v338 (achado de auditoria contínua — raiz do bug do v332) ═══
+// detectCategoryBest() acima só conhece a taxonomia H-2B — o v332
+// (server.js) já tinha diagnosticado isso ("build-sheets.js#detectCategoryBest
+// ... também só conhece a mesma taxonomia H-2B") mas só corrigiu os 2
+// CHAMADORES de toCompact() em mod-planilhas.js (runDolColeta/
+// runH2aNovasCycle), sobrescrevendo c.k DEPOIS da chamada — nunca a
+// PRÓPRIA toCompact(), a função que categoriza TODA vaga nova, aqui neste
+// arquivo. Isso deixava 2 buracos: (1) o build/main() standalone deste
+// arquivo (buildSheet("h2a",...) — o cron do cabeçalho, ou "node
+// build-sheets.js" manual) nunca ganhava a correção; (2) qualquer chamador
+// FUTURO de bs.toCompact() que esquecesse de repetir a sobrescrita
+// herdaria o mesmo bug calado. Corrigido na RAIZ: toCompact() agora decide
+// o categorizador pelo `visa` que ela mesma já calcula (prefixo do case
+// number), a MESMA régua H2A_CATEGORY_RULES de server.js copiada aqui
+// (não há módulo compartilhado sem carregar o servidor inteiro — NUNCA
+// deixar divergir das regras de server.js). As sobrescritas em
+// mod-planilhas.js continuam existindo como defesa em profundidade
+// (idempotentes — recalculam o mesmo valor), nunca removidas por causa
+// disso.
+const _catH2ARegexCache = new Map();
+const _normTituloH2A = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+function _chaveInteiraH2A(texto, chave) {
+  let re = _catH2ARegexCache.get(chave);
+  if (!re) { re = new RegExp("(?:^| )" + chave.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, " ") + "s?(?: |$)"); _catH2ARegexCache.set(chave, re); }
+  return re.test(texto);
+}
+const H2A_CATEGORY_RULES = [
+  ["sheepherder", ["sheepherder", "goatherder", "goat sheepherder", "sheep herder", "cattleherder", "cattle herder", "range herder", "livestock herder", "stocker herder", "calver stocker"]],
+  ["mechanic", ["mechanic", "equipment mechanic", "service technician", "installation maintenance and repair", "maintenance and repair worker"]],
+  ["ironworker", ["structural steel worker", "ironworker", "iron worker"]],
+  ["carpenter", ["carpenter", "carpenter helper"]],
+  ["fence", ["fence installer", "fence builder", "fencer"]],
+  ["equipment_op", ["equipment operator", "ag equipment operator", "agricultural equipment operator", "harvest equipment operator", "harvest eq operator"]],
+  ["truck_driver", ["truck driver", "cdl driver"]],
+  ["driver", ["shuttle driver", "chauffeur", "bus driver", "van driver", "field walker"]],
+  ["grader_sorter", ["grader", "sorter", "grader sorter"]],
+  ["packer", ["packer", "packaging worker", "packers and packagers", "bag stacker"]],
+  ["cook", ["cook", "camp cook", "cafeteria"]],
+  ["meat", ["butcher", "slaughter", "meat processing", "meat cutter"]],
+  ["inspector", ["inspector"]],
+  ["supervisor", ["supervisor", "crew leader", "crew boss", "farm manager"]],
+  ["irrigation", ["irrigator", "irrigation worker", "irrigation laborer"]],
+  ["nursery", ["nursery worker", "greenhouse worker", "plant nursery"]],
+  ["construction", ["construction laborer", "construction worker", "framer", "farm construction", "farm facility construction", "const labor"]],
+  ["logging", ["logging worker", "timber worker", "forestry worker", "reforestation"]],
+  ["livestock", ["livestock", "dairy", "cattle", "rancher", "ranch worker", "ranch hand", "beekeeper", "poultry", "hog", "swine", "hydroponic"]],
+];
+function detectCategoryH2A(titulo) {
+  const t = _normTituloH2A(titulo);
+  if (t) for (const [cat, frases] of H2A_CATEGORY_RULES) {
+    for (const frase of frases) { if (_chaveInteiraH2A(t, frase)) return cat; }
+  }
+  return "crop";
+}
+
 // ─── Filtros de qualidade ───────────────────────────────────────────────────
 const DISCARD_STATUSES = ["denied","withdrawn","invalidated"];
 
@@ -220,6 +275,9 @@ function toCompact(rec) {
   const city = (rec.worksite_city || rec.employer_city || "").trim();
   const beginDate = (rec.begin_date || rec.start_date || "").slice(0, 10);
   const endDate   = (rec.end_date || rec.expiration_date || "").slice(0, 10);
+  // 🌾 v338: categorizador pelo VISTO que a própria função já calculou —
+  // ver comentário acima de H2A_CATEGORY_RULES.
+  const category = visa === "H-2A" ? detectCategoryH2A(title) : detectCategoryBest(title, employer);
   return {
     c:  caseNum,
     t:  title,
@@ -232,7 +290,7 @@ function toCompact(rec) {
     w:  wage,
     wunit,
     wk: workers,
-    k:  detectCategoryBest(title, employer),
+    k:  category,
     visa,
     st: (rec.case_status || "").trim(),
   };
@@ -408,4 +466,4 @@ if (require.main === module) {
     process.exit(1);
   });
 }
-module.exports = { DOL_BASE, downloadAndParse, toCompact, shouldDiscard, detectCategoryBest };
+module.exports = { DOL_BASE, downloadAndParse, toCompact, shouldDiscard, detectCategoryBest, detectCategoryH2A };
