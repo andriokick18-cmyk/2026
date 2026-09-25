@@ -157,7 +157,7 @@ console.log("\n▶ Backup automático:");
 deleteFile(path.join(DATA_DIR, "backup.json"));
 
 // ── 19. Pasta de CVs/comprovantes ────────────────────────
-console.log("\n▶ CVs e comprovantes (pasta /cvs):");
+console.log("\n▶ CVs e comprovantes (pastas /cvs e /comprovantes):");
 deleteDir(path.join(DATA_DIR, "cvs"));
 // Recriar pasta vazia para o server não quebrar
 try {
@@ -165,6 +165,26 @@ try {
   console.log(`  📁 cvs/ recriada vazia`);
 } catch (e) {
   console.error(`  ❌ Não foi possível recriar cvs/: ${e.message}`);
+}
+// 🔒 v337 (achado de auditoria contínua, SEGURANÇA/PRIVACIDADE): o comentário
+// de topo deste arquivo e o resumo final SEMPRE disseram "comprovantes
+// removidos", mas só a pasta cvs/ era apagada — COMPROVANTES_DIR
+// (DATA_DIR/comprovantes, server.js) é uma pasta SEPARADA (mesmo padrão que
+// o backup automático já trata como par: mod-admin-v2.js/server.js copiam
+// "cvs" E "comprovantes" como 2 diretórios distintos) que este script nunca
+// tocava. pedidos.json zera no reset, mas os .b64 de comprovante PIX
+// ficavam ÓRFÃOS em disco pra sempre — nenhuma outra varredura os limpa
+// (_sweepOrphanStagedComprovantes só remove prefixo _staged_, nunca o
+// arquivo final). Dado financeiro sensível (nome do pagador, banco, valor,
+// ID de transação) de brasileiros candidatos a visto H-2B/H-2A acumulava
+// indefinidamente a cada "reset entre temporadas", sem vínculo com usuário
+// nenhum. Mesmo tratamento que cvs/ já recebe.
+deleteDir(path.join(DATA_DIR, "comprovantes"));
+try {
+  fs.mkdirSync(path.join(DATA_DIR, "comprovantes"), { recursive: true });
+  console.log(`  📁 comprovantes/ recriada vazia`);
+} catch (e) {
+  console.error(`  ❌ Não foi possível recriar comprovantes/: ${e.message}`);
 }
 
 // ── 20. Admin settings — PRESERVADO (só reseta se quiser) ─

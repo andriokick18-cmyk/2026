@@ -902,11 +902,27 @@ async function drillAdminSettingsLegado() {
   // nunca mais escreve a chave vazada.
   const DATA_R = fs.mkdtempSync(path.join(os.tmpdir(), "h2b-resetscript-"));
   try {
+    // 🔒 v337 (achado de auditoria contínua, SEGURANÇA/PRIVACIDADE): o
+    // comentário de topo e o resumo final de reset_h2bapply.js sempre
+    // disseram "comprovantes removidos", mas só a pasta cvs/ era apagada —
+    // COMPROVANTES_DIR (server.js, pasta SEPARADA) nunca era tocada. Um
+    // comprovante de PIX real (dado financeiro sensível) ficava órfão em
+    // disco pra sempre a cada "reset entre temporadas". Pré-semeia as 2
+    // pastas com um arquivo cada, ANTES do reset rodar.
+    fs.mkdirSync(path.join(DATA_R, "comprovantes"), { recursive: true });
+    fs.mkdirSync(path.join(DATA_R, "cvs"), { recursive: true });
+    fs.writeFileSync(path.join(DATA_R, "comprovantes", "PED-V337-TESTE.b64"), "dGVzdGUgZGUgY29tcHJvdmFudGUgcGl4");
+    fs.writeFileSync(path.join(DATA_R, "cvs", "usuario@teste.com_1.pdf"), "%PDF-fake");
     const r = require("child_process").spawnSync(process.execPath, [path.join(__dirname, "reset_h2bapply.js"), "--data-dir", DATA_R], { cwd: __dirname });
     const gerado = JSON.parse(fs.readFileSync(path.join(DATA_R, "admin_settings.json"), "utf8"));
     check("🔒 v333: reset_h2bapply.js (npm run reset) num diretório novo NUNCA MAIS escreve editorPasswords (a senha de fábrica que vazou e foi removida) nem os campos mortos newUserTrial*",
       r.status === 0 && !("editorPasswords" in gerado) && !("newUserTrialEnabled" in gerado) && !("newUserTrialDays" in gerado),
       JSON.stringify({ status: r.status, gerado }));
+    const compDepois = fs.existsSync(path.join(DATA_R, "comprovantes")) ? fs.readdirSync(path.join(DATA_R, "comprovantes")) : null;
+    const cvsDepois = fs.existsSync(path.join(DATA_R, "cvs")) ? fs.readdirSync(path.join(DATA_R, "cvs")) : null;
+    check("🔒 v337: reset_h2bapply.js apaga de verdade a pasta comprovantes/ (não só cvs/) e recria vazia — o comprovante de PIX pré-semeado não sobrevive ao reset",
+      r.status === 0 && Array.isArray(compDepois) && compDepois.length === 0 && Array.isArray(cvsDepois) && cvsDepois.length === 0,
+      JSON.stringify({ status: r.status, comprovantes: compDepois, cvs: cvsDepois }));
   } catch (e) {
     check("🔒 v333: reset_h2bapply.js roda sem exceção", false, e.message);
   } finally {
