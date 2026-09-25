@@ -2246,8 +2246,28 @@ function reconciliarPlanosComPedidos(apply){
     const u=getUser(email);if(!u)continue;
     peds.sort((a,b)=>(_t(a.ativadoEm)||_t(a.pagoEm)||_t(a.criadoEm))-(_t(b.ativadoEm)||_t(b.pagoEm)||_t(b.criadoEm)));
     let expManual=0,expAuto=0,planoPed=null;
+    // 🚨 v331 (achado de auditoria contínua, CRÍTICO): vip/revoke e
+    // revoke-trial zeram manualExpires/autoExpires (fraude, chargeback,
+    // abuso de trial) mas NUNCA tocam em DB_PEDIDOS — o pedido que originou
+    // os dias continua "pago"/"ativo" pra sempre. Esta função só olha pro
+    // pedido (nunca pro carimbo de revogação) e via os dias como "faltando"
+    // — o próprio comentário da função promete "nunca reduz nada de
+    // ninguém", mas aqui ela estava AUMENTANDO de volta um acesso que um
+    // admin cortou de propósito. Como o boot roda sozinho ~2min depois de
+    // TODO deploy (e este repo publica a cada commit), uma revogação por
+    // fraude podia durar só até o próximo commit — restaurada em silêncio,
+    // sem entrada no Audit Log (o revoke usa logAdminAction; a
+    // reconciliação usa outro canal, pushGlobalEvent/addLog), com a
+    // mensagem "Conferimos seus pagamentos e devolvemos todos os dias que
+    // faltavam" pro exato usuário cujo acesso foi cortado por má-fé.
+    // Pedido de ANTES da revogação nunca mais conta pra essa soma — mesmo
+    // padrão do /audit/revert (v330): a decisão humana mais recente vence a
+    // heurística automática. Pedido de DEPOIS (recompra legítima) continua
+    // contando normalmente.
+    const _revAt=u.vip?.revokedAt||0;
     for(const pd of peds){
       const t=_t(pd.ativadoEm)||_t(pd.pagoEm)||_t(pd.criadoEm);if(!t)continue;
+      if(_revAt&&t<=_revAt)continue;
       const dias=Number(pd.diasTotal)||((Number(pd.diasBase)||30)+(Number(pd.diasBonus)||0));
       const pk=String(pd.planoKey||pd.plano||"vipro").toLowerCase();
       // 🚨 v307 (achado de auditoria contínua): expManual era acumulado SEM

@@ -2758,6 +2758,46 @@ async function drillBloqueioComprasNovas() {
       !recRowPro || !(recRowPro.depois?.manualExpires > Date.now()),
       JSON.stringify(recRowPro || {}).slice(0, 220));
 
+    // 🚨 v331 (achado de auditoria contínua, CRÍTICO): vip/revoke zera
+    // manualExpires/autoExpires (fraude/chargeback) mas NUNCA toca no
+    // pedido que originou os dias — ele continua "ativo" pra sempre. A
+    // reconciliação do boot só olha pro pedido, nunca pro carimbo da
+    // revogação, e via os dias zerados como "faltando" — restaurando em
+    // silêncio um acesso cortado de propósito. Como o boot roda sozinho
+    // ~2min depois de TODO deploy, a revogação por fraude durava só até o
+    // próximo commit. Cria e aprova um pedido de verdade, revoga, e confere
+    // que a reconciliação (mesmo em dry-run) NÃO tenta devolver os dias.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "revfraude331@test.com", name: "Revogado Fraude 331" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const pdRevFraude = await req2("POST", "/api/pedido", { userEmail: "revfraude331@test.com", plano: "vip", dias: 30, valorTotal: 100, pagoEm: new Date().toISOString() });
+    await req2("PATCH", "/api/pedido/" + pdRevFraude.json?.pedidoId, { status: "ativo" });
+    const udRevFraudeAntes = (await get("/api/admin/user-detail/" + encodeURIComponent("revfraude331@test.com"))).json?.user;
+    const revFraude = await req2("POST", "/api/admin/vip/revoke", { email: "revfraude331@test.com" });
+    const recRevFraude = await req2("POST", "/api/admin/reconciliar-planos", { apply: false });
+    const recRowRevFraude = (recRevFraude.json?.relatorio || []).find((x) => x.email === "revfraude331@test.com");
+    check("🚨 v331: pedido pago aprovado dá VIP de verdade (manualExpires no futuro) — a base pra provar a revogação/reconciliação em seguida",
+      udRevFraudeAntes?.vip?.manualExpires > Date.now(), JSON.stringify(udRevFraudeAntes?.vip).slice(0, 160));
+    check("🚨 v331: /api/admin/vip/revoke zera o plano/VIP na hora (revokedAt carimbado)",
+      revFraude.json?.ok === true, revFraude.body.slice(0, 120));
+    check("🚨 v331: a reconciliação (mesmo em dry-run) NÃO lista o usuário revogado pra 'devolver' os dias — o pedido é de ANTES da revogação (vip.revokedAt) e nunca mais conta pra essa soma, mesma régua do /audit/revert (v330): decisão humana recente vence heurística automática",
+      !recRowRevFraude, JSON.stringify(recRowRevFraude || {}).slice(0, 220));
+
+    // Contraste: um usuário que NUNCA foi revogado (vip zerado só por uma
+    // falha de gravação simulada, sem vip.revokedAt) continua sendo achado
+    // e restaurado normalmente — a trava é ESPECÍFICA de revogação, nunca
+    // virou um freio geral no autocuidado que a função existe pra fazer.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "crash331@test.com", name: "Crash 331" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const pdCrash = await req2("POST", "/api/pedido", { userEmail: "crash331@test.com", plano: "vip", dias: 30, valorTotal: 100, pagoEm: new Date().toISOString() });
+    await req2("PATCH", "/api/pedido/" + pdCrash.json?.pedidoId, { status: "ativo" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "crash331@test.com", vip: { manualExpires: 0, autoExpires: 0 } });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const recCrash = await req2("POST", "/api/admin/reconciliar-planos", { apply: false });
+    const recRowCrash = (recCrash.json?.relatorio || []).find((x) => x.email === "crash331@test.com");
+    check("🩺 v331: usuário SEM revogação (vip zerado por falha simulada, sem vip.revokedAt) continua sendo achado e restaurado pela reconciliação normalmente — a proteção nova não quebrou o autocuidado que a função existe pra fazer",
+      !!recRowCrash && recRowCrash.depois?.manualExpires > Date.now(),
+      JSON.stringify(recRowCrash || {}).slice(0, 220));
+
     // 🚨 v308 (achado de auditoria contínua — mesma classe do 868f86c, em
     // mais 2 pontos que ele não tocou): autoAtivarProvisorio tinha o MESMO
     // mapa sem "pro" (caía em "vipro" — pior que o ||"vip" do 868f86c,
