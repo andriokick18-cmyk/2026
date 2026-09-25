@@ -6711,6 +6711,19 @@ async function drillBloqueioComprasNovas() {
         (_idxL9.match(/<nav /g) || []).length === 3 && (_idxL9.match(/<\/nav>/g) || []).length === 3 &&
         (_idxL9.match(/<main/g) || []).length === 2 && (_idxL9.match(/<\/main>/g) || []).length === 2,
         "casca do app pós-login continua sem landmarks, ou alguma tag não fechou certo");
+      // ♿ v301 (achado de auditoria contínua — Alta): .ag-input::placeholder
+      // do auth-gate (login/cadastro/recuperação — 1ª tela de TODO usuário
+      // anônimo) tinha contraste ~2.7:1 (rgba(255,255,255,.3) sobre o fundo
+      // efetivo do modal), bem abaixo do AA (4.5:1) — confirmado por cálculo
+      // independente da luminância WCAG. O passo de LOGIN também era o
+      // ÚNICO sem <label> (cadastro/recuperação já tinham desde o v175) —
+      // sem label, o placeholder ilegível era a ÚNICA identificação do
+      // campo.
+      check("♿ v301: .ag-input::placeholder sobe pra rgba(255,255,255,.6) (~6.7:1, AA folgado) e o login ganha os 2 labels que faltavam",
+        _idxL9.includes(".ag-input::placeholder{color:rgba(255,255,255,.6)}") &&
+        _appL9.includes('<label class="ag-lbl" for="ag-l-user">Nome de usuário ou e-mail</label>') &&
+        _appL9.includes('<label class="ag-lbl" for="ag-l-pass">Senha</label>'),
+        "placeholder do auth-gate continua ilegível ou o login continua sem labels");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&

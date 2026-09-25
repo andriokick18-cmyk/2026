@@ -370,7 +370,9 @@ function agRender(step,data){
     body.innerHTML=`
       <div class="ag-title">Entrar na sua conta</div>
       <div class="ag-sub">Digite seu nome de usuário (ou o e-mail cadastrado) e a senha.</div>
+      <label class="ag-lbl" for="ag-l-user">Nome de usuário ou e-mail</label>
       <input class="ag-input" id="ag-l-user" type="text" inputmode="email" autocapitalize="off" autocomplete="username" placeholder="Nome de usuário ou e-mail" value="${esc(_agUser)}" onkeydown="if(event.key==='Enter'){const p=g('#ag-l-pass');if(p)p.focus();}">
+      <label class="ag-lbl" for="ag-l-pass">Senha</label>
       <input class="ag-input" id="ag-l-pass" type="password" autocomplete="current-password" placeholder="Senha" onkeydown="if(event.key==='Enter')agSubmitLogin()">
       <div style="text-align:right;margin:-6px 0 10px"><button type="button" class="ag-link" onclick="agRender('recuperar')">Esqueci minha senha</button></div>
       <div class="ag-err" id="ag-err"></div>
