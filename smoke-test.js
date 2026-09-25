@@ -3676,6 +3676,50 @@ async function drillAdminSettingsLegado() {
       JSON.stringify({ job: jobV325semCnh, why: jobV325semCnh?.matchWhy }).slice(0, 260));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
 
+    // 🚨 v336 (achado de auditoria contínua sobre o próprio v325 desta
+    // sessão): as alternativas genéricas de naoExigeCNH ("not require(s/d)",
+    // "do/does not require", "not required to obtain") não tinham âncora de
+    // proximidade com CDL/driver's license — casavam em QUALQUER lugar do
+    // texto (desc+req inteiros). Uma vaga com "Must have a valid driver's
+    // license. English not required." batia as duas: pedeCNH=true (correto)
+    // E naoExigeCNH=true (por causa da frase sobre INGLÊS, sem relação
+    // nenhuma com CNH) — o sinal inteiro sumia, nem soma pontos pra quem tem
+    // CNH nem avisa quem não tem, apesar da vaga exigir CNH claramente.
+    // Reusa o mesmo fixture (cliente@test.com, perfil h2a "pa") e o par de
+    // sinais que v325 já testa lado a lado.
+    const upV336 = await req2("POST", "/api/admin/sheet/upload", {
+      name: "Match V336", key: "match-v336",
+      data: [
+        { c: "H-300-MATCHV336-01", e: "empregadormatchv336a@test.com", n: "Empregador Match V336 A", t: "Farmworker", s: "FLORIDA", req: "Must have a valid driver's license. English not required." },
+      ],
+    });
+    check("🚨 v336: (setup) planilha com a vaga que expôs o bug sobe normalmente", upV336.json?.ok === true, upV336.body.slice(0, 150));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
+    const setCnhV336 = await req2("POST", "/api/settings", { h2bProfile: { englishLevel: "basic", hasDriverLicense: true } });
+    check("🚨 v336: (setup) hasDriverLicense:true salva normalmente", setCnhV336.json?.ok === true, setCnhV336.body.slice(0, 150));
+    const smV336a = await get("/api/sheet-meta?sheet=match-v336&email=0&top=5");
+    const jobV336pede = (smV336a.json?.jobs || []).find((j) => j.id === "H-300-MATCHV336-01" || j.caseNum === "H-300-MATCHV336-01");
+    check("🚨 v336: vaga com 'must have a valid driver's license' NUMA frase e 'English not required' NOUTRA frase continua reconhecendo a exigência de CNH — antes a frase sobre inglês (sem relação com CNH) suprimia o sinal inteiro",
+      Array.isArray(jobV336pede?.matchWhy) && jobV336pede.matchWhy.some((w) => w.includes("você tem CNH")),
+      JSON.stringify({ job: jobV336pede, why: jobV336pede?.matchWhy }).slice(0, 260));
+    const setSemCnhV336 = await req2("POST", "/api/settings", { h2bProfile: { englishLevel: "basic", hasDriverLicense: false } });
+    check("🚨 v336: (setup) hasDriverLicense:false salva normalmente", setSemCnhV336.json?.ok === true, setSemCnhV336.body.slice(0, 150));
+    const smV336b = await get("/api/sheet-meta?sheet=match-v336&email=0&top=5");
+    const jobV336semCnh = (smV336b.json?.jobs || []).find((j) => j.id === "H-300-MATCHV336-01" || j.caseNum === "H-300-MATCHV336-01");
+    check("🚨 v336: a MESMA vaga avisa 'pede CNH que você ainda não tem' pra quem não tem, mesmo com a frase de inglês solta no meio do texto",
+      Array.isArray(jobV336semCnh?.matchWhy) && jobV336semCnh.matchWhy.some((w) => w.includes("pede CNH que você ainda não tem")),
+      JSON.stringify({ job: jobV336semCnh, why: jobV336semCnh?.matchWhy }).slice(0, 260));
+    // Regressão: a vaga do v325 que legitimamente NÃO exige CNH ("do not
+    // require commercial driver license") continua suprimindo o sinal —
+    // a correção não pode reabrir o falso-positivo que a guarda original
+    // evitava.
+    const smV336c = await get("/api/sheet-meta?sheet=match-v325&email=0&top=5");
+    const jobV336regr = (smV336c.json?.jobs || []).find((j) => j.id === "H-300-MATCHV325-02" || j.caseNum === "H-300-MATCHV325-02");
+    check("🚨 v336 (regressão): 'do not require commercial driver license' (mesma vaga do v325) continua suprimindo o sinal normalmente — a correção da janela de proximidade não reabriu o falso-positivo original",
+      Array.isArray(jobV336regr?.matchWhy) && !jobV336regr.matchWhy.some((w) => w.includes("CNH")),
+      JSON.stringify({ job: jobV336regr, why: jobV336regr?.matchWhy }).slice(0, 260));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+
     // 🚨 v326 (achado de auditoria contínua — CRÍTICO, envio automático):
     // noEmailCount nascia com `let` DENTRO do bloco do MODO 2 (monta fila
     // por cases/caseMeta — o ÚNICO formato que o front real manda, app.js

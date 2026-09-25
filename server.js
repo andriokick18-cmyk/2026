@@ -4857,7 +4857,23 @@ function computeJobMatchScore(sig,ctx){
     // guarda, "do not require commercial driver license" e "NO CDL
     // REQUIRED" batiam como se a vaga EXIGISSE CNH, o oposto do texto real.
     const pedeCNH=/\b(?:must (?:have|possess|obtain)|requires?|valid|clean)\b[^.]{0,40}\b(?:driver.?s?\s+licen[sc]e|cdl)\b/i.test(txt);
-    const naoExigeCNH=/\bno\s+cdl\b|\bwithout\s+(?:a\s+)?cdl\b|\bcdl\s+not\s+required\b|\bno\s+driver.?s?\s+licen[sc]e\b|\bdriver.?s?\s+licen[sc]e\s+not\s+required\b|\bnot\s+required\s+to\s+obtain\b|\b(?:do|does)\s+not\s+require\b|\bnot\s+require[sd]?\b/i.test(txt);
+    // 🚨 v336 (achado de auditoria contínua, sobre o próprio fix de CNH desta
+    // sessão): as 3 alternativas genéricas de naoExigeCNH ("not require(s/d)",
+    // "do/does not require", "not required to obtain") não tinham NENHUMA
+    // âncora de proximidade com CDL/driver's license — casavam em QUALQUER
+    // lugar do texto (desc+req inteiros). Uma vaga com "Must have a valid
+    // driver's license. English not required." batia as duas: pedeCNH=true
+    // (correto) E naoExigeCNH=true (por causa de "English not required",
+    // sem relação nenhuma com CNH) — o sinal inteiro era suprimido, nem
+    // somava pontos pra quem tem CNH nem avisava quem não tem, apesar da
+    // vaga exigir CNH claramente. Corrigido dando a essas 3 alternativas a
+    // MESMA janela `[^.]{0,40}` (nunca cruza frase, por causa do ponto) que
+    // pedeCNH já usa, nos 2 sentidos (a negação pode vir antes ou depois da
+    // menção à licença) — mantém "do not require commercial driver license"
+    // funcionando (verificado contra os 4 datasets reais: 39 vagas com
+    // pedeCNH=true, ZERO mudaram de comportamento) sem deixar a negação
+    // vazar pra frases sem relação nenhuma com CNH.
+    const naoExigeCNH=/\bno\s+cdl\b|\bwithout\s+(?:a\s+)?cdl\b|\bcdl\s+not\s+required\b|\bno\s+driver.?s?\s+licen[sc]e\b|\bdriver.?s?\s+licen[sc]e\s+not\s+required\b|\b(?:not\s+required\s+to\s+obtain|(?:do|does)\s+not\s+require|not\s+require[sd]?)\b[^.]{0,40}\b(?:driver.?s?\s+licen[sc]e|cdl)\b|\b(?:driver.?s?\s+licen[sc]e|cdl)\b[^.]{0,40}\b(?:not\s+required\s+to\s+obtain|(?:do|does)\s+not\s+require|not\s+require[sd]?)\b/i.test(txt);
     if(pedeCNH&&!naoExigeCNH){
       if(h2bProfile?.hasDriverLicense){score+=8;why.push("você tem CNH, que essa vaga pede");}
       else{score-=8;why.push("pede CNH que você ainda não tem");}
