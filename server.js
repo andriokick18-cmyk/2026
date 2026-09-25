@@ -6996,6 +6996,8 @@ const server=http.createServer(async(req,res)=>{
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Política de Privacidade — H2BApply</title>
+<meta name="description" content="Política de Privacidade do H2BApply: como coletamos, usamos e protegemos seus dados pessoais e de acesso ao Google, para brasileiros buscando vagas H-2B e H-2A nos EUA.">
+<link rel="canonical" href="https://h2bapply.com/privacidade">
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   :root{
@@ -7121,6 +7123,8 @@ const server=http.createServer(async(req,res)=>{
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Google User Data Usage — H2BApply</title>
+<meta name="description" content="How H2BApply uses Google user data: which OAuth scopes we request, what we access, what we never read, and how to revoke access at any time.">
+<link rel="canonical" href="https://h2bapply.com/google-data-usage">
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   :root{
@@ -7212,6 +7216,8 @@ const server=http.createServer(async(req,res)=>{
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Termos de Uso — H2BApply</title>
+<meta name="description" content="Termos de Uso do H2BApply: regras da plataforma de busca e candidatura a vagas H-2B/H-2A, planos, pagamentos e responsabilidades do usuário.">
+<link rel="canonical" href="https://h2bapply.com/termos">
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   :root{
@@ -7368,6 +7374,8 @@ const server=http.createServer(async(req,res)=>{
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Excluir Conta — H2BApply</title>
+<meta name="description" content="Como excluir sua conta do H2BApply, revogar o acesso ao Google e pedir a remoção definitiva dos seus dados pessoais e histórico de candidaturas.">
+<link rel="canonical" href="https://h2bapply.com/excluir-conta">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -7479,6 +7487,8 @@ ul li{margin-bottom:6px}
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Contato — H2BApply</title>
+<meta name="description" content="Fale com o suporte do H2BApply por WhatsApp ou e-mail — tire dúvidas sobre planos, candidaturas e uso da plataforma de vagas H-2B/H-2A.">
+<link rel="canonical" href="https://h2bapply.com/contact">
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   :root{

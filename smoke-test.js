@@ -6663,6 +6663,19 @@ async function drillBloqueioComprasNovas() {
         fs.readFileSync(path.join(__dirname, "como-usar.html"), "utf8").includes('<link rel="canonical" href="https://h2bapply.com/como-usar">') &&
         fs.readFileSync(path.join(__dirname, "server.js"), "utf8").includes('{loc:"https://h2bapply.com/como-usar",priority:"0.7",changefreq:"weekly"}'),
         "como-usar.html continua sem canonical/og:url ou fora do sitemap");
+      // 🔍 v298 (achado de auditoria contínua — SEO, continuação do v297):
+      // as 5 páginas legais/utilitárias inline de server.js (/privacidade,
+      // /google-data-usage, /termos, /excluir-conta, /contact) iam direto
+      // do <title> pro <style> — zero meta description, zero canonical em
+      // qualquer uma, diferente das 6 páginas HTML estáticas do site
+      // (todas já com os dois). robots.txt permite crawling delas e
+      // nenhuma tem X-Robots-Tag noindex — são indexáveis de verdade.
+      const _srvL9v298 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      check("🔍 v298: as 5 páginas legais inline (server.js) ganham meta description + canonical",
+        ["privacidade", "google-data-usage", "termos", "excluir-conta", "contact"].every((slug) =>
+          _srvL9v298.includes(`<link rel="canonical" href="https://h2bapply.com/${slug}">`)) &&
+        (_srvL9v298.match(/<meta name="description" content="/g) || []).length >= 7,
+        "alguma das 5 páginas legais continua sem meta description/canonical");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&
