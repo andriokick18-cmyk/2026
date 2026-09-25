@@ -3265,6 +3265,36 @@ async function drillBloqueioComprasNovas() {
       JSON.stringify({ manualLimit: stEsdras.json?.manualLimit, autoLimit: stEsdras.json?.autoLimit }));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
 
+    // 🚨 v311 (achado de auditoria contínua — 5º ponto do mesmo bug do
+    // 868f86c/7f0fc69): set-plan chamava addManualVipDays incondicionalmente
+    // pra QUALQUER plano≠free, inclusive o legado "pro" (auto-only) — a
+    // mesma classe já corrigida na aprovação de pedido, reconciliação de
+    // boot, ativação provisória e estorno de cancelamento, só que num 5º
+    // ponto que nenhum desses fixes nem a ferramenta de auditoria
+    // (e808cd4, que só varre DB_PEDIDOS — esta rota não cria pedido algum)
+    // alcançava.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "setplanpro@test.com", name: "Set Plan Pro" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const spPro = await req2("POST", "/api/admin/set-plan", { email: "setplanpro@test.com", plan: "pro" });
+    check("🚨 v311: set-plan aceita o plano legado 'pro'", spPro.json?.ok === true, spPro.body.slice(0, 140));
+    const udSpPro = (await get("/api/admin/user-detail/" + encodeURIComponent("setplanpro@test.com"))).json?.user;
+    check("🚨 v311: set-plan 'pro' ativa SÓ o automático — manual NUNCA fica ativo de graça, e plan/vip.plan ficam 'pro' de verdade (não 'vipro' pelo atalho manual+auto ativos)",
+      udSpPro?.plan === "pro" && udSpPro?.vip?.plan === "pro" &&
+      udSpPro?.vip?.autoExpires > Date.now() && !(udSpPro?.vip?.manualExpires > Date.now()) &&
+      udSpPro?.vip?.limits?.manual === 0 && udSpPro?.vip?.limits?.auto === 100,
+      JSON.stringify({ plan: udSpPro?.plan, vip: udSpPro?.vip }).slice(0, 220));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "setplanpro@test.com" });
+    const stSpPro = await get("/api/status");
+    // getPlan() rotula QUALQUER conta com auto ativo como "vipro" de propósito
+    // (comentário do próprio server.js: "auto ativo (inclui legado 'pro') →
+    // limite auto 200") — isso é pré-existente e não faz parte deste bug; o
+    // que importa de verdade (o dinheiro) é manualLimit/autoLimit, que vêm de
+    // vip.limits e são o que /api/send realmente aplica.
+    check("🚨 v311: /api/status do PRÓPRIO usuário confirma os limites reais — 0 manual + 100 automático, nunca manual de graça (o rótulo 'plan' vira 'vipro' por design do getPlan() pra qualquer conta auto-only, incluindo o legado 'pro' — não é este bug)",
+      stSpPro.json?.plan === "vipro" && stSpPro.json?.manualLimit === 0 && stSpPro.json?.autoLimit === 100,
+      JSON.stringify({ plan: stSpPro.json?.plan, manualLimit: stSpPro.json?.manualLimit, autoLimit: stSpPro.json?.autoLimit }));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+
     // ═══ 💳 v141 (dono, 15/08 — "esse Cleiton e também o outro ali, eu sei
     // que nenhum dos 2 tem todos esses dias de plano. algo deu errado!") ═══
     // CAUSA RAIZ achada revisando o próprio código: /api/admin/set-plan era

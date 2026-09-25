@@ -10471,7 +10471,17 @@ filtrar();
       setTimeout(()=>_adminVipActivateLock.delete(_spKey),5000);
       const tgt=getUser(email);if(!tgt)return json(res,404,{error:"Usuário não encontrado"});
       const _audBefore=_vipSnapshot(tgt); // v19: snapshot pra reversão
-      if(plan!=='free'){addManualVipDays(email,30);if(['vipro','doublepro','pro'].includes(plan))addAutoVipDays(email,30);}
+      // 🚨 v311 (achado de auditoria contínua — 5º ponto do mesmo bug do
+      // 868f86c/7f0fc69): addManualVipDays rodava incondicionalmente pra
+      // QUALQUER plano≠free, inclusive "pro" (legado, auto-only —
+      // PLAN_LIMITS_NEW.pro={manual:0,auto:100}). isManualVipActive() só
+      // olha manualExpires (ignora vip.limits), então escolher "pro" aqui
+      // fazia getPlan() rotular a conta como "vipro" mesmo o admin tendo
+      // escolhido "pro" explicitamente — e concedia 30 dias de manual de
+      // graça que esse plano nunca deveria dar. limitesDoPlanoNovo(plan) é
+      // a mesma fonte única já usada 2 linhas abaixo pra vip.limits.
+      const _limSp=plan!=='free'?limitesDoPlanoNovo(plan):null;
+      if(plan!=='free'){if(_limSp.manual>0)addManualVipDays(email,30);if(_limSp.auto>0)addAutoVipDays(email,30);}
       // v79 (bug real: "ativei DoublePro pro Esdras várias vezes e não entra,
       // volta pro VipPro" — Diego, 29/07): addManualVipDays/addAutoVipDays
       // ACIMA já leem e gravam manualExpires/autoExpires atualizados — mas
@@ -10480,7 +10490,7 @@ filtrar();
       // os +30 dias que acabaram de ser gravados. Precisa reler o usuário
       // DEPOIS das duas funções pra não desfazer o próprio trabalho delas.
       const tgtFresh=getUser(email)||tgt;
-      setUser(email,{plan,vip:{...(tgtFresh.vip||{}),active:plan!=='free',plan,source:'admin',activatedBy:s.user_email,...(plan!=='free'?{limits:limitesDoPlanoNovo(plan)}:{})}});
+      setUser(email,{plan,vip:{...(tgtFresh.vip||{}),active:plan!=='free',plan,source:'admin',activatedBy:s.user_email,...(plan!=='free'?{limits:_limSp}:{})}});
       logAdminAction(s.user_email,"set_plan",email,_audBefore,_vipSnapshot(getUser(email)),`Plano → ${plan}${plan!=='free'?" (+30d)":""}`);
       // 💳 v141: faltava aqui — era a única rota de concessão de dias que NÃO
       // alimentava o extrato vip.creditos (addCredito), então a Auditoria
