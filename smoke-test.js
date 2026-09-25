@@ -7670,6 +7670,21 @@ async function drillBloqueioComprasNovas() {
         _admL6.includes('onclick="abrirDetalheUsuario(this.dataset.email)"') && _admL6.includes("async function abrirDetalheUsuario(") &&
         _admL6.includes('api("/api/admin/financeiro-usuario/"') && _admL6.includes("function renderDetalheUsuario("),
         "faltou peça da UI de Detalhe do usuário");
+      // 🩺 v323 (achado de auditoria contínua) — GET /api/admin/journey/:email
+      // também já existia (DB_JOURNEY, alimentado por 12 pontos reais do
+      // sistema — 1º login, upload de PDF, sender adicionado/reautenticado,
+      // e o mais crítico: auto_fail com o MOTIVO real de por que o
+      // automático de um pagante parou) mas nunca era chamado — o
+      // authTimeline que o modal de Detalhe já mostrava é uma régua bem mais
+      // estreita (só autenticação). Corrigido: o modal de Detalhe agora busca
+      // a jornada em paralelo com financeiro-usuario e mostra os eventos.
+      const _jr323 = await get("/api/admin/journey/" + encodeURIComponent("parado318@test.com"));
+      check("🩺 v323: GET /api/admin/journey/:email responde no formato que o modal de Detalhe consome (journey[]/total) — a rota existia mas nada no painel a chamava",
+        _jr323.status === 200 && Array.isArray(_jr323.json?.journey) && typeof _jr323.json?.total === "number",
+        JSON.stringify(_jr323.json).slice(0, 160));
+      check("🩺 v323: o modal de Detalhe busca a jornada em paralelo com financeiro-usuario e renderiza a seção JORNADA (antes: só existia o authTimeline, régua bem mais estreita)",
+        _admL6.includes('api("/api/admin/journey/"+encodeURIComponent(email))') && _admL6.includes("function renderDetalheUsuario(d,jour)") && _admL6.includes("JORNADA"),
+        "faltou peça da seção Jornada no modal de Detalhe");
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     }
 

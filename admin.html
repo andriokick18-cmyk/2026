@@ -1707,12 +1707,22 @@ function renderAuditoria(lista){
 async function abrirDetalheUsuario(email){
   try{
     var d=await api("/api/admin/financeiro-usuario/"+encodeURIComponent(email));
-    renderDetalheUsuario(d);
+    // 🩺 achado de auditoria contínua: /api/admin/journey/:email também já
+    // existia e nunca era chamado — é o único lugar que registra POR QUÊ e
+    // QUANDO o automático de um pagante parou (auto_fail com o motivo real:
+    // rate limit, sender isolado, erro de auth) além de upload de PDF,
+    // sender reautenticado/adicionado, 1º login, conta restaurada/excluída.
+    // O authTimeline que a tela já mostra é uma régua BEM mais estreita
+    // (só autenticação, outro código-fonte). Busca em paralelo — se falhar,
+    // o resto do modal continua útil (nunca trava por causa da jornada).
+    var jour=null;
+    try{ jour=await api("/api/admin/journey/"+encodeURIComponent(email)); }catch(e2){}
+    renderDetalheUsuario(d,jour);
   }catch(e){
     toast(e.message,"err");
   }
 }
-function renderDetalheUsuario(d){
+function renderDetalheUsuario(d,jour){
   var u=d.usuario||{},pl=d.plano||{},rec=d.reconciliacao||{},uso=d.uso||{},risco=d.risco||{},auth=d.auth||{};
   var pedidos=d.pedidos||[],creditos=d.creditos||[],auditoria=d.auditoria||[];
   var html='<div style="max-height:64vh;overflow:auto;font-size:12.5px">';
@@ -1786,6 +1796,24 @@ function renderDetalheUsuario(d){
       html+='<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px;white-space:nowrap">'+esc(fmtData(a.ts))+'</td>'
         +'<td style="padding:4px 6px">'+esc(a.admin||"—")+'</td><td style="padding:4px 6px">'+esc(a.action||"—")+'</td>'
         +'<td style="padding:4px 6px;color:var(--t2)">'+esc(a.detail||"")+(a.reverted?' (revertida)':'')+'</td></tr>';
+    });
+    html+='</tbody></table>';
+  }
+
+  var eventos=(jour&&jour.journey)||[];
+  html+='<div style="color:var(--t3);font-size:11px;margin-bottom:4px">JORNADA — o que aconteceu com essa conta ('+(jour?(jour.total||0):"—")+')</div>';
+  if(!jour){
+    html+='<div style="color:var(--t3)">Não foi possível carregar a jornada.</div>';
+  }else if(!eventos.length){
+    html+='<div style="color:var(--t3)">Nenhum evento registrado ainda.</div>';
+  }else{
+    html+='<table style="width:100%;border-collapse:collapse"><tbody>';
+    eventos.slice(0,10).forEach(function(ev){
+      var falhou=ev.ok===false;
+      html+='<tr style="border-bottom:1px solid var(--border)'+(falhou?';color:var(--red)':'')+'">'
+        +'<td style="padding:4px 6px;white-space:nowrap">'+esc(fmtData(ev.ts))+'</td>'
+        +'<td style="padding:4px 6px">'+(falhou?'<i class="ti ti-alert-triangle"></i> ':'')+esc(ev.action||"—")+'</td>'
+        +'<td style="padding:4px 6px;color:'+(falhou?"var(--red)":"var(--t2)")+'">'+esc(ev.detail||ev.error||"")+'</td></tr>';
     });
     html+='</tbody></table>';
   }
