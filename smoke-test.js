@@ -6724,6 +6724,18 @@ async function drillBloqueioComprasNovas() {
         _appL9.includes('<label class="ag-lbl" for="ag-l-user">Nome de usuário ou e-mail</label>') &&
         _appL9.includes('<label class="ag-lbl" for="ag-l-pass">Senha</label>'),
         "placeholder do auth-gate continua ilegível ou o login continua sem labels");
+      // ♿ v302 (achado de auditoria contínua — Alta): admin.html --t3
+      // (texto secundário) tinha contraste ~2.62:1 contra --bg (#040a14) —
+      // bem abaixo do AA (4.5:1), confirmado por cálculo independente da
+      // luminância WCAG. Usado nos cabeçalhos de TODA tabela do painel
+      // (thead th) e em .cell-sub — os campos de conferência de
+      // comprovante (valorLido/pagadorLido/instituicaoLida/dataLida/
+      // transacaoIdLida) que o admin lê pra aprovar/rejeitar pagamento
+      // manualmente. Não é só estética — prejudica a leitura de dado
+      // usado numa decisão financeira real.
+      check("♿ v302: admin.html --t3 sobe pra #7c8ba3 (~5.3-5.7:1 contra as 3 cores de fundo do painel, AA passa com folga)",
+        _admL9.includes("--text:#e2e8f0;--t2:#94a3b8;--t3:#7c8ba3;--t4:#334155;"),
+        "--t3 de admin.html continua com contraste abaixo do AA");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&
