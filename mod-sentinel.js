@@ -233,8 +233,15 @@ const _pedAlertSent = ctx.pedAlertSentInit || {}; // {pedidoId: ts} — V951: pe
 async function pendingOrderAlert(){
   const now = Date.now();
   const pend = (ctx.DB_PEDIDOS()||[]).filter(p=>p.status==="pendente" && (now-(p.createdAt||0))>6*3600_000);
+  // 🐛 v309 (achado de auditoria contínua): pedido só tem `userEmail` (nunca
+  // `.email` — confirmado em server.js, onde o objeto nasce). p.email era
+  // sempre undefined aqui — o painel admin via "undefined" no lugar do
+  // cliente em pedidosPendentes, e o e-mail de alerta aos admins (assunto E
+  // corpo) saía com "Usuário: undefined", inútil pra identificar quem
+  // aprovar. Desde sempre quebrado, silencioso — nenhum teste checava esse
+  // campo.
   global._healthSentinel.pedidosPendentes = pend.map(p=>({
-    id:p.id, email:p.email, plano:p.plano, valor:p.valorTotal||p.valor,
+    id:p.id, email:p.userEmail, plano:p.plano, valor:p.valorTotal||p.valor,
     horasPendente: Math.round((now-(p.createdAt||0))/3600_000)
   }));
   if(!pend.length) return;
@@ -266,9 +273,9 @@ async function pendingOrderAlert(){
     let algumEnviado=false;
     for(const toEmail of (ctx.ADMIN_EMAILS||[ctx.ADMIN_EMAIL])){
       try{
-        const raw=ctx.buildMime({ to:toEmail, subject:`🔔 [H2BApply] Pedido pendente há ${horas}h — ${p.email} (${p.plano})`,
+        const raw=ctx.buildMime({ to:toEmail, subject:`🔔 [H2BApply] Pedido pendente há ${horas}h — ${p.userEmail} (${p.plano})`,
           fromName:"H2BApply Sentinel 🩺", fromEmail:adminTokenFrom,
-          text:`Pedido aguardando aprovação:\n\nUsuário: ${p.email}\nPlano: ${p.plano}\nValor: R$ ${p.valorTotal||p.valor||"?"}\nPendente há: ${horas} horas\nID: ${p.id}\n\nAprove no painel admin → Pedidos para não perder a conversão.` });
+          text:`Pedido aguardando aprovação:\n\nUsuário: ${p.userEmail}\nPlano: ${p.plano}\nValor: R$ ${p.valorTotal||p.valor||"?"}\nPendente há: ${horas} horas\nID: ${p.id}\n\nAprove no painel admin → Pedidos para não perder a conversão.` });
         const {status}=await ctx.httpsReq({hostname:"gmail.googleapis.com",path:"/gmail/v1/users/me/messages/send",method:"POST",
           headers:{"Authorization":"Bearer "+adminToken,"Content-Type":"application/json"}},{raw});
         if(status===200) algumEnviado=true;

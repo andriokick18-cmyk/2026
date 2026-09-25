@@ -2102,6 +2102,15 @@ async function drillBloqueioComprasNovas() {
       hsRun.json?.ok === true && (hsRun.json?.report?.pedidosPendentes || []).some((p) => p.id === "pedwatch1") &&
       !/NENHUM admin com token válido/.test(_logSince),
       JSON.stringify({ pend: hsRun.json?.report?.pedidosPendentes, logTrecho: _logSince.slice(-300) }).slice(0, 400));
+    // 🐛 v309 (achado de auditoria contínua): pendingOrderAlert lia p.email —
+    // campo que NUNCA existe em pedido (só userEmail) — e mandava
+    // "undefined" tanto pro painel (pedidosPendentes) quanto pro assunto e
+    // corpo do e-mail de alerta aos admins. Quebrado desde sempre, em
+    // silêncio: nenhum check antigo olhava esse campo especificamente.
+    const _pedwatch1Row = (hsRun.json?.report?.pedidosPendentes || []).find((p) => p.id === "pedwatch1");
+    check("🐛 v309: pedidosPendentes mostra o e-mail REAL do cliente (era sempre undefined — p.email não existe em pedido, só p.userEmail)",
+      _pedwatch1Row?.email === "watchtest@test.com",
+      JSON.stringify(_pedwatch1Row || {}).slice(0, 200));
     check("📧 v202-L20: o alerta de pedido pendente CHEGA de verdade no Gmail (200) — os sócios recebem o e-mail com o pedido e as horas; antes o único 'teste' era o código não usar `break`",
       _alertas.length >= 2 &&
       _alertas.some((e2) => e2.para === "andrio.usa2026@gmail.com") &&
@@ -2109,6 +2118,9 @@ async function drillBloqueioComprasNovas() {
       _alertas.every((e2) => /Pedido pendente h[áa] \d+h/.test(e2.assunto || "")) &&
       /Admin\(s\) alertado\(s\): pedido pedwatch1/.test(_logSince),
       JSON.stringify({ n: _alertas.length, paraExemplo: _alertas[0]?.para, assunto: _alertas[0]?.assunto }).slice(0, 260));
+    check("🐛 v309: o ASSUNTO do e-mail de alerta cita o e-mail REAL do cliente, nunca 'undefined'",
+      _alertas.some((e2) => (e2.assunto || "").includes("watchtest@test.com")) && !_alertas.some((e2) => (e2.assunto || "").includes("undefined")),
+      JSON.stringify(_alertas.map((e2) => e2.assunto)).slice(0, 260));
     const _sentinelSrc = fs.readFileSync(path.join(__dirname, "mod-sentinel.js"), "utf8");
     const _pendFn = _sentinelSrc.slice(_sentinelSrc.indexOf("async function pendingOrderAlert"), _sentinelSrc.indexOf("setInterval(()=>pendingOrderAlert"));
     check("🐛 (estrutural) pendingOrderAlert nunca dá `break` no loop inteiro por falta de token — resolve o admin 1x fora do loop de pedidos, com fallback pra ADMIN_EMAILS além do principal",
