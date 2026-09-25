@@ -632,6 +632,7 @@ tbody tr:hover{background:var(--glass2)}
           <option value="vip">Manual (só manual)</option>
           <option value="vipro">Turbo (manual + automático)</option>
           <option value="doublepro">Máximo (foco em automático)</option>
+          <option value="pro">Pro (legado, só automático)</option>
         </select>
       </div>
       <div class="field">
@@ -808,7 +809,7 @@ function toast(msg,tipo){
 // 🏷️ v218 (reestruturação de Planos, 20/09/2026) — nome público de cada
 // plano no painel admin (mensagens ao cliente, listas, confirmações). Chave
 // interna (vip/vipro/doublepro) nunca muda — só o texto que a pessoa lê.
-var NOME_PLANO_ADM={vip:"Manual",vipro:"Turbo",doublepro:"Máximo"};
+var NOME_PLANO_ADM={vip:"Manual",vipro:"Turbo",doublepro:"Máximo",pro:"Pro"};
 
 async function api(path,opts){
   opts=opts||{};
@@ -1134,9 +1135,20 @@ function abrirVipModal(email){
     +(restam>0?('restam <b style="color:var(--text)">'+restam+' dia'+(restam===1?"":"s")+'</b>'):'<b style="color:var(--red)">sem plano ativo</b>')+'</div>'
     +'<div style="font-size:12px;color:var(--t3);margin-top:3px">Manual vence: '+esc(venceManual)+' · Automático vence: '+esc(venceAuto)+'</div>';
   var planoSel=document.getElementById("vip-plano");
-  planoSel.value=["vip","vipro","doublepro"].indexOf(u.plano)>=0?u.plano:"vipro";
-  document.getElementById("vip-manual").value=30;
-  document.getElementById("vip-auto").value=planoSel.value==="vip"?0:30;
+  // 🚨 v312 (achado de auditoria contínua — 6º ponto do mesmo bug do
+  // 868f86c/7f0fc69/6ee92c5): o dropdown não tinha "pro" (legado, só
+  // automático) — abrir o modal pra uma conta "pro" mostrava "Turbo"
+  // pré-selecionado com 30 dias manual + 30 automático pré-preenchidos.
+  // Um admin que confiasse no preenchimento padrão sem notar concedia 30
+  // dias de manual de graça (e o confirm() nem avisava certo — mostrava
+  // "plano vipro"). /api/admin/vip/activate em si recebe days/autoDays
+  // explícitos (não deriva de array), mas o valor PADRÃO que chega lá
+  // precisa nascer certo. Preenchimento por plano, nunca hardcoded.
+  var _vipPreset={vip:{m:30,a:0},vipro:{m:30,a:30},doublepro:{m:30,a:30},pro:{m:0,a:30}};
+  planoSel.value=["vip","vipro","doublepro","pro"].indexOf(u.plano)>=0?u.plano:"vipro";
+  var _vp=_vipPreset[planoSel.value]||_vipPreset.vipro;
+  document.getElementById("vip-manual").value=_vp.m;
+  document.getElementById("vip-auto").value=_vp.a;
   document.getElementById("vip-nota").value="";
   abrirModal("modal-vip");
 }

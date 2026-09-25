@@ -3295,6 +3295,23 @@ async function drillBloqueioComprasNovas() {
       JSON.stringify({ plan: stSpPro.json?.plan, manualLimit: stSpPro.json?.manualLimit, autoLimit: stSpPro.json?.autoLimit }));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
 
+    // 🚨 v312 (achado de auditoria contínua — 6º ponto do mesmo bug do
+    // 868f86c/7f0fc69/6ee92c5): o modal de plano VIP do admin (abrirVipModal)
+    // não tinha "pro" no dropdown nem no preenchimento padrão de dias — abrir
+    // o modal pra uma conta "pro" mostrava "Turbo" com 30 dias manual + 30
+    // automático pré-preenchidos, arriscando conceder manual de graça se o
+    // admin confiasse no padrão sem notar. /api/admin/vip/activate em si está
+    // correto (recebe days/autoDays explícitos); o bug era só o valor PADRÃO
+    // que chegava até lá.
+    const _admL312 = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
+    check("🚨 v312: modal de plano VIP do admin reconhece a conta 'pro' (opção no dropdown, rótulo, pré-seleção e preenchimento padrão de dias corretos — 0 manual/30 automático, nunca 30 manual de graça)",
+      _admL312.includes('<option value="pro">Pro (legado, só automático)</option>') &&
+      _admL312.includes('vip:{m:30,a:0},vipro:{m:30,a:30},doublepro:{m:30,a:30},pro:{m:0,a:30}') &&
+      _admL312.includes('["vip","vipro","doublepro","pro"].indexOf(u.plano)>=0?u.plano:"vipro"') &&
+      _admL312.includes('pro:"Pro"') &&
+      !_admL312.includes('["vip","vipro","doublepro"].indexOf(u.plano)>=0?u.plano:"vipro"'),
+      "modal de plano VIP ainda não reconhece a conta 'pro' corretamente");
+
     // ═══ 💳 v141 (dono, 15/08 — "esse Cleiton e também o outro ali, eu sei
     // que nenhum dos 2 tem todos esses dias de plano. algo deu errado!") ═══
     // CAUSA RAIZ achada revisando o próprio código: /api/admin/set-plan era
