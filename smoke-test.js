@@ -1692,6 +1692,33 @@ async function drillBloqueioComprasNovas() {
         "aindaBuscaCdn=" + _diagHtml.includes('fetch("https://cdn.jsdelivr.net'));
     }
 
+    // 🩺 v320 (achado de auditoria contínua) — /admin-reviews (moderação de
+    // avaliações reais — POST /api/reviews → pending → só aprovada aqui
+    // aparece na prova social da landing e no JSON-LD de aggregateRating)
+    // existia há ~150 releases sem NENHUM link na sidebar do admin.html — só
+    // quem já sabia a URL de cor achava a tela. Avaliações ficavam pendentes
+    // pra sempre e a seção de prova social da landing nunca populava.
+    {
+      const _rvEmail = "reviewer320@test.com";
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: _rvEmail, name: "Reviewer 320" });
+      const _rvSend = await req2("POST", "/api/reviews", { text: "Consegui minha vaga em 3 semanas usando o site, recomendo demais!", rating: 5, displayName: "Reviewer 320" });
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+      const _rvAdm = (await get("/api/admin/reviews")).json;
+      const _rvPending = (_rvAdm?.reviews || []).find((r) => r.email === _rvEmail);
+      check("🩺 v320: /api/reviews aceita a avaliação (pending) e /api/admin/reviews (a mesma fonte que agora alimenta o pill da sidebar) enxerga o pendente",
+        _rvSend.json?.ok === true && !!_rvPending && _rvPending.status === "pending" && (_rvAdm?.counts?.pending || 0) >= 1,
+        JSON.stringify({ send: _rvSend.json, pending: _rvPending, counts: _rvAdm?.counts }).slice(0, 260));
+      const _admHtml320 = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
+      check("🩺 v320: a sidebar do admin.html tem um link de verdade pra /admin-reviews com pill de pendentes vindo de counts.pending (antes: nenhum link em lugar nenhum, achado por auditoria)",
+        _admHtml320.includes("location.href='/admin-reviews'") && _admHtml320.includes('id="pill-reviews"') && _admHtml320.includes("d.counts&&d.counts.pending"),
+        "temLink=" + _admHtml320.includes("location.href='/admin-reviews'"));
+      const _rvPage = await get("/admin-reviews");
+      check("🩺 v320: /admin-reviews (a tela pra onde o link novo leva) responde 200 de verdade",
+        _rvPage.status === 200 && _rvPage.body.length > 500,
+        "status=" + _rvPage.status);
+      COOKIE = ""; // devolve o estado deslogado que o próximo teste espera
+    }
+
     // Rota admin SEM sessão tem que negar — o portão global é vital
     const adm = await get("/api/admin/users");
     check("GET /api/admin/users sem sessão → bloqueado (401/403)",

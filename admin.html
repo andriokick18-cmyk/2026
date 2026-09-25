@@ -291,6 +291,12 @@ tbody tr:hover{background:var(--glass2)}
       <button class="sb-item" data-view="planilhas" onclick="switchTab('planilhas')"><i class="ti ti-table-import"></i> Planilhas &amp; Robôs</button>
       <div class="sb-section">Sistema</div>
       <button class="sb-item" data-view="notificacoes" onclick="switchTab('notificacoes')"><i class="ti ti-mail-forward"></i> Notificações <span class="pill" id="pill-notif" style="display:none;background:var(--red)">!</span></button>
+      <!-- 🩺 achado de auditoria contínua: /admin-reviews (moderação de avaliações
+           reais, POST /api/reviews → status pending → só aprovada aqui aparece na
+           landing/JSON-LD) existia há ~150 releases sem NENHUM link na sidebar —
+           só quem já conhecia a URL de cor achava a tela. Avaliações ficavam
+           pendentes pra sempre, a seção de prova social da landing nunca populava. -->
+      <button class="sb-item" data-view="reviews" onclick="location.href='/admin-reviews'"><i class="ti ti-star"></i> Avaliações <span class="pill" id="pill-reviews" style="display:none">0</span></button>
     </nav>
     <div class="sb-foot">
       <div class="sb-user">
@@ -914,6 +920,10 @@ async function boot(){
       toast(okN?"✅ Conta "+(q.get("email")||"")+" conectada! Mande um e-mail de teste pra confirmar.":"❌ "+(q.get("msg")||"Não foi possível conectar a conta."),okN?"ok":"err");
     } else { api("/api/admin/notificacoes/status").then(function(d){var pill=_plG("pill-notif");if(pill)pill.style.display=d.conectada?"none":"";}).catch(function(){}); }
   }catch(e){}
+  // 🩺 achado de auditoria contínua: pendura o contador de avaliações
+  // aguardando moderação no link da sidebar (mesma régua de counts.pending
+  // já devolvida por GET /api/admin/reviews — nenhuma conta nova).
+  api("/api/admin/reviews").then(function(d){var pill=_plG("pill-reviews");if(!pill)return;var n=(d.counts&&d.counts.pending)||0;if(n>0){pill.style.display="inline-block";pill.textContent=n;}else{pill.style.display="none";}}).catch(function(){});
 }
 
 function preencherTopoUsuario(){
