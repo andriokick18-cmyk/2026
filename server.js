@@ -1834,14 +1834,6 @@ function mascararEmail(e){
   if(i<1)return "";
   return s2[0]+"••••"+s2.slice(i);
 }
-// Cópia da vaga com o e-mail mascarado (nunca muta o objeto do cache — as
-// listas do DOL e da planilha são compartilhadas entre TODOS os usuários).
-function jobComEmailVisivel(job,ver){
-  if(!job)return job;
-  const e=String(job.email||"").trim().toLowerCase();
-  if(ver||!e)return job;
-  return {...job,email:mascararEmail(e),emailBloqueado:true};
-}
 // Uma pergunta só, usada por TODA rota que devolve vaga com e-mail.
 // 🔓 v277: QUALQUER sessão de usuário de verdade vê o e-mail — free inclusive
 // (não pode ENVIAR pelo app, mas pode COPIAR o contato). Só quem não tem

@@ -6926,10 +6926,20 @@ async function drillBloqueioComprasNovas() {
       const _srvL10 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
       const _appL10 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
       check("🔒 v182-L10 (estrutural): a máscara é função ÚNICA (mascararEmail + podeVerEmailVaga) e está em TODA rota que devolve vaga com e-mail — lista e 'pra você' (v223: detalhe/lote/vagas ao vivo saíram do site — só planilhas a partir de agora)",
-        _srvL10.includes("function mascararEmail(") && _srvL10.includes("function podeVerEmailVaga(") && _srvL10.includes("function jobComEmailVisivel(") &&
+        _srvL10.includes("function mascararEmail(") && _srvL10.includes("function podeVerEmailVaga(") &&
         (_srvL10.match(/podeVerEmailVaga\(req\)/g) || []).length >= 2 &&
         !/email:emailVal\|\|null/.test(_srvL10),
         "alguma rota voltou a devolver o e-mail cru");
+      // 🧹 v305 (achado de auditoria contínua): jobComEmailVisivel() ficou
+      // órfã desde a remoção da aba "Vagas ao Vivo" (v223, commit f41d6a2) —
+      // os 3 chamadores dela (rotas de detalhe/lote/lista ao vivo) foram
+      // todos removidos junto, mas a função em si sobrou sem nenhum
+      // chamador real (só aparecia numa string desta suíte). Violava a
+      // regra 3 do CLAUDE.md (nada de código morto). mascararEmail/
+      // podeVerEmailVaga continuam vivas e usadas — só a função órfã saiu.
+      check("🧹 v305: jobComEmailVisivel() (código morto do v223) foi removida do server.js",
+        !_srvL10.includes("function jobComEmailVisivel("),
+        "função órfã jobComEmailVisivel ainda existe em server.js");
       check("🔓 v277 (estrutural): a régua mudou de 'plano ativo' pra 'sessão logada de verdade' — nem podeVerEmailVaga nem _verEmailMeta checam mais isAdminVip/isVipActive (só existência de sessão+usuário); o texto do gate antigo não pode voltar",
         !_srvL10.includes("isAdminVip(u) || isVipActive(u)") && !/_verEmailMeta=!!\(_uMeta&&\(isAdminVip/.test(_srvL10) &&
         _srvL10.includes("const _verEmailMeta=!!_uMeta;"),
