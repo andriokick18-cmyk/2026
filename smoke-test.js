@@ -7561,6 +7561,28 @@ async function drillBloqueioComprasNovas() {
         _sent?.ok === true && Array.isArray(_sent?.report?.vipDesync),
         JSON.stringify({ gmail: _uRev.gmailConectado, robo: _uRev.robo, sentinela: !!_sent?.ok }));
 
+      // 🩺 v318 (achado de auditoria contínua) — mod-sentinel.js (módulo
+      // separado, injetado via initSentinel(ctx)) reimplementava "dias
+      // restantes" com Math.ceil((exp-now)/86400000) — o EXATO bug que o
+      // v237p/v317 já tinham corrigido em 8 lugares de server.js/app.js
+      // trocando por diasRestantesCanonico(). Este módulo escapou de toda
+      // varredura anterior por nunca ter o helper no ctx da injeção.
+      const { diasRestantesCanonico: _drc318 } = require(path.join(__dirname, "mod-engine-core.js"));
+      const _exp318 = Date.now() + 90 * 60 * 1000; // vence em 90min, sem robô nenhum (jobParado)
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "parado318@test.com", name: "Parado 318", vip: { active: true, manualExpires: _exp318, autoExpires: 0, plan: "vip", source: "admin" }, plan: "vip" });
+      await get("/api/status"); // markOnline() — sem isso diasInativo vira a idade do epoch e o filtro <=30 descarta o caso
+      // health-sentinel/run checa isAdminEmail(sessAdminEmail(s)) — mais estrito
+      // que isAdminVip(u): precisa de sessão de PAINEL de verdade, não do
+      // isAdmin:true genérico do test-login usado pelas outras rotas admin.
+      COOKIE = "";
+      await req2("POST", "/api/admin-panel/login", { user: "andrio", password: "teste-smoke-andrio-2026" });
+      const _sent318 = (await req2("POST", "/api/admin/health-sentinel/run", {})).json;
+      const _vd318 = (_sent318?.report?.vipDesync || []).find((v) => v.email === "parado318@test.com");
+      const _esperado318 = Math.max(0, _drc318(_exp318, Date.now()));
+      check("🩺 v318: healthSentinelRun() (mod-sentinel.js, módulo injetado por ctx) usa a MESMA régua de dias restantes (diasRestantesCanonico) que alimenta a coluna 'Dias restantes' de Robôs Parados — antes reimplementava Math.ceil((exp-now)/DAY) sem ninguém perceber, por ser um módulo separado fora da varredura literal do v237p",
+        !!_vd318 && _vd318.diasRestantes === _esperado318 && _vd318.diasRestantes <= 1,
+        JSON.stringify(_vd318) + " esperado=" + _esperado318);
+
       const _admL6 = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
       const _srvL6 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
       check("🤖 v188-L6 (estrutural): o painel consome o vigia (health-sentinel + varredura sob demanda), tem a coluna de Gmail/robô, o filtro de status dos pedidos e o botão de plano por usuário — e nenhuma tela chama a rota removida",

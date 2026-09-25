@@ -15726,6 +15726,7 @@ const { healthSentinelRun, pendingOrderAlert, queueSanitizerRun, getPedAlertSent
   ADMIN_EMAIL, ADMIN_EMAILS,
   getUser, getAutoJob, setAutoJob, isVipActive, sendNotifEmail,
   refreshTokenForUser, buildMime, httpsReq, getSheet,
+  diasRestantesCanonico, // v318: "Robôs parados" usa a MESMA régua de dias restantes do resto do painel (dia civil BRT, nunca Math.ceil de milissegundo)
   // v199 LOTE 18: o monitor de planilhas do vigia usa as MESMAS fontes do
   // robô — a lista de planilhas PUBLICADAS (a do frescor) e a régua única de
   // "completa" (CAMPOS_ESSENCIAIS, via progressoPlanilha). Nada de uma 2ª

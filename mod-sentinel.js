@@ -42,7 +42,13 @@ async function healthSentinelRun(){
   for(const [email, u] of Object.entries(ctx.DB_USERS()||{})){
     if(!u || !ctx.isVipActive(u)) continue;
     const exp = Math.max(u.vip?.manualExpires||0, u.vip?.autoExpires||0);
-    const diasRestantes = exp>now ? Math.ceil((exp-now)/86400000) : 0;
+    // v318 (auditoria contínua) — este módulo reimplementava "dias restantes"
+    // com Math.ceil((exp-now)/86400000), o EXATO bug que o v237p já tinha
+    // varrido e trocado por diasRestantesCanonico() (dia CIVIL em BRT, nunca
+    // fração de milissegundo) em 8 outros lugares de server.js/app.js. Este
+    // arquivo escapou da varredura por ser um módulo separado (injeção de
+    // dependências via initSentinel(ctx)) — nunca tinha o helper no ctx.
+    const diasRestantes = exp>now ? Math.max(0, ctx.diasRestantesCanonico(exp, now)) : 0;
     const job = ctx.getAutoJob(email);
     // v18-FIX: antes "!job.active" sozinho já bastava pra disparar "robô
     // quebrado, faça login de novo" — inclusive quando a PRÓPRIA pessoa pausou
