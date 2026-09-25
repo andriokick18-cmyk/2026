@@ -7655,6 +7655,21 @@ async function drillBloqueioComprasNovas() {
         _admL6.includes('api("/api/admin/audit")') && _admL6.includes("function reverterAuditoria(") &&
         _admL6.includes('api("/api/admin/audit/revert"'),
         "faltou peça da UI de Auditoria");
+      // 🩺 v322 (achado de auditoria contínua) — GET /api/admin/financeiro-
+      // usuario/:email já existia (comentário do próprio servidor: "fonte
+      // única", feita pra substituir 5 rotas espalhadas) mas NENHUMA tela do
+      // painel chamava — só dava pra responder "esse cliente paga e o robô
+      // parou?"/"a suspeita de duplicidade é real?" lendo JSON cru no disco.
+      // Corrigido com um botão "Detalhe" por linha, reaproveitando
+      // abrirModalInfo() de novo — nenhuma rota nova.
+      const _fu322 = await get("/api/admin/financeiro-usuario/" + encodeURIComponent("parado318@test.com"));
+      check("🩺 v322: GET /api/admin/financeiro-usuario/:email (fonte única de plano+pedidos+créditos+auditoria+risco por usuário) responde com o formato que a tela nova consome",
+        _fu322.json?.ok === true && !!_fu322.json?.usuario && !!_fu322.json?.plano && !!_fu322.json?.reconciliacao && !!_fu322.json?.uso,
+        JSON.stringify(_fu322.json).slice(0, 200));
+      check("🩺 v322: a tabela de Usuários tem o botão 'Detalhe' e as funções que chamam financeiro-usuario e renderizam o modal (antes: NENHUMA tela chamava essa rota, achado por auditoria)",
+        _admL6.includes('onclick="abrirDetalheUsuario(this.dataset.email)"') && _admL6.includes("async function abrirDetalheUsuario(") &&
+        _admL6.includes('api("/api/admin/financeiro-usuario/"') && _admL6.includes("function renderDetalheUsuario("),
+        "faltou peça da UI de Detalhe do usuário");
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     }
 

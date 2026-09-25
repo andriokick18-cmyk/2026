@@ -393,10 +393,10 @@ tbody tr:hover{background:var(--glass2)}
             <div class="tbl-wrap">
               <table>
                 <thead>
-                  <tr><th>Usuário</th><th>Plano</th><th>Dias restantes</th><th>Dias creditados (pago)</th><th>Cortesia</th><th>Gmail / robô</th><th></th><th></th><th></th></tr>
+                  <tr><th>Usuário</th><th>Plano</th><th>Dias restantes</th><th>Dias creditados (pago)</th><th>Cortesia</th><th>Gmail / robô</th><th></th><th></th><th></th><th></th></tr>
                 </thead>
                 <tbody id="tbl-usuarios">
-                  <tr><td colspan="9"><div class="spin"></div></td></tr>
+                  <tr><td colspan="10"><div class="spin"></div></td></tr>
                 </tbody>
               </table>
             </div>
@@ -1061,6 +1061,7 @@ function renderLinhasUsuarios(lista){
       +'<td>'+(u.suspeita?('<button class="warn-flag" data-email="'+esc(u.email||"")+'" title="Ver motivo da suspeita" onclick="abrirDivergencia(this.dataset.email)"><i class="ti ti-alert-triangle"></i></button>'):'')+'</td>'
       +'<td><button class="key-flag" data-email="'+esc(u.email||"")+'" title="Definir/redefinir senha (conta antiga sem senha ou senha esquecida)" onclick="definirSenhaUsuario(this.dataset.email)"><i class="ti ti-key"></i></button></td>'
       +'<td><button class="btn btn-sm" data-email="'+esc(u.email||"")+'" title="Conceder, estender, definir vencimento ou revogar o plano" onclick="abrirVipModal(this.dataset.email)"><i class="ti ti-star"></i> Plano</button></td>'
+      +'<td><button class="btn btn-sm" data-email="'+esc(u.email||"")+'" title="Detalhe completo: plano, pedidos, dias creditados, uso do robô, sinais de risco" onclick="abrirDetalheUsuario(this.dataset.email)"><i class="ti ti-file-search"></i> Detalhe</button></td>'
       +'</tr>';
   }
   tbody.innerHTML=html;
@@ -1696,6 +1697,103 @@ function renderAuditoria(lista){
   html+='</div>';
   abrirModalInfo("📋 Auditoria de ações do admin",html);
 }
+// 🩺 achado de auditoria contínua: GET /api/admin/financeiro-usuario/:email
+// já existe desde antes (fonte única — o próprio comentário do servidor diz
+// que substitui 5 rotas espalhadas: user-detail, pedidos, diamonds/user,
+// audit sem filtro, creditos), mas NENHUMA tela do painel chamava. O único
+// jeito de investigar "esse cliente paga e o robô parou?"/"a suspeita de
+// duplicidade é real?" era ler JSON cru no disco. Reusa abrirModalInfo()
+// (mesmo modal genérico da Auditoria/outras telas) — nenhuma rota nova.
+async function abrirDetalheUsuario(email){
+  try{
+    var d=await api("/api/admin/financeiro-usuario/"+encodeURIComponent(email));
+    renderDetalheUsuario(d);
+  }catch(e){
+    toast(e.message,"err");
+  }
+}
+function renderDetalheUsuario(d){
+  var u=d.usuario||{},pl=d.plano||{},rec=d.reconciliacao||{},uso=d.uso||{},risco=d.risco||{},auth=d.auth||{};
+  var pedidos=d.pedidos||[],creditos=d.creditos||[],auditoria=d.auditoria||[];
+  var html='<div style="max-height:64vh;overflow:auto;font-size:12.5px">';
+
+  html+='<p style="margin-bottom:10px"><b style="color:#fff;font-size:14px">'+esc(u.name||u.email)+'</b><br>'
+    +'<span style="color:var(--t2)">'+esc(u.email)+'</span>'
+    +(u.whatsapp?(' · '+esc(u.whatsapp)):'')+(u.country?(' · '+esc(u.country)):'')
+    +(u.isAdmin?' <span class="badge amber">admin</span>':'')+'</p>';
+
+  // Sinais de risco no topo — é a pergunta que o admin veio responder.
+  var alertas=[];
+  if((rec.duplicacoes||[]).length)alertas.push((rec.duplicacoes.length)+' concessão(ões) duplicada(s) em ≤15min pro MESMO plano final');
+  if((rec.comprovantesReusados||[]).length)alertas.push('comprovante reusado em pedido de OUTRO usuário: '+rec.comprovantesReusados.map(function(c){return esc(c.email);}).join(", "));
+  if((risco.gmailsBloqueados||[]).length)alertas.push(risco.gmailsBloqueados.length+' Gmail(s) extra bloqueado(s)');
+  if(auth.rtInvalid)alertas.push('refresh token inválido (robô parado por queda de autenticação)');
+  if(alertas.length){
+    html+='<div style="background:var(--redg);border:1px solid var(--redb);border-radius:8px;padding:10px 12px;margin-bottom:10px;color:var(--red)"><b><i class="ti ti-alert-triangle"></i> Sinais de risco</b><ul style="margin:6px 0 0 18px;padding:0">'
+      +alertas.map(function(a){return '<li>'+a+'</li>';}).join("")+'</ul></div>';
+  }
+
+  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">'
+    +'<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 11px">'
+      +'<div style="color:var(--t3);font-size:11px">PLANO</div>'
+      +'<div style="font-weight:700">'+esc(NOME_PLANO_ADM[pl.atual]||pl.atual||"free")+'</div>'
+      +'<div style="color:var(--t2);margin-top:4px">Manual: '+(pl.manual&&pl.manual.ativo?('ativo · '+esc(pl.manual.diasRestantes)+'d'):'inativo')+'</div>'
+      +'<div style="color:var(--t2)">Auto: '+(pl.auto&&pl.auto.ativo?('ativo · '+esc(pl.auto.diasRestantes)+'d'):'inativo')+'</div>'
+      +(pl.source?('<div style="color:var(--t3);margin-top:4px">origem: '+esc(pl.source)+'</div>'):'')
+    +'</div>'
+    +'<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 11px">'
+      +'<div style="color:var(--t3);font-size:11px">USO DO ROBÔ</div>'
+      +'<div>Manual hoje: '+esc(uso.todayManual||0)+' / '+esc(uso.manualLimit||0)+'</div>'
+      +'<div>Automático hoje: '+esc(uso.todayAuto||0)+' / '+esc(uso.autoLimit||0)+'</div>'
+      +'<div style="color:var(--t2);margin-top:4px">Job: '+(uso.autoJobStatus?(esc(uso.autoJobStatus.status||"—")+(uso.autoJobStatus.active?"":" (parado)")):'nunca ligado')+'</div>'
+      +'<div style="color:var(--t3)">Currículos: '+esc(uso.cvs||0)+' · Perfis: '+esc(uso.perfisCurriculo||0)+'</div>'
+    +'</div>'
+  +'</div>';
+
+  html+='<div style="color:var(--t3);font-size:11px;margin-bottom:4px">EXTRATO DE DIAS (últimos '+Math.min(creditos.length,8)+' de '+creditos.length+')</div>';
+  if(!creditos.length){
+    html+='<div style="color:var(--t3);margin-bottom:10px">Nenhum crédito registrado.</div>';
+  }else{
+    html+='<table style="width:100%;border-collapse:collapse;margin-bottom:10px"><tbody>';
+    creditos.slice(0,8).forEach(function(c){
+      html+='<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px;white-space:nowrap">'+esc(fmtData(c.quando))+'</td>'
+        +'<td style="padding:4px 6px">'+esc(c.dias||0)+'d ('+esc(c.tipo||"?")+')</td>'
+        +'<td style="padding:4px 6px;color:var(--t2)">'+esc(c.motivo||c.origem||"")+'</td></tr>';
+    });
+    html+='</tbody></table>';
+  }
+
+  html+='<div style="color:var(--t3);font-size:11px;margin-bottom:4px">PEDIDOS ('+pedidos.length+')</div>';
+  if(!pedidos.length){
+    html+='<div style="color:var(--t3);margin-bottom:10px">Nenhum pedido.</div>';
+  }else{
+    html+='<table style="width:100%;border-collapse:collapse;margin-bottom:10px"><tbody>';
+    pedidos.slice(0,8).forEach(function(p){
+      html+='<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px;white-space:nowrap">'+esc(fmtData(p.createdAt))+'</td>'
+        +'<td style="padding:4px 6px">'+esc(p.plano||"?")+' · '+esc(fmtMoney(p.valorTotal))+'</td>'
+        +'<td style="padding:4px 6px"><span class="badge '+(p.status==="cancelado"?"red":(p.status==="pendente"?"amber":"green"))+'">'+esc(p.status||"?")+'</span></td>'
+        +'<td style="padding:4px 6px">'+(p.temComprovante?'<button class="btn btn-sm" onclick="verComprovante(\''+esc(p.id)+'\')"><i class="ti ti-eye"></i></button>':'')+'</td></tr>';
+    });
+    html+='</tbody></table>';
+  }
+
+  html+='<div style="color:var(--t3);font-size:11px;margin-bottom:4px">AÇÕES DO ADMIN SOBRE ESTE USUÁRIO ('+auditoria.length+')</div>';
+  if(!auditoria.length){
+    html+='<div style="color:var(--t3)">Nenhuma ação registrada.</div>';
+  }else{
+    html+='<table style="width:100%;border-collapse:collapse"><tbody>';
+    auditoria.slice(0,8).forEach(function(a){
+      html+='<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px;white-space:nowrap">'+esc(fmtData(a.ts))+'</td>'
+        +'<td style="padding:4px 6px">'+esc(a.admin||"—")+'</td><td style="padding:4px 6px">'+esc(a.action||"—")+'</td>'
+        +'<td style="padding:4px 6px;color:var(--t2)">'+esc(a.detail||"")+(a.reverted?' (revertida)':'')+'</td></tr>';
+    });
+    html+='</tbody></table>';
+  }
+
+  html+='</div>';
+  abrirModalInfo("🔍 Detalhe — "+(u.name||u.email),html);
+}
+
 async function reverterAuditoria(id){
   var motivo=prompt("Motivo da reversão (fica registrado na auditoria):");
   if(motivo===null)return;
