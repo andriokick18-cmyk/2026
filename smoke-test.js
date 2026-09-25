@@ -3406,6 +3406,48 @@ async function drillBloqueioComprasNovas() {
       JSON.stringify({ job: jobV313, why: jobV313?.matchWhy }).slice(0, 260));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
 
+    // 🚨 v325 (achado de auditoria contínua — job matching, prioridade #1 da
+    // casa): CLAUDE.md documenta CNH como sinal que "alimenta a nota de
+    // encaixe", junto com inglês — mas computeJobMatchScore só lia
+    // englishLevel; hasDriverLicense chegava até ctx.h2bProfile (mesmo
+    // objeto) e nunca era usado. Guarda de negação testada contra as 323
+    // vagas H-2A reais que citam CDL/driver's license: sem ela, "NO CDL
+    // REQUIRED"/"do not require ... license" bateriam como EXIGÊNCIA (o
+    // oposto do texto real) — por isso o teste cobre os 2 sinais E o
+    // negativo. Reusa o mesmo fixture/planilha do v313 (cliente@test.com,
+    // perfil h2a "pa").
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
+    const setCnhSim = await req2("POST", "/api/settings", { h2bProfile: { englishLevel: "basic", hasDriverLicense: true } });
+    check("🚨 v325: (setup) hasDriverLicense:true salva em h2bProfile normalmente (mesmo caminho de app.js)", setCnhSim.json?.ok === true, setCnhSim.body.slice(0, 150));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const upV325 = await req2("POST", "/api/admin/sheet/upload", {
+      name: "Match V325", key: "match-v325",
+      data: [
+        { c: "H-300-MATCHV325-01", e: "empregadormatchv325a@test.com", n: "Empregador Match V325 A", t: "Farmworker", s: "FLORIDA", req: "Must have a valid driver's license." },
+        { c: "H-300-MATCHV325-02", e: "empregadormatchv325b@test.com", n: "Empregador Match V325 B", t: "Farmworker", s: "FLORIDA", req: "Equipment operation, 26,001 lbs and do not require commercial driver license to operate." },
+      ],
+    });
+    check("🚨 v325: (setup) planilha com as 2 vagas de teste sobe normalmente", upV325.json?.ok === true, upV325.body.slice(0, 150));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
+    const smV325a = await get("/api/sheet-meta?sheet=match-v325&email=0&top=5");
+    const jobV325pede = (smV325a.json?.jobs || []).find((j) => j.id === "H-300-MATCHV325-01" || j.caseNum === "H-300-MATCHV325-01");
+    const jobV325naoPede = (smV325a.json?.jobs || []).find((j) => j.id === "H-300-MATCHV325-02" || j.caseNum === "H-300-MATCHV325-02");
+    check("🚨 v325: vaga que EXIGE CNH ('must have a valid driver's license') soma pontos e explica o porquê quando o candidato TEM CNH",
+      Array.isArray(jobV325pede?.matchWhy) && jobV325pede.matchWhy.some((w) => w.includes("você tem CNH")),
+      JSON.stringify({ job: jobV325pede, why: jobV325pede?.matchWhy }).slice(0, 260));
+    check("🚨 v325: vaga que diz 'do not require commercial driver license' NÃO é tratada como exigência (a guarda de negação suprime o sinal — sem ela, bateria como o OPOSTO do texto real)",
+      Array.isArray(jobV325naoPede?.matchWhy) && !jobV325naoPede.matchWhy.some((w) => w.includes("CNH")),
+      JSON.stringify({ job: jobV325naoPede, why: jobV325naoPede?.matchWhy }).slice(0, 260));
+    // Candidato SEM CNH contra a mesma vaga que exige → penalidade, não bônus.
+    const setSemCnh = await req2("POST", "/api/settings", { h2bProfile: { englishLevel: "basic", hasDriverLicense: false } });
+    check("🚨 v325: (setup) hasDriverLicense:false salva normalmente", setSemCnh.json?.ok === true, setSemCnh.body.slice(0, 150));
+    const smV325b = await get("/api/sheet-meta?sheet=match-v325&email=0&top=5");
+    const jobV325semCnh = (smV325b.json?.jobs || []).find((j) => j.id === "H-300-MATCHV325-01" || j.caseNum === "H-300-MATCHV325-01");
+    check("🚨 v325: a MESMA vaga que exige CNH avisa 'pede CNH que você ainda não tem' pra quem não tem — nunca some, nunca vira bônus",
+      Array.isArray(jobV325semCnh?.matchWhy) && jobV325semCnh.matchWhy.some((w) => w.includes("pede CNH que você ainda não tem")),
+      JSON.stringify({ job: jobV325semCnh, why: jobV325semCnh?.matchWhy }).slice(0, 260));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+
     // 🚨 v314 (achado de auditoria contínua — CRÍTICO, envio automático):
     // fillTpl()/fill() usavam .replace(/{x}/g, valorString) — com STRING no
     // 2º argumento, sequências $&/$`/$'/$$ dentro do valor são interpretadas

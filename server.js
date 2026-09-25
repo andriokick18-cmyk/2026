@@ -4751,6 +4751,20 @@ function computeJobMatchScore(sig,ctx){
     if((nivel==="none"||nivel==="basic")&&inglesOpcional){score+=8;why.push("não exige inglês avançado");}
     if((nivel==="none"||nivel==="basic")&&pedeIngles){score-=12;why.push("pede inglês avançado");}
     if(nivel==="advanced"&&pedeIngles){score+=5;why.push("seu inglês avançado é diferencial aqui");}
+    // 🚨 achado de auditoria contínua: CNH é documentada (CLAUDE.md) como
+    // sinal que "alimenta a nota de encaixe", junto com inglês — mas só
+    // inglês era realmente lido aqui; hasDriverLicense chegava até ctx e
+    // nunca era usado. Guarda de negação SEPARADA (não um "no"/"not" solto
+    // colado no requisito, que geraria falso positivo): testado contra as
+    // 323 vagas H-2A reais que citam CDL/driver's license — sem essa
+    // guarda, "do not require commercial driver license" e "NO CDL
+    // REQUIRED" batiam como se a vaga EXIGISSE CNH, o oposto do texto real.
+    const pedeCNH=/\b(?:must (?:have|possess|obtain)|requires?|valid|clean)\b[^.]{0,40}\b(?:driver.?s?\s+licen[sc]e|cdl)\b/i.test(txt);
+    const naoExigeCNH=/\bno\s+cdl\b|\bwithout\s+(?:a\s+)?cdl\b|\bcdl\s+not\s+required\b|\bno\s+driver.?s?\s+licen[sc]e\b|\bdriver.?s?\s+licen[sc]e\s+not\s+required\b|\bnot\s+required\s+to\s+obtain\b|\b(?:do|does)\s+not\s+require\b|\bnot\s+require[sd]?\b/i.test(txt);
+    if(pedeCNH&&!naoExigeCNH){
+      if(h2bProfile?.hasDriverLicense){score+=8;why.push("você tem CNH, que essa vaga pede");}
+      else{score-=8;why.push("pede CNH que você ainda não tem");}
+    }
   }
   if((sig.workers||0)>=10)score+=5;
   return{score:Math.max(0,Math.min(100,Math.round(score))),why};
