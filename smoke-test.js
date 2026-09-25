@@ -5691,6 +5691,28 @@ async function drillBloqueioComprasNovas() {
     check("🚨 v237k: a concessão de dias grátis fica registrada em /api/admin/audit (reversível pelo ↩️ — antes era invisível, só o console.log efêmero)",
       !!v237gAuditEntry, JSON.stringify({ achou: !!v237gAuditEntry }));
 
+    // 🩺 v328 (achado de auditoria contínua): vip/gift-days era a ÚNICA das 4
+    // rotas que mexem em vip.manualExpires/autoExpires (activate, set-plan,
+    // set-expiry e esta) sem chamar addCredito() — a fonte única de
+    // vip.creditos que alimenta a coluna "Cortesia" da tabela de Usuários
+    // (diasCreditadosCortesia, /api/admin/contabilidade) e o "EXTRATO DE
+    // DIAS" do modal Detalhe (/api/admin/financeiro-usuario). O motivo que
+    // o admin é OBRIGADO a digitar (regra do próprio formulário) gravava em
+    // vip.giftHistory, mas nenhuma tela do painel lê esse campo — a
+    // justificativa ficava invisível em todo lugar que existe pra
+    // respondê-la. O bloco acima já concedeu 3 dias de cortesia pra
+    // v237gift@test.com; confere que agora aparecem como dia CREDITADO.
+    const v328fin = (await req2("GET", "/api/admin/financeiro-usuario/v237gift@test.com")).json;
+    const v328cred = (v328fin?.creditos || []).find(c => c.origem === "cortesia" && c.dias === 3);
+    check("🩺 v328: vip/gift-days agora chama addCredito() como as 3 rotas irmãs — a cortesia entra em vip.creditos (tipo 'gratis', origem 'cortesia') com o motivo que o admin digitou, alimentando o EXTRATO DE DIAS do modal Detalhe",
+      !!v328cred && v328cred.tipo === "gratis" && /site fora do ar/i.test(v328cred.motivo || ""),
+      JSON.stringify(v328cred));
+    const v328cont = (await req2("GET", "/api/admin/contabilidade")).json;
+    const v328row = (v328cont?.usuarios || []).find(u => u.email === "v237gift@test.com");
+    check("🩺 v328: a coluna 'Cortesia' (diasCreditadosCortesia, /api/admin/contabilidade) enxerga os dias dados por gift-days — antes ficava sempre '—' (0) pra quem só recebeu cortesia por essa rota",
+      !!v328row && v328row.diasCreditadosCortesia >= 3,
+      JSON.stringify({ diasCreditadosCortesia: v328row?.diasCreditadosCortesia }));
+
     // ═══ 🚨 v237 (achado de auditoria — Alta, vagas/filtros): loadSheetMeta()
     // (a busca manual de vagas, aba planilha) não tinha NENHUMA proteção
     // contra resposta de um fetch antigo chegando depois de uma troca de

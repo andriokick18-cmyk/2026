@@ -12829,6 +12829,17 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
       v.giftHistory=[...(v.giftHistory||[]).slice(-19),{em:now,dias,motivo:motivo.slice(0,160),
         por:_sessAdminNome(s)}];
       setUser(email,{vip:v});
+      // 🩺 v328 (achado de auditoria contínua): esta era a ÚNICA das 4 rotas
+      // que mexem em vip.manualExpires/autoExpires (activate, set-plan,
+      // set-expiry e esta) sem chamar addCredito() — a fonte única do
+      // "EXTRATO DE DIAS" (vip.creditos) que alimenta a coluna Cortesia da
+      // tabela de Usuários, o extrato do modal Detalhe e a explicação da
+      // suspeita de divergência. Cortesia dada por aqui virava dias reais
+      // (extendia o vencimento de verdade) mas ficava INVISÍVEL em todo
+      // lugar que existe pra responder "de onde vieram esses dias" — o
+      // motivo que o admin é obrigado a digitar (linha acima) chegava a
+      // gravar em vip.giftHistory, mas nenhuma tela do painel lê esse campo.
+      addCredito(email,{dias,tipo:"gratis",origem:"cortesia",motivo:`Cortesia admin — ${motivo}`,dadoPor:_sessAdminNome(s)});
       logAdminAction(_sessAdminEmail(s),"vip_gift_days",email,_audBeforeGift,_vipSnapshot(getUser(email)),`+${dias}d cortesia — ${motivo}`);
       console.log(`[gift-days] +${dias}d para ${email} por ${s.user_email} — ${motivo.slice(0,80)}`);
       return json(res,200,{ok:true,dias,manualExpires:v.manualExpires,autoExpires:v.autoExpires||0,
