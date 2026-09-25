@@ -12541,6 +12541,17 @@ filtrar();
       // camada de segurança (corrida entre manual e auto), mas o grosso sai já.
       const _sentSetStart = buildUserSentSet(s.user_email);
       let skippedAlreadySent = 0;
+      // 🚨 achado de auditoria contínua: noEmailCount nascia com `let` DENTRO
+      // do bloco do MODO 2 (linha abaixo) mas era lido na linha 12623, de
+      // um bloco IRMÃO (`if(!queue.length)`) — fora do escopo do `let`.
+      // ReferenceError em produção (não um bug lógico silencioso): toda vez
+      // que a fila ficava vazia por falta de e-mail (planilha nova ainda sem
+      // dados liberados pelo DOL — caso real e documentado, v172l/v282),
+      // o usuário recebia um 500 cru ("noEmailCount is not defined") no
+      // lugar da mensagem amigável que o próprio código já tinha pronta.
+      // O front (app.js) SEMPRE manda {cases,caseMeta}, nunca {queue} — é
+      // o único caminho que existe de verdade em produção.
+      let noEmailCount = 0;
       // MODO 1: Frontend já enviou fila com emails (fluxo antigo, agora preserva todos os campos extras)
       if(d.queue&&d.queue.length){
         // v15-SEC: normaliza emails, valida com regex robusta, remove self-sends
@@ -12573,7 +12584,6 @@ filtrar();
         // Combina TODOS os sheets: jan2026 + jul2025 + planilhas extras carregadas
         const allSheetRows2 = getAllSheets();
         const sheetByCase = new Map(allSheetRows2.map(r=>[String(r.c||"").toUpperCase(), r]));
-        let noEmailCount = 0;
         for(const cn of d.cases){
           const meta = d.caseMeta?.[cn] || {};
           // 🔒 v182 LOTE 10: a PLANILHA DO SERVIDOR manda — a prioridade era o

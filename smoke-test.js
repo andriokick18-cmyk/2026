@@ -3448,6 +3448,30 @@ async function drillBloqueioComprasNovas() {
       JSON.stringify({ job: jobV325semCnh, why: jobV325semCnh?.matchWhy }).slice(0, 260));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
 
+    // 🚨 v326 (achado de auditoria contínua — CRÍTICO, envio automático):
+    // noEmailCount nascia com `let` DENTRO do bloco do MODO 2 (monta fila
+    // por cases/caseMeta — o ÚNICO formato que o front real manda, app.js
+    // nunca usa {queue:...}) mas era lido FORA desse bloco, no if irmão que
+    // monta a mensagem "nenhuma vaga tem e-mail ainda" (v172l). Isso é um
+    // ReferenceError de JavaScript de verdade (escopo de bloco do `let`),
+    // não um bug lógico silencioso: toda vez que a fila ficava vazia por
+    // falta de e-mail (planilha nova, dados ainda não liberados pelo DOL —
+    // caso real e documentado, v172l/v282: Jul2026 chegou a ter 1.358/2.625
+    // vagas sem e-mail), o usuário recebia um 500 cru
+    // ("noEmailCount is not defined") no lugar da mensagem amigável que o
+    // próprio código já tinha pronta, bem na ação mais importante do site.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "noemail326@test.com", name: "No Email 326", refreshToken: "rt-noemail326", plan: "doublepro", vip: { active: true, plan: "doublepro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 } });
+    const cvV326 = await req2("POST", "/api/cv/upload", { base64: Buffer.from("%PDF-1.4 " + "noemail326 ".repeat(300)).toString("base64"), name: "CV_NoEmail326.pdf", cvType: "resume" });
+    const startV326 = await req2("POST", "/api/auto/start", {
+      cases: ["H-400-NOEMAIL326-01"],
+      caseMeta: { "H-400-NOEMAIL326-01": { company: "Empresa Sem Email 326", title: "Cook", category: "other", state: "TX" } }, // sem .email/.to — igual a uma vaga do DOL ainda sem contato liberado
+      resumeIdx: cvV326.json?.cv?.idx, subjects: ["x"], emailBodies: ["y"],
+    });
+    check("🚨 v326: POST /api/auto/start com {cases,caseMeta} (o formato REAL que o front manda) e TODAS as vagas selecionadas sem e-mail devolve a mensagem amigável (400, noEmail:true) — nunca mais um 500 cru de ReferenceError na hora de ligar o robô",
+      startV326.status === 400 && startV326.json?.noEmail === true && !String(startV326.json?.error || "").includes("is not defined"),
+      JSON.stringify(startV326.json).slice(0, 260));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+
     // 🚨 v314 (achado de auditoria contínua — CRÍTICO, envio automático):
     // fillTpl()/fill() usavam .replace(/{x}/g, valorString) — com STRING no
     // 2º argumento, sequências $&/$`/$'/$$ dentro do valor são interpretadas
