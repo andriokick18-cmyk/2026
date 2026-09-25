@@ -523,6 +523,86 @@ async function testAuthWatchdogPush() {
     pushed && pushed.email === "vip@test.com" && /reconecte/i.test(pushed.payload?.title || ""), JSON.stringify(pushed)?.slice(0, 120));
 }
 
+// ── 🛡️ v327 (achado de auditoria contínua): mesma classe do v237i (3
+// watchdogs de server.js já protegidos por try/catch por iteração desde
+// aquele lote) — mas os watchdogs extraídos pra módulos separados por
+// injeção de dependências (mod-watchdogs.js, mod-sentinel.js) nunca
+// tinham essa proteção. Sem ela, 1 registro corrompido em DB_AUTO/
+// DB_USERS travava o loop NAQUELE ponto — e como Object.entries preserva
+// a ordem, o MESMO registro corrompido quebrava o processamento de TODOS
+// os usuários que vêm depois dele, em TODO ciclo seguinte, pra sempre.
+// Os 2 testes abaixo provam com um repro real: um 2º usuário SAUDÁVEL,
+// inserido DEPOIS do corrompido, só é processado se o loop sobreviver.
+async function testWatchdogsSurviveCorruptedEntry() {
+  const { initWatchdogs } = require("./mod-watchdogs.js");
+  const agora = Date.now();
+  const renovados = [];
+  const notificados = [];
+  const wd = initWatchdogs({
+    DB_AUTO: () => ({
+      "corrompidoTG327@test.com": { active: true, status: "sending" },
+      "saudavelTG327@test.com": { active: true, status: "sending" },
+      "corrompidoAE327@test.com": { active: false, status: "paused_auth_error", finishedAt: agora - 13 * 3600_000 },
+      "saudavelAE327@test.com": { active: false, status: "paused_auth_error", finishedAt: agora - 13 * 3600_000 },
+    }),
+    autoTimers: () => new Map(),
+    getUser: (e) => {
+      if (e === "corrompidoTG327@test.com" || e === "corrompidoAE327@test.com") throw new Error("registro corrompido (simulado v327)");
+      return { email: e, refresh_token: "rt", cached_access_token: null, cached_token_expiry: 0, lastSeenAt: agora };
+    },
+    getAutoJob: () => null, setAutoJob: () => {}, addLog: () => {},
+    sendNotifEmail: async () => {},
+    refreshTokenForUser: async (e) => { renovados.push(e); },
+    authErrNotifiedAtInit: {}, botLog: () => {},
+    pushToUser: async (email) => { notificados.push(email); },
+  }, { startIntervals: false });
+
+  let threwTG = null;
+  try { await wd.tokenGuardianRun(); } catch (e) { threwTG = e; }
+  check("🛡️ v327: tokenGuardianRun() (mod-watchdogs.js) sobrevive a 1 registro corrompido (getUser lançando exceção) — antes travava o loop naquele ponto e o usuário SEGUINTE (ordem estável de Object.entries) nunca tinha o token renovado, em TODO ciclo seguinte",
+    !threwTG && renovados.includes("saudavelTG327@test.com"),
+    JSON.stringify({ threw: threwTG?.message, renovados }));
+
+  let threwAE = null;
+  try { await wd.authErrorWatchdog(); } catch (e) { threwAE = e; }
+  check("🛡️ v327: authErrorWatchdog() (mod-watchdogs.js) sobrevive a 1 registro corrompido pela mesma razão",
+    !threwAE && notificados.includes("saudavelAE327@test.com"),
+    JSON.stringify({ threw: threwAE?.message, notificados }));
+}
+
+async function testHealthSentinelSurvivesCorruptedEntry() {
+  const { initSentinel } = require("./mod-sentinel.js");
+  const agora = Date.now();
+  const usuarioCorrompido = { vip: { active: true } };
+  const usuarioSaudavel = {
+    vip: { manualExpires: agora + 60 * 60_000, autoExpires: 0 },
+    cvs: [{}], profiles: [{}], lastSeenAt: agora,
+  };
+  const sentinel = initSentinel({
+    DB_USERS: () => ({ "corrompidoHS327@test.com": usuarioCorrompido, "saudavelHS327@test.com": usuarioSaudavel }),
+    DB_AUTO: () => ({}),
+    isVipActive: (u) => { if (u === usuarioCorrompido) throw new Error("registro corrompido (simulado v327)"); return true; },
+    diasRestantesCanonico: (exp, now) => Math.ceil((exp - now) / 86400_000),
+    getAutoJob: () => null,
+    sendNotifEmail: async () => {},
+    pushToUser: null,
+    notifConectada: () => true,
+    sessions: () => ({}),
+    ADMIN_EMAIL: "admin327@test.com",
+    getUser: () => null,
+    refreshTokenForUser: async () => {},
+    cooldownMaps: {},
+    botLog: () => {},
+  });
+
+  let threw = null;
+  try { await sentinel.healthSentinelRun(); } catch (e) { threw = e; }
+  const S = global._healthSentinel;
+  check("🛡️ v327: healthSentinelRun() (mod-sentinel.js) sobrevive a 1 registro corrompido (isVipActive lançando exceção) — antes travava o loop naquele ponto e o usuário SEGUINTE nunca era checado (nem entrava em vipDesync/vipExpiring), em TODO ciclo seguinte",
+    !threw && (S.vipDesync || []).some((v) => v.email === "saudavelHS327@test.com"),
+    JSON.stringify({ threw: threw?.message, vipDesync: S.vipDesync }));
+}
+
 // ── 🔁 v199 LOTE 19 — CICLO DE VIDA DO SERVIDOR (helper ÚNICO) ──────────
 // A suíte sobe servidor em 3 momentos (o principal, o drill de restauração do
 // v191 e os 2 bootes novos deste lote). Antes cada um tinha seu próprio
@@ -804,6 +884,8 @@ async function drillBloqueioComprasNovas() {
 (async () => {
   console.log(`🧪 Smoke test — porta ${PORT}, dados em ${DATA}`);
   await testAuthWatchdogPush(); // unit puro, não precisa do servidor
+  await testWatchdogsSurviveCorruptedEntry(); // v327, unit puro
+  await testHealthSentinelSurvivesCorruptedEntry(); // v327, unit puro
   // 🚨 v172c-SEC: NUNCA testar com a senha de fábrica de produção (nem a antiga
   // vazada, nem a nova) — o teste define a SUA PRÓPRIA senha via env,
   // exatamente como uma instalação real deveria fazer (a env sempre vence o

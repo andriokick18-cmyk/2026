@@ -40,6 +40,15 @@ async function healthSentinelRun(){
   const notified = [];
 
   for(const [email, u] of Object.entries(ctx.DB_USERS()||{})){
+    // 🚨 v237-mod (auditoria contínua — mesma classe do v237i em server.js,
+    // que já protegia 3 watchdogs ali, mas nunca cobriu este módulo extraído
+    // por injeção de dependências): sem try/catch por iteração, 1 usuário
+    // com registro corrompido travava o vigia NAQUELE ponto — e como
+    // Object.entries preserva a ordem, o MESMO usuário quebrava a checagem
+    // de saúde de TODOS os que vêm depois dele, em TODO ciclo seguinte, pra
+    // sempre (justamente o vigia que existe pra dessincronização nunca
+    // passar batido).
+    try {
     if(!u || !ctx.isVipActive(u)) continue;
     const exp = Math.max(u.vip?.manualExpires||0, u.vip?.autoExpires||0);
     // v318 (auditoria contínua) — este módulo reimplementava "dias restantes"
@@ -108,6 +117,7 @@ async function healthSentinelRun(){
         await new Promise(r=>setTimeout(r,1500));
       }
     }
+    } catch(e) { console.error(`[health-sentinel] erro em ${email}:`, e.message); }
   }
 
   // 7) Jobs presos em paused_no_vip (estado legado ou revogação de trial).
@@ -187,6 +197,8 @@ async function healthSentinelRun(){
   // 10) 🔄 RE-ENGAJAMENTO "FINISHED" — fila vazia há >3 dias, usuário ativo ≤14d
   S.finishedIdle = [];
   for(const [email, job] of Object.entries(ctx.DB_AUTO()||{})){
+    // v237-mod: mesma proteção do loop principal acima.
+    try {
     if(job?.status!=="finished") continue;
     const desde=job.finishedAt||0;
     if(!desde || now-desde < 3*86400_000) continue;
@@ -198,6 +210,7 @@ async function healthSentinelRun(){
       try{ await ctx.sendNotifEmail(email,"refill"); global._refillNotifiedAt[email]=now; notified.push({email,tipo:"refill"}); }catch(e){}
       await new Promise(r=>setTimeout(r,1500));
     }
+    } catch(e) { console.error(`[health-sentinel:finishedIdle] erro em ${email}:`, e.message); }
   }
 
   S.notificados = notified.slice(-100);
@@ -301,6 +314,9 @@ function queueSanitizerRun(){
   const invalid = new Set(Object.keys(ctx.DB_INVALID_EMAILS()||{}).map(e=>e.toLowerCase()));
   let totalRemoved = 0; const detalhes=[];
   for(const [email, job] of Object.entries(ctx.DB_AUTO()||{})){
+    // v237-mod: mesma proteção dos outros loops deste arquivo — 1 fila
+    // corrompida não pode travar a sanitização das filas dos demais usuários.
+    try {
     if(!Array.isArray(job?.queue) || !job.queue.length) continue;
     const before = job.queue.length;
     const seen = Object.create(null); // dedup: mantém no máx. 2 ocorrências do mesmo destino
@@ -318,6 +334,7 @@ function queueSanitizerRun(){
       detalhes.push({ usuario: email, removidos: removed, filaAntes: before, filaDepois: clean.length });
       console.log(`[health-sentinel] 🧹 Fila de ${email}: ${removed} itens inválidos/duplicados removidos (${before}→${clean.length})`);
     }
+    } catch(e) { console.error(`[health-sentinel:sanitizer] erro em ${email}:`, e.message); }
   }
   if(totalRemoved>0){
     S.removidos += totalRemoved; S.ultimaLimpeza = Date.now();

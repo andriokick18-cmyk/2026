@@ -22,11 +22,22 @@ function initWatchdogs(ctx, { startIntervals = true } = {}){
 async function tokenGuardianRun() {
   const NEEDS_TOKEN = new Set(["sending","starting","waiting_interval","waiting_limit","waiting_rate_limit","recovered","resuming","recovering"]);
   const emails = Object.entries(ctx.DB_AUTO())
-    .filter(([,j]) => j.active || NEEDS_TOKEN.has(j.status))
+    // v237-mod: guarda contra job nulo/corrompido — j.active sozinho já
+    // lançaria TypeError num registro não-objeto e derrubaria o .filter()
+    // inteiro (nenhum e-mail seria renovado no ciclo).
+    .filter(([,j]) => j?.active || NEEDS_TOKEN.has(j?.status))
     .map(([e]) => e);
 
   let renewed=0, pausedNoToken=0, pausedRevoked=0, checked=emails.length;
   for (const email of emails) {
+    // 🚨 v237-mod (auditoria contínua — mesma classe do v237i em server.js,
+    // que já protegia 3 watchdogs ali, mas nunca cobriu estes 2 módulos
+    // extraídos por injeção de dependências): sem try/catch por iteração, 1
+    // usuário com registro corrompido travava o loop NAQUELE ponto — e como
+    // Object.entries preserva a ordem, o MESMO usuário quebrava a renovação
+    // de token de TODOS os que vêm depois dele, em TODO ciclo seguinte, pra
+    // sempre.
+    try {
     const u = ctx.getUser(email);
     if (!u?.refresh_token) {
       // Sem refresh_token — pausa definitivamente (nunca vai conseguir enviar)
@@ -77,6 +88,7 @@ async function tokenGuardianRun() {
         console.warn(`[token-guardian] ⚠️ ${email}:`, msg);
       }
     }
+    } catch(e) { console.error(`[token-guardian] erro em ${email}:`, e.message); }
   }
   // 📜 Log unificado (aba "Logs dos Robôs") — 1 linha-resumo por execução.
   if(typeof ctx.botLog==="function" && (checked>0 || renewed>0 || pausedNoToken>0 || pausedRevoked>0)){
@@ -102,6 +114,10 @@ async function authErrorWatchdog(){
   const now = Date.now();
   let notified = 0;
   for(const [email, job] of Object.entries(ctx.DB_AUTO())){
+    // v237-mod: mesma proteção do tokenGuardianRun() acima — try/catch por
+    // iteração, nunca deixar 1 registro corrompido travar a notificação
+    // dos demais usuários pra sempre.
+    try {
     if(!job?.active && job?.status==="paused_auth_error"){
       const pausedAt = job.finishedAt || job.lastSentAt || 0;
       const pausedMs = now - pausedAt;
@@ -130,6 +146,7 @@ async function authErrorWatchdog(){
       }catch(e){ console.warn(`[auth-watchdog] erro notif ${email}:`, e.message); }
       await new Promise(r=>setTimeout(r,2000)); // pausa entre emails
     }
+    } catch(e) { console.error(`[auth-watchdog] erro em ${email}:`, e.message); }
   }
   if(notified>0) console.log(`[auth-watchdog] ✅ ${notified} usuários notificados sobre auth_error`);
   if(typeof ctx.botLog==="function"){
