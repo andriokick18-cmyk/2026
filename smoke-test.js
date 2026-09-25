@@ -6940,6 +6940,18 @@ async function drillBloqueioComprasNovas() {
       check("🧹 v305: jobComEmailVisivel() (código morto do v223) foi removida do server.js",
         !_srvL10.includes("function jobComEmailVisivel("),
         "função órfã jobComEmailVisivel ainda existe em server.js");
+      // 🧹 v306 (achado de auditoria contínua): _logAdminAction()/GET
+      // /api/admin/action-log eram um par morto — a função nunca era
+      // chamada em lugar nenhum (nem o comentário "exposto como webhook"
+      // era verdade), então global._adminActionLog nunca recebia escrita
+      // e a rota só devolvia {ok:true,log:[]} pra sempre — estruturalmente
+      // impossível ter dado alguma vez. Distinto do logAdminAction() real
+      // (sem underscore) que alimenta /api/admin/audit e continua vivo e
+      // usado em ~15 rotas. Front-end nunca chamava /api/admin/action-log.
+      check("🧹 v306: par morto _logAdminAction()/GET /api/admin/action-log foi removido (server.js + mod-admin-health.js)",
+        !_srvL10.includes("_logAdminAction") &&
+        !fs.readFileSync(path.join(__dirname, "mod-admin-health.js"), "utf8").includes("action-log"),
+        "resquício morto _logAdminAction/action-log ainda existe");
       check("🔓 v277 (estrutural): a régua mudou de 'plano ativo' pra 'sessão logada de verdade' — nem podeVerEmailVaga nem _verEmailMeta checam mais isAdminVip/isVipActive (só existência de sessão+usuário); o texto do gate antigo não pode voltar",
         !_srvL10.includes("isAdminVip(u) || isVipActive(u)") && !/_verEmailMeta=!!\(_uMeta&&\(isAdminVip/.test(_srvL10) &&
         _srvL10.includes("const _verEmailMeta=!!_uMeta;"),

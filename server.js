@@ -9929,14 +9929,6 @@ filtrar();
   if(await handleAdminHealthRoutes(req,res,pathname)) return;
   if(await handleAdminV2Routes(req,res,pathname)) return;
 
-  // ── M08: Marcar ação admin no log ─────────────────────────
-  // (helper usado internamente, mas também exposto como webhook)
-  function _logAdminAction(adminEmail,action,target,detail){
-    if(!global._adminActionLog)global._adminActionLog=[];
-    global._adminActionLog.unshift({ts:Date.now(),admin:adminEmail,action,target:target||"",detail:detail||""});
-    if(global._adminActionLog.length>500)global._adminActionLog.length=500;
-  }
-
   // ── Admin: financeiro (entradas + gastos) ────────────────
   if(pathname==="/api/admin/financeiro"&&req.method==="GET"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});

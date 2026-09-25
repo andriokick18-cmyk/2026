@@ -94,15 +94,6 @@ function createAdminHealthRouter(ctx){
       return true;
     }
 
-    // ── M03: Log de ações admin ───────────────────────────────
-    if(!global._adminActionLog)global._adminActionLog=[];
-    if(pathname==="/api/admin/action-log"&&req.method==="GET"){
-      const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."}),true;
-      if(!isAdminEmail(sessAdminEmail(s)))return json(res,403,{error:"Apenas admins."}),true;
-      json(res,200,{ok:true,log:global._adminActionLog.slice(0,100)});
-      return true;
-    }
-
     return false; // não é rota deste grupo — server segue o fluxo
   };
 }
