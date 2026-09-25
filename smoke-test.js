@@ -2731,6 +2731,25 @@ async function drillBloqueioComprasNovas() {
     check("💰 Visão do Dono: a ativação de R$300 aparece nas entradas de hoje",
       dr.json?.ok === true && dr.json?.entradas?.total >= 300 && dr.json?.entradas?.hoje >= 300, dr.body.slice(0, 140));
 
+    // 💰 v317 (achado de auditoria contínua) — a lista "vencendo em 7 dias" do
+    // dono-resumo calculava diasRestantes com Math.ceil((exp-now)/DAY), o
+    // EXATO bug que o v237p já tinha varrido e substituído por
+    // diasRestantesCanonico() (dia CIVIL em BRT, nunca fração de milissegundo)
+    // em outros 7 lugares de server.js/app.js — este escapou da varredura
+    // porque dividia pela variável local DAY, não pelo literal 86400000 que
+    // o grep original procurava. Sem o fix, quem vence daqui a 90min nunca
+    // aparece como "vence hoje" (0) — sempre 1 dia fantasma a mais.
+    const { diasRestantesCanonico: _drc317 } = require(path.join(__dirname, "mod-engine-core.js"));
+    const _exp317 = Date.now() + 90 * 60 * 1000; // vence em 90min
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "vence317@test.com", name: "Vence 317", vip: { active: true, manualExpires: _exp317, autoExpires: 0, plan: "vip", source: "admin" }, plan: "vip" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const dr317 = await get("/api/admin/dono-resumo");
+    const v317 = (dr317.json?.vencendo7d || []).find((v) => v.email === "vence317@test.com");
+    const _esperado317 = Math.max(0, _drc317(_exp317, Date.now()));
+    check("💰 v317: dono-resumo() usa a MESMA régua de dias restantes (diasRestantesCanonico, dia civil BRT) do resto do painel — quem vence daqui a 90min bate com o cálculo canônico, não com Math.ceil((exp-now)/DAY) que arredondava 1 dia fantasma pra cima",
+      !!v317 && v317.diasRestantes === _esperado317 && v317.diasRestantes <= 1,
+      JSON.stringify(v317) + " esperado=" + _esperado317);
+
     // v31: 🧾 Conferência de pagamentos — todos os pagamentos numa lista só,
     // valor ao lado do nome, e correção de valor com trilha (caixa junto)
     const cf = await get("/api/admin/conferencia");

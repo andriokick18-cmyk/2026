@@ -13222,7 +13222,7 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
         if(!u2?.vip?.active||u2.vip.source==="trial"||u2.vip.source==="code")continue;
         const exp=Math.max(u2.vip.manualExpires||0,u2.vip.autoExpires||0);
         if(exp<=now)continue;
-        if(exp<=now+7*DAY)vencendo.push({email:em,nome:u2.name||em,plano:u2.vip.plan||u2.plan||"vip",diasRestantes:Math.max(0,Math.ceil((exp-now)/DAY))});
+        if(exp<=now+7*DAY)vencendo.push({email:em,nome:u2.name||em,plano:u2.vip.plan||u2.plan||"vip",diasRestantes:Math.max(0,diasRestantesCanonico(exp,now))});
       }
       vencendo.sort((a,b)=>a.diasRestantes-b.diasRestantes);
       // Cadastros
