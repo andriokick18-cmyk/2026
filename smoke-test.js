@@ -2672,6 +2672,60 @@ async function drillBloqueioComprasNovas() {
       udCancDepois?.vip?.manualExpires === udCancAntes?.vip?.manualExpires,
       JSON.stringify({ antes: udCancAntes?.vip, depois: udCancDepois?.vip }).slice(0, 300));
 
+    // 🔎 v310 (SÓ-LEITURA — pedido do dono, 25/09/2026): auditarContasPlanoLegado
+    // (GET /api/admin/auditoria-pro-legado) lista contas com plano "pro" cujo
+    // estado atual não bate com o que o plano deveria dar — sem corrigir nada.
+    // O caminho ATIVO de hoje já nasce correto (868f86c/7f0fc69), então os 2
+    // cenários positivos são simulados injetando o estado CORROMPIDO que os
+    // bugs antigos produziam (não dá pra reproduzir pelo fluxo em si, já que
+    // ele foi corrigido) — a função tem que reconhecer o sintoma de qualquer
+    // jeito que ele apareça no banco, não só pelo caminho que o causou.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "auditproa@test.com", name: "Audit Pro A" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const pdAudA = await req2("POST", "/api/pedido", { userEmail: "auditproa@test.com", plano: "pro", dias: 30, valorTotal: 150, pagoEm: new Date().toISOString(), userName: "Audit Pro A" });
+    await req2("PATCH", "/api/pedido/" + pdAudA.json?.pedidoId, { status: "ativo" });
+    const udAudAAntes = (await get("/api/admin/user-detail/" + encodeURIComponent("auditproa@test.com"))).json?.user;
+    // simula o sintoma do bug antigo de aprovação/reconciliação: manual ativo de graça
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "auditproa@test.com", plan: "pro", vip: { ...udAudAAntes?.vip, manualExpires: Date.now() + 30 * 86400_000 } });
+
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "auditprob@test.com", name: "Audit Pro B" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const pdAudB = await req2("POST", "/api/pedido", { userEmail: "auditprob@test.com", plano: "pro", dias: 30, valorTotal: 150, pagoEm: new Date().toISOString(), userName: "Audit Pro B" });
+    await req2("PATCH", "/api/pedido/" + pdAudB.json?.pedidoId, { status: "ativo" });
+    const udAudBAntes = (await get("/api/admin/user-detail/" + encodeURIComponent("auditprob@test.com"))).json?.user;
+    // simula o sintoma do bug antigo de aprovação: automático NUNCA concedido (fallback pra "vip")
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "auditprob@test.com", plan: "pro", vip: { ...udAudBAntes?.vip, autoExpires: 0 } });
+
+    // controle negativo: "pro" ativado hoje (código já corrigido) — nunca deve aparecer
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "auditproc@test.com", name: "Audit Pro C" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const pdAudC = await req2("POST", "/api/pedido", { userEmail: "auditproc@test.com", plano: "pro", dias: 30, valorTotal: 150, pagoEm: new Date().toISOString(), userName: "Audit Pro C" });
+    await req2("PATCH", "/api/pedido/" + pdAudC.json?.pedidoId, { status: "ativo" });
+
+    // controle negativo: "pro" (auto) + "vip" (manual) LEGÍTIMOS na mesma conta — nunca deve aparecer
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "auditprod@test.com", name: "Audit Pro D" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const pdAudDVip = await req2("POST", "/api/pedido", { userEmail: "auditprod@test.com", plano: "vip", dias: 30, valorTotal: 150, pagoEm: new Date().toISOString(), userName: "Audit Pro D" });
+    await req2("PATCH", "/api/pedido/" + pdAudDVip.json?.pedidoId, { status: "ativo" });
+    const pdAudDPro = await req2("POST", "/api/pedido", { userEmail: "auditprod@test.com", plano: "pro", dias: 30, valorTotal: 150, pagoEm: new Date().toISOString(), userName: "Audit Pro D" });
+    await req2("PATCH", "/api/pedido/" + pdAudDPro.json?.pedidoId, { status: "ativo" });
+
+    const auditPro = await get("/api/admin/auditoria-pro-legado");
+    const _achaA = (auditPro.json?.contas || []).find((c) => c.email === "auditproa@test.com");
+    const _achaB = (auditPro.json?.contas || []).find((c) => c.email === "auditprob@test.com");
+    const _achaC = (auditPro.json?.contas || []).find((c) => c.email === "auditproc@test.com");
+    const _achaD = (auditPro.json?.contas || []).find((c) => c.email === "auditprod@test.com");
+    check("🔎 v310: auditoria SÓ-LEITURA de plano 'pro' pega manual concedido indevidamente (bug antigo simulado) — e NUNCA confunde com manual legítimo de outro pedido (D não aparece)",
+      auditPro.json?.ok === true &&
+      _achaA?.manualIndevido === true && _achaA?.temOutroPedidoQueJustificaManual === false &&
+      !_achaD,
+      JSON.stringify({ achaA: _achaA, achaD: _achaD }).slice(0, 260));
+    check("🔎 v310: auditoria SÓ-LEITURA de plano 'pro' pega automático que deveria estar ativo e não está (bug antigo simulado) — e NUNCA acusa quem ativou 'pro' pelo caminho já corrigido hoje (C não aparece)",
+      _achaB?.autoFaltando === true && !_achaC,
+      JSON.stringify({ achaB: _achaB, achaC: _achaC }).slice(0, 260));
+    check("🔎 v310: a auditoria é SÓ-LEITURA de verdade — rodá-la 2x seguidas não muda NADA nas contas (nem setUser nem persist)",
+      JSON.stringify((await get("/api/admin/auditoria-pro-legado")).json?.contas) === JSON.stringify(auditPro.json?.contas));
+
     // v28: Visão do Dono — resumo de dinheiro calculado no servidor
     const dr = await get("/api/admin/dono-resumo");
     check("💰 Visão do Dono: a ativação de R$300 aparece nas entradas de hoje",

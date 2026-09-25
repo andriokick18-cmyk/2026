@@ -2301,6 +2301,52 @@ setTimeout(()=>{try{
   console.log(`[reconciliar] boot: ${r.length} correção(ões)${r.length?" → "+r.map(x=>x.email).join(", "):""}`);
 }catch(e){console.error("[reconciliar] falha no boot:",e.message);}},120_000);
 
+// 🔎 v310 (SÓ-LEITURA — pedido do dono, 25/09/2026: "quero saber quantas
+// contas com plano legado 'pro' existem hoje e quantas têm direitos
+// errados, sem corrigir nada"). Os bugs do "pro" (868f86c/7f0fc69 — mapa
+// planoKey sem entrada pra "pro" na aprovação/ativação provisória/
+// reconciliação de boot, e estorno assimétrico no cancelamento) corrigiram
+// o CÓDIGO pra frente; esta função responde a pergunta que sobrou: quantas
+// contas JÁ EXISTENTES ficaram com o direito errado por causa deles. NUNCA
+// grava nada (nem setUser nem persist) — puro relatório. O dono decide o
+// que fazer com cada conta encontrada, caso a caso (mesma filosofia
+// "auditoria só-leitura, decisão humana" do resto do Cérebro Contábil).
+function auditarContasPlanoLegado(){
+  const agora=Date.now();
+  const porUsuario={};
+  for(const pd of Object.values(DB_PEDIDOS||{})){
+    if(!pd||!pd.userEmail)continue;
+    if(String(pd.plano||"").toLowerCase()!=="pro")continue;
+    if(!["pago","ativo"].includes(String(pd.status||"").toLowerCase()))continue;
+    const e=pd.userEmail.toLowerCase();
+    (porUsuario[e]=porUsuario[e]||[]).push(pd);
+  }
+  const contas=[];
+  for(const [email,pedidosPro] of Object.entries(porUsuario)){
+    const u=getUser(email); if(!u)continue;
+    const manualExpires=u.vip?.manualExpires||0, autoExpires=u.vip?.autoExpires||0;
+    const manualAtivo=manualExpires>agora, autoAtivo=autoExpires>agora;
+    // Outro pedido (vip/vipro/doublepro, pago/ativo) que pudesse LEGITIMAMENTE
+    // justificar o manual estar ativo hoje — sem isso, o manual só pode ter
+    // vindo do "pro" (que nunca deveria conceder manual).
+    const outroPedidoManual=(DB_PEDIDOS||[]).some(x=>x&&String(x.userEmail||"").toLowerCase()===email&&
+      ["vip","vipro","doublepro"].includes(String(x.plano||"").toLowerCase())&&
+      ["pago","ativo"].includes(String(x.status||"").toLowerCase()));
+    // Pedido "pro" cujo período pago (ativadoEm+diasTotal) ainda não venceu
+    // — o automático DEVERIA estar ativo agora.
+    const pedidoProVigente=pedidosPro.find(pd=>pd.ativadoEm&&(pd.diasTotal||0)>0&&(pd.ativadoEm+pd.diasTotal*86400_000)>agora);
+    const manualIndevido=manualAtivo&&!outroPedidoManual;
+    const autoFaltando=!!pedidoProVigente&&!autoAtivo;
+    if(!manualIndevido&&!autoFaltando)continue; // só lista quem tem algo real pra investigar
+    contas.push({email,plan:u.plan||null,vipPlan:u.vip?.plan||null,
+      manualExpires,autoExpires,manualIndevido,autoFaltando,
+      temOutroPedidoQueJustificaManual:outroPedidoManual,
+      pedidosPro:pedidosPro.map(pd=>({id:pd.id,status:pd.status,ativadoEm:pd.ativadoEm||null,diasTotal:pd.diasTotal||null,valorTotal:pd.valorTotal||null}))});
+  }
+  return {totalContasComPedidoProPagoOuAtivo:Object.keys(porUsuario).length,
+    totalContasComDivergencia:contas.length, contas};
+}
+
 // FIX-BUG15 v2: limpeza inteligente de DB_SENT por data de envio
 // Remove apenas emails enviados há mais de 6 meses, preservando os recentes.
 // NUNCA apaga tudo — evita reenvio para empresas antigas.
@@ -10387,6 +10433,17 @@ filtrar();
       const d=JSON.parse(await readBody(req).catch(()=>"{}")||"{}");
       const relatorio=reconciliarPlanosComPedidos(d.apply!==false);
       return json(res,200,{ok:true,aplicado:d.apply!==false,corrigidos:relatorio.length,relatorio});
+    }catch(e){return json(res,500,{error:e.message});}
+  }
+
+  // 🔎 v310 — auditoria SÓ-LEITURA de contas com plano legado "pro" (achado
+  // de auditoria contínua, 868f86c/7f0fc69). NUNCA grava nada — só lista as
+  // contas que precisam de revisão humana. Ver auditarContasPlanoLegado().
+  if(pathname==="/api/admin/auditoria-pro-legado"&&req.method==="GET"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
+    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Acesso negado."});
+    try{
+      return json(res,200,{ok:true,...auditarContasPlanoLegado()});
     }catch(e){return json(res,500,{error:e.message});}
   }
   if(pathname==="/api/admin/set-plan"&&req.method==="POST"){
