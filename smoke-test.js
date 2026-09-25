@@ -8452,6 +8452,31 @@ async function drillBloqueioComprasNovas() {
       !fs.readFileSync(path.join(__dirname, "server.js"), "utf8").includes("customAutoLimit"),
       "customAutoLimit ainda aparece em server.js");
 
+    // 🧹 v324 (achado de auditoria contínua): a "Central de Incidentes"
+    // (/api/admin/incidents + /resolve + DELETE + /clear, ~211 linhas)
+    // era código morto herdado do site antigo — zero chamador em
+    // admin.html/app.js/qualquer tela (confirmado por grep no repo
+    // inteiro), nunca mencionada no CLAUDE.md como decisão pendente do dono
+    // (diferente do motor DRE, que É uma exceção documentada). O tipo de
+    // incidente "muitos erros consecutivos" já estava quebrado por dentro —
+    // lia global._healthMap, uma variável NUNCA atribuída em lugar nenhum
+    // do código (só existia esse 1 ponto de leitura). `missions` no payload
+    // também era sempre [] (nenhum missions.push em lugar nenhum). A saúde
+    // de verdade (VIP↔robô dessincronizado, VIP sem currículo, fila suja)
+    // já é coberta pelo Health Sentinel (mod-sentinel.js), com tela de
+    // verdade em admin.html. Removida por completo.
+    const _v324Get = await req2("GET", "/api/admin/incidents");
+    const _v324Resolve = await req2("POST", "/api/admin/incidents/stuck_x/resolve", {});
+    const _v324Del = await req2("DELETE", "/api/admin/incidents/stuck_x");
+    const _v324Clear = await req2("POST", "/api/admin/incidents/clear", {});
+    check("🧹 v324: as 4 rotas da Central de Incidentes (código morto, zero chamador, o tipo 'muitos erros' já lia uma variável global nunca atribuída) foram removidas — todas respondem 404",
+      _v324Get.status === 404 && _v324Resolve.status === 404 && _v324Del.status === 404 && _v324Clear.status === 404,
+      `get=${_v324Get.status} resolve=${_v324Resolve.status} del=${_v324Del.status} clear=${_v324Clear.status}`);
+    const _srv324 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+    check("🧹 v324 (estrutural): server.js não tem mais nenhum resquício de _healthMap/_resolvedIncidents/_incidentRules (estado que só a Central de Incidentes mantinha)",
+      !_srv324.includes("global._healthMap") && !_srv324.includes("_resolvedIncidents") && !_srv324.includes("_incidentRules"),
+      "resquício da Central de Incidentes ainda aparece em server.js");
+
     // 🚨 v237t (achado de auditoria — Baixa, auth): /api/disconnect não
     // exigia POST — o cookie é SameSite=Lax (vai numa navegação de TOPO
     // mesmo vinda de outro site), então uma página maliciosa com só um
