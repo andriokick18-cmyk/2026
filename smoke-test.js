@@ -6652,6 +6652,17 @@ async function drillBloqueioComprasNovas() {
         !_hfL9.includes("90 dias, ou 1 ano") &&
         (_hfL9.match(/você paga por um período \(30 ou 60 dias\)/g) || []).length === 2,
         "FAQ ou JSON-LD ainda citam período de plano removido");
+      // 🔍 v297 (achado de auditoria contínua — SEO): como-usar.html é
+      // servida em 2 URLs idênticas (/como-usar e /como-usar.html) mas,
+      // diferente das páginas irmãs (guia/h2bapply-funciona/h2b-e-golpe/
+      // quanto-ganha-h2b), não tinha canonical nem og:url — risco de
+      // conteúdo duplicado pro Google. Também estava ausente do array
+      // de páginas do /sitemap.xml, apesar de indexável e linkada em
+      // index.html.
+      check("🔍 v297: como-usar.html tem canonical+og:url e entra no sitemap.xml",
+        fs.readFileSync(path.join(__dirname, "como-usar.html"), "utf8").includes('<link rel="canonical" href="https://h2bapply.com/como-usar">') &&
+        fs.readFileSync(path.join(__dirname, "server.js"), "utf8").includes('{loc:"https://h2bapply.com/como-usar",priority:"0.7",changefreq:"weekly"}'),
+        "como-usar.html continua sem canonical/og:url ou fora do sitemap");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&

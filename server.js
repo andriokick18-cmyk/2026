@@ -6903,6 +6903,7 @@ const server=http.createServer(async(req,res)=>{
       {loc:"https://h2bapply.com/h2bapply-funciona",priority:"0.8",changefreq:"weekly"},
       {loc:"https://h2bapply.com/h2b-e-golpe",priority:"0.8",changefreq:"weekly"},
       {loc:"https://h2bapply.com/quanto-ganha-h2b",priority:"0.8",changefreq:"weekly"},
+      {loc:"https://h2bapply.com/como-usar",priority:"0.7",changefreq:"weekly"},
     ];
     // SEO programático: inclui só os estados com vagas suficientes pra ter página própria
     // (mesmo corte de MIN_JOBS_FOR_STATE_PAGE usado na rota /vagas-h2b/:estado).
