@@ -14466,8 +14466,17 @@ function _cancelarPedidoInterno(pd,opts){
     if(tgtC&&tgtC.vip&&["payment","pago"].includes(String(tgtC.vip.source||""))){
       const DAYc=86400_000;
       const v={...tgtC.vip};
-      if((v.manualExpires||0)>0)v.manualExpires=v.manualExpires-pd.diasTotal*DAYc;
-      if(["vipro","doublepro"].includes(pd.plano)&&(v.autoExpires||0)>0)v.autoExpires=v.autoExpires-pd.diasTotal*DAYc;
+      // 🚨 v308 (achado de auditoria contínua — mesma classe do 868f86c,
+      // agora no estorno): manualExpires descontava SEMPRE que >0, sem
+      // checar se ESTE pedido concedeu manual — e autoExpires só descontava
+      // pra ["vipro","doublepro"] (excluía "pro", auto-only). Cancelar um
+      // pedido "pro" fraudulento nunca revogava o automático que ele deu, e
+      // ainda descontava dias de um plano manual TOTALMENTE não-relacionado
+      // que o usuário por acaso tivesse ativo. limitesDoPlanoNovo(pd.plano)
+      // diz exatamente o que este pedido concedeu — só isso é estornado.
+      const _limEstorno=limitesDoPlanoNovo(String(pd.plano||"").toLowerCase());
+      if(_limEstorno.manual>0&&(v.manualExpires||0)>0)v.manualExpires=v.manualExpires-pd.diasTotal*DAYc;
+      if(_limEstorno.auto>0&&(v.autoExpires||0)>0)v.autoExpires=v.autoExpires-pd.diasTotal*DAYc;
       v.note=(String(v.note||"")+" · estorno "+pd.diasTotal+"d (pedido #"+pd.id.slice(-8).toUpperCase()+" cancelado)").slice(-220);
       setUser(pd.userEmail,{vip:v});
       // 🚨 v177-FIX2 (auditoria 14/09/2026): o estorno mexia direto em
@@ -15211,11 +15220,20 @@ function autoAtivarProvisorio(pedidoId){
       console.log(`[auto-ativa] ⏸️ ${pd.userEmail} já tem provisório vivo do pedido ${u.vip.pedidoId} — pedido ${pd.id} fica pendente pro admin (nunca sobrescreve o vínculo).`);
       return false;
     }
-    const planoKey={vip:"vip",vipro:"vipro",doublepro:"doublepro"}[pd.plano]||"vipro";
-    const isAuto=["vipro","doublepro"].includes(planoKey);
+    // 🚨 v308 (achado de auditoria contínua — mesma classe do 868f86c): o
+    // mapa não tinha entrada pra "pro" (legado, auto-only) e caía no
+    // fallback ||"vipro" — pior ainda que o ||"vip" do 868f86c, porque
+    // "vipro" libera OS DOIS lados. Além disso manualExpires era gravado
+    // INCONDICIONALMENTE (nunca checado, ao contrário de autoExpires que já
+    // usava isAuto?fim:0) — um pedido "pro" com comprovante conferido pelo
+    // robô ganhava 3 dias de manual de graça, nunca comprado. isManual/
+    // isAuto agora vêm de limitesDoPlanoNovo(planoKey), a mesma fonte única.
+    const planoKey={vip:"vip",vipro:"vipro",doublepro:"doublepro",pro:"pro"}[String(pd.plano||"").toLowerCase()]||"vipro";
+    const _limProv=limitesDoPlanoNovo(planoKey);
+    const isManual=_limProv.manual>0,isAuto=_limProv.auto>0;
     const fim=now+AUTO_ATIVA_DIAS*DAY;
     setUser(pd.userEmail,{plan:planoKey,vip:{...(u.vip||{}),active:true,plan:planoKey,
-      source:"auto-provisorio",manualExpires:fim,autoExpires:isAuto?fim:0,
+      source:"auto-provisorio",manualExpires:isManual?fim:0,autoExpires:isAuto?fim:0,
       // 💳 v187: o provisório é o plano que a pessoa ACABOU de comprar — tem
       // que valer exatamente o que foi vendido. Sem este carimbo o vip nascia
       // sem `limits` e getManualLimit/getAutoLimit caíam na tabela LEGADA
@@ -15223,7 +15241,7 @@ function autoAtivarProvisorio(pedidoId){
       // da tabela vigente, DoublePro 400/400 em vez de 200/200 — e quando o
       // admin confirmava o pedido (que carimba limitesDoPlanoNovo) o limite
       // CAÍA PELA METADE na cara do cliente, parecendo punição por pagar.
-      limits:limitesDoPlanoNovo(planoKey),
+      limits:_limProv,
       activatedAt:now,activatedBy:"Robô (comprovante conferido)",pedidoId:pd.id,
       note:`⚡ Ativação PROVISÓRIA automática (${AUTO_ATIVA_DIAS}d) — pedido #${pd.id.slice(-8).toUpperCase()} aguarda confirmação do admin`,
       days:AUTO_ATIVA_DIAS,autoDays:isAuto?AUTO_ATIVA_DIAS:0}});

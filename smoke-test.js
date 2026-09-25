@@ -2613,6 +2613,53 @@ async function drillBloqueioComprasNovas() {
       !recRowPro || !(recRowPro.depois?.manualExpires > Date.now()),
       JSON.stringify(recRowPro || {}).slice(0, 220));
 
+    // 🚨 v308 (achado de auditoria contínua — mesma classe do 868f86c, em
+    // mais 2 pontos que ele não tocou): autoAtivarProvisorio tinha o MESMO
+    // mapa sem "pro" (caía em "vipro" — pior que o ||"vip" do 868f86c,
+    // libera os 2 lados) e manualExpires era gravado incondicionalmente
+    // (nunca gated, ao contrário de autoExpires). Testado pelo caminho real
+    // (comprovante que CONFERE via o gancho TESTE_COMPROVANTE — admin
+    // Regularizar, já que "pro" não está na tabela de venda nova).
+    // autoAtivarProvisorio() exige getUser(pd.userEmail) já existir (se
+    // não, devolve false sem ativar nada) — a conta do alvo precisa existir
+    // ANTES do admin Regularizar o pedido "pro" em nome dela.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "usuarioprovprov@test.com", name: "Usuario Prov Prov" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const pdProProv = await req2("POST", "/api/pedido", { userEmail: "usuarioprovprov@test.com", plano: "pro", dias: 30, valorTotal: 150, nota: "TESTE_COMPROVANTE:150", comprovante: Buffer.from("comp-v308-prov").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    check("🚨 v308: admin consegue Regularizar um pedido 'pro' com comprovante", pdProProv.json?.ok === true && !!pdProProv.json?.pedidoId, pdProProv.body.slice(0, 150));
+    await new Promise((r) => setTimeout(r, 600));
+    const udProProv = (await get("/api/admin/user-detail/" + encodeURIComponent("usuarioprovprov@test.com"))).json?.user;
+    check("🚨 v308: ativação PROVISÓRIA (robô, comprovante conferido) do plano 'pro' também liga SÓ o automático — manual nunca fica ativo de graça nos 3 dias de graça",
+      udProProv?.plan === "pro" && udProProv?.vip?.source === "auto-provisorio" &&
+      udProProv?.vip?.autoExpires > Date.now() && !(udProProv?.vip?.manualExpires > Date.now()) &&
+      udProProv?.vip?.limits?.manual === 0 && udProProv?.vip?.limits?.auto === 100,
+      JSON.stringify({ plan: udProProv?.plan, vip: udProProv?.vip }).slice(0, 220));
+
+    // 🚨 v308: estorno do cancelamento também tratava "pro" errado — manual
+    // descontava SEMPRE (mesmo de um plano 'vip' de origem TOTALMENTE
+    // diferente) e auto só descontava pra ["vipro","doublepro"] (excluía
+    // "pro" — cancelar um 'pro' fraudulento nunca revogava o automático que
+    // ele deu). Cenário: usuário já tem um plano 'vip' (manual) ativo vindo
+    // de OUTRO lugar (semeado direto — evita gastar rate-limit de pedido
+    // admin numa 2ª criação só pra montar o cenário) e SEPARADAMENTE recebe
+    // um 'pro' (auto) via pedido — cancelar só o 'pro' tem que revogar SÓ o
+    // automático, nunca tocar no manual pré-existente não-relacionado.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cancprotest@test.com", plan: "vip", vip: { active: true, plan: "vip", source: "payment", manualExpires: Date.now() + 30 * 86400_000, limits: { manual: 100, auto: 0 } } });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const pdProCanc = await req2("POST", "/api/pedido", { userEmail: "cancprotest@test.com", plano: "pro", dias: 30, valorTotal: 150, pagoEm: new Date().toISOString(), userName: "Canc Pro Test" });
+    const pdProCancId = pdProCanc.json?.pedidoId;
+    check("🚨 v308: admin consegue Regularizar o pedido 'pro' pra quem já tem um 'vip' (manual) ativo de outra origem", pdProCanc.json?.ok === true && !!pdProCancId, pdProCanc.body.slice(0, 150));
+    const actProCanc = await req2("PATCH", "/api/pedido/" + pdProCancId, { status: "ativo" });
+    const udCancAntes = (await get("/api/admin/user-detail/" + encodeURIComponent("cancprotest@test.com"))).json?.user;
+    const cancPro = await req2("PATCH", "/api/pedido/" + pdProCancId, { status: "cancelado" });
+    const udCancDepois = (await get("/api/admin/user-detail/" + encodeURIComponent("cancprotest@test.com"))).json?.user;
+    check("🚨 v308: cancelar o pedido 'pro' REVOGA de verdade o automático que ele deu (autoExpires cai) e NUNCA desconta o manual de um plano 'vip' pré-existente não-relacionado (manualExpires intacto)",
+      actProCanc.json?.ok === true && cancPro.json?.ok === true &&
+      udCancAntes?.vip?.autoExpires > Date.now() &&
+      udCancDepois?.vip?.autoExpires < udCancAntes?.vip?.autoExpires &&
+      udCancDepois?.vip?.manualExpires === udCancAntes?.vip?.manualExpires,
+      JSON.stringify({ antes: udCancAntes?.vip, depois: udCancDepois?.vip }).slice(0, 300));
+
     // v28: Visão do Dono — resumo de dinheiro calculado no servidor
     const dr = await get("/api/admin/dono-resumo");
     check("💰 Visão do Dono: a ativação de R$300 aparece nas entradas de hoje",
