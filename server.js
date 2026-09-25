@@ -2250,7 +2250,16 @@ function reconciliarPlanosComPedidos(apply){
       const t=_t(pd.ativadoEm)||_t(pd.pagoEm)||_t(pd.criadoEm);if(!t)continue;
       const dias=Number(pd.diasTotal)||((Number(pd.diasBase)||30)+(Number(pd.diasBonus)||0));
       const pk=String(pd.planoKey||pd.plano||"vipro").toLowerCase();
-      expManual=Math.max(expManual,t)+dias*86400_000;
+      // 🚨 v307 (achado de auditoria contínua): expManual era acumulado SEM
+      // checar o plano — só expAuto excluía "vip" (manual-only). Faltava o
+      // guarda simétrico excluindo "pro" (legado, auto-only) de expManual:
+      // um pedido "pro" fazia isManualVipActive() virar true de graça, e
+      // sem vip.limits carimbado (conta legada) getManualLimit() caía em
+      // PLAN_LIMITS[getPlan(u)].manual — exatamente o vazamento que a v172i
+      // já tinha fechado por outro caminho (getPlan retornando 'vipro' com
+      // manual+auto ativos), só que reintroduzido aqui pela CORRUPÇÃO DO
+      // DADO (manualExpires) em vez da derivação. Roda em todo boot.
+      if(pk!=="pro")expManual=Math.max(expManual,t)+dias*86400_000;
       if(pk!=="vip")expAuto=Math.max(expAuto,t)+dias*86400_000;
       if(!planoPed||(_PLAN_RANK[pk]||0)>=(_PLAN_RANK[planoPed]||0))planoPed=pk;
     }
@@ -11135,10 +11144,19 @@ filtrar();
         // ── COMPRA DIRETA DE PLANO (v170 — dono, 09/09/2026): aprovar o
         // pedido ativa o plano NA HORA, sem etapa intermediária. O caixa
         // recebe a entrada normal (mesma fonte única que Sócios/DRE leem).
-        const planoKey={vip:"vip",vipro:"vipro",doublepro:"doublepro"}[String(pd.plano||"").toLowerCase()]||"vip";
+        // 🚨 v307 (achado de auditoria contínua): o mapa não tinha entrada
+        // pra "pro" (legado, auto-only — mod-config.js) e caía no fallback
+        // ||"vip". Isso invertia a compra inteira: addManualVipDays rodava
+        // (sem querer, sem cobrar) e addAutoVipDays era pulado — quem pagou
+        // pelo plano automático ficava só com manual, e de graça. isManual/
+        // isAuto agora vêm de limitesDoPlanoNovo(planoKey), a mesma fonte
+        // única já usada 2 linhas abaixo pra `vip.limits` — nunca mais uma
+        // lista de nomes hardcoded que pode esquecer um plano.
+        const planoKey={vip:"vip",vipro:"vipro",doublepro:"doublepro",pro:"pro"}[String(pd.plano||"").toLowerCase()]||"vip";
         const dias=parseInt(pd.dias,10)||30;
         pd.diasTotal=dias; // ⚠️ estorno-de-dias no cancelamento (abaixo) e a reconciliação do boot leem ESTE campo — sem ele, cancelar um pedido não devolve os dias
-        const isAuto=["vipro","doublepro"].includes(planoKey);
+        const _limAtivacao=limitesDoPlanoNovo(planoKey);
+        const isManual=_limAtivacao.manual>0,isAuto=_limAtivacao.auto>0;
         // ⚠️ v171 (auditoria 11/09/2026): se ESTE pedido já tinha ativação
         // PROVISÓRIA (autoAtivarProvisorio), addManualVipDays/addAutoVipDays
         // empilhariam os dias pagos EM CIMA do provisório ainda não vencido —
@@ -11164,7 +11182,7 @@ filtrar();
             manualExpires:Math.min(uProv.vip.manualExpires||0,agoraP),
             autoExpires:Math.min(uProv.vip.autoExpires||0,agoraP)}});
         }
-        addManualVipDays(pd.userEmail,dias);
+        if(isManual)addManualVipDays(pd.userEmail,dias);
         if(isAuto)addAutoVipDays(pd.userEmail,dias);
         const uFresh=getUser(pd.userEmail)||{}; // relê fresco — os helpers acima já gravaram
         setUser(pd.userEmail,{plan:planoKey,vip:{...(uFresh.vip||{}),plan:planoKey,source:"payment",

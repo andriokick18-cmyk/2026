@@ -2589,6 +2589,30 @@ async function drillBloqueioComprasNovas() {
     const temCaixa = (fin1.json?.pagamentos || []).some((x) => x.pedidoId === pdId);
     check("ativação lançou a entrada no livro-caixa", temCaixa);
 
+    // 🚨 v307 (achado de auditoria contínua — BUG CRÍTICO de dinheiro): o
+    // plano legado "pro" (auto-only, PLAN_LIMITS_NEW.pro={manual:0,auto:100})
+    // não tinha entrada no mapa planoKey da aprovação — caía no fallback
+    // ||"vip" e INVERTIA a compra inteira: addManualVipDays rodava (de
+    // graça, sem cobrar) e addAutoVipDays era pulado, dando ao comprador do
+    // automático só o manual. Testado exatamente pelo caminho real (admin
+    // Regularizar, já que "pro" não está mais na tabela de venda nova).
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const pdPro = await req2("POST", "/api/pedido", { userEmail: "usuariopro@test.com", plano: "pro", dias: 30, valorTotal: 150, pagoEm: new Date().toISOString(), userName: "Usuario Pro Legado" });
+    const pdProId = pdPro.json?.pedidoId;
+    check("🚨 v307: admin consegue Regularizar um pedido do plano legado 'pro' (fora da tabela de venda nova)", pdPro.json?.ok === true && !!pdProId, pdPro.body.slice(0, 150));
+    const actPro = await req2("PATCH", "/api/pedido/" + pdProId, { status: "ativo" });
+    check("🚨 v307: ativação do pedido 'pro' devolve plano:'pro' (não mais o fallback 'vip')", actPro.json?.ok === true && actPro.json?.plano === "pro", actPro.body.slice(0, 150));
+    const udPro = (await get("/api/admin/user-detail/" + encodeURIComponent("usuariopro@test.com"))).json?.user;
+    check("🚨 v307: 'pro' ativa SÓ o automático — manual NUNCA vira ativo de graça, e vip.limits sai carimbado {manual:0,auto:100}",
+      udPro?.plan === "pro" && udPro?.vip?.autoExpires > Date.now() && !(udPro?.vip?.manualExpires > Date.now()) &&
+      udPro?.vip?.limits?.manual === 0 && udPro?.vip?.limits?.auto === 100,
+      JSON.stringify({ plan: udPro?.plan, vip: udPro?.vip }).slice(0, 220));
+    const recPro = await req2("POST", "/api/admin/reconciliar-planos", { apply: false });
+    const recRowPro = (recPro.json?.relatorio || []).find((x) => x.email === "usuariopro@test.com");
+    check("🚨 v307: a reconciliação do boot NÃO tenta 'restaurar' dias manuais pra quem só tem 'pro' (expManual agora exclui pk==='pro', simétrico ao pk==='vip' já excluído de expAuto)",
+      !recRowPro || !(recRowPro.depois?.manualExpires > Date.now()),
+      JSON.stringify(recRowPro || {}).slice(0, 220));
+
     // v28: Visão do Dono — resumo de dinheiro calculado no servidor
     const dr = await get("/api/admin/dono-resumo");
     check("💰 Visão do Dono: a ativação de R$300 aparece nas entradas de hoje",
