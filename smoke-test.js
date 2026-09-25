@@ -5742,6 +5742,61 @@ async function drillBloqueioComprasNovas() {
       !!v329row2 && v329row2.daysLeft > 0 && v329row2.suspeita === true,
       JSON.stringify({ daysLeft: v329row2?.daysLeft, suspeita: v329row2?.suspeita }));
 
+    // 🚨 v330 (achado de auditoria contínua, CRÍTICO): /api/admin/audit/revert
+    // era genérico — revertia QUALQUER entrada com `before` truthy, sem
+    // checar se a ação era sobre plano/VIP nem se algo mudou depois. 2
+    // classes de bug real: (1) set_is_admin grava before:{isAdmin:bool} —
+    // reverter essa ação sozinha zerava plano/VIP de VERDADE pra free/null,
+    // mesmo a ação original nunca tendo tocado plano/VIP; (2) reverter uma
+    // concessão ANTIGA depois de outra concessão mais nova (ou um pagamento
+    // real, que nem gera entrada de auditoria) apagava a mudança mais nova
+    // em silêncio, porque setUser é shallow-merge (vip:X troca o vip
+    // INTEIRO). Caso 1: dá VIP de verdade pra um usuário, alterna o isAdmin
+    // dele (gera a entrada perigosa) e tenta reverter só essa entrada.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "prot330@test.com", name: "Protecao 330", plan: "vip", vip: { active: true, plan: "vip", source: "payment", manualExpires: Date.now() + 15 * 86400000, autoExpires: 0 } });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "andrio.usa2026@gmail.com", name: "Dono", isAdmin: true });
+    const v330finAntes = (await req2("GET", "/api/admin/financeiro-usuario/prot330@test.com")).json;
+    await req2("POST", "/api/admin/set-user-field", { email: "prot330@test.com", field: "isAdmin", value: true });
+    const v330audit1 = (await req2("GET", "/api/admin/audit")).json?.audit || [];
+    const v330entrySetAdmin = v330audit1.find(a => a.action === "set_is_admin" && a.targetEmail === "prot330@test.com");
+    const v330revertBloq = await req2("POST", "/api/admin/audit/revert", { id: v330entrySetAdmin?.id, motivo: "tentativa de exploracao v330" });
+    const v330finDepois = (await req2("GET", "/api/admin/financeiro-usuario/prot330@test.com")).json;
+    check("🚨 v330: reverter set_is_admin é RECUSADO (400) — antes essa ação (before:{isAdmin:bool}, sem plan/vip) sobrescrevia o plano/VIP de verdade do usuário pra free/null, mesmo a ação nunca tendo mexido nisso",
+      !!v330entrySetAdmin && v330revertBloq.status === 400 && v330revertBloq.json?.ok !== true,
+      JSON.stringify({ achouEntrada: !!v330entrySetAdmin, status: v330revertBloq.status, erro: v330revertBloq.json?.error }));
+    check("🚨 v330: a tentativa bloqueada NÃO mexeu em nada — o VIP pago de prot330 continua intacto (manual ativo, mesmos dias) depois da tentativa de exploração",
+      v330finAntes?.plano?.manual?.ativo === true && v330finDepois?.plano?.manual?.ativo === true &&
+      v330finAntes?.plano?.manual?.diasRestantes === v330finDepois?.plano?.manual?.diasRestantes,
+      JSON.stringify({ antes: v330finAntes?.plano?.manual, depois: v330finDepois?.plano?.manual }));
+
+    // Caso 2: 2 concessões vip_activate no MESMO usuário (E1 então E2) — E2
+    // muda o vip de verdade por cima de E1. Reverter a mais ANTIGA (E1) tem
+    // que ser recusado (409, "mudou depois"); reverter a MAIS RECENTE (E2,
+    // nada mudou depois dela) continua funcionando normalmente. E1 e E2 vêm
+    // de ADMINS DIFERENTES (andrio/diego) de propósito — a trava de
+    // duplo-clique de vip/activate (_adminVipActivateLock) é por admin+
+    // e-mail-alvo; 2 admins em sequência é exatamente o cenário real que
+    // este bug cobre (não dá pra confundir com retry do mesmo clique).
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "stale330@test.com", name: "Stale 330" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "andrio.usa2026@gmail.com", name: "Dono", isAdmin: true });
+    await req2("POST", "/api/admin/vip/activate", { email: "stale330@test.com", days: 10, autoDays: 0, plan: "vip", note: "E1 v330" });
+    const v330auditE1 = ((await req2("GET", "/api/admin/audit")).json?.audit || []).find(a => a.action === "vip_activate" && a.targetEmail === "stale330@test.com" && /E1 v330/.test(a.detail || ""));
+    COOKIE = "";
+    await req2("POST", "/api/admin-panel/login", { user: "diego", password: "teste-smoke-diego-2026" });
+    await req2("POST", "/api/admin/vip/activate", { email: "stale330@test.com", days: 20, autoDays: 0, plan: "vip", note: "E2 v330" });
+    const v330finPosE2 = (await req2("GET", "/api/admin/financeiro-usuario/stale330@test.com")).json;
+    const v330revertVelha = await req2("POST", "/api/admin/audit/revert", { id: v330auditE1?.id, motivo: "tentativa de reverter entrada velha v330" });
+    const v330finPosTentativa = (await req2("GET", "/api/admin/financeiro-usuario/stale330@test.com")).json;
+    check("🚨 v330: reverter uma concessão ANTIGA depois de uma MAIS NOVA no mesmo usuário é RECUSADO (409, 'mudou depois') — antes sobrescrevia às cegas, apagando a concessão nova em silêncio",
+      !!v330auditE1 && v330revertVelha.status === 409 && v330revertVelha.json?.changed === true &&
+      v330finPosTentativa?.plano?.manual?.diasRestantes === v330finPosE2?.plano?.manual?.diasRestantes,
+      JSON.stringify({ status: v330revertVelha.status, changed: v330revertVelha.json?.changed, diasPosE2: v330finPosE2?.plano?.manual?.diasRestantes, diasPosTentativa: v330finPosTentativa?.plano?.manual?.diasRestantes }));
+    const v330auditE2 = ((await req2("GET", "/api/admin/audit")).json?.audit || []).find(a => a.action === "vip_activate" && a.targetEmail === "stale330@test.com" && /E2 v330/.test(a.detail || ""));
+    const v330revertNova = await req2("POST", "/api/admin/audit/revert", { id: v330auditE2?.id, motivo: "reversao da mais recente v330" });
+    check("🩺 v330: reverter a concessão MAIS RECENTE (nada mudou depois dela) continua funcionando normalmente — a trava é só pra estado desatualizado, nunca virou um bloqueio geral do botão ↩️",
+      !!v330auditE2 && v330revertNova.json?.ok === true,
+      JSON.stringify({ status: v330revertNova.status, body: v330revertNova.body?.slice(0, 140) }));
+
     // ═══ 🚨 v237 (achado de auditoria — Alta, vagas/filtros): loadSheetMeta()
     // (a busca manual de vagas, aba planilha) não tinha NENHUMA proteção
     // contra resposta de um fetch antigo chegando depois de uma troca de

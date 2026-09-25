@@ -10322,12 +10322,17 @@ filtrar();
       // DEPOIS das duas funções pra não desfazer o próprio trabalho delas.
       const tgtFresh=getUser(email)||tgt;
       setUser(email,{plan,vip:{...(tgtFresh.vip||{}),active:plan!=='free',plan,source:'admin',activatedBy:s.user_email,...(plan!=='free'?{limits:_limSp}:{})}});
-      logAdminAction(s.user_email,"set_plan",email,_audBefore,_vipSnapshot(getUser(email)),`Plano → ${plan}${plan!=='free'?" (+30d)":""}`);
       // 💳 v141: faltava aqui — era a única rota de concessão de dias que NÃO
       // alimentava o extrato vip.creditos (addCredito), então a Auditoria
       // Financeira por usuário não via essa concessão no "quanto já foi dado
       // e por quê". Agora toda rota que soma dias grava no mesmo ledger.
+      // 🚨 v330: addCredito roda ANTES do logAdminAction — senão o snapshot
+      // "depois" da auditoria não inclui o crédito desta mesma ação, e o
+      // /audit/revert (que compara o estado atual contra esse snapshot pra
+      // saber se algo mudou desde então) recusaria até o revert imediato e
+      // legítimo desta própria ação.
       if(plan!=='free')addCredito(email,{dias:30,tipo:"gratis",origem:"admin",motivo:`set-plan → ${plan}`,dadoPor:_sessAdminNome(s)});
+      logAdminAction(s.user_email,"set_plan",email,_audBefore,_vipSnapshot(getUser(email)),`Plano → ${plan}${plan!=='free'?" (+30d)":""}`);
       if(plan!=='free')acordarRoboAposPlano(email); // v125: robô dormindo por limite antigo acorda já
       // 11/07 (caso Cleiton): plano foi ativado 3x e sumia após cada restart porque
       // o persist falhava em silêncio com o disco cheio. Agora VERIFICA a gravação
@@ -12891,14 +12896,19 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
         ...limitsParaAtivacaoAdmin(target,planName)};
       const _audBefore=_vipSnapshot(target); // v19: snapshot pra reversão
       setUser(d.email,{plan:planName,vip});
-      logAdminAction(_sessAdminEmail(s),"vip_activate",d.email,_audBefore,_vipSnapshot(getUser(d.email)),`+${days}d manual, +${autoDays}d auto, plano ${planName}${d.note?` — ${d.note}`:""}`);
       // 🧠 Cérebro 2.0 P1 (revisão adversarial): o crédito registrava só os
       // dias MANUAIS — ativação com autoDays > days (ex.: 0 manual + 30 auto)
       // deixava o extrato menor que o saldo real e o auditor de dias acusava
       // um cliente legítimo. O restante mede max(manual, auto), então a
       // evidência registra o MAIOR dos dois relógios concedidos.
+      // 🚨 v330: addCredito PRECISA rodar antes do logAdminAction abaixo —
+      // senão o snapshot "depois" da auditoria (usado pelo /audit/revert pra
+      // saber se algo mudou desde a ação) fica incompleto, sem o crédito que
+      // essa MESMA ação acabou de conceder, e todo revert legítimo dessa
+      // ação passaria a ser recusado como "mudou depois" por engano.
       const _credDias=Math.max(days,autoDays);
       if(_credDias>0) addCredito(d.email,{dias:_credDias,tipo:"gratis",origem:"admin",motivo:`Ativação admin — ${planName} (manual ${days}d · auto ${autoDays}d)`+(d.note?` (${d.note})`:""),dadoPor:_sessAdminNome(s)});
+      logAdminAction(_sessAdminEmail(s),"vip_activate",d.email,_audBefore,_vipSnapshot(getUser(d.email)),`+${days}d manual, +${autoDays}d auto, plano ${planName}${d.note?` — ${d.note}`:""}`);
       console.log(`[admin] ✅ Ativou ${planName} → ${d.email} (manual:${days}d→${new Date(manualExpires).toLocaleDateString('pt-BR')} auto:${autoDays}d→${autoExpires>now?new Date(autoExpires).toLocaleDateString('pt-BR'):'–'})`);
 
       // (Bônus de indicação por compra removido — 2026-07-03, KB-059)
@@ -12963,9 +12973,37 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
       if(!entry)return json(res,404,{error:"Registro de auditoria não encontrado."});
       if(entry.reverted)return json(res,409,{error:"Esta ação já foi revertida antes."});
       if(!entry.before||!entry.targetEmail)return json(res,400,{error:"Esta ação não tem snapshot para reverter."});
+      // 🚨 v330 (achado de auditoria contínua): este endpoint é genérico —
+      // reverte QUALQUER entrada de DB_ADMIN_AUDIT cujo `before` seja
+      // truthy, sem checar se a ação era mesmo sobre plano/VIP. set_is_admin
+      // grava `before:{isAdmin:bool}` e set_password grava
+      // `before:{tinhaSenha:bool}` — nenhum dos dois tem `plan`/`vip`, mas o
+      // setUser abaixo faz `entry.before.plan||"free"` e
+      // `entry.before.vip||null` incondicionalmente: reverter uma dessas 2
+      // ações (ex.: só tirar o isAdmin de alguém, sem nunca ter mexido no
+      // plano) derrubava o plano/VIP de VERDADE do usuário pra free/null.
+      // Só as ações que de fato gravam um _vipSnapshot() como before/after
+      // entram aqui.
+      const REVERT_ACOES_PLANO_VIP=new Set(["vip_activate","vip_revoke","vip_gift_days","set_expiry","set_plan","revert"]);
+      if(!REVERT_ACOES_PLANO_VIP.has(entry.action))
+        return json(res,400,{error:`A ação "${entry.action}" não mexe em plano/VIP — não pode ser revertida por aqui (evita apagar o plano/VIP de alguém que essa ação nunca tocou).`});
       const target=getUser(entry.targetEmail);
       if(!target)return json(res,404,{error:"Usuário-alvo não existe mais."});
       const _now=_vipSnapshot(target);
+      // 🚨 v330: setUser é shallow-merge (vip:X troca o vip INTEIRO, nunca
+      // mescla campo a campo) e este endpoint não sabia se `entry` ainda era
+      // a AÇÃO MAIS RECENTE a mexer no plano/VIP deste usuário — nada aqui
+      // impedia reverter uma concessão antiga depois que o cliente já tinha
+      // feito um pagamento de VERDADE por cima (ativação de pedido pago
+      // nunca grava em DB_ADMIN_AUDIT — não tem entrada nenhuma pra "ficar
+      // por cima" na lista). O resultado seria apagar em silêncio uma
+      // assinatura paga e ativa, sobrescrita pelo snapshot velho. Comparar o
+      // estado ATUAL com o `after` gravado na hora da ação original pega os
+      // dois casos (outra ação admin OU um pagamento sem trilha) — se algo
+      // mudou desde então, recusa e deixa o admin decidir olhando o estado
+      // de agora, em vez de sobrescrever sem avisar.
+      if(JSON.stringify(_now)!==JSON.stringify(entry.after))
+        return json(res,409,{error:"O plano/VIP deste usuário mudou depois desta ação (outra concessão admin ou um pagamento confirmado) — reverter agora apagaria essa mudança sem aviso. Confira o estado atual do usuário antes de decidir.",changed:true});
       // Restaura EXATAMENTE o plano/vip de antes da ação
       setUser(entry.targetEmail,{plan:entry.before.plan||"free",vip:entry.before.vip||null});
       entry.reverted=true;entry.revertedAt=Date.now();entry.revertedBy=s.user_email;entry.revertMotivo=motivo;
@@ -13012,7 +13050,6 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
         ...limitsParaAtivacaoAdmin(target,planName)};
       const _audBefore=_vipSnapshot(target); // v19: snapshot pra reversão
       setUser(d.email,{plan:planName,vip});
-      logAdminAction(_sessAdminEmail(s),"set_expiry",d.email,_audBefore,_vipSnapshot(getUser(d.email)),`Validade → manual:${manualDays}d auto:${autoDays}d plano:${planName}`);
       // 🧠 Cérebro 2.0 P1 (revisão adversarial): "definir vencimento exato"
       // (13r) não deixava NENHUMA evidência que os motores de dias leem — um
       // ajuste LEGÍTIMO do admin viraria acusação de "dias sem origem". O
@@ -13022,6 +13059,11 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
       // ancorados pelo auditor via adjustedAt e ficam fora da acusação.
       const _diasSet=Math.max(manualDays>0?manualDays:0,autoDays>0?autoDays:0);
       if(_diasSet>0)addCredito(d.email,{dias:_diasSet,tipo:"gratis",origem:"set-expiry",motivo:`Vencimento definido pelo admin: manual ${manualDays}d · auto ${autoDays}d (${planName})`,dadoPor:_sessAdminNome(s)});
+      // 🚨 v330: addCredito PRECISA rodar antes do logAdminAction — senão o
+      // snapshot "depois" fica sem o crédito desta mesma ação, e o
+      // /audit/revert (que compara o estado atual contra ele) recusaria até
+      // o revert imediato e legítimo desta ação.
+      logAdminAction(_sessAdminEmail(s),"set_expiry",d.email,_audBefore,_vipSnapshot(getUser(d.email)),`Validade → manual:${manualDays}d auto:${autoDays}d plano:${planName}`);
       console.log("[admin] set-expiry "+d.email+" manual:"+manualDays+"d auto:"+autoDays+"d plano:"+planName);
       return json(res,200,{ok:true,vip,planName,
         manualExpiresDate:manualExpires>0?new Date(manualExpires).toLocaleDateString("pt-BR"):null,
