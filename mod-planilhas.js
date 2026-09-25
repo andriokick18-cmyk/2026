@@ -288,6 +288,16 @@ function createPlanilhas(deps) {
     row.ft = dol.full_time_position === "Yes" ? "sim" : (row.ft || "");
     row.url = `https://seasonaljobs.dol.gov/jobs/${row.c}`;
     row.visa = String(row.c || "").startsWith("H-300") ? "H-2A" : String(row.c || "").startsWith("H-400") ? "H-2B" : (row.visa || "H-2B");
+    // 🌾 v334 (achado de auditoria contínua): o enriquecimento troca row.t
+    // (linha acima) quando o título do DOL diverge do que já estava na
+    // planilha, mas nunca recalculava row.k — a categoria ficava presa no
+    // valor antigo pra sempre, e h2a-jun2026 é justamente a ÚNICA planilha
+    // que o self-heal de boot (recategorizeAllSheets, server.js) exclui de
+    // propósito (dataset original já vem categorizado à mão). Recalcular
+    // aqui, no mesmo lugar que já está mexendo na linha, fecha a lacuna sem
+    // reabrir o que a exclusão do self-heal evita (nunca reprocessa a
+    // planilha inteira "de graça" — só a linha que o robô já está tocando).
+    row.k = row.visa === "H-2A" ? detectCategoryH2A(row.t) : detectCategory(row.t, row.n);
     const emails = [dol.apply_email, dol.employer_email, dol.employer_poc_email, dol.attorney_agent_email, dol.employer_contact_email]
       .map(e => String(e || "").trim().toLowerCase()).filter(e => e && e.includes("@") && !e.startsWith("n/a"));
     if (!row.e && emails.length) row.e = emails[0];

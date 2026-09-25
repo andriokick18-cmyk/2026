@@ -7093,6 +7093,55 @@ async function drillAdminSettingsLegado() {
       await req2("DELETE", "/api/admin/sheet/enrich-l8");
     }
 
+    // 🌾 v334 (achado de auditoria contínua): aplicarDolNaLinha() trocava
+    // row.t (título) quando o DOL publicava um título diferente, mas nunca
+    // recalculava row.k (categoria) — e h2a-jun2026 é a ÚNICA planilha que
+    // o self-heal de boot (recategorizeAllSheets, v332) exclui de propósito
+    // (dataset original já vem categorizado à mão). Uma vaga enriquecida
+    // ficava com a categoria ERRADA PRA SEMPRE, sem nada em lugar nenhum
+    // do código voltando a corrigir — afetando busca e computeJobMatchScore
+    // (prioridade #1 da casa: brasileiro achar a vaga certa).
+    {
+      const _h2aRows334 = (await get("/api/admin/sheet/download/h2a-jun2026")).json || [];
+      const _caso334 = _h2aRows334[0]?.c;
+      check("🌾 v334 (setup): há pelo menos 1 linha em h2a-jun2026 pra testar", !!_caso334, JSON.stringify(_h2aRows334[0]));
+
+      const _enr334a = await req2("POST", "/api/test/enriquecer-linha", {
+        token: TEST_TOKEN, sheet: "h2a-jun2026", case: _caso334,
+        dol: { job_title: "Truck Driver" },
+      });
+      check("🌾 v334: enriquecer uma linha de h2a-jun2026 com título novo (Truck Driver) recalcula a categoria com o categorizador de H-2A (truck_driver) — antes ficava travada no valor antigo do dataset original mesmo com o título mudando",
+        _enr334a.json?.row?.t === "Truck Driver" && _enr334a.json?.row?.k === "truck_driver" && _enr334a.json?.row?.visa === "H-2A",
+        JSON.stringify(_enr334a.json?.row));
+
+      const _enr334b = await req2("POST", "/api/test/enriquecer-linha", {
+        token: TEST_TOKEN, sheet: "h2a-jun2026", case: _caso334,
+        dol: { job_title: "Sheep Herder" },
+      });
+      check("🌾 v334: um 2º enriquecimento na MESMA linha, com outro título, recalcula a categoria de novo (sheepherder) — não é um acerto de uma vez só, roda toda vez que o robô toca a linha",
+        _enr334b.json?.row?.t === "Sheep Herder" && _enr334b.json?.row?.k === "sheepherder",
+        JSON.stringify(_enr334b.json?.row));
+
+      const _h2aDepois334 = (await get("/api/admin/sheet/download/h2a-jun2026")).json || [];
+      const _linhaDepois334 = _h2aDepois334.find((r) => r.c === _caso334);
+      check("🌾 v334: a categoria recalculada foi PERSISTIDA em disco (mesma _saveEnrichedSheet do robô) — não só na resposta da rota de teste",
+        _linhaDepois334?.k === "sheepherder" && _linhaDepois334?.t === "Sheep Herder",
+        JSON.stringify(_linhaDepois334));
+
+      // Planilha H-2B (jan2026): o mesmo caminho usa detectCategory (não o
+      // categorizador de H-2A) — prova que a escolha do categorizador segue
+      // o visto da própria linha, nunca um dos dois fixo.
+      const _janRows334 = (await get("/api/admin/sheet/download/jan2026")).json || [];
+      const _casoJan334 = _janRows334[0]?.c;
+      const _enrJan334 = await req2("POST", "/api/test/enriquecer-linha", {
+        token: TEST_TOKEN, sheet: "jan2026", case: _casoJan334,
+        dol: { job_title: "Landscape Laborer" },
+      });
+      check("🌾 v334: planilha H-2B (jan2026) recalcula com detectCategory (não o categorizador de H-2A) — 'Landscape Laborer' vira 'landscape', e o visto continua H-2B",
+        _enrJan334.json?.row?.t === "Landscape Laborer" && _enrJan334.json?.row?.k === "landscape" && _enrJan334.json?.row?.visa === "H-2B",
+        JSON.stringify(_enrJan334.json?.row));
+    }
+
     // ══════════════════════════════════════════════════════════════════════
     // 🕊️ v195 — LOTE 14: EDUCADO COM O DOL
     // O IP do servidor no DOL é recurso COMPARTILHADO: se ele levar 403/429,
