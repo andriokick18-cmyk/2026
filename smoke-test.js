@@ -6685,13 +6685,32 @@ async function drillBloqueioComprasNovas() {
       // não tinha "pular pro conteúdo" nem landmarks na página mais
       // visitada. Escopo deste fix: só a landing (nav+banner em
       // <header>, hero-até-showcase em <main>) — a casca do app
-      // pós-login (#app) fica de fora, registrada como follow-up maior.
+      // pós-login (#app) ficou de fora aqui de propósito (ganhou os
+      // MESMOS landmarks no v300 logo abaixo — por isso a contagem
+      // total de <main>/<header>/<nav> do arquivo NÃO é mais 1 de cada;
+      // o v300 é quem prova a contagem total correta).
       check("♿ v299: landing de index.html ganha <header> (nav+banner) e <main> (hero até showcase), fechando antes do <footer>",
         _idxL9.includes('<!-- ── NAVBAR ── -->\n  <header>\n  <nav class="ln-nav">') &&
         _idxL9.includes('</a>\n  </header>\n\n  <!-- ── HERO ── -->\n  <main>\n  <div class="ln-hero">') &&
         _idxL9.includes('</section>\n  </main>\n\n  <!-- ── FOOTER DA LANDING ── -->\n  <footer class="ln-footer">') &&
-        (_idxL9.match(/<main>/g) || []).length === 1 && (_idxL9.match(/<\/main>/g) || []).length === 1,
+        (_idxL9.match(/<main>/g) || []).length === 1,
         "landing continua sem landmarks header/main, ou a tag não fechou certo");
+      // ♿ v300 (achado de auditoria contínua — Alta, continuação do v299):
+      // #app (casca do dashboard pós-login, onde TODO usuário logado
+      // vive) tinha .app-hdr/.sidebar/.main-area como <div> puros — zero
+      // header/nav/main, maior impacto que a própria landing (#184) por
+      // cobrir 100% das telas funcionais. Verificado: zero seletor CSS/JS
+      // qualificado por tag (div.app-hdr etc.) — renomear é seguro, sem
+      // mudar profundidade do DOM nem quebrar sv()/classList.
+      check("♿ v300: #app ganha <header class=app-hdr>, <nav class=sidebar aria-label>, <main class=main-area> — mesma profundidade do DOM, zero seletor de tag quebrado",
+        _idxL9.includes('<header class="app-hdr" id="app-hdr">') &&
+        _idxL9.includes('<nav class="sidebar" aria-label="Menu principal">') &&
+        _idxL9.includes('<main class="main-area">') &&
+        _idxL9.includes('</main><!-- /main-area -->') &&
+        (_idxL9.match(/<header/g) || []).length === 2 && (_idxL9.match(/<\/header>/g) || []).length === 2 &&
+        (_idxL9.match(/<nav /g) || []).length === 3 && (_idxL9.match(/<\/nav>/g) || []).length === 3 &&
+        (_idxL9.match(/<main/g) || []).length === 2 && (_idxL9.match(/<\/main>/g) || []).length === 2,
+        "casca do app pós-login continua sem landmarks, ou alguma tag não fechou certo");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&

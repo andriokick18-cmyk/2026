@@ -2389,7 +2389,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
 </div>
 
 <div id="app" style="display:none">
-  <div class="app-hdr" id="app-hdr">
+  <header class="app-hdr" id="app-hdr">
     <!-- Logo -->
     <div style="display:flex;align-items:center;gap:7px;flex:1">
       <div class="app-logo-icon"><img src="/icon-192.png?v=3" alt="H2BApply"></div>
@@ -2403,11 +2403,11 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
         <span id="hdr-plans-label">💎 Planos</span>
       </button>
     </div>
-  </div>
+  </header>
 
   <div class="app-body">
     <!-- SIDEBAR desktop -->
-    <div class="sidebar">
+    <nav class="sidebar" aria-label="Menu principal">
       <!-- NAVEGAÇÃO PRINCIPAL — ordem e visual do layout aprovado (print 15/07/2026):
            itens neutros e uniformes, ativo = pílula lavanda com texto roxo.
            O Automático deixou de ser um botão gigante e virou item normal de
@@ -2480,10 +2480,10 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <i class="ti ti-logout"></i><span data-i18n="logout">Sair</span>
         </button>
       </div>
-    </div>
+    </nav>
 
     <!-- MAIN -->
-    <div class="main-area">
+    <main class="main-area">
       <div id="banner" class="banner gone"></div>
 <!-- onboard-checklist removido -->
       <div id="admin-msg-bar" class="admin-msg-bar gone" onclick="dismissAdminMsg()"><i class="ti ti-speakerphone" style="font-size:15px"></i><span id="admin-msg-text"></span><i class="ti ti-x" style="margin-left:auto;font-size:15px;opacity:.7"></i></div>
@@ -3804,7 +3804,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
         </div>
       </div>
 
-    </div><!-- /main-area -->
+    </main><!-- /main-area -->
   </div><!-- /app-body --><!-- Bottom Nav -->
   <!-- ══ BOTTOM NAV — v171 (achado de auditoria mobile, 09/09/2026): a v166
        tinha reduzido a 3 destinos (Início/Perfil/Planos) e deixado Vagas e
