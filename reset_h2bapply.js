@@ -173,15 +173,25 @@ const adminFile = path.join(DATA_DIR, "admin_settings.json");
 if (fs.existsSync(adminFile)) {
   console.log(`  ✅ ${path.basename(adminFile)} mantido como está`);
 } else {
-  // Criar padrão se não existir (regra atual: 1 dia VIP Manual, sem auto)
-  writeJSON(adminFile, {
-    newUserTrialEnabled: true,
-    newUserTrialDays: 1,
-    newUserTrialAutoDays: 0,
-    newUserTrialPlan: "vip",
-    editorPasswords: { andrew: "84800-54", diego: "Diego2026" }
-  });
-  console.log(`  📝 admin_settings.json criado com padrões`);
+  // 🔒 v333 (achado de auditoria contínua, SEGURANÇA): este default tinha
+  // editorPasswords:{andrew:"84800-54",diego:"Diego2026"} — o EXATO par de
+  // credenciais que server.js documenta ter sido removido "por completo
+  // nesta faxina" porque "as senhas padrão de fábrica tinham vazado no
+  // código público" (ver o comentário ao lado de DB_ADMIN_SETTINGS em
+  // server.js). Rodar este script numa DATA_DIR nova (ambiente novo,
+  // restauração de desastre, disco efêmero) ressuscitava esse vazamento já
+  // fechado — Object.assign sem allowlist no boot carrega a chave pra
+  // memória, /api/admin/settings devolve ela pra qualquer admin, e todo
+  // backup/create copia o arquivo — o vazamento reaparecia na API admin E
+  // em todo snapshot de backup. Os campos newUserTrial* também eram
+  // código morto (a concessão real de trial nunca leu esses 3 campos,
+  // hardcodeava "1 dia manual"; o trial grátis de usuário novo nem existe
+  // mais desde o v172). server.js já tem defaults sensatos em
+  // DB_ADMIN_SETTINGS (Object.assign com {} não muda nada) — nunca
+  // reintroduzir chave nenhuma aqui sem checar se ela ainda é lida por
+  // algum código vivo.
+  writeJSON(adminFile, {});
+  console.log(`  📝 admin_settings.json criado vazio (defaults vêm do código)`);
 }
 
 // ── Resumo ────────────────────────────────────────────────

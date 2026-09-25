@@ -1212,6 +1212,24 @@ function boot() {
   DB_JOURNEY = load(JOURNEY_FILE, {});
   const savedAdminSettings = load(ADMIN_SETTINGS_FILE, null);
   if(savedAdminSettings) Object.assign(DB_ADMIN_SETTINGS, savedAdminSettings);
+  // 🔒 v333 (defesa em profundidade, achado de auditoria contínua):
+  // editorPasswords é a senha de fábrica que vazou em público e foi
+  // removida "por completo nesta faxina" (comentário ao lado de
+  // DB_ADMIN_SETTINGS acima) — mas reset_h2bapply.js chegou a reescrever
+  // essa chave em admin_settings.json num ambiente novo. O Object.assign
+  // acima não filtra chave nenhuma, então um arquivo antigo em disco (de
+  // antes desta correção) ressuscitaria o vazamento em TODO boot, pra
+  // sempre. Limpa e regrava se achar — nunca confia em "já deve ter sido
+  // limpo antes".
+  if(DB_ADMIN_SETTINGS.editorPasswords||DB_ADMIN_SETTINGS.newUserTrialEnabled!==undefined||DB_ADMIN_SETTINGS.newUserTrialDays!==undefined||DB_ADMIN_SETTINGS.newUserTrialAutoDays!==undefined||DB_ADMIN_SETTINGS.newUserTrialPlan!==undefined){
+    delete DB_ADMIN_SETTINGS.editorPasswords;
+    delete DB_ADMIN_SETTINGS.newUserTrialEnabled;
+    delete DB_ADMIN_SETTINGS.newUserTrialDays;
+    delete DB_ADMIN_SETTINGS.newUserTrialAutoDays;
+    delete DB_ADMIN_SETTINGS.newUserTrialPlan;
+    persist(ADMIN_SETTINGS_FILE,DB_ADMIN_SETTINGS);
+    console.warn("[boot] 🔒 admin_settings.json tinha chaves legadas (editorPasswords/newUserTrial*) — removidas e regravadas.");
+  }
   DB_DIVERGENCIAS_OK = load(DIVERGENCIAS_OK_FILE, {});
   DB_REVIEWS = load(REVIEWS_FILE, []);
   if(!Array.isArray(DB_REVIEWS)) DB_REVIEWS = [];

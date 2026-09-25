@@ -884,6 +884,87 @@ async function drillBloqueioComprasNovas() {
   }
 }
 
+// 🔒 v333 (achado de auditoria contínua, SEGURANÇA): reset_h2bapply.js
+// (npm run reset, utilitário oficial entre temporadas) escrevia
+// admin_settings.json com editorPasswords:{andrew:"84800-54",
+// diego:"Diego2026"} quando o arquivo não existia — o EXATO par de
+// credenciais que server.js documenta ter sido removido "por completo
+// nesta faxina" porque "as senhas padrão de fábrica tinham vazado no
+// código público". Boot fazia Object.assign sem allowlist, /api/admin/
+// settings devolvia a chave verbatim pra qualquer admin, e todo
+// backup/create copiava o arquivo — o vazamento supostamente fechado
+// reaparecia na API admin E em todo snapshot de backup. 2 partes: (1) o
+// script não escreve mais essas chaves; (2) defesa em profundidade —
+// server.js limpa e regrava sozinho qualquer admin_settings.json ANTIGO
+// que ainda carregue elas (arquivo de antes desta correção).
+async function drillAdminSettingsLegado() {
+  // Parte 1: reset_h2bapply.js num diretório NOVO (sem admin_settings.json)
+  // nunca mais escreve a chave vazada.
+  const DATA_R = fs.mkdtempSync(path.join(os.tmpdir(), "h2b-resetscript-"));
+  try {
+    const r = require("child_process").spawnSync(process.execPath, [path.join(__dirname, "reset_h2bapply.js"), "--data-dir", DATA_R], { cwd: __dirname });
+    const gerado = JSON.parse(fs.readFileSync(path.join(DATA_R, "admin_settings.json"), "utf8"));
+    check("🔒 v333: reset_h2bapply.js (npm run reset) num diretório novo NUNCA MAIS escreve editorPasswords (a senha de fábrica que vazou e foi removida) nem os campos mortos newUserTrial*",
+      r.status === 0 && !("editorPasswords" in gerado) && !("newUserTrialEnabled" in gerado) && !("newUserTrialDays" in gerado),
+      JSON.stringify({ status: r.status, gerado }));
+  } catch (e) {
+    check("🔒 v333: reset_h2bapply.js roda sem exceção", false, e.message);
+  } finally {
+    try { fs.rmSync(DATA_R, { recursive: true, force: true }); } catch {}
+  }
+
+  // Parte 2: defesa em profundidade — um admin_settings.json ANTIGO (de
+  // antes desta correção, já com a chave vazada gravada) é limpo sozinho
+  // no boot, tanto na resposta da API quanto no arquivo em disco.
+  const DATA_L = fs.mkdtempSync(path.join(os.tmpdir(), "h2b-legadoadm-"));
+  const PORT_L = PORT + 75;
+  const BASE_L = `http://127.0.0.1:${PORT_L}`;
+  let COOKIE_L = "";
+  let logL = "";
+  let srvL = null;
+  const reqL = (method, p, payload) => new Promise((resolve, reject) => {
+    const body = payload === undefined ? null : JSON.stringify(payload);
+    const r = http.request(BASE_L + p, {
+      method,
+      headers: {
+        ...(body ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) } : {}),
+        ...(COOKIE_L ? { Cookie: COOKIE_L } : {}),
+      },
+    }, (res) => {
+      const sc = res.headers["set-cookie"];
+      if (sc && sc.length) COOKIE_L = sc[0].split(";")[0];
+      let b = ""; res.on("data", (c) => (b += c));
+      res.on("end", () => { let json = null; try { json = JSON.parse(b); } catch {} resolve({ status: res.statusCode, body: b, json }); });
+    });
+    r.on("error", reject); if (body) r.write(body); r.end();
+  });
+  try {
+    fs.writeFileSync(path.join(DATA_L, "admin_settings.json"), JSON.stringify({
+      newUserTrialEnabled: true, newUserTrialDays: 1, newUserTrialAutoDays: 0, newUserTrialPlan: "vip",
+      editorPasswords: { andrew: "84800-54", diego: "Diego2026" },
+      sociosSplit: { andrio: 50, diego: 50 },
+    }));
+    srvL = spawnServidor({ PORT: String(PORT_L), DATA_DIR: DATA_L, STORAGE: "json", TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890" }, (t) => (logL += t));
+    const up = await esperarNoAr(() => reqL("GET", "/api/status"), 40_000);
+    check("🔒 v333 (drill): servidor sobe normalmente com um admin_settings.json LEGADO (carregando a chave vazada) já em disco", up === true);
+
+    await reqL("POST", "/api/test/login", { token: TEST_TOKEN, email: "admlegado333@test.com", name: "Admin Legado", isAdmin: true });
+    const st = await reqL("GET", "/api/admin/settings");
+    check("🔒 v333: GET /api/admin/settings NUNCA devolve editorPasswords/newUserTrial* — o boot limpou um admin_settings.json legado sozinho, mesmo sem passar pelo reset_h2bapply.js corrigido",
+      st.json?.settings && !("editorPasswords" in st.json.settings) && !("newUserTrialEnabled" in st.json.settings) && st.json.settings.sociosSplit?.andrio === 50,
+      JSON.stringify(st.json?.settings));
+    const emDisco = JSON.parse(fs.readFileSync(path.join(DATA_L, "admin_settings.json"), "utf8"));
+    check("🔒 v333: a limpeza foi REGRAVADA em disco (não só filtrada na memória) — reiniciar de novo não ressuscitaria a chave vazada",
+      !("editorPasswords" in emDisco) && !("newUserTrialEnabled" in emDisco) && emDisco.sociosSplit?.andrio === 50,
+      JSON.stringify(emDisco));
+  } catch (e) {
+    check("🔒 v333 (drill): execução sem exceção", false, e.message + " | log: " + logL.slice(-400));
+  } finally {
+    try { await matarServidor(srvL, "SIGKILL"); } catch {}
+    try { fs.rmSync(DATA_L, { recursive: true, force: true }); } catch {}
+  }
+}
+
 // ── Execução ────────────────────────────────────────────────────────────
 (async () => {
   console.log(`🧪 Smoke test — porta ${PORT}, dados em ${DATA}`);
@@ -9154,6 +9235,11 @@ async function drillBloqueioComprasNovas() {
         _tokenInventado.status === 302 && String(_tokenInventado.headers?.location || "").includes("err=") && !_tokenInventado.headers?.["set-cookie"],
         `status=${_tokenInventado.status} location=${_tokenInventado.headers?.location || ""}`);
     }
+
+    // 🔒 Drill isolado (servidor próprio) provando que um admin_settings.json
+    // LEGADO (de antes desta correção) é limpo sozinho no boot — ver função
+    // acima.
+    await drillAdminSettingsLegado();
 
     const disk = fs.readdirSync(path.join(DATA, "cvs"));
     check("PDFs válidos gravados no disco", disk.includes("cliente@test.com_1002.pdf") && disk.includes("cliente@test.com_1004.pdf"),
