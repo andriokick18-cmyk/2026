@@ -6676,6 +6676,22 @@ async function drillBloqueioComprasNovas() {
           _srvL9v298.includes(`<link rel="canonical" href="https://h2bapply.com/${slug}">`)) &&
         (_srvL9v298.match(/<meta name="description" content="/g) || []).length >= 7,
         "alguma das 5 páginas legais continua sem meta description/canonical");
+      // ♿ v299 (achado de auditoria contínua — Alta): index.html (a
+      // landing, maior tráfego do site, e também casca do app pós-login)
+      // não tinha NENHUM <main> nem role="main" no arquivo inteiro — a
+      // nav era um <nav> solto, fora de <header>. As outras páginas do
+      // site (guia/h2b-e-golpe/quanto-ganha-h2b/h2bapply-funciona) já
+      // seguem o padrão <header>+<main> corretamente. Leitor de tela
+      // não tinha "pular pro conteúdo" nem landmarks na página mais
+      // visitada. Escopo deste fix: só a landing (nav+banner em
+      // <header>, hero-até-showcase em <main>) — a casca do app
+      // pós-login (#app) fica de fora, registrada como follow-up maior.
+      check("♿ v299: landing de index.html ganha <header> (nav+banner) e <main> (hero até showcase), fechando antes do <footer>",
+        _idxL9.includes('<!-- ── NAVBAR ── -->\n  <header>\n  <nav class="ln-nav">') &&
+        _idxL9.includes('</a>\n  </header>\n\n  <!-- ── HERO ── -->\n  <main>\n  <div class="ln-hero">') &&
+        _idxL9.includes('</section>\n  </main>\n\n  <!-- ── FOOTER DA LANDING ── -->\n  <footer class="ln-footer">') &&
+        (_idxL9.match(/<main>/g) || []).length === 1 && (_idxL9.match(/<\/main>/g) || []).length === 1,
+        "landing continua sem landmarks header/main, ou a tag não fechou certo");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&
