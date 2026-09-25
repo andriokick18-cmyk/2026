@@ -140,6 +140,9 @@ a{color:inherit;text-decoration:none}
 [data-theme="dark"] .al-amber,[data-theme="dark"] .ta{background:var(--amberl)!important;color:#fbbf24!important;border-color:var(--amberb)!important}
 [data-theme="dark"] .al-red,[data-theme="dark"] .tr{background:var(--redl)!important;color:#fca5a5!important;border-color:var(--redb)!important}
 [data-theme="dark"] .tp{background:var(--purplel)!important;color:#c4b5fd!important;border-color:var(--purpleb)!important}
+[data-theme="dark"] #pe-res-active-name,[data-theme="dark"] #pe-res-active-sub{color:#6ee7b7!important}
+[data-theme="dark"] #pe-pdf-name,[data-theme="dark"] #pe-pdf-sub{color:#93c5fd!important}
+[data-theme="dark"] #pe-cover-active-name,[data-theme="dark"] #pe-cover-active-sub,[data-theme="dark"] #pe-cover-name,[data-theme="dark"] #pe-cover-sub{color:#c4b5fd!important}
 [data-theme="dark"] .input{background:var(--sf2)!important;color:var(--text)!important;border-color:var(--border2)!important}
 [data-theme="dark"] .input::placeholder{color:var(--t3)!important}
 [data-theme="dark"] select.input option{background:var(--sf2);color:var(--text)}
@@ -4053,7 +4056,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <i class="ti ti-file-type-pdf" style="font-size:20px;color:var(--red);flex-shrink:0"></i>
           <div style="flex:1;min-width:0">
             <div id="pe-res-active-name" style="font-size:13px;font-weight:700;color:#14532d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
-            <div style="font-size:11px;color:#166534;margin-top:1px" data-i18n="g_157">✅ Currículo vinculado a este perfil</div>
+            <div id="pe-res-active-sub" style="font-size:11px;color:#166534;margin-top:1px" data-i18n="g_157">✅ Currículo vinculado a este perfil</div>
           </div>
           <button onclick="peRemoveResume()" style="background:#fee2e2;border:1.5px solid #fca5a5;color:var(--red);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;display:flex;align-items:center;gap:4px" title="Remover currículo deste perfil">
             <i class="ti ti-trash" style="font-size:13px"></i> Remover
@@ -4065,7 +4068,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <i class="ti ti-file-type-pdf" style="font-size:20px;color:var(--red);flex-shrink:0"></i>
           <div style="flex:1;min-width:0">
             <div id="pe-pdf-name" style="font-size:13px;font-weight:700;color:#1e3a8a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
-            <div style="font-size:11px;color:#1d4ed8;margin-top:1px" data-i18n="g_158">📤 Novo arquivo — será enviado ao salvar</div>
+            <div id="pe-pdf-sub" style="font-size:11px;color:#1d4ed8;margin-top:1px" data-i18n="g_158">📤 Novo arquivo — será enviado ao salvar</div>
           </div>
           <button onclick="clearProfilePdf()" style="background:#fee2e2;border:1.5px solid #fca5a5;color:var(--red);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;display:flex;align-items:center;gap:4px" title="Cancelar novo PDF">
             <i class="ti ti-x" style="font-size:13px"></i> Cancelar
@@ -4099,7 +4102,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <i class="ti ti-file-description" style="font-size:20px;color:var(--purple);flex-shrink:0"></i>
           <div style="flex:1;min-width:0">
             <div id="pe-cover-active-name" style="font-size:13px;font-weight:700;color:#5b21b6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
-            <div style="font-size:11px;color:#6d28d9;margin-top:1px">✅ Cover Letter vinculada a este perfil</div>
+            <div id="pe-cover-active-sub" style="font-size:11px;color:#6d28d9;margin-top:1px">✅ Cover Letter vinculada a este perfil</div>
           </div>
           <button onclick="peRemoveCover()" style="background:#fee2e2;border:1.5px solid #fca5a5;color:var(--red);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;display:flex;align-items:center;gap:4px" title="Remover cover letter deste perfil">
             <i class="ti ti-trash" style="font-size:13px"></i> Remover
@@ -4111,7 +4114,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <i class="ti ti-file-description" style="font-size:20px;color:var(--purple);flex-shrink:0"></i>
           <div style="flex:1;min-width:0">
             <div id="pe-cover-name" style="font-size:13px;font-weight:700;color:#5b21b6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
-            <div style="font-size:11px;color:#6d28d9;margin-top:1px">📤 Novo arquivo — será enviado ao salvar</div>
+            <div id="pe-cover-sub" style="font-size:11px;color:#6d28d9;margin-top:1px">📤 Novo arquivo — será enviado ao salvar</div>
           </div>
           <button onclick="clearProfileCover()" style="background:#fee2e2;border:1.5px solid #fca5a5;color:var(--red);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;display:flex;align-items:center;gap:4px" title="Cancelar nova cover letter">
             <i class="ti ti-x" style="font-size:13px"></i> Cancelar

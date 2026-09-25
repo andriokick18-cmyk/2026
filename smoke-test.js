@@ -6756,6 +6756,25 @@ async function drillBloqueioComprasNovas() {
         _appL9.includes('box.innerHTML=\'<div class="alert al-amber" style="justify-content:center;text-align:center;margin:16px">') &&
         !_appL9.includes("color:#b45309;font-size:13px;padding:26px 16px"),
         "sistema de alertas/badges continua sem rescue dark, ou o erro de tutorial continua com cor nua");
+      // 🚨 v304 (achado de auditoria contínua — CRÍTICA, 4ª ocorrência desta
+      // sessão do mesmo anti-padrão "v14 LIGHT OVERRIDES": os 4 cards de
+      // arquivo vinculado do Editor de Perfil (currículo ativo, PDF novo,
+      // cover letter ativa, cover letter nova) hardcodavam color só correto
+      // no tema CLARO (#14532d/#1d4ed8/#5b21b6 etc, sobre fundo
+      // var(--greenl)/var(--bluel)/var(--purplel) — que O PRÓPRIO token JÁ
+      // troca de tom no tema escuro), sem NENHUM rescue [data-theme="dark"].
+      // Contraste calculado independentemente no card verde: ~1.48:1 —
+      // texto quase invisível, muito abaixo do AA (4.5:1). Os 4 nomes de
+      // arquivo (#pe-res-active-name/#pe-pdf-name/#pe-cover-active-name/
+      // #pe-cover-name) e as 4 legendas (agora com id novo pe-*-sub) ganham
+      // rescue reusando as MESMAS cores dark-safe já verificadas no v303.
+      check("🚨 v304: [data-theme=dark] reclama color pros 4 cards de arquivo vinculado do Editor de Perfil (nome+legenda, currículo/PDF/cover) — mesmas cores dark-safe do v303",
+        _idxL9.includes('id="pe-res-active-sub"') && _idxL9.includes('id="pe-pdf-sub"') &&
+        _idxL9.includes('id="pe-cover-active-sub"') && _idxL9.includes('id="pe-cover-sub"') &&
+        _idxL9.includes('[data-theme="dark"] #pe-res-active-name,[data-theme="dark"] #pe-res-active-sub{color:#6ee7b7!important}') &&
+        _idxL9.includes('[data-theme="dark"] #pe-pdf-name,[data-theme="dark"] #pe-pdf-sub{color:#93c5fd!important}') &&
+        _idxL9.includes('[data-theme="dark"] #pe-cover-active-name,[data-theme="dark"] #pe-cover-active-sub,[data-theme="dark"] #pe-cover-name,[data-theme="dark"] #pe-cover-sub{color:#c4b5fd!important}'),
+        "cards de arquivo vinculado do Editor de Perfil continuam sem rescue dark");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&
