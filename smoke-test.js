@@ -3336,6 +3336,37 @@ async function drillBloqueioComprasNovas() {
       JSON.stringify({ job: jobV313, why: jobV313?.matchWhy }).slice(0, 260));
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
 
+    // 🚨 v314 (achado de auditoria contínua — CRÍTICO, envio automático):
+    // fillTpl()/fill() usavam .replace(/{x}/g, valorString) — com STRING no
+    // 2º argumento, sequências $&/$`/$'/$$ dentro do valor são interpretadas
+    // como diretivas de substituição do regex (spec do JS), não inseridas
+    // literalmente. nome vem de campo livre (/api/settings, zero filtro de
+    // caractere) — um nome com esses símbolos corrompia TODA candidatura
+    // automática em silêncio (nenhum humano revisa antes do envio real,
+    // diferente do manual). Testa pelo caminho REAL: fila automática de
+    // verdade envia pelo Gmail falso do teste, e o assunto decodificado tem
+    // que preservar o nome EXATAMENTE.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "tplvar314@test.com", name: "Ana$&Souza", refreshToken: "rt-tplvar314", plan: "doublepro", vip: { active: true, plan: "doublepro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 } });
+    await req2("POST", "/api/settings", { name: "Ana$&Souza" });
+    const cvV314 = await req2("POST", "/api/cv/upload", { base64: Buffer.from("%PDF-1.4 " + "tplvar314 ".repeat(300)).toString("base64"), name: "CV_TplVar314.pdf", cvType: "resume" });
+    GOOGLE.limpar();
+    const startV314 = await req2("POST", "/api/auto/start", { queue: [{ to: "rh@tplvar314-test.com", title: "Farmworker", company: "Empresa TplVar314", category: "farm", state: "FL" }], resumeIdx: cvV314.json?.cv?.idx, subjects: ["Aplicacao de {nome} para a vaga"], emailBodies: ["Ola, meu nome e {nome} e quero me candidatar."] });
+    const _ateV314 = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 < (ms || 15_000)) { if (fn()) return true; await new Promise((r) => setTimeout(r, 50)); } return false; };
+    const _c1V314 = await _ateV314(() => GOOGLE.envios.some((e) => e.para === "rh@tplvar314-test.com"));
+    const _envioV314 = GOOGLE.envios.find((e) => e.para === "rh@tplvar314-test.com");
+    check("🚨 v314: candidatura automática REAL preserva EXATAMENTE um nome com $& no assunto — nunca duplica/embaralha o texto por interpretar $ como diretiva de replace",
+      startV314.status === 200 && _c1V314 === true &&
+      (_envioV314?.assunto || "").includes("Ana$&Souza") &&
+      !(_envioV314?.assunto || "").includes("{nome}"),
+      JSON.stringify({ ok: startV314.json?.ok, assunto: _envioV314?.assunto }).slice(0, 260));
+    await req2("POST", "/api/auto/stop", {});
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const _appL314 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+    check("🚨 v314: o mesmo fix vale no CLIENTE — fill() (envio manual) e o preview do assunto (peUpdateSubjPreview) usam função como 2º argumento do replace, nunca string crua",
+      _appL314.includes('.replace(/{nome}/g,    ()=>CFG.name||U?.name||"")') &&
+      _appL314.includes('.replace(/{nome}/g,()=>U.name||"João Silva")'),
+      "fill()/peUpdateSubjPreview ainda passam string crua pro replace");
+
     // ═══ 💳 v141 (dono, 15/08 — "esse Cleiton e também o outro ali, eu sei
     // que nenhum dos 2 tem todos esses dias de plano. algo deu errado!") ═══
     // CAUSA RAIZ achada revisando o próprio código: /api/admin/set-plan era

@@ -5846,27 +5846,36 @@ async function _doAutoSendInner(email) {
 
 // v22 (ORDEM DO DONO): genSubject removido — o programa não inventa assunto.
 // fillTpl: substitui TODAS as variáveis de template — incluindo {email}, {cidade}, {estado}
+// 🚨 v314 (achado de auditoria contínua — CRÍTICO no automático: nenhum
+// humano revisa antes de sair): .replace(/{x}/g, valorString) — com STRING
+// no 2º argumento, sequências $&/$`/$'/$$ DENTRO do valor são interpretadas
+// como diretivas de substituição do regex (spec do JS), não inseridas
+// literalmente. v.nome/v.pais/v.telefone vêm de campo livre (/api/settings,
+// sem filtro de caractere) — um nome com esses símbolos corrompia TODA
+// candidatura automática em silêncio. Função como 2º argumento é inserida
+// SEMPRE verbatim — bypass total, nunca escapar o valor (escapar quebraria
+// o texto real do usuário).
 const fillTpl=(tpl,v)=>(tpl||"")
-  .replace(/{vaga}/g,       v.vaga||"")
-  .replace(/{empresa}/g,    v.empresa||"")
-  .replace(/{categoria}/g,  v.categoria||"")
-  .replace(/{url_vaga}/g,   v.url_vaga||"")
-  .replace(/{case_number}/g,v.case_number||"")
-  .replace(/{eta_case}/g,   v.eta_case||"")
-  .replace(/{salario}/g,    v.salario||"")
-  .replace(/{fim}/g,        v.fim||"")
-  .replace(/{nome}/g,       v.nome||"")
-  .replace(/{pais}/g,       v.pais||"")
-  .replace(/{telefone}/g,   v.telefone||"")
-  .replace(/{email}/g,      v.email||"")
-  .replace(/{cidade}/g,     v.cidade||"")
-  .replace(/{estado}/g,     v.estado||"")
-  .replace(/{city}/g,       v.cidade||"")
-  .replace(/{state}/g,      v.estado||"")
-  .replace(/{wage}/g,       v.wage||"")
-  .replace(/{salario}/g,    v.wage||"")
-  .replace(/{inicio}/g,     v.inicio||"")
-  .replace(/{start}/g,      v.inicio||"");
+  .replace(/{vaga}/g,       ()=>v.vaga||"")
+  .replace(/{empresa}/g,    ()=>v.empresa||"")
+  .replace(/{categoria}/g,  ()=>v.categoria||"")
+  .replace(/{url_vaga}/g,   ()=>v.url_vaga||"")
+  .replace(/{case_number}/g,()=>v.case_number||"")
+  .replace(/{eta_case}/g,   ()=>v.eta_case||"")
+  .replace(/{salario}/g,    ()=>v.salario||"")
+  .replace(/{fim}/g,        ()=>v.fim||"")
+  .replace(/{nome}/g,       ()=>v.nome||"")
+  .replace(/{pais}/g,       ()=>v.pais||"")
+  .replace(/{telefone}/g,   ()=>v.telefone||"")
+  .replace(/{email}/g,      ()=>v.email||"")
+  .replace(/{cidade}/g,     ()=>v.cidade||"")
+  .replace(/{estado}/g,     ()=>v.estado||"")
+  .replace(/{city}/g,       ()=>v.cidade||"")
+  .replace(/{state}/g,      ()=>v.estado||"")
+  .replace(/{wage}/g,       ()=>v.wage||"")
+  .replace(/{salario}/g,    ()=>v.wage||"")
+  .replace(/{inicio}/g,     ()=>v.inicio||"")
+  .replace(/{start}/g,      ()=>v.inicio||"");
 
 // v19-FIX: corpo do loop de reactivateAutoJobs() extraído pra função própria,
 // reutilizável em qualquer lugar que precise "religar" um job travado (timer

@@ -3205,22 +3205,30 @@ let UPROFILES=[],editingProfileId=null;
 // LITERAL "{categoria}" pro empregador de verdade. getOccupationCategoryByKey
 // é a MESMA fonte que o chip de filtro/card de vaga já usa (window._catLabels,
 // via /api/category-groups) — nunca um rótulo divergente.
+// 🚨 v314 (achado de auditoria contínua): .replace(/{x}/g, valorString) — com
+// STRING no 2º argumento, sequências $&/$`/$'/$$ DENTRO do valor são
+// interpretadas como diretivas de substituição do regex (spec do JS), não
+// inseridas literalmente. nome/país/telefone vêm de campo livre
+// (/api/settings, sem filtro de caractere) — um nome com esses símbolos
+// corrompia o e-mail inteiro em silêncio. Função como 2º argumento é
+// inserida SEMPRE verbatim, sem interpretar nada — bypass total, nunca
+// escapar o valor (escapar quebraria o texto real do usuário).
 const fill=(tpl,j)=>(tpl||"")
-  .replace(/{vaga}/g,    j?.title||j?.job||"")
-  .replace(/{empresa}/g, j?.company||"")
-  .replace(/{categoria}/g,getOccupationCategoryByKey(j?.category,j?.title||j?.job)?.name||"")
-  .replace(/{nome}/g,    CFG.name||U?.name||"")
-  .replace(/{pais}/g,    CFG.country||"Brazil")
-  .replace(/{telefone}/g,CFG.phone||"")
-  .replace(/{email}/g,   U?.gmailEmail||U?.email||"") // 🐛 v172c: Gmail real, nunca o username de login
-  .replace(/{cidade}/g,  j?.city||j?.cidade||"")
-  .replace(/{estado}/g,  j?.state||j?.estado||"")
-  .replace(/{city}/g,    j?.city||j?.cidade||"")
-  .replace(/{state}/g,   j?.state||j?.estado||"")
-  .replace(/{wage}/g,    j?.wage||"")
-  .replace(/{salario}/g, j?.wage||"")
-  .replace(/{inicio}/g,  j?.start||j?.beginDate||"")
-  .replace(/{start}/g,   j?.start||j?.beginDate||"");
+  .replace(/{vaga}/g,    ()=>j?.title||j?.job||"")
+  .replace(/{empresa}/g, ()=>j?.company||"")
+  .replace(/{categoria}/g,()=>getOccupationCategoryByKey(j?.category,j?.title||j?.job)?.name||"")
+  .replace(/{nome}/g,    ()=>CFG.name||U?.name||"")
+  .replace(/{pais}/g,    ()=>CFG.country||"Brazil")
+  .replace(/{telefone}/g,()=>CFG.phone||"")
+  .replace(/{email}/g,   ()=>U?.gmailEmail||U?.email||"") // 🐛 v172c: Gmail real, nunca o username de login
+  .replace(/{cidade}/g,  ()=>j?.city||j?.cidade||"")
+  .replace(/{estado}/g,  ()=>j?.state||j?.estado||"")
+  .replace(/{city}/g,    ()=>j?.city||j?.cidade||"")
+  .replace(/{state}/g,   ()=>j?.state||j?.estado||"")
+  .replace(/{wage}/g,    ()=>j?.wage||"")
+  .replace(/{salario}/g, ()=>j?.wage||"")
+  .replace(/{inicio}/g,  ()=>j?.start||j?.beginDate||"")
+  .replace(/{start}/g,   ()=>j?.start||j?.beginDate||"");
 
 // 🚨 v231 (achado do dono testando ao vivo, 20/09/2026 — badge "Currículos
 // 1" mas o corpo mostrava "Nenhum perfil criado ainda" numa conta com 326
@@ -3469,7 +3477,7 @@ function peUpdateSubjPreview(){
   const wrap=g("#pe-subj-preview-wrap"),txt=g("#pe-subj-preview-text");if(!wrap||!txt)return;
   const s=peSubjects.find(x=>String(x||"").trim());if(!s){wrap.style.display="none";return;}
   wrap.style.display="block";
-  txt.textContent=s.replace(/{vaga}/g,"Landscape Worker").replace(/{empresa}/g,"Green Gardens LLC").replace(/{nome}/g,U.name||"João Silva").replace(/{categoria}/g,"Landscape");
+  txt.textContent=s.replace(/{vaga}/g,()=>"Landscape Worker").replace(/{empresa}/g,()=>"Green Gardens LLC").replace(/{nome}/g,()=>U.name||"João Silva").replace(/{categoria}/g,()=>"Landscape");
 }
 function peRenderBodyCount(){
   const lbl=g("#pe-body-count-lbl");if(!lbl)return;
