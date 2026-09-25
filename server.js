@@ -4715,8 +4715,17 @@ function jobVisaType(target, sheet){
 // formato de sinal antes de pontuar — uma função de pontuação só, nunca
 // duplicada por formato de vaga.
 // ══════════════════════════════════════════════════════════════════════════
-function _matchSignalFromRow(r){return{category:r.k||"other",state:r.s||"",workers:r.wk||0,text:`${r.desc||""} ${r.req||""}`,visa:r.visa||""};}
-function _matchSignalFromJob(j){return{category:j.category||"other",state:j.state||"",workers:j.workers||0,text:`${j.desc||""} ${j.req||""}`,visa:j.visa||""};}
+// 🚨 v313 (achado de auditoria contínua): visa:r.visa||"" cru ignorava o
+// fallback pelo prefixo do case number (H-300→H-2A, H-400→H-2B) que
+// FILTROS.visaDaLinha já é a fonte única pra isso (mod-filtros.js, reusado
+// em server.js:8378). Vaga sem o campo `.visa` — caminho real e suportado:
+// admin "Importar planilha (JSON)" formato antigo — caía silenciosamente no
+// ||"h2b" de computeJobMatchScore, comparando o perfil ERRADO (H-2A vs
+// perfil H-2B) e violando a regra "a vaga manda no perfil" (v19, dono,
+// 15/07/2026). Latente com os dados de hoje (100% das linhas têm .visa),
+// mas real assim que uma planilha antiga sem o campo entrar.
+function _matchSignalFromRow(r){return{category:r.k||"other",state:r.s||"",workers:r.wk||0,text:`${r.desc||""} ${r.req||""}`,visa:FILTROS.visaDaLinha(r)||r.visa||""};}
+function _matchSignalFromJob(j){return{category:j.category||"other",state:j.state||"",workers:j.workers||0,text:`${j.desc||""} ${j.req||""}`,visa:FILTROS.visaDaLinha({visa:j.visa,c:j.caseNum})||j.visa||""};}
 function computeJobMatchScore(sig,ctx){
   if(!ctx)return null;
   const vt=jobVisaType({visa:sig.visa})||"h2b";

@@ -3312,6 +3312,30 @@ async function drillBloqueioComprasNovas() {
       !_admL312.includes('["vip","vipro","doublepro"].indexOf(u.plano)>=0?u.plano:"vipro"'),
       "modal de plano VIP ainda não reconhece a conta 'pro' corretamente");
 
+    // 🚨 v313 (achado de auditoria contínua — job matching, prioridade #1 da
+    // casa): _matchSignalFromRow lia r.visa||"" cru, ignorando o fallback
+    // pelo prefixo do case number (H-300→H-2A) que FILTROS.visaDaLinha já é
+    // a fonte única pra isso. Caminho real: admin "Importar planilha (JSON)"
+    // formato antigo, sem o campo .visa por linha — a vaga caía no ||"h2b"
+    // de computeJobMatchScore e comparava contra o perfil ERRADO, violando
+    // "a vaga manda no perfil" (v19). Usa o fixture cliente@test.com (já tem
+    // perfil h2a "pa" com currículo válido) — só carimba um `state` nele,
+    // sobe 1 vaga H-2A SEM campo visa, e confere que o match comparou
+    // contra o perfil H-2A (nunca o H-2B, que não tem state nenhum).
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
+    const salvaPa = await req2("POST", "/api/profiles/save", { id: "pa", name: "Perfil H-2A", visaType: "h2a", subjects: ["a", "b", "c"], emailBodies: ["x", "y", "z"], resumeIdx: 1004, coverIdx: 1002, state: "FLORIDA" });
+    check("🚨 v313: (setup) perfil H-2A do fixture aceita o state novo", salvaPa.json?.ok === true, salvaPa.body.slice(0, 150));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const upMatchV313 = await req2("POST", "/api/admin/sheet/upload", { name: "Match V313", key: "match-v313", data: [{ c: "H-300-MATCHV313-01", e: "empregadormatchv313@test.com", n: "Empregador Match V313", t: "Farmworker", s: "FLORIDA" }] });
+    check("🚨 v313: (setup) planilha SEM campo 'visa' por linha sobe normalmente (caminho real do 'Importar planilha' formato antigo)", upMatchV313.json?.ok === true, upMatchV313.body.slice(0, 150));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
+    const smV313 = await get("/api/sheet-meta?sheet=match-v313&email=0&top=5");
+    const jobV313 = (smV313.json?.jobs || []).find((j) => j.id === "H-300-MATCHV313-01" || j.caseNum === "H-300-MATCHV313-01");
+    check("🚨 v313: vaga H-2A SEM campo 'visa' (só o case number H-300) é comparada contra o perfil H-2A — o 'estado do seu perfil' bate (FLORIDA), provando que NÃO caiu no fallback cego pra H-2B (cujo perfil não tem state nenhum)",
+      Array.isArray(jobV313?.matchWhy) && jobV313.matchWhy.some((w) => w.includes("estado do seu perfil")),
+      JSON.stringify({ job: jobV313, why: jobV313?.matchWhy }).slice(0, 260));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+
     // ═══ 💳 v141 (dono, 15/08 — "esse Cleiton e também o outro ali, eu sei
     // que nenhum dos 2 tem todos esses dias de plano. algo deu errado!") ═══
     // CAUSA RAIZ achada revisando o próprio código: /api/admin/set-plan era
