@@ -6736,6 +6736,26 @@ async function drillBloqueioComprasNovas() {
       check("♿ v302: admin.html --t3 sobe pra #7c8ba3 (~5.3-5.7:1 contra as 3 cores de fundo do painel, AA passa com folga)",
         _admL9.includes("--text:#e2e8f0;--t2:#94a3b8;--t3:#7c8ba3;--t4:#334155;"),
         "--t3 de admin.html continua com contraste abaixo do AA");
+      // 🚨 v303 (achado de auditoria contínua — CRÍTICA, mesma classe do
+      // v288/v289 mas em 9 classes largamente reusadas, não só 1): .al-blue/
+      // .al-green/.al-amber/.al-red (alertas) e .tg/.tr/.tb/.ta/.tp
+      // (badges/tags) hardcodavam color+background+border pra valores só
+      // corretos no tema CLARO, sem NENHUM rescue [data-theme="dark"].
+      // Contraste calculado independentemente no tema escuro: azul ~2.57:1,
+      // verde ~3.06:1, âmbar ~3.42-3.80:1, vermelho ~3.71:1 — todos abaixo
+      // do AA (4.5:1). Achado a partir de app.js (erro "não deu pra
+      // carregar tutoriais") que usava a cor nua sem nem caixa de fundo —
+      // ao investigar, a classe .al-amber que deveria ter sido usada
+      // também estava quebrada no tema escuro.
+      check("🚨 v303: [data-theme=dark] reclama color+background+border pras 9 classes de alerta/badge (5 tons verificados, todos ≥8.5:1) — app.js usa a classe .alert.al-amber em vez de cor nua",
+        _idxL9.includes('[data-theme="dark"] .al-blue,[data-theme="dark"] .tb{background:var(--bluel)!important;color:#93c5fd!important;border-color:var(--blueb)!important}') &&
+        _idxL9.includes('[data-theme="dark"] .al-green,[data-theme="dark"] .tg{background:var(--greenl)!important;color:#6ee7b7!important;border-color:var(--greenb)!important}') &&
+        _idxL9.includes('[data-theme="dark"] .al-amber,[data-theme="dark"] .ta{background:var(--amberl)!important;color:#fbbf24!important;border-color:var(--amberb)!important}') &&
+        _idxL9.includes('[data-theme="dark"] .al-red,[data-theme="dark"] .tr{background:var(--redl)!important;color:#fca5a5!important;border-color:var(--redb)!important}') &&
+        _idxL9.includes('[data-theme="dark"] .tp{background:var(--purplel)!important;color:#c4b5fd!important;border-color:var(--purpleb)!important}') &&
+        _appL9.includes('box.innerHTML=\'<div class="alert al-amber" style="justify-content:center;text-align:center;margin:16px">') &&
+        !_appL9.includes("color:#b45309;font-size:13px;padding:26px 16px"),
+        "sistema de alertas/badges continua sem rescue dark, ou o erro de tutorial continua com cor nua");
       // (39) ponte manual → robô + subtítulo honesto
       check("🎨 v182-L9 (39): o Passo 2 do robô ganhou a ponte 'usar os mesmos filtros da minha busca' (forçando só com e-mail) e o subtítulo passou a citar só as dimensões que a fonte escolhida TEM de verdade",
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&

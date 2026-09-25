@@ -6333,7 +6333,7 @@ async function loadTutorial(){
     _tutLoaded=true;
     tutFiltra();
   }catch(e){
-    box.innerHTML='<div style="text-align:center;color:#b45309;font-size:13px;padding:26px 16px">⚠️ Não deu pra carregar os tutoriais agora. Confira a internet e abra a aba de novo.</div>';
+    box.innerHTML='<div class="alert al-amber" style="justify-content:center;text-align:center;margin:16px">⚠️ Não deu pra carregar os tutoriais agora. Confira a internet e abra a aba de novo.</div>';
   }
 }
 function _tutNorm(s){return String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");}
