@@ -3366,6 +3366,10 @@ async function drillBloqueioComprasNovas() {
       _appL314.includes('.replace(/{nome}/g,    ()=>CFG.name||U?.name||"")') &&
       _appL314.includes('.replace(/{nome}/g,()=>U.name||"João Silva")'),
       "fill()/peUpdateSubjPreview ainda passam string crua pro replace");
+    check("🚨 v315: a UI de busca de vagas (mensagem 'sem resultados' e barra de sugestão) também usa função no replace de {q} — texto LIVRE que o usuário digitou nunca mais interpreta $&/$`/$'/$$",
+      _appL314.includes('.replace("{q}",()=>st.q)') &&
+      _appL314.includes('.replace("{q}",()=>esc(q||""))'),
+      "_vfVazioHtml/_vfRenderSugestoes ainda passam string crua pro replace de {q}");
 
     // ═══ 💳 v141 (dono, 15/08 — "esse Cleiton e também o outro ali, eu sei
     // que nenhum dos 2 tem todos esses dias de plano. algo deu errado!") ═══

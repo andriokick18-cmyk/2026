@@ -1794,8 +1794,12 @@ function _vfRenderSugestoes(sugs,q){
   const bar=document.createElement("div");
   bar.id="vf-sug-bar";
   bar.style.cssText="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:10px 14px;margin:10px 14px 0;font-size:12.5px;color:#1e40af;display:flex;gap:8px;align-items:center;flex-wrap:wrap";
+  // 🚨 v315 (achado de auditoria contínua — mesma classe do v314): {q} aqui é
+  // o texto LIVRE que o usuário digitou — replace com string interpretaria
+  // $&/$`/$'/$$ como diretiva. {n}/{cat} continuam seguros (número formatado
+  // e rótulo fixo de categoria, nunca texto livre) — só {q} precisa do fix.
   bar.innerHTML="<i class='ti ti-bulb' style='font-size:15px;flex-shrink:0'></i><span>"+
-    t('vf_sug').replace("{n}",Number(s.n).toLocaleString("pt-BR")).replace("{cat}",esc(s.label||s.categoria)).replace("{q}",esc(q||""))+
+    t('vf_sug').replace("{n}",Number(s.n).toLocaleString("pt-BR")).replace("{cat}",esc(s.label||s.categoria)).replace("{q}",()=>esc(q||""))+
     "</span><button type='button' class='btn btn-secondary btn-sm' style='margin-left:auto' onclick=\"vfIncluirSugestao('"+esc(s.categoria)+"')\">"+esc(t('vf_sug_btn'))+"</button>";
   jl.parentElement.insertBefore(bar,jl);
 }
@@ -2192,7 +2196,12 @@ function _vfVazioHtml(d){
     dica=`<div style="margin-top:12px;font-size:13px;color:var(--t1)">${esc(t('vf_vazio_tirando').replace("{f}",melhor.lbl).replace("{n}",melhor.n.toLocaleString("pt-BR")))}</div>`+
       btn(t('vf_vazio_tirar'),`vfRemove('manual','${melhor.dim}',${_vfAttr(melhor.v)})`,"var(--green)");
   }
-  const busca=st.q?`<div style="margin-top:6px">${esc(t('vf_vazio_busca').replace("{q}",st.q))}</div>`:"";
+  // 🚨 v315 (achado de auditoria contínua — mesma classe do v314): st.q é o
+  // texto LIVRE que o usuário digitou na busca — .replace("{q}", string)
+  // deixaria o JS interpretar $&/$`/$'/$$ dentro dele como diretiva de
+  // replace (mesmo spec do v314), corrompendo a mensagem "sem resultados"
+  // na cara do usuário. Função como 2º argumento nunca interpreta nada.
+  const busca=st.q?`<div style="margin-top:6px">${esc(t('vf_vazio_busca').replace("{q}",()=>st.q))}</div>`:"";
   return `<div style="${cx}"><div style="font-size:34px">🔍</div>`+
     `<div style="font-weight:800;margin:6px 0 4px;color:var(--t1)">${esc(t('vf_vazio_t'))}</div>`+
     `${busca}${lista}${dica}<div style="margin-top:10px">`+
