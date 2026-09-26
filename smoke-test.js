@@ -1736,6 +1736,31 @@ async function drillAdminSettingsLegado() {
         !!_novaFaq && /autoatendimento/i.test(_novaFaq.acceptedAnswer?.text || "") && /H-2A/i.test(_novaFaq.acceptedAnswer?.text || "") &&
         (_golpeLd.mainEntity || []).length >= 5 && _golpeDivergem.length === 0,
         `faq encontrada=${!!_novaFaq} · divergem: ${_golpeDivergem.map((q) => String(q.name).slice(0, 50)).join(" | ")}`);
+      // 📝 v343 (achado enquanto escrevia a guarda do v342): a MESMA classe
+      // de divergência JSON-LD×visível existia em guia.html — TODAS as 9
+      // perguntas do FAQPage tinham texto cortado/reformulado em relação ao
+      // texto visível (a copy do FAQ foi enriquecida com <strong>/link em
+      // algum momento e o JSON-LD nunca acompanhou) — e 1 em
+      // quanto-ganha-h2b.html. Corrigidas pra bater com o texto visível
+      // (que tem <strong>/<a> inline, então a comparação aqui remove tags
+      // antes de comparar — diferente do v186-L4/v342, que comparam a
+      // string crua porque aquelas páginas não têm HTML dentro da resposta).
+      function _faqDivergeStripTags(src) {
+        const ld = JSON.parse((src.match(/<script type="application\/ld\+json">\s*(\{[\s\S]*?"FAQPage"[\s\S]*?\})\s*<\/script>/) || [])[1] || "{}");
+        const visivel = src.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g, "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ");
+        const divergem = (ld.mainEntity || []).filter((q) => !visivel.includes(String(q.acceptedAnswer?.text || "").replace(/\s+/g, " ").trim()));
+        return { total: (ld.mainEntity || []).length, divergem };
+      }
+      const _guiaSrc = fs.readFileSync(path.join(__dirname, "guia.html"), "utf8");
+      const _guiaChk = _faqDivergeStripTags(_guiaSrc);
+      check("📝 v343: guia.html — as 9 perguntas do FAQPage batem com o texto visível (tags removidas antes de comparar)",
+        _guiaChk.total >= 9 && _guiaChk.divergem.length === 0,
+        `total=${_guiaChk.total} · divergem: ${_guiaChk.divergem.map((q) => String(q.name).slice(0, 50)).join(" | ")}`);
+      const _qghSrc = fs.readFileSync(path.join(__dirname, "quanto-ganha-h2b.html"), "utf8");
+      const _qghChk = _faqDivergeStripTags(_qghSrc);
+      check("📝 v343: quanto-ganha-h2b.html — a pergunta 'salário é o mesmo em todo o país?' bate com o texto visível",
+        _qghChk.total >= 4 && _qghChk.divergem.length === 0,
+        `total=${_qghChk.total} · divergem: ${_qghChk.divergem.map((q) => String(q.name).slice(0, 50)).join(" | ")}`);
       // (c) a página "funciona" não pode prometer o que o app não faz: ler a
       // caixa de entrada (o app é só-envio) nem gerar texto pelo usuário
       const _fnc = _pubSrc["h2bapply-funciona.html"];
