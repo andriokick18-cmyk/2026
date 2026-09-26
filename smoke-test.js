@@ -1692,6 +1692,31 @@ async function drillAdminSettingsLegado() {
       const _mentira = Object.entries(_todos).flatMap(([f, s2]) => _frases.filter((fr) => s2.includes(fr)).map((fr) => `${f}: "${fr}"`));
       check("🌐 v186-L4: nenhuma página pública nem template de SEO do servidor vende 'login pelo Google' — a landing não tem Google nenhum desde o v172c (o Google só conecta o Gmail de ENVIO, depois do plano)",
         _mentira.length === 0, _mentira.join(" · "));
+      // 🎨 v341 (achado numa varredura visual do dono, 26/09/2026): igual às
+      // outras 8 conversões pro tema escuro, como-usar.html tinha um :root
+      // claro por padrão com um variante escuro NUNCA de fato ligado (só
+      // condicional a @media prefers-color-scheme/[data-theme], que esta
+      // página standalone nunca seta). Promovido o valor escuro (já
+      // desenhado) a padrão único — mesmo padrão de "1 :root só, sem
+      // alternância" das outras conversões.
+      const _cusaSrc = fs.readFileSync(path.join(__dirname, "como-usar.html"), "utf8");
+      check("🎨 v341: como-usar.html tem UM :root só, já com os valores ESCUROS (fundo #0B120E) como padrão — sem @media(prefers-color-scheme) nem [data-theme] alternando pra um :root claro",
+        _cusaSrc.includes("--ground:#0B120E") && !/@media\s*\(\s*prefers-color-scheme\s*:\s*dark\s*\)/.test(_cusaSrc) &&
+        !_cusaSrc.includes('[data-theme="dark"]') && !_cusaSrc.includes('[data-theme="light"]') &&
+        !_cusaSrc.includes("#FBFAF6"),
+        "como-usar.html ainda tem alternância de tema ou o :root claro sobrou no arquivo");
+      check("🎨 v341 (estrutural): a regra do bezel do celular (.phone-scr) nunca mais é um seletor CSS quebrado (vírgula seguida de @media — regra inteira descartada pelo parser) — border-color fixo aplicado direto na regra base",
+        /\.phone-scr\{[^}]*border-color:#2C3A32\}/.test(_cusaSrc) &&
+        !/:root\[data-theme="dark"\]\s*\.phone-scr\s*,/.test(_cusaSrc),
+        "phone-scr continua com a regra quebrada ou perdeu a cor de bezel");
+      // 🧹 v341: sistema de diamantes (v170: "retire todo sistema de
+      // diamantes") não existe mais — o tutorial prometia recompensa em 💎
+      // por completar o perfil e pela 1ª candidatura, um mecanismo que este
+      // repo não tem desde o v170. Mesma classe do v176/v177 (tutorial
+      // citando feature já removida).
+      check("🧹 v341: como-usar.html não promete mais recompensa em 💎 (perfil completo / 1ª candidatura) — mecanismo que não existe desde a remoção do sistema de diamantes (v170)",
+        !_cusaSrc.includes("recompensa") && !/\+\d\s*💎/.test(_cusaSrc) && !_cusaSrc.includes('class="reward"'),
+        "como-usar.html ainda promete recompensa em diamantes");
       // (c) a página "funciona" não pode prometer o que o app não faz: ler a
       // caixa de entrada (o app é só-envio) nem gerar texto pelo usuário
       const _fnc = _pubSrc["h2bapply-funciona.html"];
