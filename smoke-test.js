@@ -7708,6 +7708,23 @@ async function drillAdminSettingsLegado() {
         fs.readFileSync(path.join(__dirname, "como-usar.html"), "utf8").includes('<link rel="canonical" href="https://h2bapply.com/como-usar">') &&
         fs.readFileSync(path.join(__dirname, "server.js"), "utf8").includes('{loc:"https://h2bapply.com/como-usar",priority:"0.7",changefreq:"weekly"}'),
         "como-usar.html continua sem canonical/og:url ou fora do sitemap");
+      // 🔍 v349 (achado numa varredura autônoma pós-v348, mesma família do
+      // v297 acima): das páginas de conteúdo do site (guia/h2b-e-golpe/
+      // h2bapply-funciona/quanto-ganha-h2b/quanto-custa-o-visto-h2b/
+      // empresas-que-patrocinam-visto-h2b), como-usar.html — a página de
+      // tutorial de maior tráfego, linkada da Home e do guia — era a ÚNICA
+      // que parava em og:title/description/image/url, sem og:type nem
+      // og:image:width/height nem NENHUMA tag twitter:*. Isso degrada o
+      // preview de link no WhatsApp/X (o canal de compartilhamento mais
+      // usado por essa audiência) bem na página que mais gente de fora vê.
+      const _cusaSeo = fs.readFileSync(path.join(__dirname, "como-usar.html"), "utf8");
+      check("🔍 v349: como-usar.html tem og:type/og:image:width/og:image:height e as 4 tags twitter:* — mesmo padrão OG/Twitter Card das outras páginas de conteúdo do site",
+        _cusaSeo.includes('<meta property="og:type" content="article">') &&
+        _cusaSeo.includes('<meta property="og:image:width" content="1200">') &&
+        _cusaSeo.includes('<meta property="og:image:height" content="630">') &&
+        _cusaSeo.includes('<meta name="twitter:card" content="summary_large_image">') &&
+        _cusaSeo.includes("twitter:title") && _cusaSeo.includes("twitter:description") && _cusaSeo.includes("twitter:image"),
+        "como-usar.html continua sem og:type/dimensões de imagem ou sem as tags twitter:*");
       // 🔍 v298 (achado de auditoria contínua — SEO, continuação do v297):
       // as 5 páginas legais/utilitárias inline de server.js (/privacidade,
       // /google-data-usage, /termos, /excluir-conta, /contact) iam direto
