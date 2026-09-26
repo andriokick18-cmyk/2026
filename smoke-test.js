@@ -8856,6 +8856,117 @@ async function drillAdminSettingsLegado() {
     COOKIE = _cookieAntes;
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
 
+    // ═══ 🗺️ v340 — SEO: página pública individual de vaga (/vaga/:caseNumber) ═══
+    // Faltava exatamente o nível de página que o Google mais recompensa em
+    // busca de emprego: 1 URL indexável por VAGA, com JobPosting (schema.org)
+    // — as páginas agregadas de estado/categoria (renderStatePage, server.js)
+    // citam isso de propósito como fora do escopo delas. Cobre: dado real
+    // (jan2026, sem cidade/descrição na planilha bundled — prova que campo
+    // ausente nunca vira dado inventado), 404 de verdade (nunca 302) pra vaga
+    // inexistente/morta/vencida/rascunho, e escape de HTML/JSON-LD contra
+    // campo hostil (empresa/descrição vêm de scraping do DOL — nunca confiar
+    // no formato; a página é 100% pública, sem sessão nenhuma).
+    {
+      const _vgReal = await req2("GET", "/vaga/H-400-26001-520313");
+      check("🗺️ v340: /vaga/:caseNumber existe pra vaga real (jan2026) — 200, título+empresa no HTML, indexável, canonical certo",
+        _vgReal.status === 200 && _vgReal.body.includes("Landscape Laborer") && _vgReal.body.includes("312 Land Development") &&
+        _vgReal.body.includes('<meta name="robots" content="index, follow">') &&
+        _vgReal.body.includes('<link rel="canonical" href="https://h2bapply.com/vaga/H-400-26001-520313">'),
+        _vgReal.status + " " + _vgReal.body.slice(0, 200));
+      check("🗺️ v340: e-mail do empregador NUNCA aparece na página pública (mais estrito que a regra 163 — nem mascarado; página é 100% sem sessão)",
+        !_vgReal.body.includes("kimberly.a.mcquade"), "e-mail do empregador vazou na página pública");
+      const _vgSchema = (() => { try { return JSON.parse((_vgReal.body.match(/<script type="application\/ld\+json">\n([\s\S]*?)\n<\/script>/) || [])[1] || "null"); } catch { return null; } })();
+      check("🗺️ v340: JSON-LD JobPosting tem title/hiringOrganization/jobLocation/employmentType/baseSalary certos, e NUNCA inventa addressLocality/validThrough que a planilha bundled não tem (sem cidade, sem data de fim nesta linha)",
+        _vgSchema?.["@type"] === "JobPosting" && _vgSchema.title === "Landscape Laborer" &&
+        _vgSchema.hiringOrganization?.name === "312 Land Development, LLC" &&
+        _vgSchema.jobLocation?.address?.addressRegion === "TENNESSEE" &&
+        _vgSchema.jobLocation?.address?.addressLocality === undefined &&
+        JSON.stringify(_vgSchema.employmentType) === '["TEMPORARY"]' &&
+        _vgSchema.baseSalary?.value?.value === 19.87 && _vgSchema.baseSalary?.value?.unitText === "HOUR" &&
+        typeof _vgSchema.datePosted === "string" && _vgSchema.validThrough === undefined,
+        JSON.stringify(_vgSchema));
+      const _vg404 = await req2("GET", "/vaga/H-000-NAOEXISTE-0000");
+      check("🗺️ v340: case number que nunca existiu devolve 404 de VERDADE (nunca 302 — não é 'conteúdo fraco', é 'essa vaga não existe')",
+        _vg404.status === 404 && _vg404.body.includes("não está mais disponível"), _vg404.status);
+
+      // Fixture própria (nunca mexe no jan2026 real) pra provar: XSS, vaga
+      // morta (status DOL), vaga vencida (data de fim no passado) e omissão
+      // honesta de baseSalary pra unidade sem unitText oficial (bi-weekly).
+      const _upV340 = await req2("POST", "/api/admin/sheet/upload", {
+        name: "Teste v340", key: "vaga340teste",
+        data: [
+          { c: "H-400-VG340-0001", e: "test340@example.com", n: "Empresa Normal LLC", t: "Cook Test", s: "FLORIDA" },
+          { c: "H-400-VG340-0002", e: "test340b@example.com", n: "Empresa Morta", t: "Vaga Morta", s: "TEXAS" },
+          { c: "H-400-VG340-0003", e: "test340c@example.com", n: "Empresa Vencida", t: "Vaga Vencida", s: "TEXAS" },
+          { c: "H-400-VG340-0004", e: "test340d@example.com", n: "Empresa Quinzenal", t: "Vaga Quinzenal", s: "TEXAS" },
+        ],
+      });
+      await req2("POST", "/api/test/enriquecer-linha", {
+        token: TEST_TOKEN, sheet: "vaga340teste", case: "H-400-VG340-0001",
+        dol: { job_title: "Cook <script>alert(1)</script>", employer_business_name: 'Empresa "Malvada" & Cia <img src=x onerror=alert(2)>',
+          worksite_city: "Orlando</script><script>alert(3)</script>", job_duties: "Descrição com </script> tentando quebrar.",
+          case_status: "Certified", basic_rate_from: "18.50", pay_range_desc: "Hour" },
+      });
+      await req2("POST", "/api/test/enriquecer-linha", {
+        token: TEST_TOKEN, sheet: "vaga340teste", case: "H-400-VG340-0002", dol: { case_status: "Withdrawn" },
+      });
+      await req2("POST", "/api/test/enriquecer-linha", {
+        token: TEST_TOKEN, sheet: "vaga340teste", case: "H-400-VG340-0003",
+        dol: { begin_date: "2020-01-01", end_date: "2020-06-01", case_status: "Certified" },
+      });
+      await req2("POST", "/api/test/enriquecer-linha", {
+        token: TEST_TOKEN, sheet: "vaga340teste", case: "H-400-VG340-0004",
+        dol: { case_status: "Certified", basic_rate_from: "1500.00", pay_range_desc: "Bi-Weekly" },
+      });
+      const _vgXss = await req2("GET", "/vaga/H-400-VG340-0001");
+      const _vgXssLd = (_vgXss.body.match(/<script type="application\/ld\+json">\n([\s\S]*?)\n<\/script>/) || [])[1] || "";
+      check("🗺️ v340: campo hostil (título/empresa/cidade/descrição vindos do 'DOL') NUNCA vira HTML executável — sempre escapado, mesmo no JSON-LD (\\u003c no lugar de '<')",
+        _upV340.json?.ok === true &&
+        !/<script>alert/.test(_vgXss.body) && _vgXss.body.includes("&lt;script&gt;alert(1)&lt;/script&gt;") &&
+        _vgXss.body.includes("&quot;Malvada&quot;") && !_vgXssLd.includes("</script") && _vgXssLd.includes("\\u003c"),
+        JSON.stringify({ upload: _upV340.status, temScript: /<script>alert/.test(_vgXss.body) }));
+      const _vgMorta = await req2("GET", "/vaga/H-400-VG340-0002");
+      const _vgVencida = await req2("GET", "/vaga/H-400-VG340-0003");
+      check("🗺️ v340: vaga com status de cancelamento do DOL (Withdrawn) e vaga com data de fim NO PASSADO devolvem 404 — mesma régua de 'vaga morta' que /api/sheet-meta já usa (WITHDRAWN/DENIED/EXPIRED/INVALIDATED + contrato vencido)",
+        _vgMorta.status === 404 && _vgVencida.status === 404, `morta=${_vgMorta.status} vencida=${_vgVencida.status}`);
+      const _vgQuinzenal = await req2("GET", "/vaga/H-400-VG340-0004");
+      const _vgQzSchema = (() => { try { return JSON.parse((_vgQuinzenal.body.match(/<script type="application\/ld\+json">\n([\s\S]*?)\n<\/script>/) || [])[1] || "null"); } catch { return null; } })();
+      check("🗺️ v340: salário QUINZENAL (bi-weekly) nunca vira baseSalary — schema.org não tem unitText honesto pra isso (regra 29: nunca inventar dado) — a vaga continua 200/indexável, só sem esse campo",
+        _vgQuinzenal.status === 200 && _vgQzSchema?.baseSalary === undefined, JSON.stringify(_vgQzSchema?.baseSalary));
+      // estrutural: rascunho (KB-078/13p2) nunca pode ficar público — sem rota
+      // de teste pra "despublicar" uma extra depois do upload (toda extra
+      // nasce published:true), a garantia fica na fonte: _findVagaPublica só
+      // aceita SHEET_JAN/JUL/H2A (sempre públicas) + extras com
+      // published===true — nunca SHEET_EXTRAS inteiro sem esse filtro.
+      const _srvV340 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      check("🗺️ v340 (estrutural): _findVagaPublica filtra extras por published===true — planilha em RASCUNHO nunca aparece na página pública",
+        /Object\.entries\(SHEET_EXTRAS\)\.filter\(\(\[k\]\)=>DB_SHEETS_META\[k\]\?\.published===true\)/.test(_srvV340),
+        "_findVagaPublica não filtra mais por published===true — rascunho vazaria pro público");
+      // estrutural: o link de compartilhar existe no detalhe da vaga (app.js)
+      const _appV340 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      check("🗺️ v340 (estrutural): o detalhe da vaga (app.js) ganha o link 'Compartilhar' pra /vaga/:caseNumber quando há case number",
+        /href="\/vaga\/\$\{encodeURIComponent\(j\.caseNum\)\}"/.test(_appV340),
+        "link de compartilhar da vaga pública não está mais em mkDetailHTML");
+
+      // 🗺️ v340: /sitemap.xml completo — as 2 páginas de conteúdo novas, as 5
+      // páginas legais/utilitárias que ficaram de fora até aqui, e 1 URL por
+      // VAGA VIVA (mesma régua de _vagaEstaViva — nunca lista vaga morta/
+      // vencida, nunca ADIVINHA vida: a vaga withdrawn e a vencida da
+      // fixture v340 acima PROVAM que ficam de fora).
+      const _sm = await req2("GET", "/sitemap.xml");
+      check("🗺️ v340: /sitemap.xml ganha as 2 páginas de conteúdo novas e as 5 páginas legais/utilitárias que faltavam",
+        _sm.status === 200 &&
+        _sm.body.includes("<loc>https://h2bapply.com/empresas-que-patrocinam-visto-h2b</loc>") &&
+        _sm.body.includes("<loc>https://h2bapply.com/quanto-custa-o-visto-h2b</loc>") &&
+        ["privacidade", "termos", "excluir-conta", "contact", "google-data-usage"].every((s) => _sm.body.includes(`<loc>https://h2bapply.com/${s}</loc>`)),
+        _sm.status);
+      check("🗺️ v340: /sitemap.xml lista a URL da vaga viva (H-400-26001-520313) mas NUNCA a da vaga Withdrawn nem a vencida (mesma régua de _vagaEstaViva usada por /vaga/:caseNumber)",
+        _sm.body.includes("<loc>https://h2bapply.com/vaga/H-400-26001-520313</loc>") &&
+        !_sm.body.includes("/vaga/H-400-VG340-0002") && !_sm.body.includes("/vaga/H-400-VG340-0003") &&
+        _sm.body.includes("/vaga/H-400-VG340-0001") && _sm.body.includes("/vaga/H-400-VG340-0004"),
+        "vaga morta ou vencida vazou no sitemap, ou vaga viva ficou de fora");
+    }
+
     // ═══ 💾 v199 LOTE 19: o modo que roda EM PRODUÇÃO (SQLite dual-write) ═══
     // A suíte inteira roda com STORAGE=json — o modo que o storage.js chama de
     // "antigo". Em produção o padrão é SQLite com espelho JSON, e o motivo
@@ -8866,11 +8977,13 @@ async function drillAdminSettingsLegado() {
     {
       const DATA_S = fs.mkdtempSync(path.join(os.tmpdir(), "h2b-sqlite-"));
       const PORT_S = PORT + 60;
-      let logS = "", srvS = null;
+      let logS = "", srvS = null, COOKIE_S = "";
       const reqS = (method, p2, payload) => new Promise((resolve, reject) => {
         const body = payload === undefined ? null : JSON.stringify(payload);
         const r = http.request(`http://127.0.0.1:${PORT_S}` + p2, { method,
-          headers: { ...(body ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) } : {}) } }, (res) => {
+          headers: { ...(body ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) } : {}), ...(COOKIE_S ? { Cookie: COOKIE_S } : {}) } }, (res) => {
+          const sc = res.headers["set-cookie"];
+          if (sc && sc.length) COOKIE_S = sc[0].split(";")[0];
           let b = ""; res.on("data", (c) => (b += c));
           res.on("end", () => { let json2 = null; try { json2 = JSON.parse(b); } catch {} resolve({ status: res.statusCode, body: b, json: json2 }); });
         });
@@ -8904,6 +9017,26 @@ async function drillAdminSettingsLegado() {
             /⬆️\s+Migrado/.test(logS), (logS.match(/\[storage\][^\n]*/g) || []).join(" | ").slice(0, 240));
           // Grava pelo servidor, reinicia, e confere que o dado volta.
           await reqS("POST", "/api/test/login", { token: TEST_TOKEN, email: "sqlitenovo@test.com", name: "SQLite NOVO" });
+          // 🔒 v339 (achado de auditoria contínua): mark-invalid/remove de
+          // email-intelligence gravavam DB_INVALID_EMAILS com fs.writeFileSync
+          // cru — nunca persist(). No modo de produção (aqui, sem
+          // STORAGE=json), storageLoad() só lê o JSON na migração inicial;
+          // depois sempre lê do SQLite. Marca ANTES do restart pra provar que
+          // sobrevive — sem o fix, sumia sozinha no boot seguinte.
+          await reqS("POST", "/api/test/login", { token: TEST_TOKEN, email: "admsqlite339@test.com", isAdmin: true });
+          const _markS = await reqS("POST", "/api/admin/email-intelligence/mark-invalid", { email: "morto339@teste.com", motivo: "bounce de teste" });
+          // 🚑 v339b (achado ao rodar ESTE MESMO drill pela 1ª vez): a rota
+          // referenciava `body` — variável que NUNCA existiu neste escopo —
+          // sem try/catch ao redor (regra 13i do CLAUDE.md). A exceção virava
+          // unhandledRejection só logado (sem acesso a `res`): a requisição
+          // HTTP NUNCA respondia, e este `await reqS(...)` travava a suíte
+          // INTEIRA pra sempre, sem erro nenhum pra reportar (achado só
+          // rastreando processo travado com CPU ~0% por 17+min). Corrigido
+          // pra ler o corpo via JSON.parse(await readBody(req)) com
+          // try/catch cobrindo tudo — este check em si é a prova: sem o
+          // fix, a suíte nunca chegaria até aqui.
+          check("🚑 v339b: mark-invalid NUNCA mais trava a requisição por variável inexistente (`body`) — responde de verdade em vez de ficar girando pra sempre",
+            _markS.status === 200 && _markS.json?.ok === true, JSON.stringify(_markS.json));
           await matarServidor(srvS, "SIGTERM");
           logS = "";
           srvS = spawnServidor({ PORT: String(PORT_S), DATA_DIR: DATA_S, TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890" }, (t) => (logS += t));
@@ -8912,6 +9045,24 @@ async function drillAdminSettingsLegado() {
           check("💾 v199-L19: o que foi gravado no modo SQLite VOLTA depois de um restart — a conta criada antes do desligamento continua lá (e o usuário do JSON importado também)",
             _upS2 === true && _stS2.status === 200 && !/SQLite indispon/.test(logS),
             `up=${_upS2} status=${_stS2.status}`);
+          await reqS("POST", "/api/test/login", { token: TEST_TOKEN, email: "admsqlite339@test.com", isAdmin: true });
+          const _eiS2 = await reqS("GET", "/api/admin/email-intelligence");
+          check("💾 v339: o e-mail marcado como inválido ANTES do restart CONTINUA marcado depois — antes desta correção, sumia sozinho (fs.writeFileSync nunca chegava no SQLite, que é o que storageLoad() lê depois da 1ª migração)",
+            (_eiS2.json?.invalids || []).some((x) => x.email === "morto339@teste.com"),
+            JSON.stringify((_eiS2.json?.invalids || []).map((x) => x.email)));
+          // Remove, reinicia de novo, e confere que a remoção TAMBÉM sobrevive
+          // (a mesma classe de bug faria o e-mail REAPARECER depois de removido).
+          const _rmS = await reqS("DELETE", "/api/admin/email-intelligence/remove/" + encodeURIComponent("morto339@teste.com"));
+          check("💾 v339: (setup) DELETE remove responde 200 no modo SQLite", _rmS.status === 200, JSON.stringify(_rmS.json));
+          await matarServidor(srvS, "SIGTERM");
+          logS = "";
+          srvS = spawnServidor({ PORT: String(PORT_S), DATA_DIR: DATA_S, TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890" }, (t) => (logS += t));
+          await esperarNoAr(() => reqS("GET", "/api/status"), 40_000);
+          await reqS("POST", "/api/test/login", { token: TEST_TOKEN, email: "admsqlite339@test.com", isAdmin: true });
+          const _eiS3 = await reqS("GET", "/api/admin/email-intelligence");
+          check("💾 v339: a REMOÇÃO também sobrevive ao restart — o e-mail não reaparece marcado como inválido (a mesma classe de bug faria a lista voltar ao estado de ANTES da remoção)",
+            !(_eiS3.json?.invalids || []).some((x) => x.email === "morto339@teste.com"),
+            JSON.stringify((_eiS3.json?.invalids || []).map((x) => x.email)));
         }
       } catch (e) {
         check("💾 v199-L19: drill do modo SQLite sem exceção", false, e.message);

@@ -1110,6 +1110,23 @@ function isEmailInvalid(email){
   const e = DB_INVALID_EMAILS[email?.toLowerCase()];
   return e && e.status === 'invalid' && e.count >= 1;
 }
+// 🔒 v339 (achado de auditoria contínua): as 2 rotas de admin que tocam
+// DB_INVALID_EMAILS (mark-invalid/remove, mais abaixo) gravavam com
+// fs.writeFileSync CRU — nunca persist()/storagePersist(). Em produção
+// (SQLite + espelho JSON é o padrão real — ver v199-L19), storageLoad() só
+// lê o arquivo JSON UMA VEZ, na migração inicial pro banco; depois disso
+// lê SEMPRE do SQLite (storage.js:78). Uma marcação/remoção manual do
+// admin sobrevivia até o PRÓXIMO deploy (este repo faz deploy a cada
+// commit) e no boot seguinte voltava SOZINHA ao estado de antes da ação —
+// sem log, sem aviso, como se a ação nunca tivesse acontecido. Helper
+// único (nunca 2 cópias da serialização do Set `users`) que passa SEMPRE
+// pelo persist() canônico — cobre SQLite+espelho, retry de disco cheio e
+// respeita o congelamento de gravações do restore de backup.
+function _persistInvalidEmails(){
+  const toSave={};
+  for(const [k,v] of Object.entries(DB_INVALID_EMAILS)){toSave[k]={...v,users:[...(v.users instanceof Set?v.users:new Set(v.users||[]))]}}
+  return persist(INVALID_EMAILS_FILE,toSave);
+}
 
 function boot() {
   // ── CANÁRIO DE PERSISTÊNCIA (diagnóstico turnkey nos logs) ────────────
@@ -4272,6 +4289,263 @@ ${JSON.stringify({
 </html>`;
 }
 
+// ── 🔍 SEO v340: escape de HTML pra interpolação de campo de planilha ───────
+// renderStatePage/renderCategoryPage só interpolam número formatado e nome de
+// estado (dicionário fixo — sempre seguro). A página de vaga individual
+// abaixo interpola campo LIVRE vindo do DOL (empresa, cidade, descrição,
+// requisitos) — sem escapar, uma vaga com "<script>" na descrição (erro de
+// scraping, ou até um empregador mal-intencionado) executaria no navegador de
+// QUALQUER visitante (a página é pública, sem sessão). Nunca reusar
+// interpolação crua de campo de planilha em HTML novo sem passar por aqui.
+function _escHtml(s){
+  return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+// JSON-LD embutido em <script type="application/ld+json">: JSON.stringify não
+// escapa "<", então um valor com "</script>" dentro (ex.: descrição da vaga)
+// fecharia a tag PRECOCEMENTE aos olhos do parser de HTML (que não sabe que
+// está dentro de uma string JSON) — quebra o JSON-LD e, em teoria, permite
+// injetar HTML depois. < é idêntico pro parser de JSON, invisível pro
+// rich-result do Google, e nunca é interpretado como abertura de tag.
+function _jsonLdSafe(obj){
+  return JSON.stringify(obj).replace(/</g,"\\u003c");
+}
+
+// ── 🔍 SEO v340: localiza 1 vaga pública por case number (/vaga/:caseNumber) ─
+// Busca nas 3 planilhas fixas + extras PUBLICADAS (nunca rascunho — regra
+// KB-078/13p2: rascunho não pode ficar visível fora do admin). Aplica a MESMA
+// régua de "vaga morta" que /api/sheet-meta já usa (status DOL de
+// cancelamento + contrato já vencido) — a página pública nunca indexa nem
+// serve uma vaga encerrada; caiu fora do ar = 404 de verdade.
+// mesma régua de "vaga morta" do /api/sheet-meta (server.js, rota GET
+// /api/sheet-meta) — fonte única: _findVagaPublica (página individual) e o
+// /sitemap.xml (que lista só case numbers vivos) usam a MESMA função, nunca
+// 2 cópias do que é "vaga morta" divergindo com o tempo.
+function _vagaEstaViva(r){
+  const st=(r.st||"").toUpperCase();
+  if(st.includes("WITHDRAWN")||st.includes("DENIED")||st.includes("EXPIRED")||st.includes("INVALIDATED"))return false;
+  const hojeISO=new Date().toISOString().slice(0,10);
+  if(r.de&&/^\d{4}-\d{2}-\d{2}$/.test(r.de)&&r.de<hojeISO)return false;
+  return true;
+}
+function _findVagaPublica(caseNumberRaw){
+  const alvo=String(caseNumberRaw||"").trim().toUpperCase();
+  if(!alvo)return null;
+  const fontes=[SHEET_JAN,SHEET_JUL,SHEET_H2A,
+    ...Object.entries(SHEET_EXTRAS).filter(([k])=>DB_SHEETS_META[k]?.published===true).map(([,arr])=>arr)];
+  let r=null;
+  for(const arr of fontes){
+    if(!Array.isArray(arr))continue;
+    r=arr.find(row=>row&&String(row.c||"").trim().toUpperCase()===alvo);
+    if(r)break;
+  }
+  if(!r)return null;
+  if(!_vagaEstaViva(r))return null;
+  return r;
+}
+// Unidades de salário (mod-planilhas.js PAY_UNIT) que o schema.org QuantitativeValue
+// consegue expressar honestamente. "bw" (quinzenal) e "pr" (por peça/produção)
+// NÃO têm unitText oficial equivalente — omitir baseSalary nesses casos é
+// mais correto do que forçar um valor incorreto (regra 29: nunca inventar dado).
+const WUNIT_TO_SCHEMA={h:"HOUR",d:"DAY",w:"WEEK",mo:"MONTH",y:"YEAR"};
+// 404 real (nunca redirect 302 como as páginas agregadas de estado/categoria
+// — aqui o caso não é "conteúdo fraco", é "essa vaga específica não existe
+// mais"; misturar com 302 faria o Google pensar que a URL foi movida).
+function _render404Vaga(){
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Vaga não encontrada — H2BApply</title>
+<meta name="robots" content="noindex, follow">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',system-ui,sans-serif;background:#f0f4ff;color:#1e1b4b;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
+.box{max-width:420px}
+h1{font-size:22px;font-weight:800;margin-bottom:10px}
+p{font-size:14px;color:#4c4f82;line-height:1.7;margin-bottom:20px}
+a{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#3b82f6,#7c3aed);color:#fff;font-weight:700;font-size:13.5px;padding:12px 22px;border-radius:12px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>🔎 Essa vaga não está mais disponível</h1>
+  <p>Ela pode ter sido preenchida, encerrada pelo DOL ou o número do caso está incorreto. Mas o H2BApply tem milhares de outras vagas H-2B e H-2A certificadas, todos os dias.</p>
+  <a href="/?cadastro=1">Ver vagas disponíveis</a>
+</div>
+</body>
+</html>`;
+}
+// ── 📄 SEO v340: página pública individual de vaga (/vaga/:caseNumber) ──────
+// Faltava exatamente o nível de página que o Google mais recompensa em busca
+// de emprego: 1 URL indexável por VAGA, com JobPosting (schema.org) — as
+// páginas agregadas de estado/categoria citam isso de propósito (comentário
+// acima de renderStatePage) como fora do escopo delas. Mesmo padrão visual
+// (CSS/fontes/tabler icons) das páginas /vagas-h2b/* — mesma família de
+// página SEO programática, mesmo golpe de olho pra quem navega entre elas.
+// PRIVACIDADE (regra 163 espelhada, mais estrita): esta página é 100%
+// pública/sem sessão — o e-mail e o telefone do empregador NUNCA aparecem
+// aqui, nem mascarados; quem quer o contato de verdade precisa criar conta
+// (mesma régua de negócio de sempre, só que sem nem oferecer o dado mascarado).
+function _renderVagaPage(r){
+  // v340-FIX: TUDO aqui fica CRU (nunca escapado antecipadamente) — o escape
+  // acontece 1 ÚNICA VEZ, no ponto exato de interpolação no HTML abaixo.
+  // Escapar cedo E nos pontos de uso (como a 1ª versão fazia com pageTitle/
+  // pageDesc/local) dobra o escape: "&" vira "&amp;amp;", aspa vira
+  // "&amp;#39;" — aparece LITERAL na tela pro visitante em vez de virar o
+  // caractere original. Achado testando manualmente com nome de empresa com
+  // aspas antes de ir pro ar.
+  const tituloRaw=r.t||"Vaga Sazonal";
+  const empresaRaw=r.n||"Empregador certificado pelo DOL";
+  const estadoNome=normalizeStateName(r.s);
+  const estadoTitleRaw=estadoNome?estadoNome.toLowerCase().replace(/\b\w/g,c=>c.toUpperCase()):(r.s||"");
+  const localRaw=[r.ci||"",estadoTitleRaw].filter(Boolean).join(", ");
+  const stRaw=(r.st||"").toUpperCase();
+  const visa=FILTROS.visaDaLinha(r)||(stRaw.includes("H-2A")?"H-2A":"H-2B");
+  const cat=r.k||"other";
+  const catLabelRaw=CATEGORY_LABELS[cat]?.label||cat;
+  const salarioTxtRaw=r.w?`US$ ${r.w}/${({h:"hora",d:"dia",w:"semana",mo:"mês",y:"ano",bw:"quinzena",pr:"produção"})[r.wunit]||"hora"}`:null;
+  const descRaw=r.desc||null;
+  const reqRaw=r.req||null;
+  const caseNumRaw=r.c||"";
+  // Whitelist pro contexto JS (onclick=gtag(...)): case number do DOL só tem
+  // [A-Za-z0-9-] na prática, mas o dado vem de fonte externa (feed do DOL) —
+  // nunca confiar no formato. _escHtml() protege contexto HTML, mas um
+  // onclick="...'texto'..." é HTML-atributo E STRING JS ao mesmo tempo: o
+  // navegador decodifica a entidade HTML ANTES de rodar o JS, então uma aspa
+  // simples vira "&#39;" no HTML e volta a ser "'" bem a tempo de fechar a
+  // string JS mais cedo — _escHtml sozinho NÃO protege esse contexto.
+  const caseNumJs=String(caseNumRaw).replace(/[^A-Za-z0-9-]/g,"");
+  const url=`https://h2bapply.com/vaga/${encodeURIComponent(caseNumRaw)}`;
+  const pageTitle=`${tituloRaw}${localRaw?` em ${localRaw}`:""} | Vaga ${visa} — H2BApply`;
+  const pageDesc=`${tituloRaw} na ${empresaRaw}${localRaw?` (${localRaw})`:""} — vaga ${visa} certificada pelo Departamento do Trabalho dos EUA${salarioTxtRaw?`, ${salarioTxtRaw}`:""}. Candidate-se grátis pelo H2BApply.`;
+  // datePosted honesto: não existe campo "publicado em" por vaga na planilha
+  // compacta (regra 29 — nunca inventar) — usa a data real de modificação do
+  // arquivo da planilha em disco como proxy verificável (mesmo espírito do
+  // <lastmod> do sitemap.xml, que já usa "data do boot" por falta de melhor).
+  let datePosted=new Date().toISOString().slice(0,10);
+  try{
+    const arqs=fs.readdirSync(SHEETS_DIR).filter(f=>f.endsWith(".json"));
+    let mtimeMax=0;
+    for(const f of arqs){const st2=fs.statSync(path.join(SHEETS_DIR,f));if(st2.mtimeMs>mtimeMax)mtimeMax=st2.mtimeMs;}
+    if(mtimeMax>0)datePosted=new Date(mtimeMax).toISOString().slice(0,10);
+  }catch{}
+  const hojeISO=new Date().toISOString().slice(0,10);
+  const validThrough=(r.de&&/^\d{4}-\d{2}-\d{2}$/.test(r.de)&&r.de>=hojeISO)?r.de:null;
+  const jobPosting={
+    "@context":"https://schema.org",
+    "@type":"JobPosting",
+    title:r.t||"Vaga Sazonal",
+    description:r.desc?String(r.desc):`Vaga ${visa} certificada pelo Departamento do Trabalho dos EUA (DOL) — ${r.t||"função sazonal"}.`,
+    identifier:{"@type":"PropertyValue",name:"H2BApply/DOL Case Number",value:r.c||""},
+    datePosted,
+    employmentType:["TEMPORARY"],
+    hiringOrganization:{"@type":"Organization",name:r.n||"Empregador certificado pelo DOL"},
+    jobLocation:{"@type":"Place",address:{"@type":"PostalAddress",addressLocality:r.ci||undefined,addressRegion:estadoNome||undefined,addressCountry:"US"}}
+  };
+  if(validThrough)jobPosting.validThrough=validThrough;
+  if(r.w&&WUNIT_TO_SCHEMA[r.wunit]){
+    jobPosting.baseSalary={"@type":"MonetaryAmount",currency:"USD",value:{"@type":"QuantitativeValue",value:parseFloat(r.w),unitText:WUNIT_TO_SCHEMA[r.wunit]}};
+  }
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1a56db">
+<title>${_escHtml(pageTitle)}</title>
+<meta name="description" content="${_escHtml(pageDesc)}">
+<meta name="author" content="H2BApply">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="${url}">
+<meta property="og:title" content="${_escHtml(pageTitle)}">
+<meta property="og:description" content="${_escHtml(pageDesc)}">
+<meta property="og:url" content="${url}">
+<meta property="og:type" content="article">
+<meta property="og:image" content="https://h2bapply.com/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${_escHtml(pageTitle)}">
+<meta name="twitter:description" content="${_escHtml(pageDesc)}">
+<meta name="twitter:image" content="https://h2bapply.com/og-image.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=4">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=4">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&family=Sora:wght@700;800&display=swap" rel="stylesheet">
+<link rel="preload" as="style" href="/vendor/tabler-icons.min.css" onload="this.onload=null;this.rel='stylesheet'" onerror="this.onerror=null;this.href='/vendor/tabler-icons.min.css';this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="/vendor/tabler-icons.min.css"></noscript>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}body{font-family:'DM Sans',system-ui,sans-serif;background:#f0f4ff;color:#1e1b4b;font-size:15px;line-height:1.6}
+a{color:inherit;text-decoration:none}
+:root{--surface:#fff;--sf2:#f5f7ff;--sf4:#e0e7ff;--border:rgba(99,102,241,.12);--t2:#4c4f82;--t3:#7c7fb5;--t4:#a5a8cc;--blue:#3b82f6;--bluel:rgba(59,130,246,.14);--blueb:rgba(59,130,246,.32);--green:#10b981;--greenl:rgba(16,185,129,.13);--navy:#0f172a;--r:10px;--rl:14px;--rxl:20px}
+.top-bar{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:58px;background:rgba(255,255,255,.92);backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
+.logo-row{display:flex;align-items:center;gap:10px;font-family:'Sora',sans-serif;font-weight:800;font-size:17px;color:var(--navy)}
+.logo-row img{width:36px;height:36px;border-radius:10px}
+.btn-login{display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#3b82f6,#7c3aed);color:#fff;font-weight:700;font-size:13px;padding:9px 18px;border-radius:10px;border:none;box-shadow:0 4px 15px rgba(59,130,246,.3)}
+.hero{background:linear-gradient(160deg,#052e1c,#065f46,#0d7a4f,#10b981);color:#fff;padding:40px 20px 32px;text-align:center}
+.hero-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;margin-bottom:16px}
+.hero h1{font-family:'Sora',sans-serif;font-size:clamp(20px,4.4vw,30px);font-weight:800;line-height:1.28;margin-bottom:8px;max-width:680px;margin-left:auto;margin-right:auto}
+.hero-sub{font-size:14px;opacity:.92;margin-bottom:4px}
+.content{max-width:760px;margin:0 auto;padding:28px 20px 56px}
+.job-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:24px}
+.job-stat{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--rl);padding:14px 16px;box-shadow:0 2px 10px rgba(99,102,241,.06)}
+.job-stat-lbl{font-size:10.5px;font-weight:700;text-transform:uppercase;color:var(--t3);margin-bottom:4px}
+.job-stat-val{font-family:'Sora',sans-serif;font-size:15px;font-weight:800;color:var(--navy)}
+.section{margin:28px 0 0}
+.section h2{font-family:'Sora',sans-serif;font-size:17px;font-weight:800;color:var(--navy);margin-bottom:10px}
+.card{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--rl);padding:18px 20px;box-shadow:0 2px 10px rgba(99,102,241,.04)}
+.card p{font-size:13.5px;color:var(--t2);line-height:1.75;white-space:pre-wrap}
+.warn-box{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:var(--r);margin:14px 0 0;font-size:12.5px;line-height:1.65;background:var(--bluel);border:1.5px solid var(--blueb);color:#1e40af}
+.cta-section{background:linear-gradient(160deg,#0a0520,#1e1b4b,#4c1d95,#7c3aed);color:#fff;border-radius:var(--rxl);padding:30px 24px;text-align:center;margin:32px 0 24px}
+.cta-section h3{font-family:'Sora',sans-serif;font-size:19px;font-weight:800;margin-bottom:8px}
+.cta-section p{font-size:13.5px;opacity:.82;margin-bottom:18px;max-width:440px;margin-left:auto;margin-right:auto}
+.btn-cta-white{display:inline-flex;align-items:center;gap:8px;background:#fff;color:#1e1b4b;font-weight:700;font-size:13.5px;padding:12px 22px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.2)}
+footer{background:#fff;border-top:1px solid var(--border);text-align:center;padding:22px 20px;font-size:12px;color:var(--t3)}
+footer a{color:var(--blue);font-weight:600}
+</style>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXXXXXXXXX');</script>
+</head>
+<body>
+<header class="top-bar">
+  <a href="/" class="logo-row"><img src="/apple-touch-icon.png?v=4" alt="H2BApply logo"><span>H2BApply</span></a>
+  <a href="/?cadastro=1" class="btn-login" onclick="gtag('event','sign_up_intent',{method:'password',source:'vaga-${caseNumJs}-nav'})"><i class="ti ti-rocket"></i> Começar grátis</a>
+</header>
+<section class="hero">
+  <div class="hero-badge"><i class="ti ti-briefcase"></i> Vaga ${_escHtml(visa)}${localRaw?` · ${_escHtml(localRaw)}`:""}</div>
+  <h1>${_escHtml(tituloRaw)}</h1>
+  <p class="hero-sub">${_escHtml(empresaRaw)}</p>
+</section>
+<main class="content">
+  <div class="job-grid">
+    <div class="job-stat"><div class="job-stat-lbl">Categoria</div><div class="job-stat-val">${_escHtml(catLabelRaw)}</div></div>
+    ${salarioTxtRaw?`<div class="job-stat"><div class="job-stat-lbl">Salário</div><div class="job-stat-val">${_escHtml(salarioTxtRaw)}</div></div>`:""}
+    ${localRaw?`<div class="job-stat"><div class="job-stat-lbl">Local</div><div class="job-stat-val">${_escHtml(localRaw)}</div></div>`:""}
+    ${r.d||r.de?`<div class="job-stat"><div class="job-stat-lbl">Período</div><div class="job-stat-val">${_escHtml(r.d||"?")} a ${_escHtml(r.de||"?")}</div></div>`:""}
+  </div>
+  ${descRaw?`<section class="section"><h2>Funções da vaga</h2><div class="card"><p>${_escHtml(descRaw)}</p></div></section>`:""}
+  ${reqRaw?`<section class="section"><h2>Requisitos</h2><div class="card"><p>${_escHtml(reqRaw)}</p></div></section>`:""}
+  <div class="warn-box"><i class="ti ti-shield-check"></i><div>Vaga certificada pelo Departamento do Trabalho dos EUA (DOL), caso nº ${_escHtml(caseNumRaw)}. O H2BApply nunca cobra taxa de recrutamento — é proibido pela própria regra do programa H-2B/H-2A. O contato do empregador é liberado só depois de criar conta grátis (proteção contra golpe e coleta indevida de e-mail).</div></div>
+  <div class="cta-section">
+    <h3>Candidate-se a esta vaga agora 🇺🇸</h3>
+    <p>Crie uma conta grátis (usuário e senha, sem cartão) e envie sua candidatura direto pelo Gmail em poucos cliques.</p>
+    <a href="/?cadastro=1" class="btn-cta-white" onclick="gtag('event','sign_up_intent',{method:'password',source:'vaga-${caseNumJs}-cta'})"><i class="ti ti-rocket"></i> Criar conta grátis</a>
+  </div>
+</main>
+<footer>
+  <div style="margin-bottom:8px"><a href="/">H2BApply</a> · <a href="/guia">Guia H-2B/H-2A</a> · <a href="/h2b-e-golpe">H2B é Golpe?</a> · <a href="/quanto-ganha-h2b">Quanto Ganha?</a> · <a href="/privacidade">Privacidade</a> · <a href="/termos">Termos</a></div>
+  <div>Vaga certificada pelo Departamento do Trabalho dos EUA. Conteúdo educativo, não é aconselhamento jurídico.</div>
+</footer>
+<script type="application/ld+json">
+${_jsonLdSafe(jobPosting)}
+</script>
+</body>
+</html>`;
+}
+
 // Fisher-Yates shuffle — embaralha sem modificar o array original
 function shuffleArray(arr) {
   const a = [...arr];
@@ -7042,6 +7316,10 @@ const server=http.createServer(async(req,res)=>{
   if(pathname==="/h2bapply-funciona"||pathname==="/h2bapply-funciona.html")return serveHtml("h2bapply-funciona.html"); // SEO: página "H2BApply funciona?" (como funciona, confiança, preços, FAQ)
   if(pathname==="/h2b-e-golpe"||pathname==="/h2b-e-golpe.html")return serveHtml("h2b-e-golpe.html"); // SEO/confiança: página "H2B é golpe?" — golpes comuns, regra federal anti-taxa-de-recrutamento, como verificar vaga real
   if(pathname==="/quanto-ganha-h2b"||pathname==="/quanto-ganha-h2b.html")return serveHtml("quanto-ganha-h2b.html"); // SEO: página "quanto ganha quem trabalha H2B/H2A" — médias reais calculadas ao vivo via /api/public-wage-stats
+  // 📄 SEO v340: 2 páginas de conteúdo novas (pedido do dono) — mesmo tema
+  // escuro/estrutura de guia.html, arquivo estático servido do mesmo jeito.
+  if(pathname==="/empresas-que-patrocinam-visto-h2b"||pathname==="/empresas-que-patrocinam-visto-h2b.html")return serveHtml("empresas-que-patrocinam-visto-h2b.html");
+  if(pathname==="/quanto-custa-o-visto-h2b"||pathname==="/quanto-custa-o-visto-h2b.html")return serveHtml("quanto-custa-o-visto-h2b.html");
   // SEO programático por estado: /vagas-h2b/texas, /vagas-h2b/florida, etc. — gerado
   // no servidor com números reais (nunca arquivo estático). Estados com poucas vagas
   // (< MIN_JOBS_FOR_STATE_PAGE) não têm página própria pra evitar "thin content";
@@ -7079,6 +7357,22 @@ const server=http.createServer(async(req,res)=>{
       res.writeHead(302,{"Location":"/quanto-ganha-h2b"});return res.end();
     }
   }
+  // 📄 SEO v340: página pública individual de vaga (/vaga/:caseNumber) — 1 URL
+  // indexável por vaga, com JobPosting (schema.org). Vaga inexistente/morta/
+  // rascunho = 404 de verdade (nunca 302 — não é "conteúdo fraco", é "não
+  // existe mais"). _findVagaPublica já filtra draft/status DOL/contrato vencido.
+  if(pathname.startsWith("/vaga/")){
+    const caseNum=decodeURIComponent(pathname.slice("/vaga/".length).replace(/\/$/,""));
+    try{
+      const r=_findVagaPublica(caseNum);
+      if(!r){res.writeHead(404,{"Content-Type":"text/html; charset=utf-8","X-Robots-Tag":"noindex"});return res.end(_render404Vaga());}
+      const html=_renderVagaPage(r);
+      return sendHtmlCompressed(req,res,html,"public, max-age=900");
+    }catch(e){
+      console.warn("[vaga] erro:",e.message);
+      res.writeHead(404,{"Content-Type":"text/html; charset=utf-8","X-Robots-Tag":"noindex"});return res.end(_render404Vaga());
+    }
+  }
   if(pathname==="/diagnostico"||pathname==="/diagnostico.html"){res.setHeader("X-Robots-Tag","noindex, nofollow");return serveHtml("diagnostico.html");}
   if(pathname==="/admin-reviews"||pathname==="/admin-reviews.html"){res.setHeader("X-Robots-Tag","noindex, nofollow");return serveHtml("admin-reviews.html");} // Moderação de avaliações reais (protegido via checagem de admin nas próprias rotas /api/admin/reviews*)
 
@@ -7096,6 +7390,16 @@ const server=http.createServer(async(req,res)=>{
       {loc:"https://h2bapply.com/h2b-e-golpe",priority:"0.8",changefreq:"weekly"},
       {loc:"https://h2bapply.com/quanto-ganha-h2b",priority:"0.8",changefreq:"weekly"},
       {loc:"https://h2bapply.com/como-usar",priority:"0.7",changefreq:"weekly"},
+      // 📄 SEO v340: as 2 páginas de conteúdo novas (pedido do dono) + as 5
+      // páginas legais/utilitárias inline do server.js — indexáveis, sem
+      // X-Robots-Tag noindex, mas ausentes do sitemap até aqui.
+      {loc:"https://h2bapply.com/empresas-que-patrocinam-visto-h2b",priority:"0.8",changefreq:"monthly"},
+      {loc:"https://h2bapply.com/quanto-custa-o-visto-h2b",priority:"0.8",changefreq:"monthly"},
+      {loc:"https://h2bapply.com/privacidade",priority:"0.3",changefreq:"yearly"},
+      {loc:"https://h2bapply.com/termos",priority:"0.3",changefreq:"yearly"},
+      {loc:"https://h2bapply.com/excluir-conta",priority:"0.3",changefreq:"yearly"},
+      {loc:"https://h2bapply.com/contact",priority:"0.3",changefreq:"yearly"},
+      {loc:"https://h2bapply.com/google-data-usage",priority:"0.2",changefreq:"yearly"},
     ];
     // SEO programático: inclui só os estados com vagas suficientes pra ter página própria
     // (mesmo corte de MIN_JOBS_FOR_STATE_PAGE usado na rota /vagas-h2b/:estado).
@@ -7110,6 +7414,26 @@ const server=http.createServer(async(req,res)=>{
         _pages.push({loc:`https://h2bapply.com/vagas-h2b/categoria/${c.key}`,priority:"0.7",changefreq:"weekly"});
       });
     }catch(e){console.warn("[sitemap] erro ao listar páginas de estado/categoria:",e.message);}
+    // 📄 SEO v340: 1 URL por vaga individual VIVA (/vaga/:caseNumber) — a
+    // MESMA régua de "vaga morta"/rascunho de _findVagaPublica (fonte única,
+    // nunca 2ª cópia do que é "vaga viva"). Dedupe por case number (defensivo
+    // — as fontes não deveriam repetir, mas o sitemap não pode listar 2 URLs
+    // iguais). Bem abaixo do teto de 50.000 URLs do protocolo de sitemaps.
+    try{
+      const _fontesVaga=[SHEET_JAN,SHEET_JUL,SHEET_H2A,
+        ...Object.entries(SHEET_EXTRAS).filter(([k])=>DB_SHEETS_META[k]?.published===true).map(([,arr])=>arr)];
+      const _casosVistos=new Set();
+      for(const arr of _fontesVaga){
+        if(!Array.isArray(arr))continue;
+        for(const r of arr){
+          const cn=String(r?.c||"").trim();
+          if(!cn||_casosVistos.has(cn))continue;
+          if(!_vagaEstaViva(r))continue;
+          _casosVistos.add(cn);
+          _pages.push({loc:`https://h2bapply.com/vaga/${encodeURIComponent(cn)}`,priority:"0.6",changefreq:"weekly"});
+        }
+      }
+    }catch(e){console.warn("[sitemap] erro ao listar páginas de vaga individual:",e.message);}
     // v18-SEO: <lastmod> ajuda o Google a saber que a página foi atualizada
     // recentemente (o sitemap não tinha nenhuma data — usa a data do boot,
     // já que o conteúdo destas páginas é recalculado a cada deploy/boot).
@@ -8211,16 +8535,28 @@ ul li{margin-bottom:6px}
   if(pathname==="/api/admin/email-intelligence/mark-invalid"&&req.method==="POST"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
     const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
-    const {email,motivo}=body;if(!email)return json(res,400,{error:"email obrigatório"});
+    // 🚑 v339b (classe de bug real — regra 13i do CLAUDE.md): esta rota
+    // referenciava `body`, uma variável que NUNCA existiu neste escopo — sem
+    // try/catch ao redor, a ReferenceError estourava DENTRO do callback
+    // assíncrono e virava unhandledRejection (só logado, sem acesso a `res`):
+    // a requisição HTTP nunca respondia, travando o admin numa tela girando
+    // pra sempre — foi assim que o v339e (drill de restart em SQLite) travou
+    // a suíte inteira sem erro nenhum pra reportar. Corrigido pra ler o corpo
+    // do jeito único e seguro (JSON.parse(await readBody(req)) com
+    // try/catch cobrindo TUDO, sempre devolvendo uma resposta JSON).
+    let email,motivo;
+    try{
+      const d=JSON.parse((await readBody(req))||"{}");
+      email=d.email;motivo=d.motivo;
+    }catch(e){return json(res,400,{error:"Corpo inválido: "+e.message});}
+    if(!email)return json(res,400,{error:"email obrigatório"});
     const now=Date.now();
     DB_INVALID_EMAILS[email.toLowerCase()]={
       email:email.toLowerCase(),domain:email.split('@')[1]||'',
       motivo:motivo||'Marcado manualmente pelo admin',tipo:'manual',
       first:now,last:now,count:1,users:new Set(['admin']),msg:'Manual',status:'invalid'
     };
-    const toSave={};
-    for(const [k,v] of Object.entries(DB_INVALID_EMAILS)){toSave[k]={...v,users:[...(v.users instanceof Set?v.users:new Set(v.users||[]))]}}
-    try{fs.writeFileSync(INVALID_EMAILS_FILE,JSON.stringify(toSave,null,2));}catch{}
+    _persistInvalidEmails();
     return json(res,200,{ok:true});
   }
 
@@ -8230,9 +8566,7 @@ ul li{margin-bottom:6px}
     const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
     const email=decodeURIComponent(pathname.split('/').pop());
     delete DB_INVALID_EMAILS[email];
-    const toSave={};
-    for(const [k,v] of Object.entries(DB_INVALID_EMAILS)){toSave[k]={...v,users:[...(v.users instanceof Set?v.users:new Set(v.users||[]))]}}
-    try{fs.writeFileSync(INVALID_EMAILS_FILE,JSON.stringify(toSave,null,2));}catch{}
+    _persistInvalidEmails();
     return json(res,200,{ok:true});
   }
 
@@ -11505,7 +11839,9 @@ filtrar();
           const _hadTrial=_curU?.vip?.source==="trial"||(_curU?.vip?.note||"").includes("Trial");
           if(_hadTrial&&!DB_TRIAL_USED.phones[_ph]){
             DB_TRIAL_USED.phones[_ph]=s.user_email;
-            try{fs.writeFileSync(TRIAL_USED_FILE,JSON.stringify(DB_TRIAL_USED,null,2));}catch{}
+            // 🔒 v339: mesma classe de bug do DB_INVALID_EMAILS acima —
+            // persist() canônico (SQLite+espelho), nunca fs.writeFileSync cru.
+            persist(TRIAL_USED_FILE,DB_TRIAL_USED);
             console.log(`[trial] 📱 Telefone ${_ph} vinculado ao trial de ${s.user_email}`);
           }
         }

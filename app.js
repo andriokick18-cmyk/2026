@@ -2505,6 +2505,7 @@ function mkDetailHTML(j){
     </div>
     <div class="jd-acts">
       ${j.hasEmail?`<button class="btn btn-primary" onclick="openModal('${j.id}')"><i class="ti ti-send"></i> Candidatar-se</button>`:`<div style="font-size:13px;color:var(--t3);padding:9px 13px;background:var(--sf2);border-radius:var(--r);border:1.5px solid var(--border)"><i class="ti ti-alert-triangle"></i> Sem e-mail direto</div>`}
+      ${j.caseNum?`<a class="btn btn-secondary" href="/vaga/${encodeURIComponent(j.caseNum)}" target="_blank" rel="noopener" title="Página pública desta vaga — compartilhe o link"><i class="ti ti-share-2"></i></a>`:""}
       ${j.url?`<a class="btn btn-secondary" href="https://${j.url.replace(/^https?:\/\//,"")}" target="_blank" rel="noopener"><i class="ti ti-external-link"></i></a>`:""}
     </div>
   </div>`;
