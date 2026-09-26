@@ -1717,6 +1717,25 @@ async function drillAdminSettingsLegado() {
       check("🧹 v341: como-usar.html não promete mais recompensa em 💎 (perfil completo / 1ª candidatura) — mecanismo que não existe desde a remoção do sistema de diamantes (v170)",
         !_cusaSrc.includes("recompensa") && !/\+\d\s*💎/.test(_cusaSrc) && !_cusaSrc.includes('class="reward"'),
         "como-usar.html ainda promete recompensa em diamantes");
+      // 📝 v342 (pedido do dono, 26/09/2026): FAQ nova em h2b-e-golpe.html
+      // respondendo se o H2BApply é diferente de consultoria/outros sites de
+      // vaga — autoatendimento (regra 7 do CLAUDE.md: zero texto pré-escrito
+      // pelo app) e cobertura de H-2B + H-2A no mesmo lugar. Mesma guarda de
+      // consistência FAQPage×visível do v186-L4 (linha 1730+), agora também
+      // pra esta página — tom factual, sem citar concorrente.
+      // De quebra: essa guarda pegou 3 divergências JÁ EXISTENTES entre o
+      // JSON-LD e o texto visível das 4 perguntas antigas (JSON-LD com frase
+      // cortada/reformulada em cada uma) — corrigidas pra bater com o texto
+      // visível, igual o v186-L4 já fazia pra h2bapply-funciona.html.
+      const _golpeSrc = fs.readFileSync(path.join(__dirname, "h2b-e-golpe.html"), "utf8");
+      const _golpeLd = JSON.parse((_golpeSrc.match(/<script type="application\/ld\+json">\s*(\{[\s\S]*?"FAQPage"[\s\S]*?\})\s*<\/script>/) || [])[1] || "{}");
+      const _golpeVisivel = _golpeSrc.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g, "");
+      const _golpeDivergem = (_golpeLd.mainEntity || []).filter((q) => !_golpeVisivel.includes(String(q.acceptedAnswer?.text || "")));
+      const _novaFaq = (_golpeLd.mainEntity || []).find((q) => /diferente de uma consultoria/i.test(String(q.name || "")));
+      check("📝 v342: h2b-e-golpe.html ganhou a FAQ 'H2BApply é diferente de consultoria/outros sites?' (autoatendimento + cobre H-2B e H-2A no mesmo lugar, sem citar concorrente) — visível e no JSON-LD, e o FAQPage inteiro continua batendo com o texto da página (v186-L4)",
+        !!_novaFaq && /autoatendimento/i.test(_novaFaq.acceptedAnswer?.text || "") && /H-2A/i.test(_novaFaq.acceptedAnswer?.text || "") &&
+        (_golpeLd.mainEntity || []).length >= 5 && _golpeDivergem.length === 0,
+        `faq encontrada=${!!_novaFaq} · divergem: ${_golpeDivergem.map((q) => String(q.name).slice(0, 50)).join(" | ")}`);
       // (c) a página "funciona" não pode prometer o que o app não faz: ler a
       // caixa de entrada (o app é só-envio) nem gerar texto pelo usuário
       const _fnc = _pubSrc["h2bapply-funciona.html"];
