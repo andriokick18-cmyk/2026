@@ -1672,6 +1672,24 @@ async function drillAdminSettingsLegado() {
     check("🔗 v172j: página de vendas /h2bapply-funciona mostra os limites de PLAN_LIMITS_NEW (não a tabela legada) e não vende plano grátis com envio",
       _planosOk, "limites da página de vendas divergem de mod-config.js ou voltou o card Free");
 
+    // 🎨 v348 (achado numa varredura autônoma de SEO/UX pós-v347): das 8
+    // páginas de conteúdo já convertidas pro tema escuro (guia.html,
+    // h2b-e-golpe.html, quanto-ganha-h2b.html, quanto-custa-o-visto-h2b.html,
+    // empresas-que-patrocinam-visto-h2b.html, como-usar.html, /termos,
+    // /privacidade), h2bapply-funciona.html — justamente a página que mais
+    // gente de fora vê primeiro, linkada do "Como Funciona" da Home e do
+    // guia.html — tinha ficado pra trás, ainda com o :root/tema claro
+    // original (fundo #f0f4ff) e o theme-color antigo (#1a56db). Convertida
+    // com a MESMA paleta escura das páginas irmãs (--bg:#0d0f1a etc.) e a
+    // mesma correção de contraste dos warn-box (texto escuro sobre fundo
+    // semitransparente escuro é ilegível — mesma classe de bug do v150/v188).
+    check("🎨 v348: h2bapply-funciona.html usa a MESMA paleta escura das páginas irmãs (guia/h2b-e-golpe/quanto-custa-o-visto) — zero fragmento do tema claro antigo (fundo #f0f4ff, theme-color #1a56db, footer/top-bar brancos, warn-box com texto azul/âmbar/verde ESCURO ilegível no fundo escuro)",
+      _funciona.includes('content="#0d0f1a"') && _funciona.includes("--bg:#0d0f1a") &&
+      !_funciona.includes("f0f4ff") && !_funciona.includes("#1a56db") &&
+      !_funciona.includes("92400e") && !_funciona.includes("065f46") && !_funciona.includes("1e40af") &&
+      _funciona.includes("#fcd34d") && _funciona.includes("#86efac") && _funciona.includes("#93c5fd"),
+      "sobrou fragmento do tema claro (cor ou contraste) em h2bapply-funciona.html");
+
     // ═══ 🌐 v186 LOTE 4: PÁGINAS PÚBLICAS — o botão principal caía em 404 ═══
     {
       // (a) o CTA de cadastro é SEMPRE /?cadastro=1 (regra v172j) — e o

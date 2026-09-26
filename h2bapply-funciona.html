@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#1a56db">
+<meta name="theme-color" content="#0d0f1a">
 <title>H2BApply Funciona? Como Funciona, Preços e Se é Confiável</title>
 <meta name="description" content="Entenda como o H2BApply funciona, quem está por trás, se é seguro e confiável, quanto custa cada plano e como ele te ajuda a se candidatar a vagas H-2B e H-2A nos EUA automaticamente.">
 <meta name="author" content="H2BApply">
@@ -34,19 +34,24 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html{height:100%;-webkit-text-size-adjust:100%;scroll-behavior:smooth}
-body{font-family:'DM Sans',system-ui,sans-serif;background:#f0f4ff;color:#1e1b4b;font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+body{font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
 a{color:inherit;text-decoration:none}
 :root{
-  --bg:#f0f4ff;--surface:#ffffff;--sf2:#f5f7ff;--sf3:#edf0ff;--sf4:#e0e7ff;
-  --border:rgba(99,102,241,0.12);--border2:rgba(99,102,241,0.22);
-  --text:#1e1b4b;--t2:#4c4f82;--t3:#7c7fb5;--t4:#a5a8cc;
-  --blue:#3b82f6;--blueh:#2563eb;--bluel:rgba(59,130,246,.14);--blueb:rgba(59,130,246,.32);
-  --green:#10b981;--greenl:rgba(16,185,129,.13);--greenb:rgba(16,185,129,.3);
-  --amber:#f59e0b;--amberl:rgba(245,158,11,.13);--amberb:rgba(245,158,11,.32);
-  --purple:#8b5cf6;--purpleh:#7c3aed;--purplel:rgba(139,92,246,.13);--purpleb:rgba(139,92,246,.3);
-  --navy:#0f172a;--r:10px;--rl:14px;--rxl:20px;
+  --bg:#0d0f1a;--surface:#161928;--sf2:#1c1f35;--sf3:#222644;--sf4:#2a2f55;
+  --border:rgba(139,92,246,0.18);--border2:rgba(139,92,246,0.30);
+  --text:#e8eaf6;--t2:#a5a8cc;--t3:#7c7fb5;--t4:#4c4f82;
+  --blue:#3b82f6;--blueh:#2563eb;--bluel:rgba(59,130,246,.18);--blueb:rgba(59,130,246,.38);
+  --green:#10b981;--greenl:rgba(16,185,129,.16);--greenb:rgba(16,185,129,.35);
+  --amber:#f59e0b;--amberl:rgba(245,158,11,.16);--amberb:rgba(245,158,11,.36);
+  --purple:#8b5cf6;--purpleh:#7c3aed;--purplel:rgba(139,92,246,.18);--purpleb:rgba(139,92,246,.36);
+  --navy:#e8eaf6;--r:10px;--rl:14px;--rxl:20px;
 }
-.top-bar{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:58px;background:rgba(255,255,255,0.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--border);box-shadow:0 2px 12px rgba(99,102,241,.06)}
+.star-bg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.star-bg::before{content:"";position:absolute;inset:0;background:
+  radial-gradient(ellipse 900px 600px at 15% 30%,rgba(59,130,246,.1) 0%,transparent 70%),
+  radial-gradient(ellipse 700px 500px at 85% 70%,rgba(139,92,246,.08) 0%,transparent 70%),
+  radial-gradient(ellipse 500px 400px at 50% 0%,rgba(16,185,129,.04) 0%,transparent 60%)}
+.top-bar{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:58px;background:rgba(13,15,26,0.85);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--border);box-shadow:0 2px 12px rgba(0,0,0,.3)}
 .logo-row{display:flex;align-items:center;gap:10px;font-family:'Sora',sans-serif;font-weight:800;font-size:17px;color:var(--navy)}
 .logo-row img{width:36px;height:36px;border-radius:10px}
 .logo-tag{font-size:10px;font-weight:700;background:linear-gradient(135deg,#3b82f6,#7c3aed);color:#fff;border-radius:20px;padding:2px 8px;margin-left:4px;letter-spacing:.03em}
@@ -93,9 +98,9 @@ a{color:inherit;text-decoration:none}
 .step-label{font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px}
 .step-desc{font-size:13px;color:var(--t2);line-height:1.7}
 .warn-box{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:var(--r);margin:12px 0;font-size:13px;line-height:1.7}
-.warn-amber{background:var(--amberl);border:1.5px solid var(--amberb);color:#92400e}
-.warn-green{background:var(--greenl);border:1.5px solid var(--greenb);color:#065f46}
-.warn-blue{background:var(--bluel);border:1.5px solid var(--blueb);color:#1e40af}
+.warn-amber{background:var(--amberl);border:1.5px solid var(--amberb);color:#fcd34d}
+.warn-green{background:var(--greenl);border:1.5px solid var(--greenb);color:#86efac}
+.warn-blue{background:var(--bluel);border:1.5px solid var(--blueb);color:#93c5fd}
 .warn-box i{font-size:18px;flex-shrink:0;margin-top:1px}
 .plans-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}
 .plan-card{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--rl);padding:18px 16px;position:relative}
@@ -122,7 +127,7 @@ a{color:inherit;text-decoration:none}
 .btn-cta-white:hover{transform:translateY(-2px);box-shadow:0 10px 28px rgba(0,0,0,.28)}
 .btn-cta-outline{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.12);color:#fff;font-weight:700;font-size:14px;padding:13px 24px;border-radius:12px;border:1.5px solid rgba(255,255,255,.35);cursor:pointer;font-family:inherit;transition:all .16s;text-decoration:none}
 .btn-cta-outline:hover{background:rgba(255,255,255,.22)}
-footer{background:#fff;border-top:1px solid var(--border);text-align:center;padding:24px 20px;font-size:12px;color:var(--t3)}
+footer{background:var(--surface);border-top:1px solid var(--border);text-align:center;padding:24px 20px;font-size:12px;color:var(--t3)}
 footer a{color:var(--blue);font-weight:600}
 @media(max-width:600px){.nav-links .nav-link{display:none}}
 </style>
@@ -131,6 +136,7 @@ footer a{color:var(--blue);font-weight:600}
 <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXXXXXXXXX');</script>
 </head>
 <body>
+<div class="star-bg"></div>
 
 <header class="top-bar">
   <a href="/" class="logo-row" style="text-decoration:none">
