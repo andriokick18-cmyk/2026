@@ -9071,6 +9071,36 @@ async function drillAdminSettingsLegado() {
         !_sm.body.includes("/vaga/H-400-VG340-0002") && !_sm.body.includes("/vaga/H-400-VG340-0003") &&
         _sm.body.includes("/vaga/H-400-VG340-0001") && _sm.body.includes("/vaga/H-400-VG340-0004"),
         "vaga morta ou vencida vazou no sitemap, ou vaga viva ficou de fora");
+
+      // 🐛 v347: as 4 páginas SEO server-rendered do v340 (estado/categoria/vaga
+      // individual/404) nasceram de um template copiado ANTES da conversão pro
+      // tema escuro (guia.html etc., v244-v246) — ficaram claras (fundo branco)
+      // sozinhas, quebrando a identidade visual pro Google E pro usuário que
+      // clica no resultado da busca. Corrigido com a MESMA paleta escura já em
+      // produção no resto do site.
+      const _srvJs = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      const _fnSeg = (fnName, nextFnName) => {
+        const start = _srvJs.indexOf(`function ${fnName}(`);
+        const end = _srvJs.indexOf(`function ${nextFnName}(`, start + 10);
+        return start >= 0 && end > start ? _srvJs.slice(start, end) : "";
+      };
+      const _segStatePage = _fnSeg("renderStatePage", "renderCategoryPage");
+      const _segCatPage = _fnSeg("renderCategoryPage", "_escHtml");
+      const _seg404 = _fnSeg("_render404Vaga", "_renderVagaPage");
+      const _segVagaPage = _fnSeg("_renderVagaPage", "shuffleArray");
+      check("🐛 v347: as 4 páginas SEO (estado/categoria/vaga/404) usam a MESMA paleta escura do resto do site — zero fragmento do tema claro antigo sobrou (fundo #f0f4ff, --surface:#fff, top-bar translúcido claro, texto azul-escuro no warn-box) em NENHUMA das 4 funções",
+        [_segStatePage, _segCatPage, _seg404, _segVagaPage].every((seg) =>
+          seg.length > 500 && !seg.includes("background:#f0f4ff") && !seg.includes("--surface:#fff;") &&
+          !seg.includes("rgba(255,255,255,.92)") && !seg.includes("color:#1e40af}")) &&
+        _segStatePage.includes("--bg:#0d0f1a") && _segCatPage.includes("--bg:#0d0f1a") &&
+        _segVagaPage.includes("--bg:#0d0f1a") && _seg404.includes("background:#0d0f1a;color:#e8eaf6"),
+        "sobrou fragmento de tema claro em alguma das 4 páginas SEO");
+      const _vgTema = await req2("GET", "/vaga/H-400-26001-520313");
+      const _st340 = await req2("GET", "/vagas-h2b/tennessee");
+      check("🐛 v347: /vaga/:caseNumber e /vagas-h2b/:estado saem do servidor já no tema escuro (theme-color+background reais na resposta HTTP, não só no código-fonte)",
+        _vgTema.body.includes('content="#0d0f1a"') && _vgTema.body.includes("background:var(--bg)") &&
+        _st340.body.includes('content="#0d0f1a"') && _st340.body.includes("background:var(--bg)"),
+        "resposta HTTP real ainda veio com o tema claro antigo");
     }
 
     // ═══ 💾 v199 LOTE 19: o modo que roda EM PRODUÇÃO (SQLite dual-write) ═══

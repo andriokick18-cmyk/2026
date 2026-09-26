@@ -3997,7 +3997,7 @@ function renderStatePage(entry,topCats,overallCount){
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#1a56db">
+<meta name="theme-color" content="#0d0f1a">
 <title>Vagas H-2B e H-2A em ${titleCase}: ${fmtN(count)} Vagas, Salário Médio ${fmtUsd(avgWage)}/h</title>
 <meta name="description" content="${fmtN(count)} vagas H-2B/H-2A certificadas pelo DOL em ${titleCase}, com salário médio de ${fmtUsd(avgWage)}/hora (variando ${fmtUsd(minWage)} a ${fmtUsd(maxWage)}). Dados reais, calculados ao vivo.">
 <meta name="author" content="H2BApply">
@@ -4023,10 +4023,15 @@ function renderStatePage(entry,topCats,overallCount){
 <noscript><link rel="stylesheet" href="/vendor/tabler-icons.min.css"></noscript>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth}body{font-family:'DM Sans',system-ui,sans-serif;background:#f0f4ff;color:#1e1b4b;font-size:15px;line-height:1.6}
+html{scroll-behavior:smooth}body{font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.6}
 a{color:inherit;text-decoration:none}
-:root{--surface:#fff;--sf2:#f5f7ff;--sf4:#e0e7ff;--border:rgba(99,102,241,.12);--t2:#4c4f82;--t3:#7c7fb5;--t4:#a5a8cc;--blue:#3b82f6;--bluel:rgba(59,130,246,.14);--blueb:rgba(59,130,246,.32);--green:#10b981;--greenl:rgba(16,185,129,.13);--navy:#0f172a;--r:10px;--rl:14px;--rxl:20px}
-.top-bar{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:58px;background:rgba(255,255,255,.92);backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
+.star-bg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.star-bg::before{content:"";position:absolute;inset:0;background:
+  radial-gradient(ellipse 900px 600px at 15% 30%,rgba(59,130,246,.1) 0%,transparent 70%),
+  radial-gradient(ellipse 700px 500px at 85% 70%,rgba(139,92,246,.08) 0%,transparent 70%),
+  radial-gradient(ellipse 500px 400px at 50% 0%,rgba(16,185,129,.04) 0%,transparent 60%)}
+:root{--bg:#0d0f1a;--surface:#161928;--sf2:#1c1f35;--sf4:#2a2f55;--border:rgba(139,92,246,.18);--text:#e8eaf6;--t2:#a5a8cc;--t3:#7c7fb5;--t4:#4c4f82;--blue:#3b82f6;--bluel:rgba(59,130,246,.18);--blueb:rgba(59,130,246,.38);--green:#10b981;--greenl:rgba(16,185,129,.16);--navy:#e8eaf6;--r:10px;--rl:14px;--rxl:20px}
+.top-bar{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:58px;background:rgba(13,15,26,.85);backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
 .logo-row{display:flex;align-items:center;gap:10px;font-family:'Sora',sans-serif;font-weight:800;font-size:17px;color:var(--navy)}
 .logo-row img{width:36px;height:36px;border-radius:10px}
 .btn-login{display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#3b82f6,#7c3aed);color:#fff;font-weight:700;font-size:13px;padding:9px 18px;border-radius:10px;border:none;box-shadow:0 4px 15px rgba(59,130,246,.3)}
@@ -4056,20 +4061,21 @@ a{color:inherit;text-decoration:none}
 .wage-table .lbl a{color:var(--navy)}
 .wage-table .lbl a:hover{color:var(--green);text-decoration:underline}
 .wage-table .cnt{color:var(--t3);font-size:12px}
-.warn-box{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:var(--r);margin:12px 0;font-size:12.5px;line-height:1.65;background:var(--bluel);border:1.5px solid var(--blueb);color:#1e40af}
+.warn-box{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:var(--r);margin:12px 0;font-size:12.5px;line-height:1.65;background:var(--bluel);border:1.5px solid var(--blueb);color:#93c5fd}
 .cta-section{background:linear-gradient(160deg,#0a0520,#1e1b4b,#4c1d95,#7c3aed);color:#fff;border-radius:var(--rxl);padding:34px 24px;text-align:center;margin:40px 0 28px}
 .cta-section h3{font-family:'Sora',sans-serif;font-size:20px;font-weight:800;margin-bottom:8px}
 .cta-section p{font-size:13.5px;opacity:.82;margin-bottom:20px;max-width:440px;margin-left:auto;margin-right:auto}
 .cta-btn-row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 .btn-cta-white{display:inline-flex;align-items:center;gap:8px;background:#fff;color:#1e1b4b;font-weight:700;font-size:13.5px;padding:12px 22px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.2)}
 .btn-cta-outline{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.12);color:#fff;font-weight:700;font-size:13.5px;padding:12px 22px;border-radius:12px;border:1.5px solid rgba(255,255,255,.35)}
-footer{background:#fff;border-top:1px solid var(--border);text-align:center;padding:22px 20px;font-size:12px;color:var(--t3)}
+footer{background:var(--surface);border-top:1px solid var(--border);text-align:center;padding:22px 20px;font-size:12px;color:var(--t3)}
 footer a{color:var(--blue);font-weight:600}
 </style>
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
 <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXXXXXXXXX');</script>
 </head>
 <body>
+<div class="star-bg"></div>
 <header class="top-bar">
   <a href="/" class="logo-row"><img src="/apple-touch-icon.png?v=4" alt="H2BApply logo"><span>H2BApply</span></a>
   <a href="/?cadastro=1" class="btn-login" onclick="gtag('event','sign_up_intent',{method:'password',source:'vagas-h2b-${entry.slug}-nav'})"><i class="ti ti-rocket"></i> Começar grátis</a>
@@ -4158,7 +4164,7 @@ function renderCategoryPage(entry,topStates,overallCount){
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#1a56db">
+<meta name="theme-color" content="#0d0f1a">
 <title>Vagas H-2B e H-2A de ${catName}: ${fmtN(count)} Vagas, Salário Médio ${fmtUsd(avgWage)}/h</title>
 <meta name="description" content="${fmtN(count)} vagas H-2B/H-2A certificadas pelo DOL na área de ${catName}, com salário médio de ${fmtUsd(avgWage)}/hora (variando ${fmtUsd(minWage)} a ${fmtUsd(maxWage)}). Dados reais, calculados ao vivo.">
 <meta name="author" content="H2BApply">
@@ -4184,10 +4190,15 @@ function renderCategoryPage(entry,topStates,overallCount){
 <noscript><link rel="stylesheet" href="/vendor/tabler-icons.min.css"></noscript>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth}body{font-family:'DM Sans',system-ui,sans-serif;background:#f0f4ff;color:#1e1b4b;font-size:15px;line-height:1.6}
+html{scroll-behavior:smooth}body{font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.6}
 a{color:inherit;text-decoration:none}
-:root{--surface:#fff;--sf2:#f5f7ff;--sf4:#e0e7ff;--border:rgba(99,102,241,.12);--t2:#4c4f82;--t3:#7c7fb5;--t4:#a5a8cc;--blue:#3b82f6;--bluel:rgba(59,130,246,.14);--blueb:rgba(59,130,246,.32);--green:#10b981;--greenl:rgba(16,185,129,.13);--navy:#0f172a;--r:10px;--rl:14px;--rxl:20px}
-.top-bar{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:58px;background:rgba(255,255,255,.92);backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
+.star-bg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.star-bg::before{content:"";position:absolute;inset:0;background:
+  radial-gradient(ellipse 900px 600px at 15% 30%,rgba(59,130,246,.1) 0%,transparent 70%),
+  radial-gradient(ellipse 700px 500px at 85% 70%,rgba(139,92,246,.08) 0%,transparent 70%),
+  radial-gradient(ellipse 500px 400px at 50% 0%,rgba(16,185,129,.04) 0%,transparent 60%)}
+:root{--bg:#0d0f1a;--surface:#161928;--sf2:#1c1f35;--sf4:#2a2f55;--border:rgba(139,92,246,.18);--text:#e8eaf6;--t2:#a5a8cc;--t3:#7c7fb5;--t4:#4c4f82;--blue:#3b82f6;--bluel:rgba(59,130,246,.18);--blueb:rgba(59,130,246,.38);--green:#10b981;--greenl:rgba(16,185,129,.16);--navy:#e8eaf6;--r:10px;--rl:14px;--rxl:20px}
+.top-bar{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:58px;background:rgba(13,15,26,.85);backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
 .logo-row{display:flex;align-items:center;gap:10px;font-family:'Sora',sans-serif;font-weight:800;font-size:17px;color:var(--navy)}
 .logo-row img{width:36px;height:36px;border-radius:10px}
 .btn-login{display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#3b82f6,#7c3aed);color:#fff;font-weight:700;font-size:13px;padding:9px 18px;border-radius:10px;border:none;box-shadow:0 4px 15px rgba(59,130,246,.3)}
@@ -4217,20 +4228,21 @@ a{color:inherit;text-decoration:none}
 .wage-table .lbl a{color:var(--navy)}
 .wage-table .lbl a:hover{color:#7c3aed;text-decoration:underline}
 .wage-table .cnt{color:var(--t3);font-size:12px}
-.warn-box{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:var(--r);margin:12px 0;font-size:12.5px;line-height:1.65;background:var(--bluel);border:1.5px solid var(--blueb);color:#1e40af}
+.warn-box{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:var(--r);margin:12px 0;font-size:12.5px;line-height:1.65;background:var(--bluel);border:1.5px solid var(--blueb);color:#93c5fd}
 .cta-section{background:linear-gradient(160deg,#0a0520,#1e1b4b,#4c1d95,#7c3aed);color:#fff;border-radius:var(--rxl);padding:34px 24px;text-align:center;margin:40px 0 28px}
 .cta-section h3{font-family:'Sora',sans-serif;font-size:20px;font-weight:800;margin-bottom:8px}
 .cta-section p{font-size:13.5px;opacity:.82;margin-bottom:20px;max-width:440px;margin-left:auto;margin-right:auto}
 .cta-btn-row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 .btn-cta-white{display:inline-flex;align-items:center;gap:8px;background:#fff;color:#1e1b4b;font-weight:700;font-size:13.5px;padding:12px 22px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.2)}
 .btn-cta-outline{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.12);color:#fff;font-weight:700;font-size:13.5px;padding:12px 22px;border-radius:12px;border:1.5px solid rgba(255,255,255,.35)}
-footer{background:#fff;border-top:1px solid var(--border);text-align:center;padding:22px 20px;font-size:12px;color:var(--t3)}
+footer{background:var(--surface);border-top:1px solid var(--border);text-align:center;padding:22px 20px;font-size:12px;color:var(--t3)}
 footer a{color:var(--blue);font-weight:600}
 </style>
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
 <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXXXXXXXXX');</script>
 </head>
 <body>
+<div class="star-bg"></div>
 <header class="top-bar">
   <a href="/" class="logo-row"><img src="/apple-touch-icon.png?v=4" alt="H2BApply logo"><span>H2BApply</span></a>
   <a href="/?cadastro=1" class="btn-login" onclick="gtag('event','sign_up_intent',{method:'password',source:'vagas-h2b-cat-${catKey}-nav'})"><i class="ti ti-rocket"></i> Começar grátis</a>
@@ -4360,10 +4372,10 @@ function _render404Vaga(){
 <meta name="robots" content="noindex, follow">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'DM Sans',system-ui,sans-serif;background:#f0f4ff;color:#1e1b4b;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
+body{font-family:'DM Sans',system-ui,sans-serif;background:#0d0f1a;color:#e8eaf6;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
 .box{max-width:420px}
 h1{font-size:22px;font-weight:800;margin-bottom:10px}
-p{font-size:14px;color:#4c4f82;line-height:1.7;margin-bottom:20px}
+p{font-size:14px;color:#a5a8cc;line-height:1.7;margin-bottom:20px}
 a{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#3b82f6,#7c3aed);color:#fff;font-weight:700;font-size:13.5px;padding:12px 22px;border-radius:12px;text-decoration:none}
 </style>
 </head>
@@ -4452,7 +4464,7 @@ function _renderVagaPage(r){
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#1a56db">
+<meta name="theme-color" content="#0d0f1a">
 <title>${_escHtml(pageTitle)}</title>
 <meta name="description" content="${_escHtml(pageDesc)}">
 <meta name="author" content="H2BApply">
@@ -4478,10 +4490,15 @@ function _renderVagaPage(r){
 <noscript><link rel="stylesheet" href="/vendor/tabler-icons.min.css"></noscript>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth}body{font-family:'DM Sans',system-ui,sans-serif;background:#f0f4ff;color:#1e1b4b;font-size:15px;line-height:1.6}
+html{scroll-behavior:smooth}body{font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.6}
 a{color:inherit;text-decoration:none}
-:root{--surface:#fff;--sf2:#f5f7ff;--sf4:#e0e7ff;--border:rgba(99,102,241,.12);--t2:#4c4f82;--t3:#7c7fb5;--t4:#a5a8cc;--blue:#3b82f6;--bluel:rgba(59,130,246,.14);--blueb:rgba(59,130,246,.32);--green:#10b981;--greenl:rgba(16,185,129,.13);--navy:#0f172a;--r:10px;--rl:14px;--rxl:20px}
-.top-bar{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:58px;background:rgba(255,255,255,.92);backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
+.star-bg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.star-bg::before{content:"";position:absolute;inset:0;background:
+  radial-gradient(ellipse 900px 600px at 15% 30%,rgba(59,130,246,.1) 0%,transparent 70%),
+  radial-gradient(ellipse 700px 500px at 85% 70%,rgba(139,92,246,.08) 0%,transparent 70%),
+  radial-gradient(ellipse 500px 400px at 50% 0%,rgba(16,185,129,.04) 0%,transparent 60%)}
+:root{--bg:#0d0f1a;--surface:#161928;--sf2:#1c1f35;--sf4:#2a2f55;--border:rgba(139,92,246,.18);--text:#e8eaf6;--t2:#a5a8cc;--t3:#7c7fb5;--t4:#4c4f82;--blue:#3b82f6;--bluel:rgba(59,130,246,.18);--blueb:rgba(59,130,246,.38);--green:#10b981;--greenl:rgba(16,185,129,.16);--navy:#e8eaf6;--r:10px;--rl:14px;--rxl:20px}
+.top-bar{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:58px;background:rgba(13,15,26,.85);backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
 .logo-row{display:flex;align-items:center;gap:10px;font-family:'Sora',sans-serif;font-weight:800;font-size:17px;color:var(--navy)}
 .logo-row img{width:36px;height:36px;border-radius:10px}
 .btn-login{display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#3b82f6,#7c3aed);color:#fff;font-weight:700;font-size:13px;padding:9px 18px;border-radius:10px;border:none;box-shadow:0 4px 15px rgba(59,130,246,.3)}
@@ -4498,18 +4515,19 @@ a{color:inherit;text-decoration:none}
 .section h2{font-family:'Sora',sans-serif;font-size:17px;font-weight:800;color:var(--navy);margin-bottom:10px}
 .card{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--rl);padding:18px 20px;box-shadow:0 2px 10px rgba(99,102,241,.04)}
 .card p{font-size:13.5px;color:var(--t2);line-height:1.75;white-space:pre-wrap}
-.warn-box{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:var(--r);margin:14px 0 0;font-size:12.5px;line-height:1.65;background:var(--bluel);border:1.5px solid var(--blueb);color:#1e40af}
+.warn-box{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:var(--r);margin:14px 0 0;font-size:12.5px;line-height:1.65;background:var(--bluel);border:1.5px solid var(--blueb);color:#93c5fd}
 .cta-section{background:linear-gradient(160deg,#0a0520,#1e1b4b,#4c1d95,#7c3aed);color:#fff;border-radius:var(--rxl);padding:30px 24px;text-align:center;margin:32px 0 24px}
 .cta-section h3{font-family:'Sora',sans-serif;font-size:19px;font-weight:800;margin-bottom:8px}
 .cta-section p{font-size:13.5px;opacity:.82;margin-bottom:18px;max-width:440px;margin-left:auto;margin-right:auto}
 .btn-cta-white{display:inline-flex;align-items:center;gap:8px;background:#fff;color:#1e1b4b;font-weight:700;font-size:13.5px;padding:12px 22px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.2)}
-footer{background:#fff;border-top:1px solid var(--border);text-align:center;padding:22px 20px;font-size:12px;color:var(--t3)}
+footer{background:var(--surface);border-top:1px solid var(--border);text-align:center;padding:22px 20px;font-size:12px;color:var(--t3)}
 footer a{color:var(--blue);font-weight:600}
 </style>
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
 <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXXXXXXXXX');</script>
 </head>
 <body>
+<div class="star-bg"></div>
 <header class="top-bar">
   <a href="/" class="logo-row"><img src="/apple-touch-icon.png?v=4" alt="H2BApply logo"><span>H2BApply</span></a>
   <a href="/?cadastro=1" class="btn-login" onclick="gtag('event','sign_up_intent',{method:'password',source:'vaga-${caseNumJs}-nav'})"><i class="ti ti-rocket"></i> Começar grátis</a>
