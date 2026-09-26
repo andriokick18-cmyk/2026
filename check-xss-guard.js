@@ -184,6 +184,10 @@ const ALLOWLIST = new Set([
   "app.js:a7d180300b97", // _vfChipList("manual").map(c2=>esc(c2.lbl)).join(" · ")||esc(t('radar_all'))
   // ── (b) v218: CONSTANTE INTERNA — cor do card de plano ──────────────
   "app.js:fd150390570f", // borderCor — ternário de 3 literais CSS fixos ('var(--blue)'|'#f59e0b'|'var(--border2)')
+  // ── (v352) Prateleira "Vagas pra Você" (Home) — /api/jobs/pra-voce ──
+  "app.js:c7d0a0eb2427", // j.matchScore — computeJobMatchScore (server.js) sempre devolve NÚMERO 0-100, nunca texto livre
+  "app.js:24a8598892cf", // wageLbl?" · "+wageLbl:"" — wageLbl é montado com esc(j.wage) na atribuição, algumas linhas acima
+  "app.js:cd2b23a881ff", // scoreBadge — <span> montado só com j.matchScore (número, já coberto acima) interpolado
 ]);
 
 // ── Extração: as instruções que escrevem HTML ────────────────────────────

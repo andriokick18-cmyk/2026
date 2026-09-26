@@ -2625,6 +2625,22 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
             </div>
           </div>
 
+          <!-- ══ 🎯 VAGAS PRA VOCÊ — prateleira de match personalizado (/api/jobs/pra-voce).
+               v352: rota já existia no servidor (v139, cor de match + regra 8 de
+               dedupe), 100% testada, mas NUNCA tinha sido ligada em tela nenhuma —
+               achado de auditoria autônoma. Nunca bloqueia: sem perfil a nota fica
+               neutra e a prateleira some sozinha se não houver vaga (nunca erro
+               visível pro usuário). ══ -->
+          <div id="home-pravoce-wrap" style="display:none;padding:16px 14px 0">
+            <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:20px;padding:16px;box-shadow:0 4px 18px rgba(15,23,42,.06)">
+              <div style="margin-bottom:10px">
+                <div style="font-size:12px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.06em">🎯 <span data-i18n="home_pravoce_title">Vagas pra Você</span></div>
+                <div style="font-size:11px;color:var(--t3);margin-top:2px" data-i18n="home_pravoce_sub">As melhores vagas disponíveis pro seu perfil, com o motivo do encaixe.</div>
+              </div>
+              <div id="home-pravoce-list" style="display:flex;flex-direction:column;gap:2px"></div>
+            </div>
+          </div>
+
           <!-- ══ ATIVIDADE RECENTE + DICAS ══ -->
           <div style="padding:16px 14px 0">
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">

@@ -5985,6 +5985,58 @@ function dispensarPedidoCancelado(id){
   _pedidoCanceladoDispensado=id;
   const box=g("#home-pending-order");if(box)box.style.display="none";
 }
+// ══ 🎯 VAGAS PRA VOCÊ — prateleira de match personalizado ══
+// v352: /api/jobs/pra-voce (server.js) já existia — nota de encaixe
+// (computeJobMatchScore) + dedupe da regra 8 (enviado/na fila nunca
+// aparece) + vaga morta fora — mas nenhuma tela chamava a rota. Cache
+// client-side leve (5min) só pra não bater no servidor a cada troca de
+// aba; o servidor já cacheia 10min por usuário e revalida o corte de
+// enviados/fila FRESCO a cada resposta.
+let _praVoceCache,_praVoceCacheEm=0;
+const _praVoceJobs={}; // id -> job (populado no render, lido por abrirVagaPraVoce)
+async function renderHomePraVoce(){
+  const wrap=g("#home-pravoce-wrap"),box=g("#home-pravoce-list");
+  if(!wrap||!box)return;
+  if(!U.connected){wrap.style.display="none";return;}
+  if(_praVoceCache!==undefined&&Date.now()-_praVoceCacheEm>5*60_000)_praVoceCache=undefined;
+  if(_praVoceCache===undefined){
+    try{
+      const r=await fetch("/api/jobs/pra-voce",{credentials:"include"});
+      const d=await jsonSafe(r);
+      _praVoceCache=(d?.ok&&Array.isArray(d.jobs))?d.jobs:[];
+    }catch(e){_praVoceCache=[];}
+    _praVoceCacheEm=Date.now();
+    if(curView==="home")renderHomePraVoce();
+    return;
+  }
+  // Nunca bloqueia: sem vaga nenhuma, a prateleira inteira some (nunca um
+  // aviso de erro — pode ser perfil vazio, planilha sem match, etc.).
+  if(!_praVoceCache.length){wrap.style.display="none";return;}
+  wrap.style.display="block";
+  box.innerHTML=_praVoceCache.slice(0,5).map((j,i)=>{
+    _praVoceJobs[j.id]=j;
+    const bb=i===Math.min(_praVoceCache.length,5)-1?"":"border-bottom:1px solid var(--border)";
+    const wageLbl=j.wage&&j.wage!=="–"?`<span style="color:#10b981;font-weight:800">💰 ${esc(j.wage)}</span>`:"";
+    const locLbl=[j.city,j.state].filter(x=>x&&x!=="–").join(", ");
+    const scoreBadge=j.matchScore!=null?`<span style="flex-shrink:0;font-size:10px;font-weight:800;padding:2px 7px;border-radius:20px;background:${j.matchScore>=70?"var(--greenl,#dcfce7)":j.matchScore>=40?"var(--amberl,#fef3c7)":"var(--sf2)"};color:${j.matchScore>=70?"#065f46":j.matchScore>=40?"#92400e":"var(--t3)"}">${j.matchScore}%</span>`:"";
+    return`<div class="jcard" onclick="abrirVagaPraVoce('${esc(j.id)}')" role="button" tabindex="0" aria-label="${esc(j.title||"Vaga")} — ${esc(j.company||"")}" style="cursor:pointer;padding:9px 2px;display:flex;align-items:center;gap:10px;${bb}">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12.5px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.title||"–")}</div>
+        <div style="font-size:10.5px;color:var(--t3);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.company||"–")}${locLbl?" · "+esc(locLbl):""}${wageLbl?" · "+wageLbl:""}</div>
+      </div>
+      ${scoreBadge}
+    </div>`;
+  }).join("");
+}
+// Abre o detalhe reaproveitando o MESMO fluxo de sempre (_showJobOrSweep:
+// sweep de já-contatado + mkDetailHTML) — mas o job vem do cache desta
+// prateleira (pode não estar em `sJobs`, que é só a planilha aberta no
+// momento), nunca da busca por planilha do selSheetJob.
+function abrirVagaPraVoce(id){
+  const j=_praVoceJobs[id];
+  if(!j){toast("Vaga não encontrada.","au");return;}
+  _showJobOrSweep(id,j);
+}
 // ══ ATIVIDADE RECENTE — últimos envios reais do HIST (nunca inventa: sem histórico, mostra o vazio honesto) ══
 function renderHomeActivity(){
   const box=g("#home-activity-list");if(!box)return;
@@ -6010,6 +6062,7 @@ function renderHome(){
   // passo, card do pedido pendente e os 3 números da tela nunca renderizavam.
   try{renderHeroStatus();}catch(e){}
   try{renderHomeActivity();}catch(e){}
+  try{renderHomePraVoce();}catch(e){}
   try{renderNextStep();}catch(e){}
   try{renderPendingOrderCard();}catch(e){}
   // Stats — Vagas Disponíveis (cache de loadDynamicSheets) + Empresas Contatadas (HIST únicas)
@@ -7026,6 +7079,7 @@ const LANG_DICT = {
     "home_hero_badge":"Vagas sazonais em todos os EUA","home_hero_h1a":"Trabalhe nos EUA","home_hero_h1b":"com mais oportunidades",
     "home_stat_jobs":"Vagas Disponíveis","home_stat_companies":"Empresas Contatadas","home_stat_emails":"E-mails Enviados",
     "home_activity_title":"Atividade Recente","home_tips_title":"Dicas para mais respostas",
+    "home_pravoce_title":"Vagas pra Você","home_pravoce_sub":"As melhores vagas disponíveis pro seu perfil, com o motivo do encaixe.",
     "home_tip1":"Use um currículo em inglês claro e objetivo.","home_tip2":"Envie para muitas vagas — o volume aumenta suas chances.",
     "home_tip3":"Personalize a carta de apresentação.","home_tip4":"Mantenha seu perfil sempre atualizado.","home_tip5":"Verifique sua caixa de spam.",
     "home_tip_quote":"Disciplina hoje, oportunidades amanhã.",
@@ -7164,6 +7218,7 @@ const LANG_DICT = {
     "home_hero_badge":"Seasonal jobs across the USA","home_hero_h1a":"Work in the USA","home_hero_h1b":"with more opportunities",
     "home_stat_jobs":"Jobs Available","home_stat_companies":"Companies Contacted","home_stat_emails":"Emails Sent",
     "home_activity_title":"Recent Activity","home_tips_title":"Tips for more replies",
+    "home_pravoce_title":"Jobs For You","home_pravoce_sub":"The best jobs available for your profile, with the match reason.",
     "home_tip1":"Use a clear, objective English resume.","home_tip2":"Apply to many jobs — volume raises your chances.",
     "home_tip3":"Personalize your cover letter.","home_tip4":"Keep your profile always up to date.","home_tip5":"Check your spam folder.",
     "home_tip_quote":"Discipline today, opportunities tomorrow.",
@@ -7287,6 +7342,7 @@ const LANG_DICT = {
     "home_hero_badge":"Empleos de temporada en todo EE. UU.","home_hero_h1a":"Trabaja en EE. UU.","home_hero_h1b":"con más oportunidades",
     "home_stat_jobs":"Vacantes Disponibles","home_stat_companies":"Empresas Contactadas","home_stat_emails":"Correos Enviados",
     "home_activity_title":"Actividad Reciente","home_tips_title":"Consejos para más respuestas",
+    "home_pravoce_title":"Vacantes Para Ti","home_pravoce_sub":"Las mejores vacantes disponibles para tu perfil, con el motivo del encaje.",
     "home_tip1":"Usa un currículum en inglés claro y objetivo.","home_tip2":"Postúlate a muchas vacantes — el volumen aumenta tus chances.",
     "home_tip3":"Personaliza tu carta de presentación.","home_tip4":"Mantén tu perfil siempre actualizado.","home_tip5":"Revisa tu carpeta de spam.",
     "home_tip_quote":"Disciplina hoy, oportunidades mañana.",

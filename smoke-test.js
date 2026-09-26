@@ -5397,6 +5397,27 @@ async function drillAdminSettingsLegado() {
     await req2("POST", "/api/auto/stop", {});
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
 
+    // 🎯 v352 (achado de auditoria autônoma pós-v351): a rota acima (v139) já
+    // existia 100% pronta e testada — dedupe da regra 8, nota de match,
+    // matchWhy — mas NENHUMA tela chamava ela; mesma classe de bug do
+    // v205-v208 ("backend existe, UI não chama"). Corrigido ligando a
+    // prateleira "🎯 Vagas pra Você" na Home (index.html) via
+    // renderHomePraVoce()/abrirVagaPraVoce() (app.js), reaproveitando
+    // _showJobOrSweep/mkDetailHTML (o MESMO fluxo de abrir vaga de sempre —
+    // nunca uma 2ª lógica de detalhe).
+    const _appJsPv = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+    const _idxPv = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+    check("🎯 v352: a Home tem o container da prateleira 'Vagas pra Você' (index.html) e app.js chama /api/jobs/pra-voce de dentro de renderHome() — a rota v139 deixou de ser código morto",
+      _idxPv.includes('id="home-pravoce-wrap"') && _idxPv.includes('id="home-pravoce-list"') &&
+      _appJsPv.includes('fetch("/api/jobs/pra-voce"') && /function renderHome\(\)\{[\s\S]{0,900}renderHomePraVoce/.test(_appJsPv),
+      "prateleira não está mais ligada na Home (container ou fetch sumiu)");
+    check("🎯 v352 (estrutural): abrirVagaPraVoce() reaproveita _showJobOrSweep — nunca uma 2ª lógica de abrir detalhe/sweep de já-contatado só pra esta prateleira",
+      /function abrirVagaPraVoce\(id\)\{[\s\S]{0,200}_showJobOrSweep\(id,j\)/.test(_appJsPv),
+      "abrirVagaPraVoce não está reaproveitando _showJobOrSweep");
+    check("🎯 v352 (i18n): home_pravoce_title/home_pravoce_sub existem nas 3 línguas (pt/en/es) — nunca texto fixo em português no markup de uma tela nova",
+      (_appJsPv.match(/"home_pravoce_title":/g) || []).length === 3 && (_appJsPv.match(/"home_pravoce_sub":/g) || []).length === 3,
+      "faltou alguma língua nas chaves novas de i18n");
+
     // ═══ 💼 MC4 — PARTE 1 (MASTER COMMAND 4, dono, 28/08): SÓCIOS & ACERTO ═══
     // "quanto eu tenho a receber e quanto diego tem a receber?" — fonte única
     // computeSocios(): régua idêntica ao canônico (invariante delta R$0),
