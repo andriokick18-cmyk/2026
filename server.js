@@ -81,6 +81,22 @@ function sendAsset(req, res, file, ctype, cacheControl){
   res.writeHead(200, h);
   return res.end(body);
 }
+// v350b: cache RAW (sem br/gz) por mtime pras fotos de /tut-img e /img —
+// JPEG/PNG já são comprimidos, então recomprimir com brotli/gzip (como
+// getStaticAsset faz) triplicaria a memória sem ganho nenhum. Mas SEM
+// nenhum cache, essas 2 rotas faziam fs.readFileSync SÍNCRONO (trava o
+// event loop inteiro) em TODO request — mesma classe de bug do v350
+// (og-image/favicon). Isto tira a leitura de disco do caminho quente
+// depois do 1º acesso a cada arquivo, só com um statSync barato depois.
+const _imgRawCache = {}; // { filePath: {mtime, buf} }
+function readImgCached(fp){
+  const st = fs.statSync(fp);
+  const c = _imgRawCache[fp];
+  if (c && c.mtime === st.mtimeMs) return c.buf;
+  const buf = fs.readFileSync(fp);
+  _imgRawCache[fp] = { mtime: st.mtimeMs, buf };
+  return buf;
+}
 // v18-PERF: as páginas dinâmicas de SEO programático (/vagas-h2b/:estado e
 // /vagas-h2b/categoria/:categoria) geram HTML novo por requisição (dados
 // mudam a cada boot), então não dá pra usar o cache de getStaticAsset (que é
@@ -7320,7 +7336,10 @@ const server=http.createServer(async(req,res)=>{
     if(!/^[a-z0-9-]+\.(jpg|png)$/.test(nome)){res.writeHead(404);return res.end();}
     // JPEG/PNG já são comprimidos — servir direto (sem o cache br/gz do
     // sendAsset, que triplicaria a memória com 30+ fotos sem ganho nenhum).
-    try{const img=fs.readFileSync(path.join(__dirname,"tutorial-img",nome));res.writeHead(200,{"Content-Type":nome.endsWith(".png")?"image/png":"image/jpeg","Cache-Control":"public, max-age=604800"});return res.end(img);}catch{res.writeHead(404);return res.end();}
+    // v350b: mesma classe de bug do v350 (og-image/favicon) — fs.readFileSync
+    // SÍNCRONO em TODO request travava o event loop inteiro; readImgCached
+    // (por mtime, sem compressão) tira a leitura de disco do caminho quente.
+    try{const img=readImgCached(path.join(__dirname,"tutorial-img",nome));res.writeHead(200,{"Content-Type":nome.endsWith(".png")?"image/png":"image/jpeg","Cache-Control":"public, max-age=604800"});return res.end(img);}catch{res.writeHead(404);return res.end();}
   }
   // 🖼️ Fotos reais de marca (hero da Home, sidebar, landing, Enviadas —
   // pedido do dono, print de referência). Mesmo padrão do /tut-img: nome
@@ -7329,7 +7348,7 @@ const server=http.createServer(async(req,res)=>{
     const nomeImg=pathname.slice("/img/".length);
     const mImg=/^[a-z0-9-]+\.(jpg|png)$/.exec(nomeImg);
     if(!mImg){res.writeHead(404);return res.end();}
-    try{const img=fs.readFileSync(path.join(__dirname,"img",nomeImg));res.writeHead(200,{"Content-Type":mImg[1]==="png"?"image/png":"image/jpeg","Cache-Control":"public, max-age=604800"});return res.end(img);}catch{res.writeHead(404);return res.end();}
+    try{const img=readImgCached(path.join(__dirname,"img",nomeImg));res.writeHead(200,{"Content-Type":mImg[1]==="png"?"image/png":"image/jpeg","Cache-Control":"public, max-age=604800"});return res.end(img);}catch{res.writeHead(404);return res.end();}
   }
   if(pathname==="/h2bapply-funciona"||pathname==="/h2bapply-funciona.html")return serveHtml("h2bapply-funciona.html"); // SEO: página "H2BApply funciona?" (como funciona, confiança, preços, FAQ)
   if(pathname==="/h2b-e-golpe"||pathname==="/h2b-e-golpe.html")return serveHtml("h2b-e-golpe.html"); // SEO/confiança: página "H2B é golpe?" — golpes comuns, regra federal anti-taxa-de-recrutamento, como verificar vaga real

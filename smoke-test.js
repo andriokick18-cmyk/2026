@@ -1512,6 +1512,33 @@ async function drillAdminSettingsLegado() {
         _r1.status === 200 && _r1.headers["content-type"] === _ct && !!_etag && !!_r2 && _r2.status === 304 && _r2.buf.length === 0,
         JSON.stringify({ rota: _rota, status1: _r1.status, ct: _r1.headers["content-type"], etag: _etag, status2: _r2?.status, len2: _r2?.buf.length }));
     }
+    // ⚡ v350b: /tut-img/:file e /img/:file (fotos do tutorial e da Home)
+    // faziam a MESMA classe de fs.readFileSync síncrono por request — mesma
+    // rota quente (Home carrega /img em TODO acesso, Tutorial carrega
+    // /tut-img toda vez que a aba abre). Sem ETag de propósito (JPEG/PNG já
+    // comprimidos, sem cache br/gz aqui — só o statSync+Buffer em memória de
+    // readImgCached), então a prova aqui é: 200, content-type certo, e o
+    // BYTE do arquivo servido bate exatamente com o arquivo em disco — tanto
+    // no 1º acesso (leitura fria) quanto no 2º (cache quente) — provando que
+    // o cache nunca serve um Buffer velho nem corrompido.
+    {
+      const _tutFile = fs.readdirSync(path.join(__dirname, "tutorial-img")).find((f) => /\.(jpg|png)$/.test(f));
+      const _imgFile = fs.readdirSync(path.join(__dirname, "img")).find((f) => /\.(jpg|png)$/.test(f));
+      const _tut1 = await _getBufA(`/tut-img/${_tutFile}`);
+      const _tut2 = await _getBufA(`/tut-img/${_tutFile}`);
+      const _tutSrc = fs.readFileSync(path.join(__dirname, "tutorial-img", _tutFile));
+      check(`⚡ v350b: /tut-img/${_tutFile} sai do readImgCached() (nunca mais fs.readFileSync síncrono por request) — bytes idênticos ao arquivo em disco na leitura fria E na quente`,
+        _tut1.status === 200 && _tut1.headers["content-type"] === (_tutFile.endsWith(".png") ? "image/png" : "image/jpeg") &&
+        Buffer.compare(_tut1.buf, _tutSrc) === 0 && Buffer.compare(_tut2.buf, _tutSrc) === 0,
+        `status=${_tut1.status} len1=${_tut1.buf?.length} len2=${_tut2.buf?.length} lenSrc=${_tutSrc.length}`);
+      const _img1 = await _getBufA(`/img/${_imgFile}`);
+      const _img2 = await _getBufA(`/img/${_imgFile}`);
+      const _imgSrc = fs.readFileSync(path.join(__dirname, "img", _imgFile));
+      check(`⚡ v350b: /img/${_imgFile} sai do readImgCached() (nunca mais fs.readFileSync síncrono por request) — bytes idênticos ao arquivo em disco na leitura fria E na quente`,
+        _img1.status === 200 && _img1.headers["content-type"] === (_imgFile.endsWith(".png") ? "image/png" : "image/jpeg") &&
+        Buffer.compare(_img1.buf, _imgSrc) === 0 && Buffer.compare(_img2.buf, _imgSrc) === 0,
+        `status=${_img1.status} len1=${_img1.buf?.length} len2=${_img2.buf?.length} lenSrc=${_imgSrc.length}`);
+    }
     const frontAll = home.body + appJs.body;
     const tcss = await get("/vendor/tabler-icons.min.css");
     check("🎨 fonte de ícones servida pelo próprio site (CSS)",
