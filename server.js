@@ -8623,25 +8623,30 @@ ul li{margin-bottom:6px}
     "/favicon-32.png":"favicon-32.png",
     "/favicon.ico":"favicon-32.png"
   };
-  // Print real do aviso do Google — usado no modal educativo pré-login
+  // Print real do aviso do Google — usado no modal educativo pré-login.
+  // v350-PERF: roteado pelo MESMO cache de sendAsset() (linha ~67) que já
+  // serve /app.js — antes cada request fazia fs.readFileSync SÍNCRONO
+  // (trava o event loop inteiro de Node por request), e essas 4 rotas são
+  // batidas por TODO carregamento da landing (favicon/apple-touch-icon no
+  // <head>) e por todo crawler de preview do WhatsApp/redes sociais
+  // (og-image) — o canal de compartilhamento nº1 desta audiência.
   if(pathname==="/google-aviso.jpg"){
-    try{const img=fs.readFileSync(path.join(__dirname,"google-aviso.jpg"));res.writeHead(200,{"Content-Type":"image/jpeg","Cache-Control":"public, max-age=604800"});return res.end(img);}catch{res.writeHead(404);return res.end();}
+    return sendAsset(req,res,"google-aviso.jpg","image/jpeg","public, max-age=604800");
   }
   // v18-SEO: banner de preview pra WhatsApp/redes sociais (og:image) — sem
   // ele, links compartilhados do H2BApply apareciam sem nenhuma imagem.
   if(pathname==="/og-image.png"){
-    try{const img=fs.readFileSync(path.join(__dirname,"og-image.png"));res.writeHead(200,{"Content-Type":"image/png","Cache-Control":"public, max-age=604800"});return res.end(img);}catch{res.writeHead(404);return res.end();}
+    return sendAsset(req,res,"og-image.png","image/png","public, max-age=604800");
   }
   if(ICON_MAP[pathname]){
     const iconPath=path.join(__dirname,ICON_MAP[pathname]);
-    if(fs.existsSync(iconPath)){const data=fs.readFileSync(iconPath);res.writeHead(200,{"Content-Type":"image/png","Cache-Control":"public, max-age=604800, immutable"});return res.end(data);}
+    if(fs.existsSync(iconPath)){return sendAsset(req,res,ICON_MAP[pathname],"image/png","public, max-age=604800, immutable");}
   }
   if(pathname==="/icon-192.png"||pathname==="/icon-512.png"){
     const size=pathname==="/icon-192.png"?192:512;
     const pngPath=path.join(__dirname,pathname.slice(1));
     if(fs.existsSync(pngPath)){
-      res.writeHead(200,{"Content-Type":"image/png","Cache-Control":"public, max-age=604800"});
-      return res.end(fs.readFileSync(pngPath));
+      return sendAsset(req,res,pathname.slice(1),"image/png","public, max-age=604800");
     }
     // Fallback: gera PNG real (sem dependências externas) compatível com PWA/iOS/push
     try {

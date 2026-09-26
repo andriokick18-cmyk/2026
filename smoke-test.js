@@ -1489,6 +1489,29 @@ async function drillAdminSettingsLegado() {
     // v40: fonte de ícones é BUILT-IN — nunca mais some por CDN bloqueada
     const appJs = await get("/app.js");
     check("⚡ v116: /app.js servido (JS do index extraído — carregamento rápido)", appJs.status===200 && appJs.body.length>100_000, "status="+appJs.status);
+
+    // ⚡ v350: 4 rotas de imagem estática (og-image.png, google-aviso.jpg,
+    // favicon-32.png via ICON_MAP, icon-192.png) faziam fs.readFileSync
+    // SÍNCRONO em TODO request — travando o event loop inteiro de Node por
+    // request, numa rota batida por TODO carregamento de página (favicon no
+    // <head>) e por todo crawler de preview do WhatsApp (og-image, o canal
+    // de compartilhamento nº1 desta audiência). Roteadas pelo MESMO cache
+    // de sendAsset() que já serve /app.js (brotli/gzip + ETag/304).
+    const _getComETag = (p, etag) => new Promise((resolve, reject) => {
+      const r = http.request(BASE + p, { method: "GET", headers: etag ? { "If-None-Match": etag } : {} }, (res) => {
+        const chunks = []; res.on("data", (c) => chunks.push(c));
+        res.on("end", () => resolve({ status: res.statusCode, buf: Buffer.concat(chunks), headers: res.headers }));
+      });
+      r.on("error", reject); r.end();
+    });
+    for (const [_rota, _ct] of [["/og-image.png", "image/png"], ["/google-aviso.jpg", "image/jpeg"], ["/favicon-32.png", "image/png"], ["/icon-192.png", "image/png"]]) {
+      const _r1 = await _getComETag(_rota);
+      const _etag = _r1.headers.etag;
+      const _r2 = _etag ? await _getComETag(_rota, _etag) : null;
+      check(`⚡ v350: ${_rota} sai do cache de sendAsset() (nunca mais fs.readFileSync síncrono por request) — 200 com content-type/ETag certos, e repetir com If-None-Match devolve 304 sem corpo`,
+        _r1.status === 200 && _r1.headers["content-type"] === _ct && !!_etag && !!_r2 && _r2.status === 304 && _r2.buf.length === 0,
+        JSON.stringify({ rota: _rota, status1: _r1.status, ct: _r1.headers["content-type"], etag: _etag, status2: _r2?.status, len2: _r2?.buf.length }));
+    }
     const frontAll = home.body + appJs.body;
     const tcss = await get("/vendor/tabler-icons.min.css");
     check("🎨 fonte de ícones servida pelo próprio site (CSS)",
