@@ -1717,6 +1717,29 @@ async function drillAdminSettingsLegado() {
       check("🧹 v341: como-usar.html não promete mais recompensa em 💎 (perfil completo / 1ª candidatura) — mecanismo que não existe desde a remoção do sistema de diamantes (v170)",
         !_cusaSrc.includes("recompensa") && !/\+\d\s*💎/.test(_cusaSrc) && !_cusaSrc.includes('class="reward"'),
         "como-usar.html ainda promete recompensa em diamantes");
+      // 🎨 v344 (reshoot dos 7 screenshots do tutorial, 26/09/2026 — achado
+      // pelo agente que fotografou o app de verdade): o passo 2 dizia "Cada
+      // vaga mostra um selo 🎯 % de encaixe" — falso. Confirmado em app.js
+      // que o selo (matchScore/matchWhy) só existe em mkDetailHTML (a tela
+      // de detalhe), NUNCA em mkSheetCard (o card da lista) — o print antigo
+      // já mentia sobre isso e o texto nunca foi corrigido. Corrigido pra
+      // "Ao abrir uma vaga, ela mostra...". Guarda ESTRUTURAL (não só o
+      // texto): se algum dia mkSheetCard passar a renderizar o selo — ou
+      // mkDetailHTML deixar de renderizar — este teste force a reler e
+      // ajustar o texto do tutorial junto, nunca deixando os dois divergirem
+      // de novo em silêncio (mesma filosofia do v162: UI e doc não podem
+      // andar cada uma pro seu lado sem uma guarda percebendo).
+      const _appL344 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _mkSheetStart = _appL344.indexOf("function mkSheetCard(");
+      const _mkDetailStart = _appL344.indexOf("function mkDetailHTML(");
+      const _mkSheetBody = _appL344.slice(_mkSheetStart, _mkDetailStart);
+      const _mkDetailBody = _appL344.slice(_mkDetailStart, _mkDetailStart + 4000);
+      check("🎨 v344: como-usar.html não afirma mais que 'cada vaga' na LISTA mostra o selo de % de encaixe — o texto agora diz 'ao abrir uma vaga' (o selo é só no detalhe, mkDetailHTML)",
+        !_cusaSrc.includes("Cada vaga mostra um selo") && _cusaSrc.includes("Ao abrir uma vaga, ela mostra um selo"),
+        "como-usar.html ainda afirma que a lista mostra o selo por card");
+      check("🎨 v344 (estrutural): mkSheetCard (card da lista) continua SEM o selo de % de encaixe e mkDetailHTML (detalhe) continua COM ele — se isso mudar, o texto do tutorial (passo 2) precisa ser revisto junto",
+        _mkSheetStart > -1 && _mkDetailStart > _mkSheetStart && !/% de encaixe/.test(_mkSheetBody) && /% de encaixe/.test(_mkDetailBody),
+        "a relação entre onde o selo aparece e o texto do tutorial mudou — revisar como-usar.html");
       // 📝 v342 (pedido do dono, 26/09/2026): FAQ nova em h2b-e-golpe.html
       // respondendo se o H2BApply é diferente de consultoria/outros sites de
       // vaga — autoatendimento (regra 7 do CLAUDE.md: zero texto pré-escrito
