@@ -1740,6 +1740,20 @@ async function drillAdminSettingsLegado() {
       check("🎨 v344 (estrutural): mkSheetCard (card da lista) continua SEM o selo de % de encaixe e mkDetailHTML (detalhe) continua COM ele — se isso mudar, o texto do tutorial (passo 2) precisa ser revisto junto",
         _mkSheetStart > -1 && _mkDetailStart > _mkSheetStart && !/% de encaixe/.test(_mkSheetBody) && /% de encaixe/.test(_mkDetailBody),
         "a relação entre onde o selo aparece e o texto do tutorial mudou — revisar como-usar.html");
+      // 🐛 v345 (achado revisando os screenshots do v344 — print real mostrou
+      // o botão "Candidatar-se" cortado pelo bottom-nav numa vaga com
+      // descrição longa): #mob-detail-content (painel de detalhe de vaga no
+      // mobile) é filho de .mob-detail, que fica ATRÁS do .bottom-nav no
+      // empilhamento (z-index 60 contra 90) — sem padding-bottom que reserve
+      // a altura do nav (60px + safe-area), o último elemento do conteúdo
+      // (o botão Candidatar-se) rolava até EMBAIXO do nav fixo e ficava
+      // coberto. Mesmo padrão que .view-scroll (v-plans/v-tutorial) já usa
+      // (padding-bottom:80px) — aplicado aqui também. Confirmado com boot
+      // real + Playwright: o botão passou a ficar 100% visível acima do nav.
+      const _idxL345 = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+      check("🐛 v345: #mob-detail-content reserva padding-bottom (o painel de detalhe de vaga no mobile) pra nunca mais deixar o botão Candidatar-se embaixo do bottom-nav fixo",
+        /id="mob-detail-content"[^>]*padding-bottom:80px/.test(_idxL345),
+        "#mob-detail-content perdeu o padding-bottom — o botão Candidatar-se pode voltar a ficar coberto pelo bottom-nav em vagas com descrição longa");
       // 📝 v342 (pedido do dono, 26/09/2026): FAQ nova em h2b-e-golpe.html
       // respondendo se o H2BApply é diferente de consultoria/outros sites de
       // vaga — autoatendimento (regra 7 do CLAUDE.md: zero texto pré-escrito
