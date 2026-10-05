@@ -2242,8 +2242,13 @@ async function drillAdminSettingsLegado() {
       check("🧹 v203-L21: .hcard/.plan-card/.future-card só aparecem dentro das 2 regras MISTAS do tema claro (com .jcard/.cv-slot, que estão vivas) — regra mista nunca é podada, e o contador trava uma regra nova dessas famílias",
         JSON.stringify(_mistas21) === JSON.stringify([".hcard=2", ".plan-card=1", ".future-card=1"]),
         _mistas21.join(" "));
+      // v961 (🇺🇸 Central "Aprenda H-2B/H-2A"): entrega legítima de CSS nova
+      // (view própria com tabelas/quiz/glossário/progresso) empurrou o total
+      // pra ~136KB — não é ressurreição de código morto (as 2 guardas acima
+      // continuam provando isso por família e por regra mista), então o teto
+      // sobe junto com margem, em vez de travar crescimento real do produto.
       check("🧹 v203-L21: o CSS do index.html encolheu de verdade e as regras VIVAS continuam lá (a poda foi por seletor, nunca por bloco inteiro)",
-        _estilos21.length < 130_000 &&
+        _estilos21.length < 145_000 &&
         [".jcard", ".btn", ".view", ".sidebar", ".bottom-nav", ".tpl-var", ".profile-card", ".cv-slot", ".chip", ".banner"].every((c) => _estilos21.includes(c)),
         `tamanho do CSS inline: ${_estilos21.length}`);
 
@@ -6693,6 +6698,56 @@ async function drillAdminSettingsLegado() {
         _img160.status === 200 && String(_img160.headers["content-type"]).includes("image/jpeg") && _img160.buf.length > 10_000 &&
         _trav160.status === 404 && _nada160.status === 404,
         JSON.stringify({ st: _img160.status, len: _img160.buf?.length, trav: _trav160.status, nada: _nada160.status }).slice(0, 140));
+    }
+
+    // ═══ 🇺🇸 v961: CENTRAL "APRENDA TUDO SOBRE AS REGRAS DOS VISTOS H-2B E
+    // H-2A" — hub + guia H-2B (11 tópicos) + guia H-2A (11 tópicos) + extras
+    // (comparação/mitos/checklist/glossário/fontes/quiz/histórias), pesquisa
+    // em fontes oficiais dos EUA (USCIS/DOL/DOS/CBP/eCFR), mesmo padrão de
+    // fragmento lazy-load do Tutorial (regra de arquitetura v160). ═══
+    {
+      const _idx173 = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+      const _appJs173 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _frag173 = (await get("/aprenda-conteudo")).body || "";
+      const _b173 = _frag173.match(/id="apr-b(\d+)"/g) || [];
+      const _a173 = _frag173.match(/id="apr-a(\d+)"/g) || [];
+      const _subs173 = [...new Set((_frag173.match(/data-sub="(\w+)"/g) || []).map((m) => m.match(/data-sub="(\w+)"/)[1]))];
+      check(`🇺🇸 v961: o fragmento /aprenda-conteudo tem os guias completos H-2B (${_b173.length} tópicos) e H-2A (${_a173.length} tópicos), com pelo menos 10 cada (ordem do dono: "mínimo 10 grandes tópicos")`,
+        _b173.length >= 10 && _a173.length >= 10 &&
+        (_frag173.match(/data-kw="/g) || []).length >= _b173.length + _a173.length,
+        `h2b=${_b173.length} h2a=${_a173.length}`);
+      check("🇺🇸 v961: as 10 seções pedidas pelo dono existem no fragmento (hub, guia h2b, guia h2a, comparação, mitos, checklist, glossário, fontes oficiais, quiz, histórias)",
+        ["hub", "h2b", "h2a", "comp", "mitos", "check", "gloss", "fontes", "quiz", "historias"].every((s) => _subs173.includes(s)),
+        `subs=${_subs173.join(",")}`);
+      check('🇺🇸 v961: aviso legal obrigatório presente ("não substitui aconselhamento jurídico individualizado", nada garante aprovação/emprego/entrada) e alerta de golpe bem destacado ("NÃO COMPRE UMA VAGA")',
+        _frag173.includes("não substitui") && _frag173.includes("aconselhamento jurídico") &&
+        _frag173.includes("Nada aqui garante aprovação") &&
+        _frag173.includes("NÃO COMPRE UMA VAGA"),
+        "textos obrigatórios ausentes");
+      check('🇺🇸 v961: regra "zero texto pré-preenchido" do site inteiro (regra 7 do CLAUDE.md) não foi violada — a página É conteúdo educativo estático, nunca um formulário de e-mail pro usuário',
+        !_frag173.includes("<textarea") && !_frag173.includes('type="email"'));
+      check("🇺🇸 v961: a aba vive na navegação (sidebar destacada + sheet 'Mais' do mobile), a view existe no HTML e o roteamento carrega sob demanda (loadAprenda) com abas internas (aprendaIr)",
+        _idx173.includes('id="v-aprenda"') && _idx173.includes('id="aprenda-conteudo"') &&
+        _idx173.includes('id="si-aprenda"') && _idx173.includes("sv('aprenda')") &&
+        _appJs173.includes('VIEWS=["home","jobs","logs","profile","auto","plans","tutorial","settings","hist","aprenda"]') &&
+        _appJs173.includes("function loadAprenda") && _appJs173.includes("function aprendaIr") &&
+        _appJs173.includes('if(v==="aprenda"){loadAprenda();}'));
+      check("🇺🇸 v961: strings de UI da aba (título/subtítulo/carregando/menus) no LANG_DICT em pt+en+es — a catraca de tradução (regra 6f) continua zerada",
+        ["apr_t", "apr_s", "apr_load", "si_aprenda", "mm_aprenda"].every((k) => (_appJs173.match(new RegExp('"' + k + '":"', "g")) || []).length === 3) &&
+        _idx173.includes('data-i18n="apr_t"'),
+        "chaves apr_/si_aprenda/mm_aprenda ausentes em alguma língua");
+      // Progresso por tópico: rota exige sessão, aceita só IDs no formato
+      // esperado e devolve no /api/status pra sobreviver troca de aparelho.
+      const _progNoAuth = await (async () => { const _ck173 = COOKIE; COOKIE = ""; const r = await req2("POST", "/api/aprenda-progresso", { opened: ["apr-b1"] }); COOKIE = _ck173; return r; })();
+      check("🇺🇸 v961: POST /api/aprenda-progresso sem sessão → 401 (nunca grava progresso de ninguém não-autenticado)",
+        _progNoAuth.status === 401, `status=${_progNoAuth.status}`);
+      const _progOk = await req2("POST", "/api/aprenda-progresso", { opened: ["apr-b1", "apr-a3", "<script>x</script>", 123] });
+      const _stProg = await get("/api/status");
+      check("🇺🇸 v961: POST /api/aprenda-progresso com sessão grava só os IDs válidos (apr-bN/apr-aN) e o /api/status devolve o progresso salvo (sobrevive troca de aparelho)",
+        _progOk.status === 200 && Array.isArray(_stProg.json?.aprendaProgresso) &&
+        _stProg.json.aprendaProgresso.includes("apr-b1") && _stProg.json.aprendaProgresso.includes("apr-a3") &&
+        !_stProg.json.aprendaProgresso.some((x) => String(x).includes("script")),
+        JSON.stringify(_stProg.json?.aprendaProgresso || []).slice(0, 140));
     }
 
     // (v161 CURA DA CAMADA GEMINI — sem geminiGenerate, sem GEMINI_API_KEY,

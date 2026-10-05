@@ -2426,6 +2426,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
            Manual/Currículos/Enviadas voltaram a ser itens de topo. -->
       <div class="sb-sec" style="margin-top:6px">
         <button class="sb-item active" id="si-home" onclick="sv('home')"><i class="ti ti-home-2"></i><span data-i18n="inicio">Início</span></button>
+        <button class="sb-item" id="si-aprenda" onclick="sv('aprenda')" style="background:linear-gradient(135deg,rgba(29,78,216,.14),rgba(185,28,28,.14));border:1.5px solid rgba(29,78,216,.25)"><i class="ti ti-flag-3" style="color:#1d4ed8"></i><span data-i18n="si_aprenda">🇺🇸 Aprenda H-2B/H-2A</span></button>
         <button class="sb-item" id="si-profile" onclick="sv('profile')"><i class="ti ti-user"></i>Meu Perfil</button>
         <button class="sb-item" id="si-cvs" onclick="sv('profile');setTimeout(()=>{if(typeof switchProfileTab==='function')switchProfileTab('profiles')},120)"><i class="ti ti-file-cv"></i>Currículos</button>
         <button class="sb-item" id="sb-auto-btn" onclick="openAutoModal()"><i class="ti ti-robot"></i>Envio Automático</button>
@@ -3744,6 +3745,125 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
 
 
       <!-- ══ TUTORIAL COMPLETO ══ -->
+      <!-- ══ APRENDA — vistos H-2B/H-2A ══ -->
+      <div class="view gone" id="v-aprenda"><div class="view-scroll" style="padding:0 0 80px">
+        <style>
+        .apr-disclaimer{display:flex;gap:10px;align-items:flex-start;background:#fffbeb;border-bottom:1.5px solid #fde68a;color:#92400e;padding:12px 16px;font-size:12px;line-height:1.5}
+        .apr-disclaimer i{font-size:18px;flex-shrink:0;margin-top:1px}
+        .apr-tabs{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:10px 12px;background:#0f172a;position:sticky;top:0;z-index:5;scrollbar-width:none}
+        .apr-tabs::-webkit-scrollbar{display:none}
+        .apr-tab{flex-shrink:0;background:rgba(255,255,255,.08);color:#cbd5e1;border:1.5px solid rgba(255,255,255,.12);border-radius:10px;padding:8px 13px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;transition:.15s}
+        .apr-tab.active{background:#fff;color:#0f172a;border-color:#fff}
+        .apr-oculto{display:none!important}
+        .apr-intro{padding:16px}
+        .apr-intro h2{font-family:'Sora',sans-serif;font-size:18px;font-weight:800;color:#0f172a;margin:0 0 10px}
+        .apr-intro h3{font-family:'Sora',sans-serif;font-size:14.5px;font-weight:800;color:#0f172a;margin:18px 0 8px}
+        .apr-intro p{font-size:13.5px;color:#334155;line-height:1.65;margin:0 0 10px}
+        .apr-ul{margin:8px 0;padding-left:20px;font-size:13.5px;color:#334155;line-height:1.7}
+        .apr-ul li{margin-bottom:6px}
+        .apr-golpe-lista{list-style:none;padding-left:0}
+        .apr-ex{background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:12px 14px;margin:12px 0;font-size:13px;color:#1e3a8a;line-height:1.6}
+        .apr-ex .apr-ul{color:#1e3a8a}
+        .apr-golpe-inline{background:#fef2f2;border:1.5px solid #fecaca;border-radius:12px;padding:12px 14px;margin:12px 0;font-size:13px;color:#991b1b;line-height:1.6}
+        .apr-golpe-banner{display:flex;gap:12px;align-items:flex-start;background:linear-gradient(135deg,#7f1d1d,#991b1b);color:#fff;border-radius:16px;padding:16px;margin:0 16px 16px;box-shadow:0 6px 20px rgba(153,27,27,.3)}
+        .apr-golpe-banner-sm{margin:0 0 14px;padding:13px;border-radius:14px}
+        .apr-golpe-icon{font-size:26px;flex-shrink:0;line-height:1}
+        .apr-golpe-t{font-family:'Sora',sans-serif;font-size:14px;font-weight:800;margin-bottom:5px}
+        .apr-golpe-d{font-size:12.5px;line-height:1.55;opacity:.95}
+        .apr-caminhos{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 16px}
+        @media (max-width:520px){.apr-caminhos{grid-template-columns:1fr}}
+        .apr-caminho{border:none;border-radius:18px;padding:20px 16px;text-align:center;cursor:pointer;font-family:inherit;color:#fff;transition:transform .15s,box-shadow .15s}
+        .apr-caminho:hover{transform:translateY(-2px)}
+        .apr-caminho-b{background:linear-gradient(145deg,#1d4ed8,#1e3a8a);box-shadow:0 8px 22px rgba(29,78,216,.35)}
+        .apr-caminho-a{background:linear-gradient(145deg,#15803d,#14532d);box-shadow:0 8px 22px rgba(21,128,61,.35)}
+        .apr-caminho-ico{font-size:34px;margin-bottom:8px}
+        .apr-caminho-t{font-family:'Sora',sans-serif;font-size:17px;font-weight:800;margin-bottom:4px}
+        .apr-caminho-s{font-size:12px;opacity:.85;margin-bottom:14px}
+        .apr-caminho-btn{background:rgba(255,255,255,.16);border-radius:10px;padding:9px 10px;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:6px}
+        .apr-progresso{margin:18px 16px;background:var(--surface,#fff);border:1.5px solid var(--border,#e2e8f0);border-radius:16px;padding:14px 16px}
+        .apr-prog-t{font-family:'Sora',sans-serif;font-size:12.5px;font-weight:800;color:var(--t3,#64748b);letter-spacing:.04em;margin-bottom:10px}
+        .apr-prog-row{display:flex;align-items:center;gap:10px;font-size:12px;font-weight:700;color:var(--text,#1e293b);margin-bottom:8px}
+        .apr-prog-row span:first-child{flex-shrink:0;width:82px}
+        .apr-prog-row span:last-child{flex-shrink:0;width:36px;text-align:right}
+        .apr-prog-bar{flex:1;height:8px;border-radius:5px;background:var(--sf2,#eef2f7);overflow:hidden}
+        .apr-prog-fill{height:100%;border-radius:5px;transition:width .4s}
+        .apr-prog-fill-b{background:linear-gradient(90deg,#3b82f6,#1d4ed8)}
+        .apr-prog-fill-a{background:linear-gradient(90deg,#4ade80,#15803d)}
+        .apr-ig-cta{display:flex;gap:10px;align-items:flex-start;background:linear-gradient(135deg,#fdf4ff,#fae8ff);border:1.5px solid #f0abfc;border-radius:14px;padding:14px;margin:16px;font-size:12.5px;color:#701a75;line-height:1.55}
+        .apr-ig-cta i{font-size:22px;flex-shrink:0;color:#a21caf}
+        .apr-ig-cta a,.apr-ig-btn{display:inline-flex;align-items:center;gap:4px;margin-top:6px;font-weight:800;color:#a21caf;text-decoration:none}
+        .apr-guia-header{padding:22px 18px;text-align:center;color:#fff}
+        .apr-guia-header-b{background:linear-gradient(135deg,#1e3a8a,#1d4ed8,#2563eb)}
+        .apr-guia-header-a{background:linear-gradient(135deg,#14532d,#15803d,#16a34a)}
+        .apr-guia-ico{font-size:30px;margin-bottom:6px}
+        .apr-guia-t{font-family:'Sora',sans-serif;font-size:18px;font-weight:800;margin-bottom:4px}
+        .apr-guia-s{font-size:12px;opacity:.85}
+        .apr-item{margin:0 16px 10px}
+        .apr-item:first-of-type{margin-top:16px}
+        .apr-fluxo{display:flex;flex-direction:column;gap:4px;margin:10px 0}
+        .apr-fluxo-step{background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:12.5px;color:#334155;line-height:1.5}
+        .apr-fluxo-arrow{text-align:center;color:#94a3b8;font-size:13px}
+        .apr-dica{background:#f0fdf4;border-left:3px solid #22c55e;border-radius:8px;padding:8px 11px;margin:9px 0;font-size:12.5px;color:#166534}
+        .apr-fonte{background:#f1f5f9;border-radius:8px;padding:9px 11px;margin-top:10px;font-size:11.5px;color:#475569;line-height:1.6}
+        .apr-fonte a{color:#2563eb;font-weight:700}
+        .apr-link-btn{background:none;border:none;color:#2563eb;font-weight:800;font-size:13px;text-decoration:underline;cursor:pointer;font-family:inherit;padding:0}
+        .apr-tabela-simples,.apr-tabela-comp{width:100%;border-collapse:collapse;font-size:12px;margin:10px 0}
+        .apr-tabela-wrap{overflow-x:auto;padding:0 16px;margin:10px 0}
+        .apr-tabela-comp{min-width:480px}
+        .apr-tabela-simples th,.apr-tabela-comp th{background:#0f172a;color:#fff;padding:8px 10px;text-align:left;font-weight:700}
+        .apr-tabela-simples td,.apr-tabela-comp td{border:1px solid #e2e8f0;padding:8px 10px;vertical-align:top;color:#334155}
+        .apr-tabela-simples tr:nth-child(2) td:first-child,.apr-tabela-comp tr td:nth-child(2){background:#f0fdf4}
+        .apr-tabela-simples tr td:last-child{background:#fef2f2}
+        .apr-checklist-mini,.apr-checklist-full{display:flex;flex-direction:column;gap:8px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:12px;margin:10px 0}
+        .apr-checklist-mini label,.apr-check-item{display:flex;align-items:flex-start;gap:8px;font-size:12.5px;color:#334155;line-height:1.5;cursor:pointer}
+        .apr-checklist-mini input,.apr-check-item input{margin-top:2px;flex-shrink:0;width:16px;height:16px;accent-color:#2563eb}
+        .apr-mito-badge{flex-shrink:0;font-size:10.5px;font-weight:800;padding:3px 8px;border-radius:6px;letter-spacing:.03em}
+        .apr-mito-f{background:#fee2e2;color:#991b1b}
+        .apr-mito-v{background:#dcfce7;color:#166534}
+        .apr-mito summary{align-items:center}
+        .apr-search{width:100%;font-size:14px;padding:12px 14px;border-radius:12px;border:1.5px solid #cbd5e1;margin:0 16px 14px;max-width:calc(100% - 32px)}
+        .apr-gloss-grid{display:flex;flex-direction:column;gap:8px;padding:0 16px}
+        .apr-gloss-item{background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#334155;line-height:1.55}
+        .apr-gloss-item.apr-oculto{display:none!important}
+        .apr-fontes-grupo{padding:0 16px;margin-bottom:18px}
+        .apr-fontes-grupo h4{font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:#0f172a;margin:0 0 8px}
+        .apr-fontes-lista{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:7px}
+        .apr-fontes-lista li{background:#fff;border:1.5px solid #e2e8f0;border-radius:9px;padding:9px 11px;font-size:12.5px}
+        .apr-fontes-lista a{color:#2563eb;font-weight:700;text-decoration:none}
+        .apr-tag-secundaria{display:inline-block;background:#fef3c7;color:#92400e;font-size:10px;font-weight:800;padding:2px 6px;border-radius:5px;margin-left:6px}
+        .apr-quiz-q{background:#fff;border:1.5px solid #e2e8f0;border-radius:14px;padding:14px;margin:0 16px 14px}
+        .apr-quiz-pergunta{font-size:13.5px;font-weight:700;color:#0f172a;margin-bottom:10px;line-height:1.5}
+        .apr-quiz-opcoes{display:flex;flex-direction:column;gap:7px}
+        .apr-quiz-op{text-align:left;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#334155;cursor:pointer;font-family:inherit;line-height:1.45}
+        .apr-quiz-op:disabled{cursor:default}
+        .apr-quiz-op.apr-certo{background:#dcfce7;border-color:#22c55e;color:#166534;font-weight:700}
+        .apr-quiz-op.apr-errado{background:#fee2e2;border-color:#ef4444;color:#991b1b}
+        .apr-quiz-explica{margin-top:10px;background:#eff6ff;border-radius:10px;padding:10px 12px;font-size:12px;color:#1e3a8a;line-height:1.55}
+        .apr-hist-real,.apr-hist-hip{margin:0 16px 14px;border-radius:14px;padding:14px}
+        .apr-hist-real{background:#fff;border:1.5px solid #e2e8f0}
+        .apr-hist-hip{background:#f8fafc;border:1.5px dashed #94a3b8}
+        .apr-hist-tag{display:inline-block;font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:6px;margin-bottom:8px}
+        .apr-hist-tag-real{background:#dbeafe;color:#1e40af}
+        .apr-hist-tag-hip{background:#f1f5f9;color:#475569}
+        .apr-hist-real h4,.apr-hist-hip h4{font-family:'Sora',sans-serif;font-size:13.5px;font-weight:800;color:#0f172a;margin:0 0 6px}
+        .apr-hist-real p,.apr-hist-hip p{font-size:12.5px;color:#334155;line-height:1.6;margin:0}
+        </style>
+
+        <!-- Header -->
+        <div style="background:linear-gradient(135deg,#0b1535,#1e3a8a,#b91c1c);color:#fff;padding:26px 20px;text-align:center">
+          <div style="width:64px;height:64px;border-radius:20px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+            <i class="ti ti-flag-3" style="font-size:32px"></i>
+          </div>
+          <div style="font-family:'Sora',sans-serif;font-size:21px;font-weight:800;margin-bottom:6px" data-i18n="apr_t">🇺🇸 Aprenda tudo sobre as regras dos vistos H-2B e H-2A</div>
+          <div style="font-size:13px;opacity:.85" data-i18n="apr_s">Guia completo, educativo e baseado em fontes oficiais do governo dos EUA — pra você entender de verdade como o processo funciona e reconhecer golpes</div>
+        </div>
+
+        <div id="aprenda-conteudo">
+          <div style="text-align:center;color:#64748b;font-size:13px;padding:34px 0" data-i18n="apr_load">⏳ Carregando o guia completo...</div>
+        </div>
+
+      </div></div>
+
       <div class="view gone" id="v-tutorial"><div class="view-scroll" style="padding:0 0 80px">
         <style>
         .tut-bloco{padding:14px 16px 2px}
@@ -3879,6 +3999,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
     <div class="mbody" style="padding-top:2px">
       <div style="display:flex;flex-direction:column;gap:2px">
         <button class="mm-item" onclick="g('#more-menu-overlay').classList.add('gone');sv('plans')"><i class="ti ti-diamond"></i><span data-i18n="plans">💎 Planos</span></button>
+        <button class="mm-item" onclick="g('#more-menu-overlay').classList.add('gone');sv('aprenda')"><i class="ti ti-flag-3"></i><span data-i18n="mm_aprenda">🇺🇸 Aprenda H-2B/H-2A</span></button>
         <button class="mm-item" onclick="g('#more-menu-overlay').classList.add('gone');openAutoModal()"><i class="ti ti-robot"></i><span data-i18n="bn_auto">Envio Automático</span></button>
         <button class="mm-item" onclick="g('#more-menu-overlay').classList.add('gone');sv('tutorial')"><i class="ti ti-book-2"></i><span data-i18n="bn_tutorial">Central de Tutoriais</span></button>
         <button class="mm-item" onclick="g('#more-menu-overlay').classList.add('gone');sv('settings')"><i class="ti ti-settings"></i><span data-i18n="bn_settings">Configurações</span></button>
