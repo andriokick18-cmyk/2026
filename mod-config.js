@@ -84,7 +84,7 @@ const PUSH_ENABLED = false;
 // nomes/preços/limites NOVOS pra quem compra a partir de hoje. As CHAVES
 // INTERNAS (vip/vipro/doublepro) continuam as MESMAS de propósito — só o
 // NOME PÚBLICO e os NÚMEROS mudaram (ver NOME_PLANO_PUBLICO, server.js, e
-// PLANO_PRECO_TAB pros preços de 30/60 dias). Isso evita reescrever toda a
+// PLANO_PRECO_TAB pros preços de 15/30/60 dias). Isso evita reescrever toda a
 // contabilidade/admin/migração de código por causa de um nome novo — o
 // "contrato congelado" em vip.limits (carimbado na ativação) já garante que
 // quem tinha DoublePro (200/200) ANTES desta mudança continua com 200/200
@@ -100,10 +100,10 @@ const PUSH_ENABLED = false;
 // fallback `|| N` que escondia zero como falsy — CORRIGIDO junto (ver lá).
 const PLAN_LIMITS_NEW = {
   free:      { manual: 0,   auto: 0   },
-  vip:       { manual: 100, auto: 0   }, // "Manual" — R$150/30d ou R$270/60d
+  vip:       { manual: 100, auto: 0   }, // "Manual" — R$75/15d, R$150/30d ou R$270/60d
   pro:       { manual: 0,   auto: 100 }, // legado
-  vipro:     { manual: 100, auto: 100 }, // "Turbo" — R$300/30d ou R$540/60d
-  doublepro: { manual: 50,  auto: 300 }, // "Máximo" — R$500/30d ou R$900/60d
+  vipro:     { manual: 100, auto: 100 }, // "Turbo" — R$150/15d, R$300/30d ou R$540/60d
+  doublepro: { manual: 50,  auto: 300 }, // "Máximo" — R$250/15d, R$500/30d ou R$900/60d
 };
 // 🏷️ v218 — NOME PÚBLICO DE CADA PLANO. Fonte única no backend (o front tem
 // a sua própria, PLAN_NAMES em app.js — mantidas em paralelo de propósito,

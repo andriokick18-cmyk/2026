@@ -631,11 +631,16 @@ function _vipSnapshot(u){
 // esta tabela. Um cliente podia mandar {plano:"vip",dias:3650} e, se o editor
 // aprovasse sem reparar no alerta do Gemini, o sistema creditava 10 anos de
 // VIP. Preços em R$ — mudar aqui exige avisar o Andrio antes (dinheiro real).
-// v218 (ORDEM DO DONO, 20/09/2026): reestruturação de Planos — só 30 e 60
-// dias (90/365 saíram; nada usa esses prazos fora desta tabela — a coleta
-// manual do admin manda valorTotal explícito). 60 dias vem com desconto pra
-// incentivar o plano mais longo: Manual economiza R$30, Turbo R$60, Máximo R$100.
-const PLANO_PRECO_TAB={vip:{30:150,60:270},vipro:{30:300,60:540},doublepro:{30:500,60:900}};
+// v218 (ORDEM DO DONO, 20/09/2026): reestruturação de Planos — 90/365 saíram
+// (nada usa esses prazos fora desta tabela — a coleta manual do admin manda
+// valorTotal explícito). 60 dias vem com desconto pra incentivar o plano mais
+// longo: Manual economiza R$30, Turbo R$60, Máximo R$100.
+// v962 (ORDEM DO DONO, 09/10/2026 — "dividir para 15 dias e divide o valor
+// também"): entrou o período de 15 dias em TODOS os planos, EXATAMENTE a
+// metade do preço de 30 dias (mesmo preço por dia — sem desconto e sem
+// sobretaxa). A régua é "15d = 30d ÷ 2" de propósito: o smoke prova essa
+// igualdade pra tabela nunca sair do alinhamento se um preço de 30d mudar.
+const PLANO_PRECO_TAB={vip:{15:75,30:150,60:270},vipro:{15:150,30:300,60:540},doublepro:{15:250,30:500,60:900}};
 
 // 🚧 INTERRUPTOR DE EMERGÊNCIA — compra nova (dono, 19/09/2026, ATUALIZADO no
 // mesmo dia: "h2bapply.com agora aponta pra este ambiente DE VERDADE"). Nasceu
@@ -2319,7 +2324,11 @@ function reconciliarPlanosComPedidos(apply){
     for(const pd of peds){
       const t=_t(pd.ativadoEm)||_t(pd.pagoEm)||_t(pd.criadoEm);if(!t)continue;
       if(_revAt&&t<=_revAt)continue;
-      const dias=Number(pd.diasTotal)||((Number(pd.diasBase)||30)+(Number(pd.diasBonus)||0));
+      // v962 (achado da revisão): pedido em "pago" (sem passar pela ativação,
+      // que é quem carimba diasTotal) caía direto no padrão de 30 — com o
+      // período de 15 dias isso creditaria o DOBRO. pd.dias já foi validado
+      // contra PLANO_PRECO_TAB na criação, então vem antes do fallback.
+      const dias=Number(pd.diasTotal)||Number(pd.dias)||((Number(pd.diasBase)||30)+(Number(pd.diasBonus)||0));
       const pk=String(pd.planoKey||pd.plano||"vipro").toLowerCase();
       // 🚨 v307 (achado de auditoria contínua): expManual era acumulado SEM
       // checar o plano — só expAuto excluía "vip" (manual-only). Faltava o

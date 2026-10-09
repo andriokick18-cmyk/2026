@@ -88,6 +88,7 @@ const SAFE_FNS = {
   "vfResumoCurto(ctx)":          "contagem de filtros + textos do LANG_DICT",
   "_warmupBadgeHTML(sent,cap)":  "só 2 números interpolados (selo 🌱 de aquecimento)",
   "_srcCntHtml(s)":              "só contagens via toLocaleString (card de planilha)",
+  "_planResumoLinhasHTML(linhas)": "linhas [chave,valor] do resumo do plano (v962) — cada célula passa por esc()",
 };
 const SAFE_FN_NAMES = Object.keys(SAFE_FNS).map((k) => k.slice(0, k.indexOf("(")));
 

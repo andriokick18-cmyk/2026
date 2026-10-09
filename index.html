@@ -3415,6 +3415,19 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
 
       <!-- ══ PLANS ══ -->
       <div class="view gone" id="v-plans"><div class="view-scroll" style="padding-bottom:80px">
+        <style>
+        /* v962 — seletor de período (15/30/60) como grupo de rádio acessível
+           (segmented control), nunca toggle; alvo ≥44px, foco visível. */
+        .pl-periodo{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:var(--sf2);border:1.5px solid var(--border2);border-radius:14px;padding:5px}
+        .pl-seg{min-height:44px;border:none;border-radius:10px;background:transparent;color:var(--t2);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:6px 4px;transition:background .15s,color .15s}
+        .pl-seg small{font-size:10px;font-weight:700;opacity:.8;line-height:1.1}
+        .pl-seg[aria-checked="true"]{background:linear-gradient(135deg,#2563eb,#4f46e5);color:#fff;box-shadow:0 3px 10px rgba(79,70,229,.3)}
+        .pl-seg:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+        /* 2 classes de propósito: o .btn{min-height:42px} do media query mobile (mais abaixo no arquivo) venceria um seletor de 1 classe */
+        .btn.pl-card-cta{width:100%;min-height:46px;justify-content:center;font-size:13.5px;font-weight:800;margin-top:10px;white-space:normal;line-height:1.2}
+        .pl-linha{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--t2);padding:3px 0}
+        .pl-linha b{color:var(--text)}
+        </style>
 
         <!-- 🔶 v215 (dono, 19/09/2026 — domínio h2bapply.com migrado de
              verdade pra este ambiente): quem já era assinante VIP no site
@@ -3531,6 +3544,10 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
                   <div style="font-size:12px;color:var(--t2)" id="calc-desc" data-i18n="plan_calc_empty">Escolha um plano e o período</div>
                   <div style="font-size:24px;font-weight:800;color:var(--green)" id="calc-total">—</div>
                 </div>
+                <!-- v962: "confira sua escolha" (padrão check-answers) — montado por
+                     _updatePlanCalcResumo() a partir de GET /api/planos: o que
+                     inclui por dia, período, validade e total. -->
+                <div id="calc-detalhe" style="display:none;margin-top:10px;border-top:1px solid rgba(99,102,241,.22);padding-top:10px;font-size:12px;color:var(--t2);line-height:1.65"></div>
               </div>
 
               <!-- ❓ v218 (dono, 20/09/2026 — reestruturação de Planos): FAQ
@@ -3561,6 +3578,10 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
                   <div style="font-size:12px;color:var(--t2);line-height:1.6;margin:6px 0 4px" data-i18n="plan_faq5_a">O robô manda num ritmo humano (~7 minutos entre envios) pra reduzir o risco de bloqueio do Google. No plano Máximo, os envios revezam entre 2 contas Gmail, o que reduz ainda mais o volume por conta. Ainda assim, o risco de bloqueio é do Google (terceiro) — nunca do H2BApply.</div>
                 </details>
                 <details style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px">
+                  <summary style="font-size:12.5px;font-weight:700;color:var(--t2);cursor:pointer" data-i18n="plan_faq7_q">O plano de 15 dias é a metade do de 30?</summary>
+                  <div style="font-size:12px;color:var(--t2);line-height:1.6;margin:6px 0 4px" data-i18n="plan_faq7_a">Sim: custa exatamente a metade e dá os MESMOS limites diários do plano cheio — só vale metade do tempo. É o jeito de começar com menos. O preço por dia é igual ao de 30 dias (só o de 60 sai mais barato por dia), e quando terminar você compra de novo se quiser — nada renova sozinho.</div>
+                </details>
+                <details style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px">
                   <summary style="font-size:12.5px;font-weight:700;color:var(--t2);cursor:pointer" data-i18n="plan_faq6_q">Vocês garantem que vou conseguir um emprego?</summary>
                   <div style="font-size:12px;color:var(--t2);line-height:1.6;margin:6px 0 4px" data-i18n="plan_faq6_a">Não. O H2BApply é a ponte até o empregador — nunca o autor da sua candidatura nem garantidor do resultado. Contratação, resposta de empresas, aprovação de visto e entrada nos EUA dependem só de empregadores e autoridades americanas, fora do nosso controle.</div>
                 </details>
@@ -3579,6 +3600,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
                   <li data-i18n="consent_b3">Depois de pagar via PIX, envie o comprovante e continue logado na mesma conta até a confirmação — automática quando bate, e sempre conferida pela nossa equipe.</li>
                   <li data-i18n="consent_b4">O risco de bloqueio da conta Gmail é do Google (terceiro), não do H2BApply — dá pra reduzir usando mais de uma conta de envio.</li>
                   <li data-i18n="consent_b5">Você pode acompanhar o status do seu pedido a qualquer momento na aba 🧾 Meus Pedidos.</li>
+                  <li data-i18n="consent_b6">O plano vale pelo período escolhido (15, 30 ou 60 dias corridos), contado a partir da ativação, e não renova sozinho — nunca cobramos de novo.</li>
                 </ul>
                 <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:6px 2px">
                   <input type="checkbox" id="plan-consent-check" onchange="_planStep1Sync()" style="width:20px;height:20px;flex-shrink:0;margin-top:1px;accent-color:var(--blue)">
@@ -3673,6 +3695,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
               <div>
                 <div style="font-size:14px;font-weight:800"><span data-i18n="g_210">📸 Comprovante do pagamento</span> <span style="color:var(--red);font-size:12px" data-i18n="g_63">*obrigatório</span></div>
                 <div style="font-size:11px;color:var(--t3)" data-i18n="g_64">Print da confirmação do Pix do seu pagamento</div>
+                <div style="font-size:11px;color:var(--t3);margin-top:2px" data-i18n="comp_hint2">Pix imediato (não agendado). Envie o print inteiro, com valor, data/hora e o nome de quem recebeu.</div>
               </div>
             </div>
             <div style="padding:14px 16px">

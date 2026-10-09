@@ -829,8 +829,16 @@ function renderPlanStatusCard(){
   const al=hasAuto?daysLeft(v.autoExpires):-1;
   const urgent=d=>d>=0&&d<=5;
   const warn=d=>d>=0&&d<=14;
+  // v962: a barra é "quanto ainda falta do que você tem" — o total é o
+  // intervalo REAL (ativação → vencimento) de cada relógio, nunca 30 fixo (um
+  // plano de 15 dias recém-ativado nascia já pela metade e um de 60 passava de
+  // 100%). vip.days é só fallback: ele guarda os dias SOMADOS na última ação
+  // (um "somar 5 dias" do admin gravaria 5), não o período inteiro.
+  const totalDias=Math.max(1,parseInt(v?.days,10)||30);
+  const _ativEm=(typeof v?.activatedAt==='number')?v.activatedAt:Date.parse(v?.activatedAt||'');
+  const totalPara=(expires)=>{const span=(Number.isFinite(_ativEm)&&_ativEm>0)?Math.round((expires-_ativEm)/86400000):0;return span>0?span:totalDias;};
   function row(icon,label,days,expires){
-    const pct=Math.min(100,Math.max(4,Math.round(days/30*100)));
+    const pct=Math.min(100,Math.max(4,Math.round(days/Math.max(totalPara(expires),days)*100)));
     const clr=urgent(days)?"var(--red)":warn(days)?"var(--amber)":"var(--green)";
     const bg=urgent(days)?"var(--redl)":warn(days)?"var(--amberl)":"var(--greenl)";
     const border=urgent(days)?"var(--redb)":warn(days)?"var(--amberb)":"var(--greenb)";
@@ -7103,7 +7111,7 @@ const LANG_DICT = {
     "mc_1":"Minha Conta","mc_13":"Comprovante recebido — aguardando confirmação","mc_14":"Renove seu plano na aba Planos.","mc_15":"ATENÇÃO: expira em","mp_pend":"⏳ Em análise","mp_pago":"💰 Pagamento recebido — aguardando confirmação","mp_canc":"✖ Cancelado","mp_canc_sub":"Se achar que foi engano, chame no WhatsApp","mp_motivo":"Motivo","mp_ileg":"⚠️ Não conseguimos ler seu comprovante — reenvie uma foto nítida.","mp_ok":"✅ Comprovante conferido pelo robô","mp_analise":"🔍 Comprovante em análise","mp_reenviar":"📤 Reenviar comprovante","mp_media":"confirmação média real","mp_sub24":"Analisamos e confirmamos — você recebe notificação", "mc_2":"Sem plano ativo","mc_7":"🧾 Último pedido:","mc_8":"aguardando confirmação do admin","mc_9":"confirmado — plano ativado","mc_10":"cancelado","mc_11":"Você ainda não fez nenhum pedido.","mc_12":"Assine um plano pra liberar o envio de candidaturas — manual e automático.", // 👤 2.0-P6: Minha Conta em 5s (v170: sem sistema de diamantes; v172-FIX 12/09: conta sem plano não envia NADA, nunca mais "limite grátis")
     "tut_t":"Central de Tutoriais","tut_s":"20 passo a passos — tudo o que dá pra fazer no H2BApply, explicado tela por tela (vários já com fotos reais)","tut_ph":"🔍 O que você quer aprender? Ex.: currículo, automático, planos...","tut_v":"Nada encontrado com essa palavra — tente outro termo (ex.: \"enviar\", \"plano\", \"perfil\").","tut_load":"⏳ Carregando os tutoriais...", // 📖 v160
     "apr_t":"🇺🇸 Aprenda tudo sobre as regras dos vistos H-2B e H-2A","apr_s":"Guia completo, educativo e baseado em fontes oficiais do governo dos EUA — pra você entender de verdade como o processo funciona e reconhecer golpes","apr_load":"⏳ Carregando o guia completo...","si_aprenda":"🇺🇸 Aprenda H-2B/H-2A","mm_aprenda":"🇺🇸 Aprenda H-2B/H-2A", // 🇺🇸 v961
-    "consent_title":"☑️ Antes de continuar","consent_b1":"É um serviço digital pago de automação de envio — o H2BApply nunca escreve o e-mail por você; o conteúdo enviado é sempre seu.","consent_b2":"O preço mostrado agora é o valor final a pagar.","consent_b3":"Depois de pagar via PIX, envie o comprovante e continue logado na mesma conta até a confirmação — automática quando bate, e sempre conferida pela nossa equipe.","consent_b4":"O risco de bloqueio da conta Gmail é do Google (terceiro), não do H2BApply — dá pra reduzir usando mais de uma conta de envio.","consent_b5":"Você pode acompanhar o status do seu pedido a qualquer momento na aba 🧾 Meus pedidos.","consent_check":"Li e entendo como o programa funciona e o que estou pagando.","consent_terms_link":"Ver Termos completos →","consent_required_msg":"Marque que você leu e entende antes de continuar.","consent_choose_plan":"Escolha um plano e o período antes de continuar.","plan_step1_title":"Escolha seu plano e período","plan_step1_intro":"Você paga <strong>diretamente</strong> pelo plano escolhido. Veja os limites de cada plano, escolha o período e o preço final aparece na hora, antes de pagar.","plan_calc_empty":"Escolha um plano e o período","plan_error_load":"Não deu pra carregar os planos.","plan_try_again":"Tentar de novo","plan_auto_faq_q":"🤖 Como funciona o Envio Automático?","plan_auto_faq_a":"O robô manda as candidaturas sozinho, pelo seu próprio Gmail, usando o currículo e os textos que você mesmo escreveu no seu perfil — ele nunca inventa nada. Esse recurso vem incluído nos planos Turbo e Máximo desde o primeiro dia (o Manual não tem automático: você escolhe e envia cada candidatura). Pra usar o automático, você escolhe a fonte de vagas, ajusta os filtros e escolhe o perfil, toca em Iniciar e pode até fechar o app: ele continua enviando sozinho, um a cada ~7 minutos (ritmo humano, pra proteger sua conta Gmail de bloqueio pelo Google), até bater o limite diário do seu plano — aí ele pausa sozinho e volta a enviar no dia seguinte.","plan_faq_title":"❓ Perguntas frequentes","plan_faq1_q":"Qual a diferença entre os 3 planos?","plan_faq1_a":"Manual dá só candidaturas manuais (você escolhe e envia uma por uma). Turbo soma o robô automático ao manual. Máximo tem o maior volume automático (300/dia) com 2 contas Gmail, mas menos manuais (50/dia) — pensado pra quem quer o máximo volume via robô.","plan_faq2_q":"Por que o plano de 60 dias é mais barato por dia?","plan_faq2_a":"O período mais longo já vem com desconto embutido — você paga menos por dia sem perder nenhum limite diário. O preço exato de cada opção aparece antes de você pagar, direto da nossa tabela oficial.","plan_faq3_q":"O que acontece quando meu plano vencer?","plan_faq3_a":"O envio para automaticamente no dia em que vence — nunca cobramos de novo sozinhos. Quando quiser continuar, é só escolher um plano de novo aqui na aba Planos.","plan_faq4_q":"Posso cancelar e ser reembolsado?","plan_faq4_a":"Sim: você tem até 7 dias corridos após o pagamento pra desistir e pedir reembolso (direito de arrependimento do Código de Defesa do Consumidor). Se o plano já foi usado nesse período, o reembolso é proporcional ao que sobrou. Depois dos 7 dias, não há reembolso automático — veja os Termos completos.","plan_faq5_q":"O envio automático é seguro pro meu Gmail?","plan_faq5_a":"O robô manda num ritmo humano (~7 minutos entre envios) pra reduzir o risco de bloqueio do Google. No plano Máximo, os envios revezam entre 2 contas Gmail, o que reduz ainda mais o volume por conta. Ainda assim, o risco de bloqueio é do Google (terceiro) — nunca do H2BApply.","plan_faq6_q":"Vocês garantem que vou conseguir um emprego?","plan_faq6_a":"Não. O H2BApply é a ponte até o empregador — nunca o autor da sua candidatura nem garantidor do resultado. Contratação, resposta de empresas, aprovação de visto e entrada nos EUA dependem só de empregadores e autoridades americanas, fora do nosso controle.", // 💎 v170: compra direta de plano — consentimento informado (CEO mode, 09/09/2026); v172-FIX 12/09: removida menção a "moeda intermediária" (referência ao sistema antigo já retirado) + explicação do automático reorganizada (dono: "ficou um pouco confuso")
+    "consent_title":"☑️ Antes de continuar","consent_b1":"É um serviço digital pago de automação de envio — o H2BApply nunca escreve o e-mail por você; o conteúdo enviado é sempre seu.","consent_b2":"O preço mostrado agora é o valor final a pagar.","consent_b3":"Depois de pagar via PIX, envie o comprovante e continue logado na mesma conta até a confirmação — automática quando bate, e sempre conferida pela nossa equipe.","consent_b4":"O risco de bloqueio da conta Gmail é do Google (terceiro), não do H2BApply — dá pra reduzir usando mais de uma conta de envio.","consent_b5":"Você pode acompanhar o status do seu pedido a qualquer momento na aba 🧾 Meus pedidos.","consent_check":"Li e entendo como o programa funciona e o que estou pagando.","consent_terms_link":"Ver Termos completos →","consent_required_msg":"Marque que você leu e entende antes de continuar.","consent_choose_plan":"Escolha um plano e o período antes de continuar.","plan_step1_title":"Escolha seu plano e período","plan_step1_intro":"Você paga <strong>diretamente</strong> pelo plano escolhido, uma única vez, sem renovação automática. Escolha o período (15, 30 ou 60 dias), veja os limites de cada plano e o preço final aparece na hora, antes de pagar.","plan_calc_empty":"Escolha um plano e o período","plan_error_load":"Não deu pra carregar os planos.","plan_try_again":"Tentar de novo","plan_auto_faq_q":"🤖 Como funciona o Envio Automático?","plan_auto_faq_a":"O robô manda as candidaturas sozinho, pelo seu próprio Gmail, usando o currículo e os textos que você mesmo escreveu no seu perfil — ele nunca inventa nada. Esse recurso vem incluído nos planos Turbo e Máximo desde o primeiro dia (o Manual não tem automático: você escolhe e envia cada candidatura). Pra usar o automático, você escolhe a fonte de vagas, ajusta os filtros e escolhe o perfil, toca em Iniciar e pode até fechar o app: ele continua enviando sozinho, um a cada ~7 minutos (ritmo humano, pra proteger sua conta Gmail de bloqueio pelo Google), até bater o limite diário do seu plano — aí ele pausa sozinho e volta a enviar no dia seguinte.","plan_faq_title":"❓ Perguntas frequentes","plan_faq1_q":"Qual a diferença entre os 3 planos?","plan_faq1_a":"Manual dá só candidaturas manuais (você escolhe e envia uma por uma). Turbo soma o robô automático ao manual. Máximo tem o maior volume automático (300/dia) com 2 contas Gmail, mas menos manuais (50/dia) — pensado pra quem quer o máximo volume via robô.","plan_faq2_q":"Por que o plano de 60 dias é mais barato por dia?","plan_faq2_a":"O período mais longo já vem com desconto embutido — você paga menos por dia sem perder nenhum limite diário. O preço exato de cada opção aparece antes de você pagar, direto da nossa tabela oficial.","plan_faq3_q":"O que acontece quando meu plano vencer?","plan_faq3_a":"O envio para automaticamente no dia em que vence — nunca cobramos de novo sozinhos. Quando quiser continuar, é só escolher um plano de novo aqui na aba Planos.","plan_faq4_q":"Posso cancelar e ser reembolsado?","plan_faq4_a":"Sim: você tem até 7 dias corridos após o pagamento pra desistir e pedir reembolso (direito de arrependimento do Código de Defesa do Consumidor). Se o plano já foi usado nesse período, o reembolso é proporcional ao que sobrou. Depois dos 7 dias, não há reembolso automático — veja os Termos completos.","plan_faq5_q":"O envio automático é seguro pro meu Gmail?","plan_faq5_a":"O robô manda num ritmo humano (~7 minutos entre envios) pra reduzir o risco de bloqueio do Google. No plano Máximo, os envios revezam entre 2 contas Gmail, o que reduz ainda mais o volume por conta. Ainda assim, o risco de bloqueio é do Google (terceiro) — nunca do H2BApply.","plan_faq7_q":"O plano de 15 dias é a metade do de 30?","plan_faq7_a":"Sim: custa exatamente a metade e dá os MESMOS limites diários do plano cheio — só vale metade do tempo. É o jeito de começar com menos. O preço por dia é igual ao de 30 dias (só o de 60 sai mais barato por dia), e quando terminar você compra de novo se quiser — nada renova sozinho.","consent_b6":"O plano vale pelo período escolhido (15, 30 ou 60 dias corridos), contado a partir da ativação, e não renova sozinho — nunca cobramos de novo.","comp_hint2":"Pix imediato (não agendado). Envie o print inteiro, com valor, data/hora e o nome de quem recebeu.","plan_faq6_q":"Vocês garantem que vou conseguir um emprego?","plan_faq6_a":"Não. O H2BApply é a ponte até o empregador — nunca o autor da sua candidatura nem garantidor do resultado. Contratação, resposta de empresas, aprovação de visto e entrada nos EUA dependem só de empregadores e autoridades americanas, fora do nosso controle.", // 💎 v170: compra direta de plano — consentimento informado (CEO mode, 09/09/2026); v172-FIX 12/09: removida menção a "moeda intermediária" (referência ao sistema antigo já retirado) + explicação do automático reorganizada (dono: "ficou um pouco confuso")
      // 🎯 v139: Vagas pra você (Home)
     "fq1":"Fila concluída! Você aplicou para todas as vagas.","fq2":"🏆 Fila concluída! Aguarde as respostas chegarem.","fq3":"Todas as candidaturas enviadas! O sucesso está a caminho.","fq4":"Fila zerada! Você deu um grande passo hoje.","h_faq_visa":"<strong>Isso garante emprego ou visto? Não.</strong> O H2BApply é uma ferramenta que envia e-mails para você. A decisão de te contratar é do empregador. A decisão do visto é do consulado americano. Quanto mais candidaturas você enviar, maiores as chances de receber uma oferta.","g_260":"Adicione um segundo Gmail. O automático distribui os envios entre os dois emails, reduzindo risco de spam.","g_261":"Os e-mails sairão com o currículo e os textos do perfil escolhido no Passo 3 — assuntos e corpos alternam automaticamente contra spam.","g_262":"O sistema rotaciona entre os assuntos e corpos de e-mail cadastrados para evitar parecer spam. Quer ajustar algo? Toque em \"Trocar\" acima.","g_268":"Perfil único: seu perfil serve automaticamente para qualquer vaga, de qualquer planilha.","g_270":"Você escreve os textos — o H2BApply nunca preenche isso por você, só entrega.","g_273":"Máx. 3MB", // 🌐 v137c: sons/boas-vindas/extrato/FAQ + 11 textos longos da varredura
     // Nav
@@ -7255,7 +7263,7 @@ const LANG_DICT = {
     "mc_1":"My Account","mc_13":"Receipt received — awaiting confirmation","mc_14":"Renew your plan in the Plans tab.","mc_15":"ATTENTION: expires in","mp_pend":"⏳ Under review","mp_pago":"💰 Payment received — awaiting confirmation","mp_canc":"✖ Cancelled","mp_canc_sub":"If you think it was a mistake, message us on WhatsApp","mp_motivo":"Reason","mp_ileg":"⚠️ We could not read your receipt — resend a clear photo.","mp_ok":"✅ Receipt verified by the robot","mp_analise":"🔍 Receipt under review","mp_reenviar":"📤 Resend receipt","mp_media":"real average confirmation","mp_sub24":"We review and confirm — you will get a notification", "mc_2":"No active plan","mc_7":"🧾 Last order:","mc_8":"awaiting admin confirmation","mc_9":"confirmed — plan activated","mc_10":"cancelled","mc_11":"You haven't placed any orders yet.","mc_12":"Subscribe to a plan to unlock sending applications — manual and automatic.", // 👤 2.0-P6 (v170: no more diamond system; v172-FIX 09/12: no-plan accounts send NOTHING, never a "free limit" again)
     "tut_t":"Tutorials Center","tut_s":"20 step-by-step guides — everything you can do on H2BApply, screen by screen (several already with real screenshots)","tut_ph":"🔍 What do you want to learn? E.g.: resume, automatic, plans...","tut_v":"Nothing found — try another word (e.g. \"send\", \"plan\", \"profile\").","tut_load":"⏳ Loading tutorials...", // 📖 v160
     "apr_t":"🇺🇸 Learn everything about H-2B and H-2A visa rules","apr_s":"A complete, educational guide based on official U.S. government sources — so you truly understand how the process works and how to recognize scams","apr_load":"⏳ Loading the complete guide...","si_aprenda":"🇺🇸 Learn H-2B/H-2A","mm_aprenda":"🇺🇸 Learn H-2B/H-2A", // 🇺🇸 v961
-    "consent_title":"☑️ Before you continue","consent_b1":"This is a paid digital application-sending automation service — H2BApply never writes the e-mail for you; the content sent is always your own.","consent_b2":"The price shown now is the final amount to pay.","consent_b3":"After paying via PIX, send the receipt and stay signed in on the same account until confirmation — automatic when it matches, and always checked by our team.","consent_b4":"The risk of your Gmail account being blocked belongs to Google (a third party), not H2BApply — you can lower it by using more than one sending account.","consent_b5":"You can check your order status anytime in the 🧾 My orders tab.","consent_check":"I have read and understand how the program works and what I'm paying for.","consent_terms_link":"See full Terms →","consent_required_msg":"Check that you've read and understood before continuing.","consent_choose_plan":"Choose a plan and the period before continuing.","plan_step1_title":"Choose your plan and period","plan_step1_intro":"You pay <strong>directly</strong> for the plan you choose. See each plan's limits, pick the period, and the final price shows right away, before you pay.","plan_calc_empty":"Choose a plan and the period","plan_error_load":"Couldn't load the plans.","plan_try_again":"Try again","plan_auto_faq_q":"🤖 How does Automatic Sending work?","plan_auto_faq_a":"The robot sends applications by itself, through your own Gmail, using the resume and texts you wrote yourself in your profile — it never makes anything up. This feature is included in the Turbo and Máximo plans from day one (Manual has no automatic sending: you pick and send each application). To use automatic sending, you pick the job source, adjust the filters and pick your profile, tap Start, and you can even close the app: it keeps sending on its own, one every ~7 minutes (human pace, to protect your Gmail from being blocked by Google), until it hits your plan's daily limit — then it pauses on its own and resumes the next day.","plan_faq_title":"❓ Frequently asked questions","plan_faq1_q":"What's the difference between the 3 plans?","plan_faq1_a":"Manual gives you manual applications only (you pick and send one at a time). Turbo adds the automatic robot on top of manual. Máximo has the highest automatic volume (300/day) with 2 Gmail accounts, but fewer manuals (50/day) — built for whoever wants maximum volume through the robot.","plan_faq2_q":"Why is the 60-day plan cheaper per day?","plan_faq2_a":"The longer period already comes with a built-in discount — you pay less per day without losing any daily limit. The exact price of each option shows up before you pay, straight from our official table.","plan_faq3_q":"What happens when my plan expires?","plan_faq3_a":"Sending stops automatically on the day it expires — we never charge you again on our own. When you want to continue, just pick a plan again here in the Plans tab.","plan_faq4_q":"Can I cancel and get a refund?","plan_faq4_a":"Yes: you have up to 7 calendar days after payment to withdraw and request a refund (right of withdrawal under Brazil's consumer protection code). If the plan was already used during that period, the refund is proportional to what's left. After 7 days, there's no automatic refund — see the full Terms.","plan_faq5_q":"Is automatic sending safe for my Gmail?","plan_faq5_a":"The robot sends at a human pace (~7 minutes between sends) to reduce the risk of a Google block. On the Máximo plan, sends rotate between 2 Gmail accounts, further reducing the volume per account. Even so, the block risk belongs to Google (a third party) — never to H2BApply.","plan_faq6_q":"Do you guarantee I'll get a job?","plan_faq6_a":"No. H2BApply is the bridge to the employer — never the author of your application nor a guarantor of the outcome. Hiring, employer responses, visa approval and entry into the US depend solely on employers and US authorities, outside our control.", // 💎 v170: compra direta de plano — consentimento informado (CEO mode, 09/09/2026); v172-FIX 12/09: removed "middleman currency" mention (old removed system) + reworded automatic explanation
+    "consent_title":"☑️ Before you continue","consent_b1":"This is a paid digital application-sending automation service — H2BApply never writes the e-mail for you; the content sent is always your own.","consent_b2":"The price shown now is the final amount to pay.","consent_b3":"After paying via PIX, send the receipt and stay signed in on the same account until confirmation — automatic when it matches, and always checked by our team.","consent_b4":"The risk of your Gmail account being blocked belongs to Google (a third party), not H2BApply — you can lower it by using more than one sending account.","consent_b5":"You can check your order status anytime in the 🧾 My orders tab.","consent_check":"I have read and understand how the program works and what I'm paying for.","consent_terms_link":"See full Terms →","consent_required_msg":"Check that you've read and understood before continuing.","consent_choose_plan":"Choose a plan and the period before continuing.","plan_step1_title":"Choose your plan and period","plan_step1_intro":"You pay <strong>directly</strong> for the plan you choose, once, with no auto-renewal. Pick the period (15, 30 or 60 days), see each plan's limits, and the final price shows right away, before you pay.","plan_calc_empty":"Choose a plan and the period","plan_error_load":"Couldn't load the plans.","plan_try_again":"Try again","plan_auto_faq_q":"🤖 How does Automatic Sending work?","plan_auto_faq_a":"The robot sends applications by itself, through your own Gmail, using the resume and texts you wrote yourself in your profile — it never makes anything up. This feature is included in the Turbo and Máximo plans from day one (Manual has no automatic sending: you pick and send each application). To use automatic sending, you pick the job source, adjust the filters and pick your profile, tap Start, and you can even close the app: it keeps sending on its own, one every ~7 minutes (human pace, to protect your Gmail from being blocked by Google), until it hits your plan's daily limit — then it pauses on its own and resumes the next day.","plan_faq_title":"❓ Frequently asked questions","plan_faq1_q":"What's the difference between the 3 plans?","plan_faq1_a":"Manual gives you manual applications only (you pick and send one at a time). Turbo adds the automatic robot on top of manual. Máximo has the highest automatic volume (300/day) with 2 Gmail accounts, but fewer manuals (50/day) — built for whoever wants maximum volume through the robot.","plan_faq2_q":"Why is the 60-day plan cheaper per day?","plan_faq2_a":"The longer period already comes with a built-in discount — you pay less per day without losing any daily limit. The exact price of each option shows up before you pay, straight from our official table.","plan_faq3_q":"What happens when my plan expires?","plan_faq3_a":"Sending stops automatically on the day it expires — we never charge you again on our own. When you want to continue, just pick a plan again here in the Plans tab.","plan_faq4_q":"Can I cancel and get a refund?","plan_faq4_a":"Yes: you have up to 7 calendar days after payment to withdraw and request a refund (right of withdrawal under Brazil's consumer protection code). If the plan was already used during that period, the refund is proportional to what's left. After 7 days, there's no automatic refund — see the full Terms.","plan_faq5_q":"Is automatic sending safe for my Gmail?","plan_faq5_a":"The robot sends at a human pace (~7 minutes between sends) to reduce the risk of a Google block. On the Máximo plan, sends rotate between 2 Gmail accounts, further reducing the volume per account. Even so, the block risk belongs to Google (a third party) — never to H2BApply.","plan_faq7_q":"Is the 15-day plan half of the 30-day one?","plan_faq7_a":"Yes: it costs exactly half and gives the SAME daily limits as the full plan — it just lasts half as long. It's the way to start with less. The price per day is the same as the 30-day plan (only the 60-day one is cheaper per day), and when it ends you can buy again if you want — nothing renews on its own.","consent_b6":"The plan is valid for the period you chose (15, 30 or 60 calendar days), counted from activation, and does not renew on its own — we never charge you again.","comp_hint2":"Instant Pix (not scheduled). Send the full screenshot, with amount, date/time and the recipient's name.","plan_faq6_q":"Do you guarantee I'll get a job?","plan_faq6_a":"No. H2BApply is the bridge to the employer — never the author of your application nor a guarantor of the outcome. Hiring, employer responses, visa approval and entry into the US depend solely on employers and US authorities, outside our control.", // 💎 v170: compra direta de plano — consentimento informado (CEO mode, 09/09/2026); v172-FIX 12/09: removed "middleman currency" mention (old removed system) + reworded automatic explanation
      // 🎯 v139: Vagas pra você (Home)
     "fq1":"Queue finished! You applied to every job.","fq2":"🏆 Queue done! Now wait for the replies.","fq3":"All applications sent! Success is on the way.","fq4":"Queue cleared! You took a big step today.","h_faq_visa":"<strong>Does this guarantee a job or visa? No.</strong> H2BApply is a tool that sends emails for you. Hiring is the employer's decision. The visa is the US consulate's decision. The more applications you send, the higher your chances of getting an offer.","g_260":"Add a second Gmail. The auto-sender splits applications between both emails, reducing spam risk.","g_261":"Emails go out with the resume and texts of the profile chosen in Step 3 — subjects and bodies rotate automatically against spam.","g_262":"The system rotates through your saved email subjects and bodies to avoid looking like spam. Want to adjust something? Tap \"Change\" above.","g_268":"Single profile: your profile is automatically used for any job, from any sheet.","g_270":"You write the texts — H2BApply never fills this in for you, it only delivers.","g_273":"Max 3MB", // 🌐 v137c: sons/boas-vindas/extrato/FAQ + 11 textos longos da varredura
     "home":"Home","manual":"Manual","search":"Search","auto":"Auto","responses":"Replies",
@@ -7380,7 +7388,7 @@ const LANG_DICT = {
     "mc_1":"Mi Cuenta","mc_13":"Comprobante recibido — esperando confirmación","mc_14":"Renueva tu plan en la pestaña Planes.","mc_15":"ATENCIÓN: expira en","mp_pend":"⏳ En revisión","mp_pago":"💰 Pago recibido — esperando confirmación","mp_canc":"✖ Cancelado","mp_canc_sub":"Si crees que fue un error, escríbenos por WhatsApp","mp_motivo":"Motivo","mp_ileg":"⚠️ No pudimos leer tu comprobante — reenvía una foto nítida.","mp_ok":"✅ Comprobante verificado por el robot","mp_analise":"🔍 Comprobante en revisión","mp_reenviar":"📤 Reenviar comprobante","mp_media":"confirmación media real","mp_sub24":"Revisamos y confirmamos — recibirás una notificación", "mc_2":"Sin plan activo","mc_7":"🧾 Último pedido:","mc_8":"esperando confirmación del admin","mc_9":"confirmado — plan activado","mc_10":"cancelado","mc_11":"Aún no hiciste ningún pedido.","mc_12":"Suscríbete a un plan para desbloquear el envío de solicitudes — manual y automático.", // 👤 2.0-P6 (v170: sin sistema de diamantes; v172-FIX 12/09: cuenta sin plan no envía NADA, nunca más un "límite gratis")
     "tut_t":"Central de Tutoriales","tut_s":"20 guías paso a paso — todo lo que puedes hacer en H2BApply, pantalla por pantalla (varias ya con fotos reales)","tut_ph":"🔍 ¿Qué quieres aprender? Ej.: currículum, automático, planes...","tut_v":"Nada encontrado — prueba otra palabra (ej. \"enviar\", \"plan\", \"perfil\").","tut_load":"⏳ Cargando los tutoriales...", // 📖 v160
     "apr_t":"🇺🇸 Aprende todo sobre las reglas de las visas H-2B y H-2A","apr_s":"Guía completa y educativa basada en fuentes oficiales del gobierno de EE. UU. — para que entiendas de verdad cómo funciona el proceso y cómo reconocer estafas","apr_load":"⏳ Cargando la guía completa...","si_aprenda":"🇺🇸 Aprende H-2B/H-2A","mm_aprenda":"🇺🇸 Aprende H-2B/H-2A", // 🇺🇸 v961
-    "consent_title":"☑️ Antes de continuar","consent_b1":"Es un servicio digital pago de automatización de envío — H2BApply nunca escribe el correo por ti; el contenido enviado siempre es tuyo.","consent_b2":"El precio mostrado ahora es el valor final a pagar.","consent_b3":"Después de pagar vía PIX, envía el comprobante y sigue conectado en la misma cuenta hasta la confirmación — automática cuando coincide, y siempre revisada por nuestro equipo.","consent_b4":"El riesgo de bloqueo de la cuenta Gmail es de Google (tercero), no de H2BApply — se reduce usando más de una cuenta de envío.","consent_b5":"Puedes revisar el estado de tu pedido en cualquier momento en la pestaña 🧾 Mis pedidos.","consent_check":"Leí y entiendo cómo funciona el programa y qué estoy pagando.","consent_terms_link":"Ver Términos completos →","consent_required_msg":"Marca que leíste y entendiste antes de continuar.","consent_choose_plan":"Elige un plan y el período antes de continuar.","plan_step1_title":"Elige tu plan y período","plan_step1_intro":"Pagas <strong>directamente</strong> por el plan elegido. Mira los límites de cada plan, elige el período y el precio final aparece al instante, antes de pagar.","plan_calc_empty":"Elige un plan y el período","plan_error_load":"No se pudieron cargar los planes.","plan_try_again":"Intentar de nuevo","plan_auto_faq_q":"🤖 ¿Cómo funciona el Envío Automático?","plan_auto_faq_a":"El robot envía las solicitudes solo, por tu propio Gmail, usando el currículum y los textos que tú mismo escribiste en tu perfil — nunca inventa nada. Esta función viene incluida en los planes Turbo y Máximo desde el primer día (el Manual no tiene automático: eliges y envías cada solicitud). Para usar el automático, eliges la fuente de vacantes, ajustas los filtros y eliges tu perfil, tocas Iniciar y puedes hasta cerrar la app: sigue enviando solo, uno cada ~7 minutos (ritmo humano, para proteger tu cuenta Gmail de un bloqueo de Google), hasta llegar al límite diario de tu plan — ahí se pausa solo y vuelve a enviar al día siguiente.","plan_faq_title":"❓ Preguntas frecuentes","plan_faq1_q":"¿Cuál es la diferencia entre los 3 planes?","plan_faq1_a":"Manual da solo candidaturas manuales (eliges y envías una por una). Turbo suma el robot automático al manual. Máximo tiene el mayor volumen automático (300/día) con 2 cuentas de Gmail, pero menos manuales (50/día) — pensado para quien quiere el máximo volumen vía robot.","plan_faq2_q":"¿Por qué el plan de 60 días es más barato por día?","plan_faq2_a":"El período más largo ya viene con descuento incluido — pagas menos por día sin perder ningún límite diario. El precio exacto de cada opción aparece antes de pagar, directo de nuestra tabla oficial.","plan_faq3_q":"¿Qué pasa cuando mi plan vence?","plan_faq3_a":"El envío se detiene automáticamente el día que vence — nunca cobramos de nuevo por nuestra cuenta. Cuando quieras continuar, solo elige un plan de nuevo aquí en la pestaña Planes.","plan_faq4_q":"¿Puedo cancelar y recibir un reembolso?","plan_faq4_a":"Sí: tienes hasta 7 días corridos después del pago para desistir y pedir reembolso (derecho de arrepentimiento del código de defensa del consumidor). Si el plan ya fue usado en ese período, el reembolso es proporcional a lo que quedó. Después de los 7 días, no hay reembolso automático — mira los Términos completos.","plan_faq5_q":"¿El envío automático es seguro para mi Gmail?","plan_faq5_a":"El robot envía a un ritmo humano (~7 minutos entre envíos) para reducir el riesgo de bloqueo de Google. En el plan Máximo, los envíos rotan entre 2 cuentas de Gmail, reduciendo aún más el volumen por cuenta. Aun así, el riesgo de bloqueo es de Google (un tercero) — nunca de H2BApply.","plan_faq6_q":"¿Garantizan que voy a conseguir un empleo?","plan_faq6_a":"No. H2BApply es el puente hasta el empleador — nunca el autor de tu solicitud ni garante del resultado. La contratación, la respuesta de las empresas, la aprobación de la visa y la entrada a EE. UU. dependen solo de los empleadores y las autoridades estadounidenses, fuera de nuestro control.", // 💎 v170: compra direta de plano — consentimento informado (CEO mode, 09/09/2026); v172-FIX 12/09: quitada mención a "moneda intermediaria" (sistema antiguo ya retirado) + explicación del automático reorganizada
+    "consent_title":"☑️ Antes de continuar","consent_b1":"Es un servicio digital pago de automatización de envío — H2BApply nunca escribe el correo por ti; el contenido enviado siempre es tuyo.","consent_b2":"El precio mostrado ahora es el valor final a pagar.","consent_b3":"Después de pagar vía PIX, envía el comprobante y sigue conectado en la misma cuenta hasta la confirmación — automática cuando coincide, y siempre revisada por nuestro equipo.","consent_b4":"El riesgo de bloqueo de la cuenta Gmail es de Google (tercero), no de H2BApply — se reduce usando más de una cuenta de envío.","consent_b5":"Puedes revisar el estado de tu pedido en cualquier momento en la pestaña 🧾 Mis pedidos.","consent_check":"Leí y entiendo cómo funciona el programa y qué estoy pagando.","consent_terms_link":"Ver Términos completos →","consent_required_msg":"Marca que leíste y entendiste antes de continuar.","consent_choose_plan":"Elige un plan y el período antes de continuar.","plan_step1_title":"Elige tu plan y período","plan_step1_intro":"Pagas <strong>directamente</strong> por el plan elegido, una sola vez, sin renovación automática. Elige el período (15, 30 o 60 días), mira los límites de cada plan y el precio final aparece al instante, antes de pagar.","plan_calc_empty":"Elige un plan y el período","plan_error_load":"No se pudieron cargar los planes.","plan_try_again":"Intentar de nuevo","plan_auto_faq_q":"🤖 ¿Cómo funciona el Envío Automático?","plan_auto_faq_a":"El robot envía las solicitudes solo, por tu propio Gmail, usando el currículum y los textos que tú mismo escribiste en tu perfil — nunca inventa nada. Esta función viene incluida en los planes Turbo y Máximo desde el primer día (el Manual no tiene automático: eliges y envías cada solicitud). Para usar el automático, eliges la fuente de vacantes, ajustas los filtros y eliges tu perfil, tocas Iniciar y puedes hasta cerrar la app: sigue enviando solo, uno cada ~7 minutos (ritmo humano, para proteger tu cuenta Gmail de un bloqueo de Google), hasta llegar al límite diario de tu plan — ahí se pausa solo y vuelve a enviar al día siguiente.","plan_faq_title":"❓ Preguntas frecuentes","plan_faq1_q":"¿Cuál es la diferencia entre los 3 planes?","plan_faq1_a":"Manual da solo candidaturas manuales (eliges y envías una por una). Turbo suma el robot automático al manual. Máximo tiene el mayor volumen automático (300/día) con 2 cuentas de Gmail, pero menos manuales (50/día) — pensado para quien quiere el máximo volumen vía robot.","plan_faq2_q":"¿Por qué el plan de 60 días es más barato por día?","plan_faq2_a":"El período más largo ya viene con descuento incluido — pagas menos por día sin perder ningún límite diario. El precio exacto de cada opción aparece antes de pagar, directo de nuestra tabla oficial.","plan_faq3_q":"¿Qué pasa cuando mi plan vence?","plan_faq3_a":"El envío se detiene automáticamente el día que vence — nunca cobramos de nuevo por nuestra cuenta. Cuando quieras continuar, solo elige un plan de nuevo aquí en la pestaña Planes.","plan_faq4_q":"¿Puedo cancelar y recibir un reembolso?","plan_faq4_a":"Sí: tienes hasta 7 días corridos después del pago para desistir y pedir reembolso (derecho de arrepentimiento del código de defensa del consumidor). Si el plan ya fue usado en ese período, el reembolso es proporcional a lo que quedó. Después de los 7 días, no hay reembolso automático — mira los Términos completos.","plan_faq5_q":"¿El envío automático es seguro para mi Gmail?","plan_faq5_a":"El robot envía a un ritmo humano (~7 minutos entre envíos) para reducir el riesgo de bloqueo de Google. En el plan Máximo, los envíos rotan entre 2 cuentas de Gmail, reduciendo aún más el volumen por cuenta. Aun así, el riesgo de bloqueo es de Google (un tercero) — nunca de H2BApply.","plan_faq7_q":"¿El plan de 15 días es la mitad del de 30?","plan_faq7_a":"Sí: cuesta exactamente la mitad y da los MISMOS límites diarios que el plan completo — solo dura la mitad del tiempo. Es la forma de empezar con menos. El precio por día es igual al de 30 días (solo el de 60 sale más barato por día), y cuando termine compras de nuevo si quieres — nada se renueva solo.","consent_b6":"El plan vale por el período elegido (15, 30 o 60 días corridos), contado desde la activación, y no se renueva solo — nunca cobramos de nuevo.","comp_hint2":"Pix inmediato (no programado). Envía la captura completa, con valor, fecha/hora y el nombre de quien recibió.","plan_faq6_q":"¿Garantizan que voy a conseguir un empleo?","plan_faq6_a":"No. H2BApply es el puente hasta el empleador — nunca el autor de tu solicitud ni garante del resultado. La contratación, la respuesta de las empresas, la aprobación de la visa y la entrada a EE. UU. dependen solo de los empleadores y las autoridades estadounidenses, fuera de nuestro control.", // 💎 v170: compra direta de plano — consentimento informado (CEO mode, 09/09/2026); v172-FIX 12/09: quitada mención a "moneda intermediaria" (sistema antiguo ya retirado) + explicación del automático reorganizada
      // 🎯 v139: Vagas pra você (Home)
     "fq1":"¡Cola terminada! Te postulaste a todas las vacantes.","fq2":"🏆 ¡Cola terminada! Espera a que lleguen las respuestas.","fq3":"¡Todas las postulaciones enviadas! El éxito está en camino.","fq4":"¡Cola vaciada! Diste un gran paso hoy.","h_faq_visa":"<strong>¿Esto garantiza empleo o visa? No.</strong> H2BApply es una herramienta que envía correos por ti. Contratarte es decisión del empleador. La visa es decisión del consulado americano. Cuantas más postulaciones envíes, mayores las chances de recibir una oferta.","g_260":"Agrega un segundo Gmail. El automático reparte los envíos entre los dos correos, reduciendo el riesgo de spam.","g_261":"Los correos salen con el currículum y los textos del perfil elegido en el Paso 3 — asuntos y cuerpos alternan automáticamente contra el spam.","g_262":"El sistema rota entre los asuntos y cuerpos de correo guardados para no parecer spam. ¿Quieres ajustar algo? Toca \"Cambiar\" arriba.","g_268":"Perfil único: tu perfil sirve automáticamente para cualquier vacante, de cualquier planilla.","g_270":"Tú escribes los textos — H2BApply nunca los completa por ti, solo entrega.","g_273":"Máx. 3MB", // 🌐 v137c: sons/boas-vindas/extrato/FAQ + 11 textos longos da varredura
     "home":"Inicio","manual":"Manual","search":"Buscar","auto":"Auto","responses":"Respuestas",
@@ -7930,72 +7938,181 @@ async function loadPlanos(){
 // partir do PREÇO REAL de 30d (nunca um número fixo — se a tabela mudar de
 // novo, o selo muda sozinho). Fonte única continua sendo GET /api/planos.
 const PLANO_RECOMENDADO='vipro';
+// v962 (ORDEM DO DONO, 09/10/2026 — período de 15 dias + "veja na internet
+// como fazer o melhor sistema pro usuário entender o que está comprando"):
+// pesquisa em 5 ângulos + crítico (Baymard Payment UX e price-per-unit, NN/g
+// lawn-mower/checkbox, GOV.UK check-answers/confirmation, Lazyweb n=301,
+// Chargebee anchor trap, Iyengar & Lepper, Berger "Rule of 100", Gourville,
+// ICPEN dark patterns). O que esta tela aplica, em ordem:
+//  1. UM seletor de período GLOBAL (15 · 30 · 60) acima dos 3 cards, como grupo
+//     de rádio (segmented control), nunca toggle; 3 cards + 3 segmentos = no
+//     máximo 6 decisões na tela (nunca 9 combinações nem 3 botões por card).
+//  2. Padrão do seletor = 30 dias (período de referência): trocar pra 15 mostra
+//     total MENOR, trocar pra 60 mostra ECONOMIA — nunca "o preço subiu". O
+//     PLANO nunca é pré-selecionado (clique explícito).
+//  3. Número grande = TOTAL pago uma vez no Pix; "equivale a R$ X/dia" é
+//     secundário e aparece em TODOS os períodos (ferramenta de comparação),
+//     nunca retórica de "centavos por dia".
+//  4. Economia do 60d em R$ ABSOLUTO (totais acima de 100), nunca só em %;
+//     o 15d NÃO ganha selo de economia (não tem desconto) — rotulado
+//     honestamente como "metade do preço, mesmos limites por dia".
+//  5. Mesmos atributos, na mesma ordem, nos 3 cards.
+//  6. Validade como DATA concreta ("se ativado hoje, até DD/MM"), contada da
+//     ativação — a contagem nunca começa na compra.
+function _plDiasPadrao(d){
+  const dias=(d?.precos||[]).map(p=>p.dias);
+  return dias.includes(30)?30:(dias.sort((a,b)=>a-b)[0]||30);
+}
+function _plPorDia(total,dias){return dias>0?total/dias:0;}
+// Quem JÁ tem plano ativo na dimensão comprada não "começa do zero": o
+// servidor (addManualVipDays/addAutoVipDays) EMPILHA os dias novos em cima do
+// vencimento atual. A data prometida aqui tem que partir desse vencimento,
+// senão a tela promete MENOS do que a pessoa vai receber (achado da revisão).
+function _plBaseExp(pl){
+  const v=(typeof U!=='undefined'&&U&&U.vip)||{},now=Date.now();
+  const lim=(window._planosData?.limites||{})[pl]||{};
+  const clocks=[];
+  if(lim.manual>0&&v.manualExpires>now)clocks.push(v.manualExpires);
+  if(lim.auto>0&&v.autoExpires>now)clocks.push(v.autoExpires);
+  return clocks.length?Math.max(...clocks):0;
+}
+function _plAteData(dias,pl){return new Date((_plBaseExp(pl)||Date.now())+dias*86400000).toLocaleDateString('pt-BR');}
+function _plValidadeTxt(dias,pl){
+  if(_plBaseExp(pl)>Date.now())return `vale ${dias} dias somados ao seu plano atual — se confirmado hoje, até ${_plAteData(dias,pl)}`;
+  return `vale ${dias} dias corridos a partir da ativação — se ativado hoje, até ${_plAteData(dias,pl)}`;
+}
+// Mediana REAL das últimas confirmações (de /api/planos) em texto curto, ou
+// '' quando ainda não há histórico suficiente — nunca um "24h" inventado.
+function _plMedianaTxt(){
+  const med=window._planosData?.medianaAprovacaoHoras;
+  if(typeof med!=='number'||med<=0)return '';
+  return med<1?('~'+Math.max(1,Math.round(med*60))+' min'):('~'+String(med).replace('.',',')+'h');
+}
 function _renderPlanosUI(d){
   const box=g('#plan-select'); if(!box||!d)return;
-  const DIAS_LBL={30:'30 dias',60:'60 dias',90:'90 dias',365:'1 ano'};
   const porPlano={};
   (d.precos||[]).forEach(p=>{(porPlano[p.plano]=porPlano[p.plano]||[]).push(p);});
-  Object.keys(porPlano).forEach(pl=>porPlano[pl].sort((a,b)=>a.dias-b.dias));
-  const sel=window._planoEscolhido, selDias=window._diasEscolhido;
-  box.innerHTML=['vip','vipro','doublepro'].map(pl=>{
+  const periodos=[...new Set((d.precos||[]).map(p=>p.dias))].sort((a,b)=>a-b);
+  if(!window._diasEscolhido||!periodos.includes(window._diasEscolhido))window._diasEscolhido=_plDiasPadrao(d);
+  const sel=window._planoEscolhido, dias=window._diasEscolhido;
+  const hintPorDias={
+    15:'15 dias: metade do tempo, metade do preço — mesmo valor por dia do 30 dias, com os MESMOS limites. Bom pra começar com menos.',
+    30:'30 dias: o período de referência — preço cheio, limites cheios.',
+    60:'60 dias: o menor preço por dia — sai mais barato do que 2 planos de 30 dias.',
+  };
+  const seletor=`<div style="font-size:12.5px;font-weight:800;margin-bottom:6px" id="pl-periodo-lbl">1. Por quanto tempo?</div>
+    <div class="pl-periodo" role="radiogroup" aria-labelledby="pl-periodo-lbl" onkeydown="_plPeriodoKey(event)">
+      ${periodos.map(p=>{
+        const on=p===dias;
+        const sub=p===60?'menor preço/dia':p===15?'pra começar':'referência';
+        return `<button type="button" role="radio" aria-checked="${on?'true':'false'}" tabindex="${on?0:-1}" class="pl-seg" data-dias="${p}" onclick="selectPeriodo(${p})">${on?'✓ ':''}${p===365?'1 ano':p+' dias'}<small>${sub}</small></button>`;
+      }).join('')}
+    </div>
+    <div style="font-size:11.5px;color:var(--t3);margin:6px 2px 12px;line-height:1.5" aria-live="polite">${esc(hintPorDias[dias]||'')}</div>
+    <div style="font-size:12.5px;font-weight:800;margin-bottom:8px">2. Qual plano?</div>`;
+  const cards=['vip','vipro','doublepro'].map(pl=>{
     const lim=(d.limites||{})[pl]||{};
-    // 🎯 (ordem do dono, 12/09/2026 — "deixa mais explícito a quantidade de
-    // envios por cada plano") badges grandes e coloridos em vez de 1 linha
-    // pequena e cinza — manual (azul) e automático (verde, ou cinza
-    // "sem automático" quando o plano não inclui, ex.: Manual).
-    const manualBadge=lim.manual
-      ?`<span style="display:inline-flex;align-items:center;gap:5px;background:var(--bluel);color:var(--blue);font-size:12.5px;font-weight:800;border-radius:9px;padding:6px 11px">✋ ${lim.manual} manuais/dia</span>`
-      :'';
-    const autoBadge=lim.auto
-      ?`<span style="display:inline-flex;align-items:center;gap:5px;background:var(--greenl);color:var(--green);font-size:12.5px;font-weight:800;border-radius:9px;padding:6px 11px">🤖 ${lim.auto} automáticas/dia</span>`
-      :`<span style="display:inline-flex;align-items:center;gap:5px;background:var(--sf2);color:var(--t3);font-size:12px;font-weight:700;border-radius:9px;padding:6px 11px">🤖 Sem envio automático</span>`;
-    // 📧 ordem do dono (13/09/2026): quantos e-mails de envio cada plano dá
-    // TEM que aparecer pro usuário — Máximo 2 (revezamento), demais 1.
-    const emailBadge=`<span style="display:inline-flex;align-items:center;gap:5px;background:var(--purplel);color:var(--purple);font-size:12px;font-weight:800;border-radius:9px;padding:6px 11px">📧 ${esc(pl==='doublepro'?t('plan_emails_2'):t('plan_emails_1'))}</span>`;
-    const isSel=sel===pl;
-    const isReco=pl===PLANO_RECOMENDADO;
+    const combo=(porPlano[pl]||[]).find(c=>c.dias===dias);
+    if(!combo)return '';
+    const base30=(porPlano[pl]||[]).find(c=>c.dias===30);
+    const total=combo.valorTotal;
+    // 💰 economia só quando o período é MAIOR que 30d e sai mais barato que
+    // N × 30d — em R$, nunca só em %. O 15d nunca ganha selo (não tem desconto).
+    const economia=(dias>30&&base30)?Math.round(base30.valorTotal*(dias/30)-total):0;
+    const isSel=sel===pl, isReco=pl===PLANO_RECOMENDADO;
     const borderCor=isSel?'var(--blue)':isReco?'#f59e0b':'var(--border2)';
-    const precoBase=(porPlano[pl]||[]).find(c=>c.dias===30);
-    return `<div style="position:relative;background:var(--surface);border:2px solid ${borderCor};border-radius:var(--rl);padding:${isReco?'20px 14px 14px':'14px'};margin-bottom:12px;${isSel?'box-shadow:0 0 0 3px rgba(37,99,235,.14)':isReco?'box-shadow:0 0 0 3px rgba(245,158,11,.14)':''}">
+    const linha=(ico,txt)=>`<div class="pl-linha"><span>${ico}</span><span>${txt}</span></div>`;
+    const nome=esc(PLAN_NAMES[pl]);
+    return `<div style="position:relative;background:${isReco?'linear-gradient(180deg,rgba(245,158,11,.08),var(--surface) 60%)':'var(--surface)'};border:2px solid ${borderCor};border-radius:var(--rl);padding:${isReco?'20px 14px 14px':'14px'};margin-bottom:12px;${isSel?'box-shadow:0 0 0 3px rgba(37,99,235,.14)':isReco?'box-shadow:0 0 0 3px rgba(245,158,11,.14)':''}">
       ${isReco?'<div style="position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#f59e0b,#ea580c);color:#fff;font-size:10.5px;font-weight:800;border-radius:20px;padding:4px 14px;white-space:nowrap;box-shadow:0 3px 8px rgba(245,158,11,.4)">🔥 MAIS POPULAR</div>':''}
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <div style="font-size:14.5px;font-weight:800">${esc(PLAN_NAMES[pl])}</div>
-        ${isSel?'<span style="font-size:10px;font-weight:800;color:var(--blue);background:var(--bluel);border-radius:8px;padding:3px 8px">✓</span>':''}
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px">
+        <div>
+          <div style="font-size:15px;font-weight:800">${nome}</div>
+          <div style="font-size:11.5px;color:var(--t3);margin-top:2px">${_plBaseExp(pl)>Date.now()?`Vale ${dias} dias somados ao seu plano atual — até ${_plAteData(dias,pl)}`:`Vale ${dias} dias — até ${_plAteData(dias,pl)} se confirmado hoje`}</div>
+          <div style="font-size:11px;color:var(--t3);margin-top:1px">pagamento único via Pix · sem renovação</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:22px;font-weight:900;color:var(--green);line-height:1">R$ ${brl(total)}</div>
+          <div style="font-size:10.5px;color:var(--t3);margin-top:3px">equivale a R$ ${brl(_plPorDia(total,dias))}/dia</div>
+          <div style="font-size:10.5px;font-weight:800;color:var(--green);margin-top:3px;min-height:14px">${economia>0?`💰 Economize R$ ${brl(economia)} vs. ${Math.round(dias/30)}× 30 dias`:''}</div>
+        </div>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">${manualBadge}${autoBadge}${emailBadge}</div>
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px">
-        ${(porPlano[pl]||[]).map(c=>{
-          const chSel=isSel&&selDias===c.dias;
-          // 💰 Selo "economize" no período mais longo — sempre calculado
-          // contra o preço de 30d da tabela (nunca um valor fixo escrito à mão).
-          const economia=(c.dias>30&&precoBase)?Math.round((precoBase.valorTotal*(c.dias/30)-c.valorTotal)):0;
-          return `<button type="button" class="btn ${chSel?'btn-primary':'btn-secondary'}" style="position:relative;justify-content:center;font-size:12.5px;padding:10px 6px;flex-direction:column;gap:2px;height:auto" onclick="selectPlanoDias('${pl}',${c.dias})">
-            <span>${DIAS_LBL[c.dias]||c.dias+'d'} · R$ ${brl(c.valorTotal)}</span>
-            ${economia>0?`<span style="font-size:10px;font-weight:800;color:${chSel?'#dcfce7':'var(--green)'}">💰 Economize R$ ${brl(economia)}</span>`:''}
-          </button>`;
-        }).join('')}
+      <div style="margin-bottom:4px">
+        ${linha('✋',lim.manual?`<b>${lim.manual}</b> candidaturas manuais por dia`:'Sem candidaturas manuais')}
+        ${linha('🤖',lim.auto?`<b>${lim.auto}</b> candidaturas automáticas por dia (o robô envia sozinho)`:'Sem envio automático')}
+        ${linha('📧',esc(pl==='doublepro'?t('plan_emails_2'):t('plan_emails_1')))}
       </div>
+      <button type="button" class="btn ${isSel?'btn-primary':'btn-secondary'} pl-card-cta" aria-pressed="${isSel?'true':'false'}" onclick="selectPlanoDias('${pl}',${dias})">${isSel?'✓ Escolhido — '+nome+' · '+dias+' dias':'Escolher '+nome+' · '+dias+' dias'}</button>
     </div>`;
   }).join('');
+  box.innerHTML=seletor+cards;
+}
+// Seletor de período: troca o período dos 3 cards de uma vez e MANTÉM o plano
+// já escolhido (a pessoa não precisa clicar no card de novo).
+function selectPeriodo(dias){
+  window._diasEscolhido=dias;
+  if(window._planosData)_renderPlanosUI(window._planosData);
+  _planStep1Sync();
+  try{g(`.pl-seg[data-dias="${dias}"]`)?.focus();}catch(e){}
+}
+// Teclado no grupo de rádio (padrão WAI-ARIA radiogroup): ← → ↑ ↓ mudam o
+// período; Home/End vão pro primeiro/último.
+function _plPeriodoKey(ev){
+  const segs=[...document.querySelectorAll('.pl-seg')];if(!segs.length)return;
+  const i=segs.findIndex(b=>b.getAttribute('aria-checked')==='true');
+  let j=null;
+  if(ev.key==='ArrowRight'||ev.key==='ArrowDown')j=(i+1)%segs.length;
+  else if(ev.key==='ArrowLeft'||ev.key==='ArrowUp')j=(i-1+segs.length)%segs.length;
+  else if(ev.key==='Home')j=0;else if(ev.key==='End')j=segs.length-1;
+  if(j===null)return;
+  ev.preventDefault();
+  selectPeriodo(parseInt(segs[j].dataset.dias,10));
 }
 
-// Escolha de plano+período — marca a seleção, atualiza o resumo de preço
-// (reaproveita #plan-calc/#calc-desc/#calc-total que já existiam) e
-// sincroniza o botão de continuar (gated pelo consentimento também).
+// Escolha de plano (no período atual) — marca a seleção, atualiza o resumo
+// de preço (#plan-calc) e sincroniza o botão de continuar (gated pelo
+// consentimento também).
 function selectPlanoDias(plano,dias){
   window._planoEscolhido=plano;
   window._diasEscolhido=dias;
   if(window._planosData)_renderPlanosUI(window._planosData);
   _planStep1Sync();
 }
-function _updatePlanCalcResumo(){
-  const cDesc=g('#calc-desc'),cTotal=g('#calc-total');
-  const pl=window._planoEscolhido,dias=window._diasEscolhido;
-  if(!pl||!dias){ if(cDesc)cDesc.textContent=t('plan_calc_empty'); if(cTotal)cTotal.textContent='—'; return; }
-  const row=(window._planosData?.precos||[]).find(p=>p.plano===pl&&p.dias===dias);
+// "Confira sua escolha" (padrão check-answers do GOV.UK / order review da
+// Baymard): o que inclui por dia, período, validade em DATA e total — as
+// MESMAS linhas reaparecem iguais no passo do Pix e na confirmação, pra
+// ninguém pagar sem saber exatamente o que está levando.
+function _planResumoLinhas(pl,dias){
+  const d=window._planosData||{};
+  const lim=(d.limites||{})[pl]||{};
+  const row=(d.precos||[]).find(p=>p.plano===pl&&p.dias===dias);
   const total=row?row.valorTotal:0;
+  const inclui=[lim.manual?`${lim.manual} manuais/dia`:null,lim.auto?`${lim.auto} automáticas/dia`:null].filter(Boolean).join(' + ')||'—';
+  return {total,linhas:[
+    ['Plano',PLAN_NAMES[pl]||pl],
+    ['Inclui',inclui+(pl==='doublepro'?' · 2 contas Gmail':'')],
+    ['Período',`${dias} dias`],
+    ['Validade',_plValidadeTxt(dias,pl)],
+    ['Total',`R$ ${brl(total)} · pagamento único via Pix, sem renovação`],
+  ]};
+}
+// Linhas [chave, valor] do resumo em HTML — cada célula passa por esc()
+// (registrada em SAFE_FNS do check-xss-guard.js). Fonte única pros 3 lugares
+// (passo 1, passo do Pix e confirmação).
+function _planResumoLinhasHTML(linhas){
+  return (linhas||[]).map(([k,v])=>`<div style="display:flex;gap:10px;justify-content:space-between"><span style="color:var(--t3);flex-shrink:0">${esc(k)}</span><span style="text-align:right;color:var(--text)">${esc(v)}</span></div>`).join('');
+}
+function _updatePlanCalcResumo(){
+  const cDesc=g('#calc-desc'),cTotal=g('#calc-total'),cDet=g('#calc-detalhe');
+  const pl=window._planoEscolhido,dias=window._diasEscolhido;
+  if(!pl||!dias){ if(cDesc)cDesc.textContent=t('plan_calc_empty'); if(cTotal)cTotal.textContent='—'; if(cDet){cDet.style.display='none';cDet.innerHTML='';} return; }
+  const r=_planResumoLinhas(pl,dias);
   if(cDesc)cDesc.textContent=`${PLAN_NAMES[pl]||pl} · ${dias===365?'1 ano':dias+' dias'}`;
-  if(cTotal)cTotal.textContent='R$ '+brl(total);
+  if(cTotal)cTotal.textContent='R$ '+brl(r.total);
+  if(cDet){
+    cDet.innerHTML=`<div style="font-weight:800;color:var(--text);margin-bottom:4px">✅ Confira sua escolha</div>${_planResumoLinhasHTML(r.linhas)}`;
+    cDet.style.display='block';
+  }
 }
 // Clickwrap (achado de pesquisa de UX — gesto duplo: marcar + clicar é o
 // padrão juridicamente mais defensável): o botão de continuar do Passo 1
@@ -8005,8 +8122,19 @@ function _planStep1Sync(){
   _updatePlanCalcResumo();
   const btn=g('#plan-step1-continue-btn');
   if(btn){
-    const ok=!!(window._planoEscolhido&&window._diasEscolhido)&&!!g('#plan-consent-check')?.checked;
+    const pl=window._planoEscolhido,dias=window._diasEscolhido;
+    const escolhido=!!(pl&&dias);
+    const ok=escolhido&&!!g('#plan-consent-check')?.checked;
     btn.disabled=!ok;
+    // v962: botão com VERBO + VALOR (pesquisa: nunca um "Continuar" genérico
+    // no passo que compromete o pagamento; leitor de tela não depende do
+    // contexto visual pra saber quanto vai pagar).
+    if(escolhido){
+      const row=(window._planosData?.precos||[]).find(p=>p.plano===pl&&p.dias===dias);
+      btn.innerHTML=`Ir para o Pix — R$ ${brl(row?row.valorTotal:0)} <i class="ti ti-arrow-right"></i>`;
+    }else{
+      btn.innerHTML=`Escolha um plano pra continuar <i class="ti ti-arrow-right"></i>`;
+    }
   }
 }
 
@@ -8059,22 +8187,38 @@ function goToPlanStep2() {
   _planPrepararDados();
 
   const sc=g('#plan-summary-content');
-  if(sc) sc.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;font-size:14px">
+  if(sc){
+    // v962: o resumo repete as MESMAS linhas do "Confira sua escolha" do
+    // passo 1 (inclui/período/validade) + link "Alterar" que volta só pro
+    // passo 1, sem recomeçar nada (Baymard: 68% dos sites mandam pro começo).
+    const _r2=_planResumoLinhas(plano,dias);
+    sc.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;font-size:14px">
     <div><strong>${esc(PLAN_NAMES[plano]||plano)}</strong> · ${dias===365?'1 ano':dias+' dias'}</div>
     <div style="font-weight:800;color:var(--green);font-size:18px">R$ ${brl(total)}</div>
-  </div><div style="font-size:11px;color:var(--t3);margin-top:4px">O valor exato é sempre conferido pelo servidor — este é o preço oficial da tabela.</div>`;
+  </div>
+  <div style="font-size:12px;color:var(--t2);line-height:1.65;margin-top:6px">${_planResumoLinhasHTML(_r2.linhas.slice(1,4))}</div>
+  <div style="font-size:11px;color:var(--t3);margin-top:6px">Pagamento único, sem renovação automática. O valor exato é sempre conferido pelo servidor — este é o preço oficial da tabela. <span onclick="goToPlanStep1()" style="color:var(--blue);font-weight:700;cursor:pointer;text-decoration:underline">Alterar plano ou período</span></div>`;
+  }
 
   // Pagamento único — Pix pro PicPay do Andrio (v43), agora pagamento direto.
   const payEl=g('#plan-payment-links');
   if(payEl){
+    const _quando=_plBaseExp(plano)>Date.now()
+      ?`Os ${Number(dias)} dias são somados ao seu plano atual (que vai até ${_plAteData(0,plano)}) assim que a equipe confirmar o comprovante`
+      :`Os ${Number(dias)} dias começam quando a equipe confirmar seu comprovante`;
     payEl.innerHTML=`<div style="background:linear-gradient(135deg,rgba(16,185,129,.1),rgba(5,150,105,.06));border:1.5px solid rgba(16,185,129,.35);border-radius:12px;padding:14px">
       <div style="font-size:13px;font-weight:800;color:var(--green);margin-bottom:10px;display:flex;align-items:center;gap:6px">
         📱 Pagar via Pix (PicPay) — ${esc(PLAN_NAMES[plano]||plano)} · ${dias===365?'1 ano':dias+' dias'}
+      </div>
+      <div style="font-size:12px;color:var(--text);background:var(--sf2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:10px;line-height:1.55">
+        <div>Você vai pagar agora: <b>R$ ${brl(total)}</b> · ${esc(PLAN_NAMES[plano]||plano)} · ${Number(dias)} dias · pagamento único, sem renovação.</div>
+        <div style="color:var(--t2);margin-top:3px">${esc(_quando)}${_plMedianaTxt()?` (hoje a conferência leva ${esc(_plMedianaTxt())})`:''} e não pausam. Não garante emprego nem visto.</div>
       </div>
       <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:10px;margin-bottom:10px">
         <div style="font-size:11px;color:var(--t3);margin-bottom:4px">Chave Pix (telefone) — PicPay:</div>
         <div style="font-size:16px;font-weight:800;color:var(--green);letter-spacing:.5px;word-break:break-all">${esc(PIX_KEY)}</div>
         <div style="font-size:11px;color:var(--t3);margin-top:4px">Titular: <strong style="color:var(--text)">${esc(PIX_NAME)}</strong></div>
+        <div style="font-size:11px;color:var(--amber);margin-top:3px;font-weight:700">Se aparecer outro nome no seu banco, não pague.</div>
       </div>
       <button class="btn btn-success w100" onclick="navigator.clipboard.writeText('${esc(PIX_KEY)}');toast('Chave Pix copiada ✓','g')" style="margin-bottom:10px;font-size:14px;padding:12px">
         <i class="ti ti-copy"></i> Copiar chave Pix
@@ -8172,7 +8316,7 @@ async function handleComprovante(ev) {
 // continua valendo. E NUNCA prometemos o provisório de antemão: sem
 // GEMINI_API_KEY configurada ele simplesmente não acontece, e prometer o que
 // pode não vir é pior que não prometer nada.
-function _vigiarAtivacaoProvisoria(planoLabel){
+function _vigiarAtivacaoProvisoria(planoLabel,diasPagos){
   const tentativas=[5000,15000,40000];
   const tenta=(i)=>{
     if(i>=tentativas.length)return;
@@ -8185,7 +8329,12 @@ function _vigiarAtivacaoProvisoria(planoLabel){
           if(!d.needsPlan){
             const dTitle=g('#plan-done-title'), dMsg=g('#plan-done-msg');
             if(dTitle)dTitle.textContent='⚡ Plano liberado na hora!';
-            if(dMsg)dMsg.innerHTML='O robô conferiu seu comprovante e já liberou o <strong>'+esc(planoLabel)+'</strong> — pode começar a enviar agora mesmo.<br>A confirmação final da equipe continua na fila (isso não muda nada pra você).<br><strong>Para dúvidas, entre em contato:</strong>';
+            // v962 (achado da revisão): "isso não muda nada pra você" era
+            // impreciso — a liberação é PROVISÓRIA; os dias pagos passam a
+            // contar quando a equipe confirmar (é nesse momento que o
+            // servidor zera o provisório e credita o período comprado).
+            const _dp=parseInt(diasPagos,10)>0?(' Quando ela confirmar, seus <strong>'+parseInt(diasPagos,10)+' dias</strong> pagos começam a contar.'):'';
+            if(dMsg)dMsg.innerHTML='O robô conferiu seu comprovante e já liberou o <strong>'+esc(planoLabel)+'</strong> provisoriamente — pode começar a enviar agora mesmo.<br>A confirmação final da equipe continua na fila.'+_dp+'<br><strong>Para dúvidas, entre em contato:</strong>';
             toast('⚡ Plano liberado — já pode enviar!','g',7000);
             try{renderHome();}catch(e){}
             return; // acabou: não precisa das próximas conferidas
@@ -8264,16 +8413,33 @@ async function submitPlanOrder() {
         toast('ℹ️ ' + (d.message || 'Você já tem um pedido em análise.'), 'au');
       } else {
         gaEvent('purchase_order_submitted',{plan:plano,dias,value:total,currency:'BRL'});
-        if(dTitle) dTitle.textContent = 'Pedido enviado! 🎉';
+        if(dTitle) dTitle.textContent = 'Comprovante enviado! 🎉';
         // Promessa HONESTA de prazo: mediana REAL das últimas confirmações
         // (vinda de /api/planos), NUNCA um número fixo inventado tipo "24h".
         const med=window._planosData?.medianaAprovacaoHoras;
         const medTxt=(typeof med==="number"&&med>0)
           ?('normalmente em <strong>~'+(med<1?Math.max(1,Math.round(med*60))+' minutos':String(med).replace('.',',')+'h')+'</strong>')
           :'assim que possível';
-        if(dMsg) dMsg.innerHTML = 'Recebemos seu pedido e o comprovante.<br>Um admin confirma manualmente — '+medTxt+' — e assim que confirmado, seu <strong>'+(PLAN_NAMES[plano]||plano)+'</strong> é ativado.<br><strong>Para dúvidas, entre em contato:</strong>';
+        // v962: tela de confirmação no padrão GOV.UK ("o que aconteceu" em
+        // painel + código do pedido + "o que acontece agora"), visualmente
+        // diferente da revisão — Baymard: 11,6% confundem revisão com
+        // confirmação quando as duas se parecem. "Comprovante enviado" NUNCA
+        // é "plano ativo": os 3 passos dizem quem confere, por quanto tempo
+        // vale e onde acompanhar.
+        const _cod=d.pedidoId?('#'+String(d.pedidoId).slice(-8).toUpperCase()):'';
+        const _rd=_planResumoLinhas(plano,dias);
+        if(dMsg) dMsg.innerHTML = '<div style="background:var(--greenl);border:1.5px solid var(--greenb);border-radius:12px;padding:12px 14px;margin-bottom:12px;text-align:left">'
+          +'<div style="font-size:12px;color:var(--t3)">Pedido '+esc(_cod)+'</div>'
+          +'<div style="font-size:15px;font-weight:800;margin:2px 0 6px">'+esc(PLAN_NAMES[plano]||plano)+' · '+dias+' dias · R$ '+brl(total)+'</div>'
+          +'<div style="font-size:12px;color:var(--t2);line-height:1.6">'+_rd.linhas.slice(1,2).map(([k,v])=>esc(k)+': '+esc(v)).join('')+'</div>'
+          +'</div>'
+          +'<div style="text-align:left;font-size:13px;line-height:1.7"><strong>O que acontece agora</strong><br>'
+          +'1. Nossa equipe confere o comprovante — '+medTxt+'. Se o robô conseguir conferir na hora, você já pode enviar <em>provisoriamente</em> enquanto a equipe confirma.<br>'
+          +'2. Confirmado, seu <strong>'+esc(PLAN_NAMES[plano]||plano)+'</strong> vale por <strong>'+dias+' dias</strong> contados a partir da confirmação (não da compra). Sem renovação automática.<br>'
+          +'3. Acompanhe o status em 🧾 Meus pedidos.</div>'
+          +'<br><strong>Para dúvidas, entre em contato:</strong>';
         toast('✅ Pedido enviado! Aguarde a confirmação.', 'g');
-        _vigiarAtivacaoProvisoria(PLAN_NAMES[plano]||plano);
+        _vigiarAtivacaoProvisoria(PLAN_NAMES[plano]||plano,dias);
       }
       _pendingOrderCache=undefined;
       _mpLoaded=false;

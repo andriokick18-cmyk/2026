@@ -6417,6 +6417,75 @@ async function drillAdminSettingsLegado() {
       combo90St?.vip?.autoActive === false && combo90St?.manualLimit === 100,
       JSON.stringify({ ap: combo90Ap.status, plan: combo90St?.plan, diasRestantes: _diasRestantes90, auto: combo90St?.vip?.autoActive }).slice(0, 180));
 
+    // 💰 v962 (ORDEM DO DONO, 09/10/2026): o período NOVO de 15 dias passa
+    // pelo caminho REAL de compra de ponta a ponta — pedido do usuário (sem
+    // nota de pré-check, pra aprovação do admin ser a ÚNICA fonte de dias) →
+    // aprovação → status. Prova 3 coisas de uma vez: (1) o servidor recalcula
+    // o valor pela tabela e IGNORA o valorTotal mandado pelo cliente (R$1);
+    // (2) Turbo de 15d credita ~15 dias nos DOIS relógios (manual E auto —
+    // nunca 30 por um `||30` escondido); (3) os limites diários são os
+    // mesmos do plano cheio (100/100) — 15 dias é só período, nunca "metade
+    // do plano".
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "combo-15@test.com", name: "Combo 15 Dias" });
+    const combo15 = await req2("POST", "/api/pedido", { plano: "vipro", dias: 15, consentimento: true, userName: "Combo 15 Dias", userWhatsapp: "11 9", userCity: "SP", valorTotal: 1, comprovante: Buffer.from("combo-15").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    const combo15Lista = (await get("/api/pedidos")).json;
+    const _ped15 = (combo15Lista?.pedidos || []).find((p2) => p2.id === combo15.json?.pedidoId);
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const combo15Ap = await req2("PATCH", "/api/pedido/" + combo15.json?.pedidoId, { status: "ativo", recebidoPor: "andrio" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "combo-15@test.com" });
+    const combo15St = (await get("/api/status")).json;
+    const _dMan15 = combo15St?.vip?.manualExpires ? Math.round((combo15St.vip.manualExpires - Date.now()) / 86400000) : 0;
+    const _dAuto15 = combo15St?.vip?.autoExpires ? Math.round((combo15St.vip.autoExpires - Date.now()) / 86400000) : 0;
+    check("💰 v962: Turbo de 15 dias comprado por PEDIDO REAL — valor recalculado pela tabela (R$150, ignorando o R$1 do cliente), aprovação credita ~15 dias no manual E no automático (nunca 30 por fallback), e os limites diários seguem os do plano cheio (100/100)",
+      combo15.json?.ok === true && _ped15 && _ped15.valorTotal === 150 && _ped15.dias === 15 &&
+      combo15Ap.json?.ok === true && combo15St?.plan === "vipro" &&
+      _dMan15 >= 14 && _dMan15 <= 16 && _dAuto15 >= 14 && _dAuto15 <= 16 &&
+      combo15St?.vip?.manualActive === true && combo15St?.vip?.autoActive === true &&
+      combo15St?.manualLimit === 100 && combo15St?.autoLimit === 100,
+      JSON.stringify({ ok: combo15.json?.ok, valor: _ped15?.valorTotal, dias: _ped15?.dias, ap: combo15Ap.status, plan: combo15St?.plan, dMan: _dMan15, dAuto: _dAuto15, ml: combo15St?.manualLimit, al: combo15St?.autoLimit }).slice(0, 220));
+    // Período fora da tabela (ex.: 10 dias) continua recusado com 400 pra
+    // usuário comum — o 15d entrou pela tabela, não por afrouxar a validação.
+    const combo10 = await req2("POST", "/api/pedido", { plano: "vipro", dias: 10, consentimento: true, userName: "Combo 10", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("combo-10").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    check("💰 v962: período que NÃO está na tabela (10 dias) continua recusado com 400 pra usuário comum — abrir o 15d não afrouxou a validação de plano+prazo",
+      combo10.status === 400 && /Plano ou período inválido/.test(combo10.json?.error || ""),
+      `status=${combo10.status} body=${(combo10.body || "").slice(0, 120)}`);
+    // 💰 v962 (achado da revisão de testes): o caminho que a produção MAIS usa
+    // é comprovante CONFERE → ativação PROVISÓRIA (AUTO_ATIVA_DIAS=3) → admin
+    // confirma. Com 15 dias, o cap do provisório (zera antes de somar) tem que
+    // dar 15 dias a partir da confirmação — nunca 18 (3 provisórios + 15
+    // pagos). Nenhum teste da suíte aprovava um pedido já provisório e conferia
+    // a conta depois.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "combo-15prov@test.com", name: "Combo 15 Provisorio" });
+    const c15p = await req2("POST", "/api/pedido", { plano: "vipro", dias: 15, consentimento: true, userName: "Combo 15 Prov", userWhatsapp: "11 9", userCity: "SP", nota: "TESTE_COMPROVANTE:150", comprovante: Buffer.from("combo-15-prov").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    await new Promise((r) => setTimeout(r, 500));
+    const c15pProv = (await get("/api/status")).json;
+    const _dProv = c15pProv?.vip?.manualExpires ? Math.round((c15pProv.vip.manualExpires - Date.now()) / 86400000) : 0;
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const c15pAp = await req2("PATCH", "/api/pedido/" + c15p.json?.pedidoId, { status: "ativo", recebidoPor: "diego" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "combo-15prov@test.com" });
+    const c15pSt = (await get("/api/status")).json;
+    const _dM15p = c15pSt?.vip?.manualExpires ? Math.round((c15pSt.vip.manualExpires - Date.now()) / 86400000) : 0;
+    const _dA15p = c15pSt?.vip?.autoExpires ? Math.round((c15pSt.vip.autoExpires - Date.now()) / 86400000) : 0;
+    check("💰 v962: Turbo 15d com comprovante CONFERE nasce PROVISÓRIO (~3d, source auto-provisorio) e, confirmado pelo admin, vale ~15 dias a partir da confirmação nos 2 relógios — nunca 18 (o provisório é zerado antes de somar) — e vip.days carimba 15",
+      c15p.json?.ok === true && c15pProv?.vip?.source === "auto-provisorio" && _dProv >= 2 && _dProv <= 3 &&
+      c15pAp.json?.ok === true && c15pSt?.vip?.source === "payment" &&
+      _dM15p >= 14 && _dM15p <= 16 && _dA15p >= 14 && _dA15p <= 16 && c15pSt?.vip?.days === 15,
+      JSON.stringify({ prov: c15pProv?.vip?.source, dProv: _dProv, ap: c15pAp.status, src: c15pSt?.vip?.source, dM: _dM15p, dA: _dA15p, days: c15pSt?.vip?.days }).slice(0, 200));
+    // 💰 v962 (achado da revisão de testes): cancelar um pedido de 15d
+    // estorna EXATAMENTE 15 (pd.diasTotal) — nunca 30 por um padrão escondido
+    // — e o acesso cai nos 2 relógios. A única asserção de estorno da suíte
+    // era sobre um pedido de 30d (−30).
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    const c15canc = await req2("PATCH", "/api/pedido/" + combo15.json?.pedidoId, { status: "cancelado", notaAdmin: "teste v962 — estorno de 15 dias" });
+    const _c15det = await get("/api/pedido/" + combo15.json?.pedidoId);
+    const _c15est = (_c15det.json?.usuario?.creditos || []).find((c) => c.origem === "estorno" && c.pedidoId === combo15.json?.pedidoId);
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "combo-15@test.com" });
+    const c15cancSt = (await get("/api/status")).json;
+    check("💰 v962: cancelar o Turbo de 15 dias estorna EXATAMENTE −15 no extrato (nunca −30) e derruba manual E automático",
+      c15canc.json?.ok === true && !!_c15est && _c15est.dias === -15 && _c15est.tipo === "pago" &&
+      c15cancSt?.vip?.manualActive !== true && c15cancSt?.vip?.autoActive !== true,
+      JSON.stringify({ canc: c15canc.status, est: _c15est?.dias, m: c15cancSt?.vip?.manualActive, a: c15cancSt?.vip?.autoActive }).slice(0, 160));
+
     // ═══ 💼 MC5 — PARTE 2 (29/08): O USUÁRIO VÊ TUDO ═══════════════════════
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "mc5a@test.com", name: "MC5 A" });
     const mc5vis = (await get("/api/pedidos")).json;
@@ -6451,10 +6520,56 @@ async function drillAdminSettingsLegado() {
       mc5re403.status === 403 && mc5re400.status === 400,
       JSON.stringify({ re: mc5re.status, h: !!_pdRe?.comprovanteHash, f403: mc5re403.status, f400: mc5re400.status }).slice(0, 140));
     const mc5pl = (await get("/api/planos")).json;
-    check("💼 MC5-P2 → v170/v218: /api/planos entrega a mediana REAL de confirmação (promessa honesta no lugar do '24h' fixo) — fonte única de preço/limites pro checkout, nunca hardcoded (3 planos × 2 prazos desde a v218)",
+    check("💼 MC5-P2 → v170/v218/v962: /api/planos entrega a mediana REAL de confirmação (promessa honesta no lugar do '24h' fixo) — fonte única de preço/limites pro checkout, nunca hardcoded (3 planos × 3 prazos: 15/30/60 desde a v962)",
       mc5pl?.ok === true && (typeof mc5pl?.medianaAprovacaoHoras === "number" || mc5pl?.medianaAprovacaoHoras === null) &&
-      Array.isArray(mc5pl?.precos) && mc5pl.precos.length >= 6 && mc5pl?.limites?.vipro?.manual === 100,
+      Array.isArray(mc5pl?.precos) && mc5pl.precos.length === 9 && mc5pl?.limites?.vipro?.manual === 100,
       JSON.stringify({ med: mc5pl?.medianaAprovacaoHoras, n: mc5pl?.precos?.length }).slice(0, 100));
+    // 💰 v962 (ORDEM DO DONO, 09/10/2026 — "dividir para 15 dias e divide o
+    // valor também"): o 15d de CADA plano custa EXATAMENTE a metade do 30d
+    // (mesmo preço por dia — nem desconto, nem sobretaxa). Provado contra a
+    // tabela viva, plano a plano, pra um reajuste futuro do 30d nunca deixar
+    // o 15d desalinhado em silêncio.
+    const _tab962 = {};
+    (mc5pl?.precos || []).forEach((p2) => { (_tab962[p2.plano] = _tab962[p2.plano] || {})[p2.dias] = p2.valorTotal; });
+    const _metade962 = ["vip", "vipro", "doublepro"].every((pl) => _tab962[pl] && _tab962[pl][15] > 0 && _tab962[pl][15] * 2 === _tab962[pl][30] && _tab962[pl][60] > _tab962[pl][30]);
+    check("💰 v962: os 3 planos têm período de 15 dias em /api/planos, cada um custando EXATAMENTE a metade do de 30 dias (Manual 75/150, Turbo 150/300, Máximo 250/500) — e o 60d continua acima do 30d (desconto só no mais longo)",
+      _metade962 && _tab962.vip?.[15] === 75 && _tab962.vipro?.[15] === 150 && _tab962.doublepro?.[15] === 250,
+      JSON.stringify(_tab962).slice(0, 160));
+    // Os espelhos de texto (regra v172j: toda mudança de preço tem que ir
+    // pras páginas públicas no MESMO commit) citam os preços de 15 dias
+    // derivados da tabela viva — nunca um número solto.
+    const _func962 = fs.readFileSync(path.join(__dirname, "h2bapply-funciona.html"), "utf8");
+    const _custa962 = fs.readFileSync(path.join(__dirname, "quanto-custa-o-visto-h2b.html"), "utf8");
+    const _tut962 = fs.readFileSync(path.join(__dirname, "tutorial-conteudo.html"), "utf8");
+    check("💰 v962: página de vendas (/h2bapply-funciona), /quanto-custa-o-visto-h2b e o tutorial espelham o 15d de cada plano com o preço da tabela viva, e 'a partir de' passou a ser o 15d do Manual",
+      ["vip", "vipro", "doublepro"].every((pl) => _func962.includes(`15 dias: R$ ${_tab962[pl]?.[15]}`)) &&
+      _func962.includes(`a partir de R$ ${_tab962.vip?.[15]} por 15 dias`) && _func962.includes("15, 30 ou 60 dias") &&
+      _custa962.includes(`A partir de R$ ${_tab962.vip?.[15]}/15 dias`) && _custa962.includes(`a partir de R$ ${_tab962.vip?.[15]} por 15 dias`) &&
+      _tut962.includes(`R$${_tab962.vip?.[15]} por 15 dias`) && _tut962.includes(`R$${_tab962.vipro?.[15]} por 15 dias`) && _tut962.includes(`R$${_tab962.doublepro?.[15]} por 15 dias`) &&
+      _tut962.includes("Toque em <b>Ir para o Pix") && !_tut962.includes("Toque em <b>Continuar</b>"),
+      "algum espelho público não cita o 15d com o preço da tabela (ou o tutorial ainda manda tocar num botão que não existe mais)");
+    // 🖥️ v962 (estrutural, front): a tela de Planos aplica o que a pesquisa de
+    // UX mandou — seletor de período GLOBAL como grupo de rádio acessível
+    // (nunca 3 botões por card), padrão em 30 dias, total como número grande
+    // + "equivale a R$/dia" secundário em todos os períodos, economia em R$ só
+    // acima de 30d (15d nunca ganha selo), "Confira sua escolha" antes do Pix,
+    // "Você vai pagar agora" na tela do Pix e "O que acontece agora" na
+    // confirmação; FAQ do 15d e bullet de consentimento nas 3 línguas; a barra
+    // de dias do plano usa o período COMPRADO (vip.days), não 30 fixo.
+    const _app962 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+    const _idx962 = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+    check("🖥️ v962 (estrutural): seletor de período global (role=radiogroup + aria-checked + teclado), padrão 30d, por-dia secundário, economia só >30d, resumo/confirmação explicativos, FAQ+consentimento do 15d nas 3 línguas e barra de dias pelo período comprado",
+      _app962.includes('role="radiogroup"') && _app962.includes("function selectPeriodo(") && _app962.includes("function _plPeriodoKey(") &&
+      _app962.includes("dias.includes(30)?30:") && _app962.includes("equivale a R$ ${brl(_plPorDia(total,dias))}/dia") &&
+      _app962.includes("const economia=(dias>30&&base30)") && !_app962.includes("grid-template-columns:repeat(2,1fr);gap:6px\">\n        ${(porPlano[pl]||[]).map(c=>{") &&
+      _app962.includes("function _planResumoLinhas(") && _app962.includes("Confira sua escolha") && _app962.includes("Você vai pagar agora:") && _app962.includes("O que acontece agora") &&
+      _app962.includes("const totalDias=Math.max(1,parseInt(v?.days,10)||30);") && _app962.includes("const totalPara=(expires)=>") &&
+      fs.readFileSync(path.join(__dirname, "server.js"), "utf8").includes("const dias=Number(pd.diasTotal)||Number(pd.dias)||((Number(pd.diasBase)||30)") &&
+      _app962.includes("Ir para o Pix — R$ ${brl(") && _app962.includes("Se aparecer outro nome no seu banco, não pague.") && _app962.includes("se confirmado hoje") &&
+      ["plan_faq7_q", "plan_faq7_a", "consent_b6", "comp_hint2"].every((k) => (_app962.match(new RegExp(`"${k}":`, "g")) || []).length === 3) &&
+      _idx962.includes('data-i18n="plan_faq7_q"') && _idx962.includes('data-i18n="consent_b6"') && _idx962.includes('data-i18n="comp_hint2"') && _idx962.includes('id="calc-detalhe"') &&
+      _idx962.includes(".pl-seg[aria-checked=\"true\"]") && _idx962.includes(".btn.pl-card-cta{"),
+      "estrutura da tela de Planos (v962) incompleta");
 
     // ═══ 💼 MC5 — PARTE 3 (29/08): UMA RÉGUA SÓ NAS TELAS DO ADMIN ═════════
     // 🕐 v172m (achado real, 13/09/2026): esta checagem dependia de gsm1/2/3
@@ -7764,9 +7879,11 @@ async function drillAdminSettingsLegado() {
       // arquivo, já dizia certo ("30 ou 60 dias") — contradição interna
       // confirmada, não só desatualização.
       const _tutL9 = fs.readFileSync(path.join(__dirname, "tutorial-conteudo.html"), "utf8");
-      check("📋 v291: tutorial-conteudo.html (Passo 17) não promete mais 90 dias/1 ano — alinhado com PLANO_PRECO_TAB (só 30/60)",
-        !_tutL9.includes("90 dias ou 1 ano") && _tutL9.includes("escolha o plano e o período (<b>30 ou 60 dias</b>)"),
-        "tutorial ainda promete período de plano que não existe mais");
+      // v962: entrou o período de 15 dias (metade do 30d) — o tutorial passou a
+      // listar "15, 30 ou 60 dias", e a guarda acompanha a tabela real.
+      check("📋 v291/v962: tutorial-conteudo.html (Passo 17) não promete mais 90 dias/1 ano — alinhado com PLANO_PRECO_TAB (15/30/60)",
+        !_tutL9.includes("90 dias ou 1 ano") && !_tutL9.includes("(<b>30 ou 60 dias</b>)") && _tutL9.includes("escolha o plano e o período (<b>15, 30 ou 60 dias</b>)"),
+        "tutorial ainda promete período de plano que não existe mais (ou não cita os 15 dias)");
       // 📋 v292 (achado de auditoria contínua — COPY, mesma classe do
       // v291): tutorial-conteudo.html (Passo 8) ainda listava a aba
       // "Vagas ao Vivo" (busca ao vivo no DOL) como opção de planilha —
@@ -7819,10 +7936,12 @@ async function drillAdminSettingsLegado() {
       // (20/09/2026). A própria página já dizia certo 31 linhas acima,
       // na seção de preços ("períodos de 30 ou 60 dias").
       const _hfL9 = fs.readFileSync(path.join(__dirname, "h2bapply-funciona.html"), "utf8");
-      check("📋 v296: h2bapply-funciona.html — FAQ visível E JSON-LD FAQPage não citam mais 90 dias/1 ano de plano",
-        !_hfL9.includes("90 dias, ou 1 ano") &&
-        (_hfL9.match(/você paga por um período \(30 ou 60 dias\)/g) || []).length === 2,
-        "FAQ ou JSON-LD ainda citam período de plano removido");
+      // v962: com o período de 15 dias, a frase virou "(15, 30 ou 60 dias)" —
+      // continua tendo que aparecer 2x (FAQ visível + JSON-LD), sempre iguais.
+      check("📋 v296/v962: h2bapply-funciona.html — FAQ visível E JSON-LD FAQPage não citam mais 90 dias/1 ano de plano e dizem o período real (15, 30 ou 60 dias) nos 2 lugares",
+        !_hfL9.includes("90 dias, ou 1 ano") && !_hfL9.includes("período (30 ou 60 dias)") &&
+        (_hfL9.match(/você paga por um período \(15, 30 ou 60 dias\)/g) || []).length === 2,
+        "FAQ ou JSON-LD ainda citam período de plano removido (ou divergem entre si)");
       // 🔍 v297 (achado de auditoria contínua — SEO): como-usar.html é
       // servida em 2 URLs idênticas (/como-usar e /como-usar.html) mas,
       // diferente das páginas irmãs (guia/h2bapply-funciona/h2b-e-golpe/
