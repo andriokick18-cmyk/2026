@@ -404,7 +404,7 @@ function agRender(step,data){
     } else {
       body.innerHTML=`
       <div class="ag-title">Digite o código</div>
-      <div class="ag-sub">Se existir uma conta com <strong style="color:#fff">${esc(_agRecId)}</strong>, o código foi pro e-mail cadastrado nela (olhe também o spam). Ele vale 5 minutos.</div>
+      <div class="ag-sub">Se existir uma conta com <strong style="color:#fff">${esc(_agRecId)}</strong>, o código foi pro e-mail cadastrado nela (olhe também o spam). Ele vale 5 minutos. Se você pediu há menos de 1 minuto, aguarde — o código anterior continua valendo.</div>
       <label class="ag-lbl" for="ag-r-code">Código de 6 dígitos</label>
       <input class="ag-input ag-code" id="ag-r-code" type="text" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,6)">
       <label class="ag-lbl" for="ag-r-pass">Nova senha</label>
@@ -628,7 +628,7 @@ async function agRecRedefinir(){
     if(!r.ok)throw new Error(d.error||"Não foi possível redefinir.");
     _agUser=d.username||_agUser;
     agRender("login");
-    const e2=g("#ag-err");if(e2){e2.style.display="block";e2.style.background="rgba(16,185,129,.12)";e2.style.borderColor="rgba(16,185,129,.4)";e2.style.color="#6ee7b7";e2.textContent="✅ Senha redefinida! Entre com a senha nova.";}
+    const e2=g("#ag-err");if(e2){e2.style.display="block";e2.style.background="rgba(16,185,129,.12)";e2.style.borderColor="rgba(16,185,129,.4)";e2.style.color="#6ee7b7";e2.textContent="✅ Senha redefinida! Seu usuário é "+(d.username||_agUser)+". Entre com a senha nova.";}
   }catch(e){showErr("⚠️ "+e.message);if(btn){btn.disabled=false;btn.innerHTML='Redefinir senha <i class="ti ti-check"></i>';}}
 }
 async function agSubmitLogin(){

@@ -7254,16 +7254,37 @@ const _normGmailKey = (e) => { const m = String(e || "").trim().toLowerCase().ma
 function _identRecuperacao(v) {
   let id = String(v || "").trim().toLowerCase().replace(/\s+/g, "");
   if (/^@+[^@]+$/.test(id)) id = id.replace(/^@+/, "");
-  if (id.length < 3 || id.length > 254 || !/^[a-z0-9._+@-]+$/.test(id)) return "";
+  // Só recusa controle, < > " \\ e tamanho absurdo — NÃO uma lista estreita: chave de conta legada é o
+  // e-mail do Google (Workspace pode ter apóstrofo, ex. o'brien@empresa.com) e o login dela não pode regredir.
+  if (id.length < 3 || id.length > 254 || /[\u0000-\u001f\u007f<>"\\]/.test(id)) return "";
   return id;
+}
+// Índice "Gmail normalizado → contas": reconstruído no máximo a cada 30s (o fallback é raro e a
+// varredura O(N) com regex por usuário, num login/recuperação anônimo, bloquearia o servidor).
+let _gmailIdx = { at: 0, map: new Map() };
+function _gmailIndex() {
+  if (Date.now() - _gmailIdx.at > 30_000) {
+    const m = new Map();
+    for (const u of Object.values(DB_USERS)) {
+      if (!u || u.deleted) continue;
+      for (const e of [u.emailContato, u.email]) {
+        const k = _normGmailKey(e); if (!k) continue;
+        const a = m.get(k); if (!a) m.set(k, [u]); else if (!a.includes(u)) a.push(u);
+      }
+    }
+    _gmailIdx = { at: Date.now(), map: m };
+  }
+  return _gmailIdx.map;
 }
 function _findUserByLogin(ident) {
   const id = _identRecuperacao(ident); if (!id) return null;
-  const direct = getUser(id); if (direct) return direct;
+  // chave PRÓPRIA do banco: DB_USERS é um objeto comum — "constructor"/"__proto__" não são contas.
+  const direct = Object.prototype.hasOwnProperty.call(DB_USERS, id) ? DB_USERS[id] : null;
+  if (direct && typeof direct.email === "string") return direct;
   if (!id.includes("@")) return null;
   const byMail = _findUserByEmail(id); if (byMail) return byMail;
   const ng = _normGmailKey(id); if (!ng) return null;
-  const hits = Object.values(DB_USERS).filter(u => u && !u.deleted && (_normGmailKey(u.emailContato) === ng || _normGmailKey(u.email) === ng));
+  const hits = _gmailIndex().get(ng) || [];
   return hits.length === 1 ? hits[0] : null;
 }
 // Pra onde o código de recuperação vai: o e-mail cadastrado e confirmado; conta
@@ -7281,10 +7302,11 @@ const _senhaAlertaVisto = new Map();
 function _senhaAlerta(tipo, chave, msg, level = "warn", janelaMs = 30 * 60_000) {
   try {
     const k = tipo + ":" + chave, agora = Date.now();
-    if (agora - (_senhaAlertaVisto.get(k) || 0) < janelaMs) return;
+    if (agora - (_senhaAlertaVisto.get(k) || 0) < janelaMs) return false;
     _senhaAlertaVisto.set(k, agora);
     pushGlobalEvent(tipo, chave === "global" ? "sistema" : chave, msg, level);
-  } catch (e) {}
+    return true;
+  } catch (e) { return false; }
 }
 // Data de nascimento: aceita AAAA-MM-DD (input date) ou DD/MM/AAAA (digitado);
 // devolve ISO ou null se não for uma data real de alguém entre 16 e 100 anos.
@@ -9306,8 +9328,10 @@ filtrar();
           // Conta sem NENHUM e-mail (cadastro de antes do v175): o código não tem
           // pra onde ir. A resposta segue genérica (anti-enumeração); o admin vê
           // o pedido na linha do tempo da conta e na Central, e destrava pelo 🔑.
-          _authEvent(u.email,"senha_sem_email","Pediu recuperação de senha, mas a conta não tem e-mail cadastrado — só o suporte destrava (Admin → Usuários → 🔑)");
-          _senhaAlerta("recuperacao_sem_email",u.email,`Pediu recuperação de senha mas a conta não tem e-mail cadastrado — definir senha nova em Admin → Usuários → 🔑 (@${u.email})`,"warn",6*3600_000);
+          // Throttle de 6h nos DOIS (Central e linha do tempo): pedido anônimo repetido nunca enche o
+          // anel de 40 eventos da conta e apaga o diagnóstico de autenticação do Google.
+          if(_senhaAlerta("recuperacao_sem_email",u.email,`Pediu recuperação de senha mas a conta não tem e-mail cadastrado — definir senha nova em Admin → Usuários → 🔑 (@${u.email})`,"warn",6*3600_000))
+            _authEvent(u.email,"senha_sem_email","Pediu recuperação de senha, mas a conta não tem e-mail cadastrado — só o suporte destrava (Admin → Usuários → 🔑)");
         }else if(NOTIF.podeEnviar("senha",dest).ok){
           // O código nasce amarrado ao E-MAIL DE DESTINO (não ao que foi digitado):
           // usuário e e-mail da mesma conta compartilham 1 código e 1 teto de
@@ -9324,10 +9348,11 @@ filtrar();
       }
       const _falta=400-(Date.now()-_t0);
       if(_falta>0)await new Promise(r=>setTimeout(r,_falta));
-      return json(res,200,{ok:true,msg:"Se existir uma conta com esse usuário ou e-mail, o código foi enviado para o e-mail cadastrado nela. Vale 5 minutos."});
+      return json(res,200,{ok:true,msg:"Se existir uma conta com esse usuário ou e-mail, o código foi enviado para o e-mail cadastrado nela. Vale 5 minutos. Se você pediu há menos de 1 minuto, aguarde — o código anterior continua valendo."});
     }catch(e){return json(res,400,{error:"Corpo inválido: "+e.message});}
   }
   if(pathname==="/api/senha/redefinir"&&req.method==="POST"){
+    const _t0r=Date.now();
     const _ip=_clientIp(req);
     if(rateLimit("senharedef_"+_ip,90,3600_000))return json(res,429,{error:"Muitas tentativas vindas desta rede. Aguarde um pouco."});
     try{
@@ -9343,9 +9368,11 @@ filtrar();
       // 🔒 v335: simularSeAusente fecha a enumeração — conta sem código some,
       // até neste código de erro, atrás da MESMA resposta de "código incorreto".
       const r=NOTIF.confirmarCodigo("senha",chave,d.codigo,{simularSeAusente:true});
-      if(!r.ok)return json(res,400,{error:r.motivo});
+      // piso de 250ms nas FALHAS (o sucesso já paga o scrypt): conta real × inexistente não se separam pelo tempo
+      const _falhaR=async(msg)=>{const f=250-(Date.now()-_t0r);if(f>0)await new Promise(r2=>setTimeout(r2,f));return json(res,400,{error:msg});};
+      if(!r.ok)return _falhaR(r.motivo);
       const u=u0;
-      if(!u||isAdminVip(u))return json(res,400,{error:"Conta não encontrada."}); // v177-FIX: mesma régua acima — cobre conta admin dos 2 formatos
+      if(!u||isAdminVip(u))return _falhaR("Conta não encontrada."); // v177-FIX: mesma régua acima — cobre conta admin dos 2 formatos
       const {salt,hash}=await _hashPw(nova);
       setUser(u.email,{passwordSalt:salt,passwordHash:hash,passwordChangedAt:Date.now()});
       let _derrubadas=0;for(const sid of Object.keys(sessions)){if(sessions[sid]?.user_email===u.email){delete sessions[sid];_derrubadas++;}}

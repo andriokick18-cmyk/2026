@@ -1371,12 +1371,66 @@ async function drillAdminSettingsLegado() {
         _rC.ok === false && _rErr.ok === false && /incorreto/.test(_rErr.motivo || "") && _rOk.ok === true && typeof _rOk.token === "string" && _rDepois.ok === false,
         JSON.stringify({ c: _rC.ok, err: _rErr.motivo, ok: _rOk.ok, depois: _rDepois.ok }));
     }
+    // 🔒 v965 (achados da revisão adversarial) ────────────────────────────────────────────
+    {
+      const { createNotif: _mk2 } = require("./mod-notif.js");
+      const _dir2 = fs.mkdtempSync(path.join(os.tmpdir(), "notif-rev-"));
+      const _n2 = (segredo) => _mk2({ fs, path, DATA_DIR: _dir2, httpsReq: async () => ({}), buildMime: () => "", encStr: (x) => x, decStr: (x) => x, getClientId: () => "", getClientSecret: () => "", isTest: true, hmacSecret: segredo, appUrl: "" });
+      const _a = _n2("segredo-revisao-v965");
+      // (1) cancelar o código com 5 erros NÃO zera o teto de envios do destino (antes: pend.delete apagava o histórico → e-mail-bomb)
+      _a.gerarCodigo("senha", "bomba.v965@gmail.com");
+      const _pos1 = _a.podeEnviar("senha", "bomba.v965@gmail.com");
+      let _ult; for (let i = 0; i < 5; i++) _ult = _a.confirmarCodigo("senha", "bomba.v965@gmail.com", "000000");
+      const _posCancelado = _a.podeEnviar("senha", "bomba.v965@gmail.com");
+      // (2) falha da finalidade "senha" é SEMPRE a mesma frase, sem contagem (não dá pra ligar 2 identificadores à mesma conta)
+      _a.gerarCodigo("senha", "msg.v965@gmail.com");
+      const _f1 = _a.confirmarCodigo("senha", "msg.v965@gmail.com", "111111"), _f2 = _a.confirmarCodigo("senha", "msg.v965@gmail.com", "222222");
+      const _fFake = _a.confirmarCodigo("senha", "nunca.pediu.v965@gmail.com", "333333", { simularSeAusente: true });
+      // …mas o cadastro continua com a mensagem detalhada de sempre
+      _a.gerarCodigo("cadastro", "cad.v965@gmail.com");
+      const _fCad = _a.confirmarCodigo("cadastro", "cad.v965@gmail.com", "444444");
+      // (3) chave do servidor diferente (sem DATA_ENC_KEY) → o arquivo antigo é DESCARTADO (nada de código que nunca valida e queima tentativa)
+      await new Promise((r) => setTimeout(r, 800));
+      const _outraChave = _n2("OUTRA-chave-do-servidor-v965-b");
+      const _semDados = _outraChave.podeEnviar("senha", "bomba.v965@gmail.com");
+      const _mesmaChave = _n2("segredo-revisao-v965");
+      const _comDados = _mesmaChave.podeEnviar("senha", "bomba.v965@gmail.com");
+      check("🔒 v965 (revisão): cancelar o código com 5 erros NÃO zera o teto de envios (60s / 3 em 15min) — o histórico de envios vive separado do código e persiste; falha da finalidade 'senha' é a MESMA frase sem contagem (com código, com código errado de novo e conta inexistente); 'cadastro' mantém a mensagem detalhada; chave de servidor diferente descarta o arquivo em vez de queimar tentativas",
+        _pos1.ok === false && _pos1.motivo === "aguarde" && _ult.ok === false && _ult.cancelado === true && _posCancelado.ok === false &&
+        _f1.motivo === _f2.motivo && _f1.motivo === _fFake.motivo && !/restante|tentativa/.test(_f1.motivo || "") && /incorreto ou expirado/.test(_f1.motivo || "") &&
+        /restante/.test(_fCad.motivo || "") &&
+        _semDados.ok === true && _comDados.ok === false,
+        JSON.stringify({ pos1: _pos1, ult: _ult.cancelado, posCancelado: _posCancelado.motivo, f1: _f1.motivo, fFake: _fFake.motivo === _f1.motivo, cad: _fCad.motivo, semDados: _semDados.ok, comDados: _comDados.ok }).slice(0, 420));
+    }
+    // identificadores que NÃO são conta: chaves de protótipo (constructor/__proto__) e lixo — respondem 200 genérico igual a qualquer inexistente, sem alerta falso nem quebra
+    const _recProto = await req2("POST", "/api/senha/enviar-codigo", { identificador: "constructor" });
+    const _recProto2 = await req2("POST", "/api/senha/enviar-codigo", { identificador: "__proto__" });
+    const _recInex = await req2("POST", "/api/senha/enviar-codigo", { identificador: "inexistente_zz_v965" });
+    check("🔒 v965 (revisão): 'constructor' e '__proto__' NÃO são contas (o banco é um objeto comum — antes getUser devolvia a função Object) — resposta idêntica à de um usuário inexistente e nenhum e-mail sai",
+      _recProto.status === 200 && _recProto2.status === 200 && _recProto.body === _recInex.body && _recProto2.body === _recInex.body && !lerOutbox().some((x) => /constructor|__proto__/.test(x.to || "")),
+      JSON.stringify({ a: _recProto.status, b: _recProto2.status, igual: _recProto.body === _recInex.body }));
+    // conta LEGADA cuja chave é um e-mail com apóstrofo (Google Workspace): recuperação e login NÃO regridem com o identificador mais estreito
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "o'brien.v965@empresa.com", name: "O Brien" });
+    COOKIE = "";
+    const _outAntesAp = lerOutbox().length;
+    const _recAp = await req2("POST", "/api/senha/enviar-codigo", { identificador: "O'Brien.v965@Empresa.com" });
+    const _codAp = ultimoCodigo("o'brien.v965@empresa.com", "codigo_senha");
+    const _redefAp = await req2("POST", "/api/senha/redefinir", { identificador: "o'brien.v965@empresa.com", codigo: _codAp, novaSenha: "apostrofo123" });
+    COOKIE = "";
+    const _logAp = await req2("POST", "/api/login", { username: "o'brien.v965@empresa.com", password: "apostrofo123" });
+    check("🔒 v965 (revisão): conta legada com apóstrofo no e-mail (o'brien@empresa.com — válido no Google Workspace) recupera a senha (código no próprio e-mail) e ENTRA — o identificador novo não rejeita chaves legítimas",
+      _recAp.status === 200 && lerOutbox().length === _outAntesAp + 1 && /^\d{6}$/.test(_codAp || "") && _redefAp.status === 200 && _logAp.status === 200,
+      JSON.stringify({ rec: _recAp.status, cod: _codAp, redef: _redefAp.status, login: _logAp.status }));
+    // devolve a sessão pra conta que o bloco seguinte (v237h) espera estar logada
+    COOKIE = "";
+    await req2("POST", "/api/login", { username: "novo_user_v172c", password: "novasenha123" });
     const _srv965 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
     const _app965 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
     check("🔑 v965 estrutural: UM resolvedor (_findUserByLogin) serve login, pedir código, redefinir e o 🔑 do admin; a recuperação deixa de exigir '@'; falha de entrega e conta sem e-mail viram alerta na Central; limites por IP relaxados pra CGNAT (40/h pedir, 90/h redefinir) com o teto POR E-MAIL intacto",
       /function _findUserByLogin\(ident\)/.test(_srv965) && /const u=_findUserByLogin\(username\);/.test(_srv965) &&
       (_srv965.match(/_findUserByLogin\(/g) || []).length >= 5 && /_identRecuperacao\(d\.identificador\|\|d\.email\|\|d\.username\)/.test(_srv965) &&
       /const dest=_recoveryEmail\(u\);/.test(_srv965) && /NOTIF\.gerarCodigo\("senha",dest\)/.test(_srv965) &&
+      /Object\.prototype\.hasOwnProperty\.call\(DB_USERS, id\)/.test(_srv965) && /function _gmailIndex\(\)/.test(_srv965) && /_gmailIndex\(\)\.get\(ng\)/.test(_srv965) && /_falhaR\(r\.motivo\)/.test(_srv965) &&
       /_senhaAlerta\("recuperacao_envio_falhou"/.test(_srv965) && /_senhaAlerta\("recuperacao_fora_do_ar"/.test(_srv965) && /_senhaAlerta\("recuperacao_sem_email"/.test(_srv965) &&
       /rateLimit\("senhacod_"\+_ip,40,3600_000\)/.test(_srv965) && /rateLimit\("senharedef_"\+_ip,90,3600_000\)/.test(_srv965) &&
       /rateLimit\("senhacd60_"\+ident,1,60_000\)/.test(_srv965) && /rateLimit\("senhacd15_"\+ident,3,900_000\)/.test(_srv965),

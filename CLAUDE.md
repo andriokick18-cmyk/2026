@@ -4087,4 +4087,23 @@ Chromium (desktop/360px: pedir por usuário → código no e-mail cadastrado →
 **Se ainda houver quem não receba o código em produção, olhe Admin → Notificações**: se a
 conta de e-mail do site estiver desconectada/caída ninguém recebe nada (agora a Central
 avisa). Contas de ANTES do e-mail (v172c sem emailContato) só o 🔑 destrava — o admin vê o
-pedido na linha do tempo da conta. sw v176.
+pedido na linha do tempo da conta.
+
+**v965b — achados da revisão adversarial (3 lentes) já corrigidos**: (1) o teto de envios (60s /
+3 em 15min) agora vive num histórico POR DESTINO separado do código (`envHist`, persistido) —
+cancelar (5 erros), usar ou expirar o código NÃO zera mais (antes dava pra bombardear a caixa
+alternando "usuário"/"e-mail"/"Gmail sem pontos"/"+tag" e errando 5 vezes); (2) na finalidade
+"senha" TODA falha é a MESMA frase, sem contagem de tentativas (o contador é por e-mail de
+destino e mostrá-lo ligava dois identificadores à mesma conta) — o orçamento de 5 tentativas
+continua, só ficou invisível; o cadastro mantém a mensagem detalhada; (3) `_findUserByLogin`
+usa só chave PRÓPRIA do banco (`constructor`/`__proto__` não são contas); (4) `_identRecuperacao`
+só recusa controle/`<>"\\`/tamanho (a lista estreita rejeitava e-mail legítimo de conta legada,
+ex. o'brien@empresa.com, e regredia o login); (5) arquivo de códigos leva uma impressão digital
+da chave do servidor — sem DATA_ENC_KEY (chave nova a cada boot) ele é descartado em vez de
+queimar tentativas com hash que nunca valida; teto de 5000 entradas persistidas (pedidos anônimos
+com identificador inventado criam entradas de mentira); (6) fallback "Gmail sem pontos" usa índice
+em memória (30s), não varredura O(N) com regex por pedido anônimo; (7) o evento `senha_sem_email`
+da linha do tempo tem throttle de 6h (pedido anônimo não evicta o diagnóstico de autenticação);
+(8) /senha/redefinir ganhou piso de 250ms nas falhas; a mensagem genérica de "enviado" já explica
+o descarte silencioso dentro de 60s ("o código anterior continua valendo"); o aviso de sucesso diz
+o usuário (quem esqueceu o usuário descobre aqui). sw v177.

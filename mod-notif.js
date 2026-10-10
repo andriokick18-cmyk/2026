@@ -126,62 +126,86 @@ function createNotif(deps) {
 
   // ── códigos de verificação (OTP) ─────────────────────────────────────
   const CODIGO_TTL_MS = 5 * 60_000, MAX_TENTATIVAS = 5, REENVIO_MS = 60_000, MAX_ENVIOS = 3, JANELA_ENVIOS_MS = 15 * 60_000;
-  const pend = new Map(); // `${finalidade}:${email}` → { hash, exp, tentativas, envios:[ts], ultimoEnvio }
+  const pend = new Map(); // `${finalidade}:${email}` → { hash, exp, tentativas }
+  // Histórico de ENVIOS por destino, SEPARADO do código: cancelar (5 erros), usar ou expirar o
+  // código nunca apaga o teto de 60s / 3 em 15min — senão "errar 5 vezes" zerava o limite e
+  // dava pra bombardear a caixa de alguém (achado da revisão do v965).
+  const envHist = new Map(); // `${finalidade}:${email}` → [ts, ts, ...] (só os últimos 15 min)
   const key = (f, e) => `${f}:${String(e || "").toLowerCase().trim()}`;
   // Chave do HMAC: a mesma do token "e-mail verificado" (abaixo). Hash COM chave —
   // 6 dígitos em sha256 puro caem num dicionário de 1 milhão de entradas; com HMAC
   // o arquivo em disco não entrega o código a ninguém sem a chave do servidor.
   const secret = crypto.createHash("sha256").update(String(hmacSecret || crypto.randomBytes(32).toString("hex"))).digest();
   const hashCode = (k, c) => crypto.createHmac("sha256", secret).update(k + "|" + String(c)).digest("hex");
+  // Impressão digital da chave: sem DATA_ENC_KEY a chave nasce aleatória a cada boot e os hashes
+  // gravados antes nunca validariam (e queimariam tentativas à toa) — o arquivo só é aceito se a
+  // impressão bater; senão começa vazio, caindo no aviso honesto de "peça outro código".
+  const fp = crypto.createHmac("sha256", secret).update("notif-codes-v965").digest("hex").slice(0, 16);
   // 📦 v965 (caso real, 10/10/2026 — "usuários não conseguem recuperar a conta"):
   // os códigos viviam SÓ na memória, e este repo faz deploy a cada commit (o
   // Render também acorda do zero no plano free): quem pedia o código e, nos 5
   // minutos de validade, pegava um restart levava "peça um código novo" sem
-  // entender nada. Agora o estado dos códigos (hash, validade, tentativas, envios)
+  // entender nada. Agora o estado dos códigos (hash, validade, tentativas) e dos envios
   // vai pra disco (gravação adiada 300ms) e volta no boot — restart no meio do
   // caminho deixa de quebrar cadastro e recuperação de senha.
   const CODES_FILE = path.join(DATA_DIR, "notif_codes.json");
+  const MAX_ENTRADAS = 5000; // teto: pedidos anônimos com identificador inventado criam entradas de mentira
   let _codesTimer = null;
   const salvarCodigos = () => {
     if (_codesTimer) return;
     _codesTimer = setTimeout(() => {
       _codesTimer = null;
       try {
-        const lim = Date.now() - JANELA_ENVIOS_MS, o = {};
-        for (const [k, v] of pend) if (v.exp > lim) o[k] = v;
-        fs.writeFileSync(CODES_FILE, JSON.stringify(o));
+        const lim = Date.now() - JANELA_ENVIOS_MS;
+        let codes = [...pend].filter(([, v]) => v.exp > lim);
+        if (codes.length > MAX_ENTRADAS) codes = codes.sort((x, y) => y[1].exp - x[1].exp).slice(0, MAX_ENTRADAS);
+        const envios = [...envHist].map(([k, a]) => [k, a.filter(t => t > lim)]).filter(([, a]) => a.length);
+        fs.writeFileSync(CODES_FILE, JSON.stringify({ fp, codes: Object.fromEntries(codes), envios: Object.fromEntries(envios) }));
       } catch (e) { console.warn("[notif] gravar códigos:", e.message); }
     }, 300);
     _codesTimer.unref?.();
   };
   try {
     const raw = JSON.parse(fs.readFileSync(CODES_FILE, "utf8")), lim = Date.now() - JANELA_ENVIOS_MS;
-    for (const [k, v] of Object.entries(raw || {})) if (v && typeof v.hash === "string" && Number(v.exp) > lim) pend.set(k, v);
+    if (raw && raw.fp === fp) {
+      for (const [k, v] of Object.entries(raw.codes || {})) if (v && typeof v.hash === "string" && Number(v.exp) > lim) pend.set(k, v);
+      for (const [k, a] of Object.entries(raw.envios || {})) if (Array.isArray(a)) { const r = a.filter(t => Number(t) > lim); if (r.length) envHist.set(k, r); }
+    }
   } catch { /* sem arquivo (1º boot) ou ilegível: começa vazio */ }
-  setInterval(() => { const now = Date.now(); for (const [k, v] of pend) if (v.exp < now - JANELA_ENVIOS_MS) pend.delete(k); }, 60_000).unref?.();
+  setInterval(() => {
+    const now = Date.now();
+    for (const [k, v] of pend) if (v.exp < now - JANELA_ENVIOS_MS) pend.delete(k);
+    for (const [k, a] of envHist) { const r = a.filter(t => now - t < JANELA_ENVIOS_MS); if (r.length) envHist.set(k, r); else envHist.delete(k); }
+  }, 60_000).unref?.();
 
   function podeEnviar(finalidade, email) {
-    const v = pend.get(key(finalidade, email)); if (!v) return { ok: true };
-    const now = Date.now();
-    if (v.ultimoEnvio && now - v.ultimoEnvio < REENVIO_MS) return { ok: false, motivo: "aguarde", segundos: Math.ceil((REENVIO_MS - (now - v.ultimoEnvio)) / 1000) };
-    const recentes = (v.envios || []).filter(t => now - t < JANELA_ENVIOS_MS);
+    const a = envHist.get(key(finalidade, email)); if (!a || !a.length) return { ok: true };
+    const now = Date.now(), ultimo = a[a.length - 1];
+    if (now - ultimo < REENVIO_MS) return { ok: false, motivo: "aguarde", segundos: Math.ceil((REENVIO_MS - (now - ultimo)) / 1000) };
+    const recentes = a.filter(t => now - t < JANELA_ENVIOS_MS);
     if (recentes.length >= MAX_ENVIOS) return { ok: false, motivo: "limite", segundos: Math.ceil((JANELA_ENVIOS_MS - (now - recentes[0])) / 1000) };
     return { ok: true };
   }
   function gerarCodigo(finalidade, email) {
-    const k = key(finalidade, email); const prev = pend.get(k) || {};
+    const k = key(finalidade, email);
     const codigo = String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
     const now = Date.now();
-    pend.set(k, { hash: hashCode(k, codigo), exp: now + CODIGO_TTL_MS, tentativas: 0, envios: [...(prev.envios || []).filter(t => now - t < JANELA_ENVIOS_MS), now], ultimoEnvio: now });
+    pend.set(k, { hash: hashCode(k, codigo), exp: now + CODIGO_TTL_MS, tentativas: 0 });
+    envHist.set(k, [...(envHist.get(k) || []).filter(t => now - t < JANELA_ENVIOS_MS), now]);
     salvarCodigos();
     return { codigo, expiraEm: CODIGO_TTL_MS / 1000, reenvioEm: REENVIO_MS / 1000 };
   }
+  // 🔒 v965 (revisão): na finalidade "senha" TODA falha devolve a MESMA frase, sem contagem de
+  // tentativas — o contador é por e-mail de destino (compartilhado por usuário/e-mail/variantes da
+  // mesma conta) e mostrá-lo deixava descobrir que dois identificadores são da mesma conta.
+  // O orçamento real (5 tentativas por código) continua valendo, só deixou de ser visível.
+  const FALHA_SENHA = "código incorreto ou expirado — confira os 6 dígitos ou toque em “Enviar de novo” pra receber outro";
   function confirmarCodigo(finalidade, email, codigo, opts) {
     const k = key(finalidade, email); let v = pend.get(k);
-    // 🚨 v177-FIX7 (auditoria 14/09/2026): os códigos vivem SÓ na memória do
-    // processo, e este repo faz deploy a cada commit (o Render também acorda do
-    // zero no plano free) — quem estava no meio do cadastro levava um "peça um
-    // código novo" sem nunca entender o porquê. A mensagem agora NOMEIA a causa.
+    const senha = finalidade === "senha";
+    // 🚨 v177-FIX7 (auditoria 14/09/2026): quem estava no meio do cadastro levava um "peça um código
+    // novo" sem nunca entender o porquê — a mensagem NOMEIA a causa (cadastro). Desde o v965 o
+    // estado sobrevive a restart, então esse caso virou raro.
     if (!v) {
       // 🔒 v335 (achado de auditoria contínua, SEGURANÇA): opts.simularSeAusente
       // fecha um vazamento de enumeração de e-mail em /api/senha/redefinir — a
@@ -201,16 +225,17 @@ function createNotif(deps) {
         v = { hash: hashCode(k, crypto.randomBytes(4).toString("hex")), exp: Date.now() + CODIGO_TTL_MS, tentativas: 0 };
         pend.set(k, v); salvarCodigos();
       } else {
-        return { ok: false, motivo: "nenhum código pedido pra esse e-mail — clique em Enviar verificação. (Se você acabou de pedir um, o site foi reiniciado no meio do cadastro: peça outro código, o formulário continua preenchido.)" };
+        return { ok: false, motivo: senha ? FALHA_SENHA : "nenhum código pedido pra esse e-mail — clique em Enviar verificação. (Se você acabou de pedir um, o site foi reiniciado no meio do cadastro: peça outro código, o formulário continua preenchido.)" };
       }
     }
-    if (Date.now() > v.exp) { pend.delete(k); salvarCodigos(); return { ok: false, motivo: "código expirado (vale 5 minutos) — peça um novo", expirado: true }; }
+    if (Date.now() > v.exp) { pend.delete(k); salvarCodigos(); return { ok: false, motivo: senha ? FALHA_SENHA : "código expirado (vale 5 minutos) — peça um novo", expirado: true }; }
     const c = String(codigo || "").replace(/\D/g, "");
     if (c.length !== 6 || hashCode(k, c) !== v.hash) {
       v.tentativas++;
-      if (v.tentativas >= MAX_TENTATIVAS) { pend.delete(k); salvarCodigos(); return { ok: false, motivo: "5 tentativas erradas — o código foi cancelado, peça um novo", cancelado: true }; }
+      if (v.tentativas >= MAX_TENTATIVAS) { pend.delete(k); salvarCodigos(); return { ok: false, motivo: senha ? FALHA_SENHA : "5 tentativas erradas — o código foi cancelado, peça um novo", cancelado: true }; }
       salvarCodigos();
-      return { ok: false, motivo: `código incorreto (${MAX_TENTATIVAS - v.tentativas} tentativa${MAX_TENTATIVAS - v.tentativas === 1 ? "" : "s"} restante${MAX_TENTATIVAS - v.tentativas === 1 ? "" : "s"})`, restantes: MAX_TENTATIVAS - v.tentativas };
+      const rest = MAX_TENTATIVAS - v.tentativas;
+      return { ok: false, motivo: senha ? FALHA_SENHA : `código incorreto (${rest} tentativa${rest === 1 ? "" : "s"} restante${rest === 1 ? "" : "s"})`, restantes: rest };
     }
     pend.delete(k); salvarCodigos();
     return { ok: true, token: tokenVerificado(finalidade, email) };
