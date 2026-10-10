@@ -8194,7 +8194,7 @@ async function drillAdminSettingsLegado() {
       // continua começando no hero, logo depois dele.
       check("♿ v299: landing de index.html ganha <header> (só a navbar desde o v963) e <main> (hero até showcase), fechando antes do <footer>",
         _idxL9.includes('<!-- ── NAVBAR ── -->\n  <header>\n  <nav class="ln-nav">') &&
-        _idxL9.includes('</nav>\n  </header>\n\n  <!-- ── HERO ── -->\n  <main>\n  <div class="ln-hero">') &&
+        _idxL9.includes('</nav>\n  </header>\n\n  <!-- ── HERO ── -->\n  <main>\n  <!-- v967') && _idxL9.includes('<div class="ln-top">') && _idxL9.indexOf('<div class="ln-top">') < _idxL9.indexOf('<div class="ln-hero">') && _idxL9.indexOf('<div class="ln-hero">') < _idxL9.indexOf('</main>') &&
         _idxL9.includes('</section>\n  </main>\n\n  <!-- ── FOOTER DA LANDING ── -->\n  <footer class="ln-footer">') &&
         (_idxL9.match(/<main>/g) || []).length === 1,
         "landing continua sem landmarks header/main, ou a tag não fechou certo");

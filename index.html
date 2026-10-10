@@ -1092,6 +1092,8 @@ textarea.input,input.input,select.input{background:#f5f7ff;color:#1e1b4b}
 .login-social-card.is-oficial:hover{border-color:rgba(236,72,153,.85)}
 .login-social-badge{display:inline-block;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.06em;background:linear-gradient(135deg,#f09433,#dc2743,#bc1888);color:#fff;border-radius:99px;padding:2px 7px;margin-left:5px;vertical-align:middle}
 /* ── HERO ── */
+.ln-top{max-width:640px;margin:0 auto;padding:18px 16px 0;display:flex;flex-direction:column;gap:14px}
+.ln-top-btn{width:100%;max-width:520px;align-self:center;justify-content:center;min-height:64px;font-size:20px}
 .ln-hero{
   position:relative;
   padding:56px 20px 0;
@@ -1858,6 +1860,23 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
 
   <!-- ── HERO ── -->
   <main>
+  <!-- v967 (dono, 10/10/2026): 1ª dobra = Instagram + UM botão grande no meio. -->
+  <div class="ln-top">
+    <a href="https://www.instagram.com/h2bapply/" target="_blank" rel="noopener noreferrer" class="insta-card insta-lg" onclick="instaFollow('landing')" aria-label="Abrir o Instagram @h2bapply em nova aba">
+      <span class="insta-glow insta-glow-a" aria-hidden="true"></span>
+      <span class="insta-glow insta-glow-b" aria-hidden="true"></span>
+      <span class="insta-ring"><img src="/icon-192.png" alt="" width="88" height="88" decoding="async"></span>
+      <span class="insta-txt">
+        <span class="insta-kicker"><i class="ti ti-brand-instagram" aria-hidden="true"></i> Perfil oficial do H2BApply</span>
+        <span class="insta-handle">@h2bapply</span>
+        <span class="insta-sub">Novidades e dicas de H-2B/H-2A</span>
+      </span>
+      <span class="insta-cta">Seguir no Instagram <i class="ti ti-arrow-up-right" aria-hidden="true"></i></span>
+    </a>
+    <button type="button" class="ln-cta-btn ln-top-btn" onclick="openAuthGate('choice','login')">
+      <i class="ti ti-user-plus" style="font-size:22px"></i> Entrar ou criar conta
+    </button>
+  </div>
   <div class="ln-hero">
     <div class="ln-hero-inner">
 
