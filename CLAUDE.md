@@ -4087,7 +4087,7 @@ Chromium (desktop/360px: pedir por usuário → código no e-mail cadastrado →
 **Se ainda houver quem não receba o código em produção, olhe Admin → Notificações**: se a
 conta de e-mail do site estiver desconectada/caída ninguém recebe nada (agora a Central
 avisa). Contas de ANTES do e-mail (v172c sem emailContato) só o 🔑 destrava — o admin vê o
-pedido na linha do tempo da conta.
+pedido por um selo "🔑 pediu senha nova (sem e-mail)" na lista de Usuários.
 
 **v965b — achados da revisão adversarial (3 lentes) já corrigidos**: (1) o teto de envios (60s /
 3 em 15min) agora vive num histórico POR DESTINO separado do código (`envHist`, persistido) —
@@ -4113,8 +4113,10 @@ o usuário (quem esqueceu o usuário descobre aqui).
 alertas `_senhaAlerta` ficam no log do servidor; o sinal que o dono VÊ é a pílula vermelha
 "!" de Notificações, que agora também acende quando a conta de e-mail do site está
 "conectada" mas o ÚLTIMO envio falhou (nas últimas 24h, `_notifPrecisaAtencao`) — antes só
-acendia desconectada; o que a conta específica sofreu fica na linha do tempo da 💳 Auditoria
-(`senha_sem_email`, `senha_codigo_nao_enviado`); (2) a busca do painel acha telefone com ou sem
+acendia desconectada; o que a conta específica sofreu fica gravado na linha do tempo da conta
+(`authTimeline`: `senha_sem_email`, `senha_codigo_nao_enviado` — SÓ na API/`financeiro-usuario`; nenhuma
+tela do admin deste repo renderiza a timeline), e o pedido de uma conta SEM e-mail aparece como selo
+"🔑 pediu senha nova (sem e-mail)" na lista de Usuários (14 dias); (2) a busca do painel acha telefone com ou sem
 DDI 55 e Gmail com pontos/+tag/googlemail (forma normalizada); (3) o CADASTRO e o BANIMENTO
 passaram a usar a mesma identidade de Gmail do login (`_gmailJaTemConta` nas 3 travas de
 unicidade, `_emailBanido`): `joao.silva+x@gmail.com`/`joaosilva@googlemail.com` não criam mais

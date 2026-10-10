@@ -1330,9 +1330,10 @@ async function drillAdminSettingsLegado() {
     const _recSemMail = await req2("POST", "/api/senha/enviar-codigo", { identificador: "semmail_v965" });
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
     const _rxSemMail = (await get("/api/admin/financeiro-usuario/" + encodeURIComponent("semmail_v965"))).json;
-    check("🔑 v965: conta SEM e-mail cadastrado pede recuperação → resposta genérica (200), nenhum e-mail sai (não tem pra onde), e a linha do tempo da conta registra 'senha_sem_email' — o admin vê que essa pessoa precisa do 🔑 em vez de ela esperar um código que nunca vem",
-      _recSemMail.status === 200 && lerOutbox().length === _outAntesSem && (_rxSemMail?.auth?.timeline || []).some((ev) => ev.tipo === "senha_sem_email"),
-      JSON.stringify({ status: _recSemMail.status, novos: lerOutbox().length - _outAntesSem, tl: (_rxSemMail?.auth?.timeline || []).map((e) => e.tipo) }));
+    const _uSemMail = ((await get("/api/admin/contabilidade")).json?.usuarios || []).find((u) => u.email === "semmail_v965");
+    check("🔑 v965: conta SEM e-mail cadastrado pede recuperação → resposta genérica (200), nenhum e-mail sai (não tem pra onde), a linha do tempo da conta registra 'senha_sem_email' E a lista de Usuários do admin recebe pediuSenhaSemEmail (vira o selo '🔑 pediu senha nova') — o admin descobre que essa pessoa precisa do 🔑 em vez de ela esperar um código que nunca vem",
+      _recSemMail.status === 200 && lerOutbox().length === _outAntesSem && (_rxSemMail?.auth?.timeline || []).some((ev) => ev.tipo === "senha_sem_email") && _uSemMail?.pediuSenhaSemEmail > 0,
+      JSON.stringify({ status: _recSemMail.status, novos: lerOutbox().length - _outAntesSem, tl: (_rxSemMail?.auth?.timeline || []).map((e) => e.tipo), selo: _uSemMail?.pediuSenhaSemEmail }));
     // admin 🔑: aceita o E-MAIL que o cliente mandou no WhatsApp (a chave da conta é o usuário)
     const _admSetMail = await req2("POST", "/api/admin/set-password", { email: "Recuperar.V965@gmail.com", novaSenha: "adminreset123" });
     const _admSetUser = await req2("POST", "/api/admin/set-password", { email: "usuario_que_nao_existe_v965", novaSenha: "adminreset123" });
@@ -1452,7 +1453,7 @@ async function drillAdminSettingsLegado() {
     const _adm965 = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
     check("🔎 v965 estrutural: o painel de Usuários busca por nome, usuário, E-MAIL CADASTRADO e TELEFONE (dígitos), mostra o e-mail cadastrado sob o usuário e marca 'Gmail caiu'; o servidor entrega emailContato/telefone/gmailCaiu; e a mensagem de login com senha errada aponta o 'Esqueci minha senha'",
       /placeholder="Buscar por nome, usuário, e-mail ou telefone…"/.test(_adm965) && /String\(u\.emailContato\|\|""\)\.toLowerCase\(\)\.indexOf\(termo\)>=0/.test(_adm965) && /function normG\(e\)/.test(_adm965) && /semDdi\(td\)\.indexOf\(semDdi\(soDig\)\)/.test(_adm965) && /function _notifPrecisaAtencao\(d\)/.test(_adm965) && (_adm965.match(/_notifPrecisaAtencao\(d\)\?/g) || []).length === 2 &&
-      /u\.emailContato&&u\.emailContato!==u\.email/.test(_adm965) && /var gm=u\.gmailCaiu/.test(_adm965) && /Gmail caiu/.test(_adm965) &&
+      /u\.emailContato&&u\.emailContato!==u\.email/.test(_adm965) && /var gm=u\.gmailCaiu/.test(_adm965) && /Gmail caiu/.test(_adm965) && /pediu senha nova \(sem e-mail\)/.test(_adm965) && /pediuSenhaSemEmail:\(\(Array\.isArray\(u\.authTimeline\)/.test(_srv965) &&
       /emailContato:u\.emailContato\|\|"",telefone:String\(u\.whatsapp\|\|u\.phone\|\|""\),gmailCaiu:!!\(u\.refresh_token&&u\.rtInvalid\)/.test(_srv965) &&
       /Esqueceu a senha\? Toque em “Esqueci minha senha”\./.test(_app965),
       "busca do admin / sinal de Gmail caiu / dica de senha errada fora do contrato v965");

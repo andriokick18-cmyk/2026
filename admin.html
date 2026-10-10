@@ -1052,7 +1052,7 @@ function renderLinhasUsuarios(lista){
     var creditados=u.diasCreditadosPagos!=null?u.diasCreditadosPagos:0;
     var cortesia=u.diasCreditadosCortesia!=null?u.diasCreditadosCortesia:0;
     html+='<tr>'
-      +'<td><div class="cell-main">'+esc(u.nome||u.email)+'</div><div class="cell-sub">'+esc(u.email)+'</div>'+((u.emailContato&&u.emailContato!==u.email)?('<div class="cell-sub">📧 '+esc(u.emailContato)+'</div>'):'')+'</td>'
+      +'<td><div class="cell-main">'+esc(u.nome||u.email)+'</div><div class="cell-sub">'+esc(u.email)+'</div>'+((u.emailContato&&u.emailContato!==u.email)?('<div class="cell-sub">📧 '+esc(u.emailContato)+'</div>'):'')+((u.pediuSenhaSemEmail&&(Date.now()-u.pediuSenhaSemEmail)<14*86400000)?'<div class="cell-sub"><span class="badge amber" title="Essa conta não tem e-mail cadastrado e a pessoa pediu pra recuperar a senha — defina uma senha nova no botão 🔑 (ela vai chamar no WhatsApp)">🔑 pediu senha nova (sem e-mail)</span></div>':'')+'</td>'
       +'<td><span class="badge blue">'+esc(NOME_PLANO_ADM[u.plano]||u.plano||"free")+'</span></td>'
       +'<td>'+esc(dias)+'</td>'
       +'<td>'+esc(creditados)+' dia'+((creditados===1)?"":"s")+'</td>'

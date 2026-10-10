@@ -9341,8 +9341,9 @@ filtrar();
         const dest=_recoveryEmail(u);
         if(!dest){
           // Conta sem NENHUM e-mail (cadastro de antes do v175): o código não tem
-          // pra onde ir. A resposta segue genérica (anti-enumeração); o admin vê
-          // o pedido na linha do tempo da conta e na Central, e destrava pelo 🔑.
+          // pra onde ir. A resposta segue genérica (anti-enumeração); o admin vê o
+          // selo "🔑 pediu senha nova (sem e-mail)" na lista de Usuários (campo
+          // pediuSenhaSemEmail, lido da linha do tempo da conta) e destrava pelo 🔑.
           // Throttle de 6h nos DOIS (Central e linha do tempo): pedido anônimo repetido nunca enche o
           // anel de 40 eventos da conta e apaga o diagnóstico de autenticação do Google.
           if(_senhaAlerta("recuperacao_sem_email",u.email,`Pediu recuperação de senha mas a conta não tem e-mail cadastrado — definir senha nova em Admin → Usuários → 🔑 (@${u.email})`,"warn",6*3600_000))
@@ -13970,6 +13971,8 @@ if(pathname==="/api/admin/contabilidade"&&req.method==="GET"){
         gmailConectado:!!u.refresh_token,
         // 🔎 v965: o admin acha o cliente pelo que ele manda no WhatsApp (e-mail cadastrado, telefone) e vê quando o Gmail de envio CAIU (Google derrubou) — pagante que não consegue enviar.
         emailContato:u.emailContato||"",telefone:String(u.whatsapp||u.phone||""),gmailCaiu:!!(u.refresh_token&&u.rtInvalid),
+        // 🔑 v965: quando (ms) a pessoa PEDIU recuperação de senha mas a conta não tem e-mail — o painel marca a conta pra o admin definir a senha (🔑) sem esperar ela insistir.
+        pediuSenhaSemEmail:((Array.isArray(u.authTimeline)?u.authTimeline:[]).find(ev=>ev&&ev.tipo==="senha_sem_email")||{}).em||0,
         robo:_jobU?{ativo:!!_jobU.active,status:String(_jobU.status||""),fila:(_jobU.queue||[]).length}:null,
         isAdmin:isAdminVip(u),assinatura,
         suspeita:!!suspeita,motivo:rawSuspeita?"dias restantes maiores que o total creditado":null
