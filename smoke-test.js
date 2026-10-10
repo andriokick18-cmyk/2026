@@ -7996,9 +7996,12 @@ async function drillAdminSettingsLegado() {
       // MESMOS landmarks no v300 logo abaixo — por isso a contagem
       // total de <main>/<header>/<nav> do arquivo NÃO é mais 1 de cada;
       // o v300 é quem prova a contagem total correta).
-      check("♿ v299: landing de index.html ganha <header> (nav+banner) e <main> (hero até showcase), fechando antes do <footer>",
+      // 📸 v963: o banner do site antigo saiu do <header> (ordem do dono,
+      // 09/10/2026) — o header da landing agora é SÓ a navbar; o <main>
+      // continua começando no hero, logo depois dele.
+      check("♿ v299: landing de index.html ganha <header> (só a navbar desde o v963) e <main> (hero até showcase), fechando antes do <footer>",
         _idxL9.includes('<!-- ── NAVBAR ── -->\n  <header>\n  <nav class="ln-nav">') &&
-        _idxL9.includes('</a>\n  </header>\n\n  <!-- ── HERO ── -->\n  <main>\n  <div class="ln-hero">') &&
+        _idxL9.includes('</nav>\n  </header>\n\n  <!-- ── HERO ── -->\n  <main>\n  <div class="ln-hero">') &&
         _idxL9.includes('</section>\n  </main>\n\n  <!-- ── FOOTER DA LANDING ── -->\n  <footer class="ln-footer">') &&
         (_idxL9.match(/<main>/g) || []).length === 1,
         "landing continua sem landmarks header/main, ou a tag não fechou certo");
@@ -9646,28 +9649,62 @@ async function drillAdminSettingsLegado() {
       _v237tPost.status === 200 && _v237tPost.json?.ok === true && _v237tDepoisPost.json?.connected !== true,
       `post=${_v237tPost.status} depoisPost=${_v237tDepoisPost.json?.connected}`);
 
-    // 🔶 v215 (dono, 19/09/2026 — domínio migrado de verdade pra cá):
-    // estrutural — o banner "já era assinante VIP?" pro site antigo
-    // (h2bapply.onrender.com) é SEMPRE visível (nunca condicionado a
-    // U.newPurchasesBlocked), aparece na aba Planos E no Painel/Home, bem
-    // chamativo (cor contrastante — classe .vip-old-banner), e é um <a>
-    // explícito (clique do usuário), nunca JS de auto-redirect.
+    // 📸 v963 (dono, 09/10/2026 — "remova aquele anúncio antigo em amarelo
+    // dizendo: ah, você tinha dias VIPs, acesse esse site antigo... aquilo
+    // não precisa mais, pode retirar"): o banner v215/v215b pro site antigo
+    // (h2bapply.onrender.com) SAIU das 3 telas (Home, Planos e landing) e do
+    // dicionário. Guarda NEGATIVA permanente: nenhum resquício pode voltar —
+    // nem a classe, nem o link, nem as chaves vip_old_* (a ponte de
+    // estatísticas do server.js, v238, é outra coisa e continua).
     const _idxV214 = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
-    check("🔶 v215 estrutural: banner 'já era assinante VIP?' pro site antigo aparece 2x (Planos + Home/Painel), sempre com a classe chamativa .vip-old-banner e link explícito pro h2bapply.onrender.com — nunca window.location automático",
-      (_idxV214.match(/class="vip-old-banner"/g) || []).length >= 2 &&
-      (_idxV214.match(/href="https:\/\/h2bapply\.onrender\.com"/g) || []).length >= 2 &&
-      !/h2bapply\.onrender\.com[\s\S]{0,120}location\.(href|assign|replace)/.test(_idxV214),
-      `ocorrências vip-old-banner=${(_idxV214.match(/class="vip-old-banner"/g) || []).length} onrender=${(_idxV214.match(/href="https:\/\/h2bapply\.onrender\.com"/g) || []).length}`);
-    // 🔶 v215b (dono, 19/09/2026, mesmo dia): o mesmo aviso, mas na LANDING
-    // (pré-login) — visitante que já era VIP bate o olho ANTES de decidir
-    // Entrar/Criar conta, logo abaixo da navbar. Bem chamativo (.ln-oldsite-
-    // banner, cor contrastante, pulso sutil), <a> explícito, nunca redirect
-    // automático.
-    check("🔶 v215b estrutural: landing (pré-login) tem o banner 'já era assinante VIP?' logo abaixo da navbar, chamativo (.ln-oldsite-banner) e com link explícito pro h2bapply.onrender.com — nunca auto-redirect",
-      /class="ln-oldsite-banner"/.test(_idxV214) &&
-      /<nav class="ln-nav">[\s\S]{0,1200}<a href="https:\/\/h2bapply\.onrender\.com"[^>]*class="ln-oldsite-banner"/.test(_idxV214) &&
-      !/ln-oldsite-banner[\s\S]{0,200}location\.(href|assign|replace)/.test(_idxV214),
-      "banner da landing sumiu, saiu do lugar (depois da navbar) ou virou auto-redirect");
+    check("📸 v963 estrutural: banner 'já era assinante VIP?' pro site antigo NUNCA mais — zero .vip-old-banner, zero .ln-oldsite-banner, zero href pro h2bapply.onrender.com no index.html e zero vip_old_* no LANG_DICT",
+      !/vip-old-banner|ln-oldsite|vipOldGlow|lnOldsiteGlow/.test(_idxV214) &&
+      !/h2bapply\.onrender\.com/.test(_idxV214) &&
+      !/"vip_old_(title|msg)"/.test(_appV209),
+      "resquício do banner do site antigo voltou (classe, keyframes, link onrender ou chave vip_old_*)");
+    // 📸 v963: no LUGAR do banner entrou o destaque do Instagram @h2bapply
+    // ("coloque em imagem em destaque com efeitos, cores e bem destacado o
+    // nosso Instagram"). Posições vêm da PESQUISA de 09/10/2026 (regra 1 da
+    // casa): (a) Home — card .insta-card ABAIXO das ações principais E dos
+    // avisos de conta (depois do PEDIDO EM ANÁLISE, antes dos STATS; nunca
+    // acima do automático: o topo do painel é da prioridade nº1), ✕ IRMÃO do <a>
+    // (nunca botão dentro de link) que só ENCOLHE (instaDismiss, chave
+    // versionada h2b_insta_min_v1); (b) landing — NUNCA faixa acima do hero
+    // (o header é só a navbar), perfil oficial em 1º no bloco social do hero
+    // e seção de fechamento .ln-insta-section DEPOIS do último CTA e ANTES do
+    // bloco de transparência do Google; (c) botão oficial no rodapé; (d) o
+    // convite opcional da landing aponta pro perfil oficial. Sempre <a>
+    // explícito pra URL limpa (sem utm/cplk do QR), nova aba com
+    // rel="noopener noreferrer", nunca embed de feed (iframe).
+    const _igUrl = "https://www.instagram.com/h2bapply/";
+    const _igLinks = _idxV214.split('href="' + _igUrl + '"').length - 1;
+    const _vHomeIG = _idxV214.slice(_idxV214.indexOf('id="v-home"'), _idxV214.indexOf('id="v-plans"'));
+    const _hdrLanding = _idxV214.slice(_idxV214.indexOf("<header>"), _idxV214.indexOf("</header>"));
+    check("📸 v963 estrutural (Home): card .insta-card dentro de #home-insta, DEPOIS do PEDIDO EM ANÁLISE (e do próximo passo) e ANTES dos STATS — nunca acima do automático —, ✕ irmão do <a> chamando instaDismiss(), avatar do próprio site, CSS vivo (.insta-card/.insta-min/.insta-close) e instaDismiss/instaFollow/INSTA_MIN_KEY definidos no app.js",
+      /<div id="home-pending-order"[^>]*><\/div>(?:\s|<!--[\s\S]*?-->)*<div id="home-insta" class="insta-wrap"[^>]*>\s*<a href="https:\/\/www\.instagram\.com\/h2bapply\/" target="_blank" rel="noopener noreferrer" class="insta-card" onclick="instaFollow\('home'\)"[\s\S]{0,1500}<\/a>\s*<button type="button" class="insta-close" onclick="instaDismiss\(\)"[\s\S]{0,400}<!-- ══ STATS/.test(_vHomeIG) &&
+      !/<a[^>]*class="insta-card"[^>]*>(?:(?!<\/a>)[\s\S])*<button/.test(_vHomeIG) &&
+      /class="insta-ring"><img src="\/icon-192\.png"/.test(_vHomeIG) &&
+      /\.insta-card\{/.test(_idxV214) && /\.insta-wrap\.insta-min \.insta-card\{/.test(_idxV214) && /\.insta-close\{/.test(_idxV214) &&
+      /^function instaDismiss\(/m.test(_appV209) && /^function instaFollow\(/m.test(_appV209) && /const INSTA_MIN_KEY="h2b_insta_min_v1"/.test(_appV209) &&
+      !/home-insta[\s\S]{0,2500}home-auto-card/.test(_vHomeIG),
+      "card da Home fora do lugar/estrutura (ou ✕ virou filho do <a>, ou helpers sumiram do app.js)");
+    check("📸 v963 estrutural (landing): header = SÓ a navbar (nunca faixa acima do hero), @h2bapply oficial em 1º no bloco social do hero (selo Oficial), seção .ln-insta-section com card grande + 3 fotos do próprio site entre o último CTA e o bloco do Google, botão oficial no rodapé e convite opcional apontando pro perfil oficial",
+      /<\/nav>\s*<\/header>/.test(_idxV214) && !/ln-insta-strip|ln-oldsite/.test(_hdrLanding) &&
+      /<div class="login-social-cards">\s*(<!--[\s\S]*?-->\s*)?<div class="login-social-card is-oficial">[\s\S]{0,900}<a class="login-social-btn" href="https:\/\/www\.instagram\.com\/h2bapply\/" target="_blank" rel="noopener noreferrer" onclick="instaFollow\('hero'\)"/.test(_idxV214) &&
+      /login-social-badge">Oficial</.test(_idxV214) &&
+      /<section class="ln-cta-section">[\s\S]{0,2500}<section class="ln-insta-section" id="instagram">[\s\S]{0,3500}<\/section>\s*<!-- ✅ v145: transparência/.test(_idxV214) &&
+      /class="insta-card insta-lg" onclick="instaFollow\('landing'\)"/.test(_idxV214) &&
+      (_idxV214.match(/<div class="ln-insta-tiles" aria-hidden="true">[\s\S]*?<\/div>/)?.[0].match(/<img src="\/img\/[^"]+" alt="" loading="lazy"/g) || []).length === 3 &&
+      /class="ln-footer-soc-btn" href="https:\/\/www\.instagram\.com\/h2bapply\/"/.test(_idxV214) &&
+      /class="social-invite-cta" href="https:\/\/www\.instagram\.com\/h2bapply\/"/.test(_idxV214) &&
+      _igLinks >= 5 &&
+      !/instagram\.com\/h2bapply\?utm_source|cplk=/.test(_idxV214) &&
+      !/<iframe[^>]*instagram/i.test(_idxV214),
+      `links=${_igLinks}`);
+    check("📸 v963 i18n: textos do card da Home (insta_kicker/insta_sub/insta_cta/insta_aria/insta_close) no LANG_DICT em pt+en+es e etiquetados no HTML — a catraca de tradução (regra 6f) continua zerada",
+      ["insta_kicker", "insta_sub", "insta_cta", "insta_aria", "insta_close"].every((k) => (_appV209.match(new RegExp('"' + k + '":"', "g")) || []).length === 3) &&
+      /data-i18n="insta_kicker"/.test(_vHomeIG) && /data-i18n="insta_sub"/.test(_vHomeIG) && /data-i18n="insta_cta"/.test(_vHomeIG) && /data-i18n-title="insta_aria"/.test(_vHomeIG) && /data-i18n-title="insta_close"/.test(_vHomeIG),
+      "chave insta_* faltando em alguma língua ou etiqueta data-i18n sumiu do card");
     check("🚧 estrutural: loadPlanos() troca o banner de manutenção pelo seletor de compra lendo SEMPRE U.newPurchasesBlocked (nunca decide sozinho no front) — e applyStatus() propaga o campo vindo do /api/status",
       /if\(U\.newPurchasesBlocked\)\{/.test(_appV209) &&
       /newPurchasesBlocked:!!d\.newPurchasesBlocked/.test(_appV209),

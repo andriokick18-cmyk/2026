@@ -6874,6 +6874,17 @@ function cvPromptPular(){
 
 console.debug("[v14+] Onboarding, FAQ, Preview Auto, Follow-up, Score carregados");
 
+// 📸 v963 (dono, 09/10/2026): destaque do Instagram @h2bapply na Home. O ✕
+// não apaga o convite — ENCOLHE pra 1 linha (classe .insta-min) e lembra no
+// aparelho (chave VERSIONADA: mudar a campanha = mudar a chave e o card volta
+// grande). Clicar em Seguir também encolhe: quem já foi ao perfil não precisa
+// do card grande. Preferência de tela, nunca dado de conta — não vai ao servidor.
+const INSTA_MIN_KEY="h2b_insta_min_v1";
+function _instaAplicarMin(){try{if(localStorage.getItem(INSTA_MIN_KEY)==="1"){const w=document.getElementById("home-insta");if(w)w.classList.add("insta-min");}}catch(e){}}
+function instaDismiss(silencioso){try{localStorage.setItem(INSTA_MIN_KEY,"1");}catch(e){}const w=document.getElementById("home-insta");if(w)w.classList.add("insta-min");if(!silencioso)gaEvent("insta_dismiss",{});}
+function instaFollow(pos){try{trackFollow("h2bapply-"+pos);}catch(e){}gaEvent("insta_follow_click",{pos});if(pos==="home")instaDismiss(true);}
+document.addEventListener("DOMContentLoaded",_instaAplicarMin);
+
 /* ═══════════════════════════════════════════════════════════
    ═══ v15: SOCIAL + ENVIO VALIDATOR
    ═══════════════════════════════════════════════════════════ */
@@ -7154,8 +7165,11 @@ const LANG_DICT = {
     "plans_title":"Planos H2BApply","plans_sub":"Escolha um plano, pague via PIX e envie o comprovante",
     "plan_blocked_title":"Assinaturas novas estão pausadas no momento",
     "plan_blocked_msg":"Estamos com uma manutenção rápida no sistema de pagamento — volte em instantes. Se você já é assinante, seu plano continua funcionando normalmente.",
-    "vip_old_title":"Já era assinante VIP antes?",
-    "vip_old_msg":"Toque aqui pra entrar no site antigo com a MESMA conta e continuar usando seu plano",
+    "insta_kicker":"Siga a gente no Instagram",
+    "insta_sub":"Novidades do H2BApply e dicas de H-2B/H-2A no perfil oficial do site.",
+    "insta_close":"Fechar destaque do Instagram",
+    "insta_cta":"Seguir no Instagram",
+    "insta_aria":"Abrir o Instagram @h2bapply em nova aba",
     "contact_data":"Seus dados de contato","contact_sub":"Para ativarmos seu plano e entrar em contato",
     "order_summary":"📋 Resumo do pedido","notes_lbl":"Observações",
         "settings_sub":"Sua conta, sua privacidade.","your_account":"Sua conta",
@@ -7297,8 +7311,11 @@ const LANG_DICT = {
     "plans_title":"H2BApply Plans","plans_sub":"Choose a plan, pay via PIX and send the receipt",
     "plan_blocked_title":"New subscriptions are paused right now",
     "plan_blocked_msg":"We're doing quick maintenance on the payment system — check back shortly. If you're already a subscriber, your plan keeps working normally.",
-    "vip_old_title":"Were you already a VIP subscriber?",
-    "vip_old_msg":"Tap here to log into the old site with the SAME account and keep using your plan",
+    "insta_kicker":"Follow us on Instagram",
+    "insta_sub":"H2BApply news and H-2B/H-2A tips on the site's official profile.",
+    "insta_close":"Close the Instagram highlight",
+    "insta_cta":"Follow on Instagram",
+    "insta_aria":"Open the @h2bapply Instagram in a new tab",
     "contact_data":"Your contact info","contact_sub":"So we can activate your plan and reach you",
     "order_summary":"📋 Order summary","notes_lbl":"Notes",
         "settings_sub":"Your account, your privacy.","your_account":"Your account",
@@ -7422,8 +7439,11 @@ const LANG_DICT = {
     "plans_title":"Planes H2BApply","plans_sub":"Elige un plan, paga vía PIX y envía el comprobante",
     "plan_blocked_title":"Las suscripciones nuevas están pausadas por ahora",
     "plan_blocked_msg":"Estamos con un mantenimiento rápido del sistema de pago — vuelve en instantes. Si ya eres suscriptor, tu plan sigue funcionando normal.",
-    "vip_old_title":"¿Ya eras suscriptor VIP antes?",
-    "vip_old_msg":"Toca aquí para entrar al sitio antiguo con la MISMA cuenta y seguir usando tu plan",
+    "insta_kicker":"Síguenos en Instagram",
+    "insta_sub":"Novedades de H2BApply y consejos de H-2B/H-2A en el perfil oficial del sitio.",
+    "insta_close":"Cerrar el destaque de Instagram",
+    "insta_cta":"Seguir en Instagram",
+    "insta_aria":"Abrir el Instagram @h2bapply en una pestaña nueva",
     "contact_data":"Tus datos de contacto","contact_sub":"Para activar tu plan y contactarte",
     "order_summary":"📋 Resumen del pedido","notes_lbl":"Observaciones",
         "settings_sub":"Tu cuenta, tu privacidad.","your_account":"Tu cuenta",

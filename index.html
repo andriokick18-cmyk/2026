@@ -454,11 +454,53 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 .sb-auto-btn.is-active{color:#059669;font-weight:800}
 .sb-auto-btn.is-active i{color:#059669}
 @keyframes sbAutoGlow{0%,100%{box-shadow:0 12px 30px rgba(219,39,119,.4)}50%{box-shadow:0 16px 40px rgba(249,115,22,.55)}}
-/* 🔶 v215: banner "assinante VIP do site antigo" — bem chamativo, pulso
-   sutil (nunca pisca rápido/agressivo) pra chamar atenção sem incomodar. */
-@keyframes vipOldGlow{0%,100%{box-shadow:0 4px 18px rgba(245,158,11,.45),0 0 0 2px rgba(234,88,12,.9)}50%{box-shadow:0 6px 26px rgba(245,158,11,.7),0 0 0 3px rgba(234,88,12,1)}}
-.vip-old-banner{display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,#f59e0b,#ea580c);color:#fff;border:2px solid #fff;border-radius:var(--rl);padding:14px 16px;text-decoration:none;animation:vipOldGlow 2.4s ease-in-out infinite}
-.vip-old-banner:active{transform:scale(.98)}
+/* 📸 v963: destaque do Instagram @h2bapply (card da Home, card grande da
+   landing e versão encolhida). Pesquisa de 09/10/2026 (padrões de "siga no
+   Instagram" + WCAG): gradiente oficial ESTÁTICO sob o texto — amarelo/
+   laranja só nos primeiros ~60px, embaixo do avatar; o texto branco cai
+   sempre no rosa/roxo, com véu escuro leve + halo atrás do bloco de texto
+   (contraste ≥4,5:1 medido no Chromium). Efeito só POR CIMA: brilho que
+   atravessa a cada 6s e 2 halos flutuando devagar — nunca animar a cor de
+   fundo sob o texto; a regra global prefers-reduced-motion zera tudo.
+   Link único (nunca link dentro de link), nova aba honesta (↗ + aria). */
+@keyframes instaShine{0%{transform:translateX(-160%) skewX(-18deg)}55%,100%{transform:translateX(260%) skewX(-18deg)}}
+@keyframes instaFloat{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(8px,-10px) scale(1.12)}}
+.insta-wrap{position:relative}
+.insta-card{position:relative;display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:20px;color:#fff;text-decoration:none;overflow:hidden;isolation:isolate;background:linear-gradient(118deg,#f9ce34 0px,#f0652c 30px,#e8307f 80px,#a52ba6 58%,#5b2ad6 100%);box-shadow:0 10px 30px rgba(232,48,127,.32);border:1px solid rgba(255,255,255,.4);transition:transform .15s}
+.insta-card::before{content:"";position:absolute;inset:0;background:rgba(10,12,40,.22);pointer-events:none;z-index:-1}
+.insta-card::after{content:"";position:absolute;top:-40%;bottom:-40%;left:0;width:34%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.22),transparent);transform:translateX(-160%) skewX(-18deg);animation:instaShine 6s ease-in-out infinite;pointer-events:none}
+.insta-card:active{transform:scale(.985)}
+.insta-glow{position:absolute;border-radius:50%;filter:blur(18px);opacity:.35;pointer-events:none;z-index:-1}
+.insta-glow-a{width:140px;height:140px;right:-30px;top:-60px;background:#fff;animation:instaFloat 7s ease-in-out infinite}
+.insta-glow-b{width:110px;height:110px;left:-50px;bottom:-70px;background:#ffd166;animation:instaFloat 8s ease-in-out infinite reverse}
+.insta-ring{flex-shrink:0;width:58px;height:58px;border-radius:50%;padding:3px;background:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.35),0 6px 18px rgba(0,0,0,.25);display:block}
+.insta-ring img{width:100%;height:100%;border-radius:50%;display:block;object-fit:cover;background:#0f172a}
+.insta-txt{flex:1;min-width:0;display:block;position:relative}
+.insta-txt::before{content:"";position:absolute;inset:-8px -14px;background:rgba(15,23,42,.42);filter:blur(14px);border-radius:20px;z-index:-1;pointer-events:none}
+.insta-kicker{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px}
+.insta-kicker i{font-size:16px}
+.insta-handle{display:block;font-size:22px;font-weight:900;letter-spacing:-.3px;line-height:1.15;margin:1px 0 2px;text-shadow:0 2px 10px rgba(0,0,0,.3)}
+.insta-sub{display:block;font-size:12.5px;font-weight:600;line-height:1.4;text-shadow:0 1px 6px rgba(0,0,0,.2)}
+.insta-cta{flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;gap:4px;background:#fff;color:#b5207a;font-weight:900;font-size:13px;padding:10px 16px;border-radius:99px;box-shadow:0 4px 14px rgba(0,0,0,.2);white-space:nowrap;min-height:44px;transition:transform .15s}
+.insta-cta i{font-size:16px}
+.insta-card:hover .insta-cta{transform:scale(1.04)}
+.insta-close{position:absolute;top:4px;right:6px;width:44px;height:44px;border:0;background:transparent;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;padding:0;z-index:2}
+.insta-close::before{content:"";position:absolute;width:26px;height:26px;border-radius:50%;background:rgba(15,23,42,.45);border:1px solid rgba(255,255,255,.4);z-index:-1}
+/* encolhida (✕ ou já clicou em Seguir): vira 1 linha — o link continua */
+.insta-wrap.insta-min .insta-close,.insta-wrap.insta-min .insta-glow,.insta-wrap.insta-min .insta-sub{display:none}
+.insta-wrap.insta-min .insta-card{padding:8px 12px;border-radius:14px;gap:10px;flex-wrap:nowrap}
+.insta-wrap.insta-min .insta-ring{width:34px;height:34px;padding:2px}
+.insta-wrap.insta-min .insta-kicker{display:none}
+.insta-wrap.insta-min .insta-handle{display:inline;font-size:14px;margin:0;text-shadow:none}
+.insta-wrap.insta-min .insta-cta{min-height:40px;padding:6px 12px;font-size:12px;width:auto}
+/* card grande (seção de fechamento da landing) */
+.insta-card.insta-lg{padding:22px 24px;gap:18px;border-radius:26px;max-width:640px;margin:0 auto;text-align:left}
+.insta-card.insta-lg .insta-ring{width:88px;height:88px;padding:4px}
+.insta-card.insta-lg .insta-handle{font-size:32px}
+.insta-card.insta-lg .insta-sub{font-size:14px}
+.insta-card.insta-lg .insta-cta{font-size:15px;padding:13px 22px;min-height:48px}
+@media (min-width:521px){.insta-wrap:not(.insta-min) .insta-cta{margin-right:30px}}
+@media (max-width:520px){.insta-card{flex-wrap:wrap}.insta-cta{width:100%}.insta-glow-a{top:auto;bottom:-70px;right:-40px}.insta-wrap:not(.insta-min) .insta-kicker{padding-right:26px}.insta-card.insta-lg{padding:18px 16px}.insta-card.insta-lg .insta-ring{width:66px;height:66px}.insta-card.insta-lg .insta-handle{font-size:26px}}
 .sb-profile{margin:5px 3px;padding:10px 11px;border:1.5px solid var(--border);border-radius:var(--r);background:var(--sf2)}
 .sb-av{width:32px;height:32px;border-radius:50%;overflow:hidden;flex-shrink:0;background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center}
 /* Bottom nav — ver definição única mais abaixo (v171: consolidada) */
@@ -1027,29 +1069,25 @@ textarea.input,input.input,select.input{background:#f5f7ff;color:#1e1b4b}
 }
 .btn-login-sm:hover{opacity:.9;transform:translateY(-1px)}
 
-/* 🔶 v215b: banner "já era assinante VIP?" — bem chamativo, cor contrastante
-   com o navy da landing, pulso sutil (nunca pisca rápido/agressivo). */
-@keyframes lnOldsiteGlow{0%,100%{box-shadow:0 4px 18px rgba(245,158,11,.4),0 0 0 2px rgba(234,88,12,.85)}50%{box-shadow:0 6px 28px rgba(245,158,11,.65),0 0 0 3px rgba(234,88,12,1)}}
-.ln-oldsite-banner{
-  display:flex;align-items:center;gap:14px;
-  background:linear-gradient(135deg,#f59e0b,#ea580c);
-  color:#fff;text-decoration:none;
-  padding:14px 20px;margin:0;
-  animation:lnOldsiteGlow 2.4s ease-in-out infinite;
-  position:relative;z-index:150;
-}
-.ln-oldsite-banner:active{opacity:.92}
-.ln-oldsite-ico{font-size:26px;flex-shrink:0}
-.ln-oldsite-txt{flex:1;min-width:0}
-.ln-oldsite-title{font-size:13.5px;font-weight:900;line-height:1.3}
-.ln-oldsite-sub{font-size:12px;font-weight:600;opacity:.95;margin-top:2px;line-height:1.4}
-@media (max-width:640px){
-  .ln-oldsite-banner{padding:12px 14px;gap:10px}
-  .ln-oldsite-ico{font-size:22px}
-  .ln-oldsite-title{font-size:12.5px}
-  .ln-oldsite-sub{font-size:11px}
-}
-
+/* 📸 v963: seção de fechamento da landing "Siga o @h2bapply" — a pesquisa
+   de 09/10/2026 foi unânime: faixa ACIMA do hero rouba a 1ª dobra e compete
+   com o cadastro; o lugar consagrado é um bloco DEPOIS do último CTA e antes
+   do rodapé, onde chega o visitante já engajado. Mosaico de 3 fotos do
+   PRÓPRIO site (nunca embed de feed — pesa e rastreia), lazy. */
+.ln-insta-section{position:relative;overflow:hidden;padding:64px 20px;text-align:center;background:radial-gradient(60% 80% at 15% 20%,rgba(238,42,123,.22),transparent 60%),radial-gradient(50% 70% at 85% 80%,rgba(98,40,215,.3),transparent 60%),linear-gradient(135deg,#0a1024,#120a2e);border-top:1px solid rgba(236,72,153,.25)}
+.ln-insta-inner{max-width:760px;margin:0 auto}
+.ln-insta-grad{background:linear-gradient(90deg,#f9ce34,#ee2a7b,#8a3ab9);-webkit-background-clip:text;background-clip:text;color:transparent}
+.ln-insta-tiles{display:flex;justify-content:center;gap:14px;margin-top:30px}
+.ln-insta-tiles img{width:150px;height:150px;object-fit:cover;border-radius:18px;border:3px solid #fff;box-shadow:0 10px 28px rgba(0,0,0,.4);transition:transform .2s}
+.ln-insta-tiles img:nth-child(1){transform:rotate(-4deg)}
+.ln-insta-tiles img:nth-child(2){transform:translateY(-8px)}
+.ln-insta-tiles img:nth-child(3){transform:rotate(4deg)}
+.ln-insta-tiles img:hover{transform:rotate(0) scale(1.04)}
+@media (max-width:640px){.ln-insta-section{padding:48px 16px}.ln-insta-tiles{gap:8px}.ln-insta-tiles img{width:30%;height:auto;aspect-ratio:1}}
+/* perfil oficial em 1º no bloco social do hero (selo "Oficial") */
+.login-social-card.is-oficial,.login-social-card.is-oficial:hover{border-color:rgba(236,72,153,.55);background:linear-gradient(135deg,rgba(240,148,51,.14),rgba(188,24,136,.2))}
+.login-social-card.is-oficial:hover{border-color:rgba(236,72,153,.85)}
+.login-social-badge{display:inline-block;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.06em;background:linear-gradient(135deg,#f09433,#dc2743,#bc1888);color:#fff;border-radius:99px;padding:2px 7px;margin-left:5px;vertical-align:middle}
 /* ── HERO ── */
 .ln-hero{
   position:relative;
@@ -1560,7 +1598,7 @@ textarea.input,input.input,select.input{background:#f5f7ff;color:#1e1b4b}
    equivalente — a interface nunca mais aparece "pelada". */
 html.no-ti .ti{font-family:'Segoe UI Emoji','Noto Color Emoji','Apple Color Emoji',sans-serif!important;font-style:normal}
 html.no-ti .ti::before{content:"•"}
-html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤"}html.no-ti .ti-check::before{content:"✅"}html.no-ti .ti-trash::before{content:"🗑️"}html.no-ti .ti-refresh::before{content:"🔄"}html.no-ti .ti-robot::before{content:"🤖"}html.no-ti .ti-map-pin::before{content:"📍"}html.no-ti .ti-chevron-right::before{content:"›"}html.no-ti .ti-chevron-left::before{content:"‹"}html.no-ti .ti-chevron-down::before{content:"⌄"}html.no-ti .ti-chevron-up::before{content:"⌃"}html.no-ti .ti-alert-triangle::before{content:"⚠️"}html.no-ti .ti-search::before{content:"🔍"}html.no-ti .ti-alert-circle::before{content:"⚠️"}html.no-ti .ti-trophy::before{content:"🏆"}html.no-ti .ti-mail::before{content:"✉️"}html.no-ti .ti-external-link::before{content:"↗"}html.no-ti .ti-briefcase::before{content:"💼"}html.no-ti .ti-briefcase-2::before{content:"💼"}html.no-ti .ti-bell::before{content:"🔔"}html.no-ti .ti-bell-ringing::before{content:"🔔"}html.no-ti .ti-bell-off::before{content:"🔕"}html.no-ti .ti-info-circle::before{content:"ℹ️"}html.no-ti .ti-building::before{content:"🏢"}html.no-ti .ti-user-circle::before{content:"👤"}html.no-ti .ti-rocket::before{content:"🚀"}html.no-ti .ti-plus::before{content:"＋"}html.no-ti .ti-mail-opened::before{content:"📬"}html.no-ti .ti-file-type-pdf::before{content:"📄"}html.no-ti .ti-language::before{content:"🌐"}html.no-ti .ti-bulb::before{content:"💡"}html.no-ti .ti-shield::before{content:"🛡️"}html.no-ti .ti-shield-check::before{content:"🛡️"}html.no-ti .ti-shield-exclamation::before{content:"🛡️"}html.no-ti .ti-question-mark::before{content:"❓"}html.no-ti .ti-help-circle::before{content:"❓"}html.no-ti .ti-file-cv::before{content:"📋"}html.no-ti .ti-diamond::before{content:"💎"}html.no-ti .ti-copy::before{content:"📑"}html.no-ti .ti-bookmark::before{content:"🔖"}html.no-ti .ti-user-plus::before{content:"👤"}html.no-ti .ti-user::before{content:"👤"}html.no-ti .ti-users::before{content:"👥"}html.no-ti .ti-lock::before{content:"🔒"}html.no-ti .ti-history::before{content:"🕘"}html.no-ti .ti-file-description::before{content:"📃"}html.no-ti .ti-brand-google::before{content:"Ⓖ"}html.no-ti .ti-book-2::before{content:"📖"}html.no-ti .ti-upload::before{content:"⬆️"}html.no-ti .ti-download::before{content:"⬇️"}html.no-ti .ti-ticket::before{content:"🎟️"}html.no-ti .ti-template::before{content:"🧩"}html.no-ti .ti-star::before{content:"⭐"}html.no-ti .ti-settings::before{content:"⚙️"}html.no-ti .ti-adjustments::before{content:"🎚️"}html.no-ti .ti-moon-stars::before{content:"🌙"}html.no-ti .ti-sun::before{content:"☀️"}html.no-ti .ti-list-details::before{content:"📋"}html.no-ti .ti-gift::before{content:"🎁"}html.no-ti .ti-crown::before{content:"👑"}html.no-ti .ti-clock::before{content:"🕐"}html.no-ti .ti-calendar::before{content:"📅"}html.no-ti .ti-calendar-week::before{content:"📅"}html.no-ti .ti-calendar-month::before{content:"📅"}html.no-ti .ti-login::before{content:"🔑"}html.no-ti .ti-logout::before{content:"🚪"}html.no-ti .ti-arrow-right::before{content:"→"}html.no-ti .ti-arrow-left::before{content:"←"}html.no-ti .ti-arrow-up::before{content:"↑"}html.no-ti .ti-arrow-down::before{content:"↓"}html.no-ti .ti-arrow-back-up::before{content:"↩️"}html.no-ti .ti-brand-whatsapp::before{content:"💬"}html.no-ti .ti-brain::before{content:"🧠"}html.no-ti .ti-world::before{content:"🌎"}html.no-ti .ti-wand::before{content:"🪄"}html.no-ti .ti-trending-up::before{content:"📈"}html.no-ti .ti-telescope::before{content:"🔭"}html.no-ti .ti-speakerphone::before{content:"📢"}html.no-ti .ti-sparkles::before{content:"✨"}html.no-ti .ti-snowflake::before{content:"❄️"}html.no-ti .ti-share::before{content:"📤"}html.no-ti .ti-server-bolt::before{content:"🖥️"}html.no-ti .ti-school::before{content:"🎓"}html.no-ti .ti-player-play::before{content:"▶️"}html.no-ti .ti-player-pause::before{content:"⏸️"}html.no-ti .ti-plant-2::before{content:"🌱"}html.no-ti .ti-phone::before{content:"📞"}html.no-ti .ti-mood-sad::before{content:"😞"}html.no-ti .ti-minus::before{content:"−"}html.no-ti .ti-mail-forward::before{content:"📨"}html.no-ti .ti-loader::before{content:"⏳"}html.no-ti .ti-layout-list::before{content:"📋"}html.no-ti .ti-layout-kanban::before{content:"🗂️"}html.no-ti .ti-infinity::before{content:"∞"}html.no-ti .ti-inbox::before{content:"📥"}html.no-ti .ti-id-badge::before{content:"🪪"}html.no-ti .ti-id-badge-2::before{content:"🪪"}html.no-ti .ti-hash::before{content:"#"}html.no-ti .ti-filter::before{content:"🔽"}html.no-ti .ti-files::before{content:"🗂️"}html.no-ti .ti-file-check::before{content:"✅"}html.no-ti .ti-file-certificate::before{content:"📜"}html.no-ti .ti-edit::before{content:"✏️"}html.no-ti .ti-pencil::before{content:"✏️"}html.no-ti .ti-dots-vertical::before{content:"⋮"}html.no-ti .ti-dots-circle-horizontal::before{content:"⋯"}html.no-ti .ti-device-floppy::before{content:"💾"}html.no-ti .ti-credit-card::before{content:"💳"}html.no-ti .ti-cash::before{content:"💵"}html.no-ti .ti-camera::before{content:"📷"}html.no-ti .ti-calculator::before{content:"🧮"}html.no-ti .ti-brand-youtube::before{content:"▶️"}html.no-ti .ti-brand-instagram::before{content:"📷"}html.no-ti .ti-bolt::before{content:"⚡"}html.no-ti .ti-archive::before{content:"📦"}html.no-ti .ti-square::before{content:"⬜"}html.no-ti .ti-eye::before{content:"👁️"}html.no-ti .ti-home-2::before{content:"🏠"}
+html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{content:"↗"}html.no-ti .ti-send::before{content:"📤"}html.no-ti .ti-check::before{content:"✅"}html.no-ti .ti-trash::before{content:"🗑️"}html.no-ti .ti-refresh::before{content:"🔄"}html.no-ti .ti-robot::before{content:"🤖"}html.no-ti .ti-map-pin::before{content:"📍"}html.no-ti .ti-chevron-right::before{content:"›"}html.no-ti .ti-chevron-left::before{content:"‹"}html.no-ti .ti-chevron-down::before{content:"⌄"}html.no-ti .ti-chevron-up::before{content:"⌃"}html.no-ti .ti-alert-triangle::before{content:"⚠️"}html.no-ti .ti-search::before{content:"🔍"}html.no-ti .ti-alert-circle::before{content:"⚠️"}html.no-ti .ti-trophy::before{content:"🏆"}html.no-ti .ti-mail::before{content:"✉️"}html.no-ti .ti-external-link::before{content:"↗"}html.no-ti .ti-briefcase::before{content:"💼"}html.no-ti .ti-briefcase-2::before{content:"💼"}html.no-ti .ti-bell::before{content:"🔔"}html.no-ti .ti-bell-ringing::before{content:"🔔"}html.no-ti .ti-bell-off::before{content:"🔕"}html.no-ti .ti-info-circle::before{content:"ℹ️"}html.no-ti .ti-building::before{content:"🏢"}html.no-ti .ti-user-circle::before{content:"👤"}html.no-ti .ti-rocket::before{content:"🚀"}html.no-ti .ti-plus::before{content:"＋"}html.no-ti .ti-mail-opened::before{content:"📬"}html.no-ti .ti-file-type-pdf::before{content:"📄"}html.no-ti .ti-language::before{content:"🌐"}html.no-ti .ti-bulb::before{content:"💡"}html.no-ti .ti-shield::before{content:"🛡️"}html.no-ti .ti-shield-check::before{content:"🛡️"}html.no-ti .ti-shield-exclamation::before{content:"🛡️"}html.no-ti .ti-question-mark::before{content:"❓"}html.no-ti .ti-help-circle::before{content:"❓"}html.no-ti .ti-file-cv::before{content:"📋"}html.no-ti .ti-diamond::before{content:"💎"}html.no-ti .ti-copy::before{content:"📑"}html.no-ti .ti-bookmark::before{content:"🔖"}html.no-ti .ti-user-plus::before{content:"👤"}html.no-ti .ti-user::before{content:"👤"}html.no-ti .ti-users::before{content:"👥"}html.no-ti .ti-lock::before{content:"🔒"}html.no-ti .ti-history::before{content:"🕘"}html.no-ti .ti-file-description::before{content:"📃"}html.no-ti .ti-brand-google::before{content:"Ⓖ"}html.no-ti .ti-book-2::before{content:"📖"}html.no-ti .ti-upload::before{content:"⬆️"}html.no-ti .ti-download::before{content:"⬇️"}html.no-ti .ti-ticket::before{content:"🎟️"}html.no-ti .ti-template::before{content:"🧩"}html.no-ti .ti-star::before{content:"⭐"}html.no-ti .ti-settings::before{content:"⚙️"}html.no-ti .ti-adjustments::before{content:"🎚️"}html.no-ti .ti-moon-stars::before{content:"🌙"}html.no-ti .ti-sun::before{content:"☀️"}html.no-ti .ti-list-details::before{content:"📋"}html.no-ti .ti-gift::before{content:"🎁"}html.no-ti .ti-crown::before{content:"👑"}html.no-ti .ti-clock::before{content:"🕐"}html.no-ti .ti-calendar::before{content:"📅"}html.no-ti .ti-calendar-week::before{content:"📅"}html.no-ti .ti-calendar-month::before{content:"📅"}html.no-ti .ti-login::before{content:"🔑"}html.no-ti .ti-logout::before{content:"🚪"}html.no-ti .ti-arrow-right::before{content:"→"}html.no-ti .ti-arrow-left::before{content:"←"}html.no-ti .ti-arrow-up::before{content:"↑"}html.no-ti .ti-arrow-down::before{content:"↓"}html.no-ti .ti-arrow-back-up::before{content:"↩️"}html.no-ti .ti-brand-whatsapp::before{content:"💬"}html.no-ti .ti-brain::before{content:"🧠"}html.no-ti .ti-world::before{content:"🌎"}html.no-ti .ti-wand::before{content:"🪄"}html.no-ti .ti-trending-up::before{content:"📈"}html.no-ti .ti-telescope::before{content:"🔭"}html.no-ti .ti-speakerphone::before{content:"📢"}html.no-ti .ti-sparkles::before{content:"✨"}html.no-ti .ti-snowflake::before{content:"❄️"}html.no-ti .ti-share::before{content:"📤"}html.no-ti .ti-server-bolt::before{content:"🖥️"}html.no-ti .ti-school::before{content:"🎓"}html.no-ti .ti-player-play::before{content:"▶️"}html.no-ti .ti-player-pause::before{content:"⏸️"}html.no-ti .ti-plant-2::before{content:"🌱"}html.no-ti .ti-phone::before{content:"📞"}html.no-ti .ti-mood-sad::before{content:"😞"}html.no-ti .ti-minus::before{content:"−"}html.no-ti .ti-mail-forward::before{content:"📨"}html.no-ti .ti-loader::before{content:"⏳"}html.no-ti .ti-layout-list::before{content:"📋"}html.no-ti .ti-layout-kanban::before{content:"🗂️"}html.no-ti .ti-infinity::before{content:"∞"}html.no-ti .ti-inbox::before{content:"📥"}html.no-ti .ti-id-badge::before{content:"🪪"}html.no-ti .ti-id-badge-2::before{content:"🪪"}html.no-ti .ti-hash::before{content:"#"}html.no-ti .ti-filter::before{content:"🔽"}html.no-ti .ti-files::before{content:"🗂️"}html.no-ti .ti-file-check::before{content:"✅"}html.no-ti .ti-file-certificate::before{content:"📜"}html.no-ti .ti-edit::before{content:"✏️"}html.no-ti .ti-pencil::before{content:"✏️"}html.no-ti .ti-dots-vertical::before{content:"⋮"}html.no-ti .ti-dots-circle-horizontal::before{content:"⋯"}html.no-ti .ti-device-floppy::before{content:"💾"}html.no-ti .ti-credit-card::before{content:"💳"}html.no-ti .ti-cash::before{content:"💵"}html.no-ti .ti-camera::before{content:"📷"}html.no-ti .ti-calculator::before{content:"🧮"}html.no-ti .ti-brand-youtube::before{content:"▶️"}html.no-ti .ti-brand-instagram::before{content:"📷"}html.no-ti .ti-bolt::before{content:"⚡"}html.no-ti .ti-archive::before{content:"📦"}html.no-ti .ti-square::before{content:"⬜"}html.no-ti .ti-eye::before{content:"👁️"}html.no-ti .ti-home-2::before{content:"🏠"}
 </style>
 <script>
 /* Detector: se a fonte tabler-icons não estiver disponível ~2,5s após o load,
@@ -1813,20 +1851,6 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
       </button>
     </div>
   </nav>
-
-  <!-- 🔶 v215b (dono, 19/09/2026 — "botão grande explicativo com o link do
-       ambiente velho pra usuários terminarem de usar seus dias VIP lá"):
-       banner sempre visível, logo abaixo da navbar, ANTES do hero — quem
-       já era assinante bate o olho aqui antes de decidir Entrar/Criar
-       conta. Clique explícito do usuário, nunca auto-redirect. -->
-  <a href="https://h2bapply.onrender.com" target="_blank" rel="noopener noreferrer" class="ln-oldsite-banner">
-    <div class="ln-oldsite-ico">⚡</div>
-    <div class="ln-oldsite-txt">
-      <div class="ln-oldsite-title">Já era assinante VIP antes? Seus dias continuam lá</div>
-      <div class="ln-oldsite-sub">Toque aqui pra entrar no site antigo com a MESMA conta e terminar de usar seu plano</div>
-    </div>
-    <i class="ti ti-external-link" style="font-size:20px;flex-shrink:0;color:#fff"></i>
-  </a>
   </header>
 
   <!-- ── HERO ── -->
@@ -1881,10 +1905,26 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
             </div>
             <div class="login-social-title-wrap">
               <div class="login-social-title">Acompanhe atualizações e códigos</div>
-              <div class="login-social-sub">Siga no Instagram para receber novidades</div>
+              <div class="login-social-sub">Perfil oficial @h2bapply e os criadores — novidades, dicas e códigos</div>
             </div>
           </div>
           <div class="login-social-cards">
+            <!-- 📸 v963 (dono, 09/10/2026): o perfil OFICIAL do site entra em
+                 1º lugar, com selo "Oficial" — os criadores continuam abaixo.
+                 Avatar é o ícone do próprio site (nunca unavatar externo). -->
+            <div class="login-social-card is-oficial">
+              <div class="login-social-av" data-handle="h2bapply">
+                <img class="login-social-img" alt="@h2bapply" src="/icon-192.png" decoding="async">
+              </div>
+              <div class="login-social-info">
+                <div class="login-social-handle">@h2bapply <span class="login-social-badge">Oficial</span></div>
+                <div class="login-social-role">Perfil do site · Novidades e dicas de H-2B/H-2A</div>
+              </div>
+              <a class="login-social-btn" href="https://www.instagram.com/h2bapply/" target="_blank" rel="noopener noreferrer" onclick="instaFollow('hero')">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Seguir
+              </a>
+            </div>
             <div class="login-social-card">
               <div class="login-social-av" data-handle="andrio.k">
                 <img class="login-social-img" alt="@andrio.k" src="https://unavatar.io/instagram/andrio.k" onerror="if(!this._r2&&this.src.indexOf('googleusercontent')>-1&&this.src.indexOf('=s')>-1){this._r2=1;this.src=this.src.split('=s')[0];return;}this.style.display='none';this.parentElement.classList.add('login-social-av-fallback');this.parentElement.querySelector('.login-social-av-letter').style.display='flex';">
@@ -2011,7 +2051,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <figcaption><strong>Acompanhe tudo</strong>Toda candidatura enviada fica registrada — empresa, e-mail e quando foi.</figcaption>
         </figure>
         <figure class="ln-real-card">
-          <img src="/tut-img/landing-3-home.jpg" width="2640" height="1960" alt="Painel inicial do usuário logado, com atalhos pro envio manual e automático" loading="lazy">
+          <img src="/tut-img/landing-3-home-v963.jpg" width="2640" height="1960" alt="Painel inicial do usuário logado, com atalhos pro envio manual e automático" loading="lazy">
           <figcaption><strong>Seu painel</strong>Tudo o que você precisa, direto na tela inicial.</figcaption>
         </figure>
         <figure class="ln-real-card">
@@ -2019,7 +2059,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
           <figcaption><strong>Seus dias, sempre visíveis</strong>Quanto tempo falta do seu plano, sem letra miúda.</figcaption>
         </figure>
         <figure class="ln-real-card">
-          <img src="/tut-img/landing-13-mobile-home.jpg" width="828" height="1792" alt="Painel inicial do H2BApply aberto no celular" loading="lazy">
+          <img src="/tut-img/landing-13-mobile-home-v963.jpg" width="828" height="1792" alt="Painel inicial do H2BApply aberto no celular" loading="lazy">
           <figcaption><strong>Funciona no celular</strong>O site inteiro, do jeito que você usa no dia a dia.</figcaption>
         </figure>
         <figure class="ln-real-card">
@@ -2305,6 +2345,36 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
     </div>
   </section>
 
+  <!-- 📸 v963 (dono, 09/10/2026 — "coloque em imagem em destaque com efeitos,
+       cores e bem destacado o nosso Instagram"): bloco de FECHAMENTO da
+       landing com o Instagram oficial @h2bapply — depois do último CTA de
+       cadastro e antes do rodapé (posição consagrada pela pesquisa; a faixa
+       acima do hero foi descartada: rouba a 1ª dobra e compete com o
+       cadastro). Fotos do PRÓPRIO site, lazy; nunca embed de feed. -->
+  <section class="ln-insta-section" id="instagram">
+    <div class="ln-insta-inner">
+      <div class="ln-sec-label" style="color:#f472b6">Instagram oficial</div>
+      <h2 class="ln-sec-title">Siga o <span class="ln-insta-grad">@h2bapply</span> no Instagram</h2>
+      <p class="ln-sec-sub" style="margin:0 auto 28px;max-width:600px">Novidades do site, conteúdo educativo e dicas de H-2B/H-2A — direto no perfil oficial do H2BApply.</p>
+      <a href="https://www.instagram.com/h2bapply/" target="_blank" rel="noopener noreferrer" class="insta-card insta-lg" onclick="instaFollow('landing')" title="Abrir o Instagram @h2bapply em nova aba" aria-label="Abrir o Instagram @h2bapply em nova aba">
+        <span class="insta-glow insta-glow-a" aria-hidden="true"></span>
+        <span class="insta-glow insta-glow-b" aria-hidden="true"></span>
+        <span class="insta-ring"><img src="/icon-192.png" alt="" width="88" height="88" loading="lazy" decoding="async"></span>
+        <span class="insta-txt">
+          <span class="insta-kicker"><i class="ti ti-brand-instagram" aria-hidden="true"></i> Perfil oficial do H2BApply</span>
+          <span class="insta-handle">@h2bapply</span>
+          <span class="insta-sub">Novidades e dicas de H-2B/H-2A</span>
+        </span>
+        <span class="insta-cta">Seguir no Instagram <i class="ti ti-arrow-up-right" aria-hidden="true"></i></span>
+      </a>
+      <div class="ln-insta-tiles" aria-hidden="true">
+        <img src="/img/banner-h2bapply-completo-v2.jpg" alt="" loading="lazy" decoding="async">
+        <img src="/img/sidebar-liberty.jpg" alt="" loading="lazy" decoding="async">
+        <img src="/img/accent-envio-verde.jpg" alt="" loading="lazy" decoding="async">
+      </div>
+    </div>
+  </section>
+
   <!-- ✅ v145: transparência do uso da conta Google — requisito da
        verificação OAuth (a homepage precisa explicar POR QUE o app pede o
        escopo, com link visível pra política de privacidade). Também é o
@@ -2362,6 +2432,10 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
         <a class="ln-footer-soc-btn" href="https://youtube.com/@diegopelomundo?si=6yVUfi-bEtjKBFfU" target="_blank" rel="noopener noreferrer" title="YouTube Diego" aria-label="YouTube Diego" style="color:#ff4444">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M23.495 6.205a3.007 3.007 0 0 0-2.088-2.088c-1.87-.501-9.396-.501-9.396-.501s-7.507-.01-9.396.501A3.007 3.007 0 0 0 .527 6.205a31.247 31.247 0 0 0-.522 5.805 31.247 31.247 0 0 0 .522 5.783 3.007 3.007 0 0 0 2.088 2.088c1.868.502 9.396.502 9.396.502s7.506 0 9.396-.502a3.007 3.007 0 0 0 2.088-2.088 31.247 31.247 0 0 0 .5-5.783 31.247 31.247 0 0 0-.5-5.805zM9.609 15.601V8.408l6.264 3.602z"/></svg>
         </a>
+        <!-- 📸 v963: Instagram OFICIAL do site (@h2bapply) — 1º da fila, com a cor da marca -->
+        <a class="ln-footer-soc-btn" href="https://www.instagram.com/h2bapply/" target="_blank" rel="noopener noreferrer" title="Instagram H2BApply (@h2bapply)" aria-label="Instagram H2BApply (@h2bapply)" style="color:#fff;background:linear-gradient(120deg,#f9ce34,#ee2a7b 45%,#6228d7);border-color:transparent">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+        </a>
         <a class="ln-footer-soc-btn" href="https://instagram.com/andrio.k" target="_blank" rel="noopener noreferrer" title="Instagram Andrio" aria-label="Instagram Andrio" style="color:#f09433">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
         </a>
@@ -2386,10 +2460,10 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
     <button class="social-invite-x" onclick="closeSocialInvite()" aria-label="Fechar">×</button>
   </div>
   <div id="social-invite-title" class="social-invite-title">Acompanhe novidades</div>
-  <div class="social-invite-text">Siga nossos perfis para acompanhar atualizações, melhorias e novos códigos do sistema.</div>
+  <div class="social-invite-text">Siga o @h2bapply, perfil oficial do site, para acompanhar novidades, atualizações e novos códigos do sistema.</div>
   <div class="social-invite-actions">
     <button class="social-invite-skip" onclick="closeSocialInvite()">Agora não</button>
-    <a class="social-invite-cta" href="https://instagram.com/andrio.k" target="_blank" rel="noopener noreferrer" onclick="closeSocialInvite();trackFollow('invite-andrio')">
+    <a class="social-invite-cta" href="https://www.instagram.com/h2bapply/" target="_blank" rel="noopener noreferrer" onclick="closeSocialInvite();instaFollow('invite')">
       Seguir agora
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
     </a>
@@ -2520,20 +2594,6 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
             </div>
           </div>
 
-          <!-- 🔶 v215 (dono, 19/09/2026 — domínio h2bapply.com migrado de
-               verdade pra este ambiente): mesmo banner chamativo da aba
-               Planos, também no topo do Painel — "dentro de 1-2 segundos"
-               de quem chega. -->
-          <div style="padding:14px 14px 0">
-            <a href="https://h2bapply.onrender.com" target="_blank" rel="noopener noreferrer" class="vip-old-banner">
-              <div style="font-size:30px;flex-shrink:0">⚡</div>
-              <div style="flex:1;min-width:0">
-                <div style="font-size:13.5px;font-weight:900;text-transform:uppercase;letter-spacing:.3px" data-i18n="vip_old_title">Já era assinante VIP antes?</div>
-                <div style="font-size:12.5px;font-weight:600;opacity:.95;margin-top:2px" data-i18n="vip_old_msg">Toque aqui pra entrar no site antigo com a MESMA conta e continuar usando seu plano</div>
-              </div>
-              <i class="ti ti-external-link" style="font-size:20px;flex-shrink:0"></i>
-            </a>
-          </div>
 
           <!-- ══ CTA PRIMÁRIO — Envio Automático (mesmos ids de sempre: renderHome atualiza o status ao vivo) ══ -->
           <div style="padding:14px 14px 0">
@@ -2599,6 +2659,32 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
 
           <!-- ══ PEDIDO EM ANÁLISE — pagamento aguardando aprovação (renderPendingOrderCard) ══ -->
           <div id="home-pending-order" style="display:none;padding:12px 14px 0"></div>
+
+          <!-- 📸 v963 (dono, 09/10/2026 — "coloque em imagem em destaque com
+               efeitos, cores e bem destacado o nosso Instagram"; o banner
+               laranja do site antigo, v215, saiu a pedido: "aquilo não precisa
+               mais"): card do Instagram @h2bapply ABAIXO das ações principais
+               (automático/manual/planos) E dos avisos de conta (próximo passo
+               do onboarding, pedido em análise) — a pesquisa de 09/10 foi
+               clara: o topo do painel é o pixel mais caro do app e pertence à
+               prioridade nº1 (vagas/envio/assinatura). O ✕ não apaga: ENCOLHE
+               pra 1 linha (memória por versão em localStorage — instaDismiss,
+               app.js); clicar em Seguir também encolhe. Nunca link dentro de link: o ✕
+               é irmão do <a>, não filho. Textos pelo LANG_DICT (regra 6f). -->
+          <div id="home-insta" class="insta-wrap" style="padding:12px 14px 0">
+            <a href="https://www.instagram.com/h2bapply/" target="_blank" rel="noopener noreferrer" class="insta-card" onclick="instaFollow('home')" data-i18n-title="insta_aria" title="Abrir o Instagram @h2bapply em nova aba" aria-label="Abrir o Instagram @h2bapply em nova aba">
+              <span class="insta-glow insta-glow-a" aria-hidden="true"></span>
+              <span class="insta-glow insta-glow-b" aria-hidden="true"></span>
+              <span class="insta-ring"><img src="/icon-192.png" alt="" width="58" height="58" loading="lazy" decoding="async"></span>
+              <span class="insta-txt">
+                <span class="insta-kicker"><i class="ti ti-brand-instagram" aria-hidden="true"></i> <span data-i18n="insta_kicker">Siga a gente no Instagram</span></span>
+                <span class="insta-handle">@h2bapply</span>
+                <span class="insta-sub" data-i18n="insta_sub">Novidades do H2BApply e dicas de H-2B/H-2A no perfil oficial do site.</span>
+              </span>
+              <span class="insta-cta"><span data-i18n="insta_cta">Seguir no Instagram</span> <i class="ti ti-arrow-up-right" aria-hidden="true"></i></span>
+            </a>
+            <button type="button" class="insta-close" onclick="instaDismiss()" data-i18n-title="insta_close" title="Fechar destaque do Instagram" aria-label="Fechar destaque do Instagram"><i class="ti ti-x" aria-hidden="true"></i></button>
+          </div>
 
           <!-- ══ STATS — 4 cards honestos (nunca inventa "respostas recebidas": app não lê inbox) ══ -->
           <div style="padding:16px 14px 0">
@@ -3428,21 +3514,6 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-send::before{content:"📤
         .pl-linha{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--t2);padding:3px 0}
         .pl-linha b{color:var(--text)}
         </style>
-
-        <!-- 🔶 v215 (dono, 19/09/2026 — domínio h2bapply.com migrado de
-             verdade pra este ambiente): quem já era assinante VIP no site
-             antigo pode não achar a conta/plano dele aqui ainda — banner
-             SEMPRE visível, bem chamativo (cor contrastante, borda, pulso
-             sutil), logo no topo — clique EXPLÍCITO do usuário, nunca
-             auto-redirect. -->
-        <a href="https://h2bapply.onrender.com" target="_blank" rel="noopener noreferrer" class="vip-old-banner" style="margin-bottom:16px">
-          <div style="font-size:30px;flex-shrink:0">⚡</div>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:13.5px;font-weight:900;text-transform:uppercase;letter-spacing:.3px" data-i18n="vip_old_title">Já era assinante VIP antes?</div>
-            <div style="font-size:12.5px;font-weight:600;opacity:.95;margin-top:2px" data-i18n="vip_old_msg">Toque aqui pra entrar no site antigo com a MESMA conta e continuar usando seu plano</div>
-          </div>
-          <i class="ti ti-external-link" style="font-size:20px;flex-shrink:0"></i>
-        </a>
 
         <!-- Status do plano atual -->
         <div id="plan-status-card" style="display:none;margin-bottom:14px"></div>
@@ -5093,6 +5164,7 @@ strong,b{font-weight:700;color:inherit}
   #tour-prev,#tour-next{min-height:44px;padding:12px 18px} /* eram 30px (.btn-xs) — navegação do tour de boas-vindas */
   .sf-soc{min-width:44px;min-height:44px} /* eram 24px — ícones sociais do rodapé fixo (achado de auditoria) */
   .ln-footer-soc-btn{min-width:44px;min-height:44px} /* eram 36px — ícones sociais do rodapé da landing (achado de auditoria) */
+  .login-social-btn{min-height:44px;padding:8px 14px;font-size:12px} /* 📸 v963: "Seguir" dos cards sociais do hero era 30px de altura — alvo de toque ≥44px no celular */
   .mx-sm{min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center} /* eram ~26-36px — fechar Preflight/Filtros/Detalhe do Log (achado de auditoria) */
 }
 

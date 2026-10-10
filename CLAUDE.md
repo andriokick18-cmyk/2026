@@ -3952,3 +3952,57 @@ verde, provando que as duas coisas são mesmo separadas. `npm test` 100%
 verde, `check-duplicates.js`/`check-xss-guard.js` sem achados. Sem bump
 de sw.js (mudança 100% server-side — nenhum arquivo servido ao cliente
 mudou).
+
+## v963 — Instagram @h2bapply em destaque + banner do site antigo REMOVIDO (dono, 09/10/2026)
+
+**Ordem do dono** (áudio transcrito): *"coloque em imagem em destaque com
+efeitos, cores e bem destacado o nosso Instagram do h2bapply.com... Se
+você precisar de imagens, você pode pegar imagens do próprio site... o
+que eu preciso é que você remova aquele anúncio antigo em amarelo
+dizendo: ah, você tinha dias VIPs, acesse esse site antigo... aquilo não
+precisa mais, pode retirar"*. Link oficial: `https://www.instagram.com/h2bapply/`
+(sempre a URL LIMPA — o `?utm_source=qr&cplk=...` do QR nunca entra no site).
+
+**Saiu**: o banner laranja v215/v215b ("Já era assinante VIP antes? → site
+antigo h2bapply.onrender.com") das 3 telas (Home, Planos, landing), o CSS
+`.vip-old-banner`/`.ln-oldsite-banner` e as chaves `vip_old_*` do
+LANG_DICT. A guarda do smoke virou NEGATIVA (nenhum resquício pode voltar).
+A ponte de estatísticas do server.js (v238) é outra coisa e continua.
+
+**Entrou** (posições vêm da PESQUISA de 09/10 — regra 1 da casa — e não
+do lugar onde o banner estava):
+- Home: card `.insta-card` (`#home-insta`) ABAIXO das ações principais
+  (automático/manual/planos) E dos avisos de conta (próximo passo do
+  onboarding, pedido em análise), antes dos STATS — nunca acima do
+  automático: o topo do painel é o pixel mais caro do app e pertence à
+  prioridade nº1. O ✕ (irmão do
+  `<a>`, nunca filho — link dentro de link é inválido) só ENCOLHE pra 1
+  linha (`.insta-min`, chave versionada `h2b_insta_min_v1` no aparelho,
+  `instaDismiss`); clicar em Seguir também encolhe (`instaFollow`, que
+  também rastreia via `trackFollow`+`gaEvent`). Textos via LANG_DICT
+  `insta_*` nas 3 línguas.
+- Landing: NUNCA faixa acima do hero (as 3 pesquisas convergiram: rouba a
+  1ª dobra e compete com o cadastro). O perfil oficial entrou em 1º no
+  bloco social do hero (selo "Oficial", avatar = ícone do site) e ganhou a
+  seção de fechamento `.ln-insta-section` (card grande + 3 fotos do
+  PRÓPRIO site, lazy) DEPOIS do último CTA e ANTES do bloco de
+  transparência do Google; botão oficial no rodapé; o convite opcional
+  (#social-invite) aponta pro perfil oficial. Instagram dos criadores
+  continua intacto.
+- Visual: gradiente oficial do Instagram ESTÁTICO sob o texto (amarelo/
+  laranja só embaixo do avatar), véu + halo escuro atrás do bloco de
+  texto — contraste branco×fundo ≥ 4,5:1 MEDIDO no Chromium (texto
+  escondido, pior pixel), também no pior instante do brilho; efeito só
+  por cima (brilho a cada 6s + 2 halos lentos), zerado por
+  prefers-reduced-motion. Nunca embed/iframe de feed.
+
+**Regras que ficam**: a família de classes `.ig-` é PROIBIDA pela allowlist
+de CSS morto (v203-L21) — por isso o prefixo é `.insta-`/`.ln-insta-`; o
+CSS inline do index.html está a ~2,5k do teto de 145k da guarda (próxima
+tela nova precisa podar antes de somar). Prints da Home usados na
+landing "Veja por dentro" re-fotografados (regra 17) e RENOMEADOS
+(`landing-3-home-v963.jpg`, `landing-13-mobile-home-v963.jpg`): o /tut-img
+tem cache de 7 dias — com o mesmo nome, quem já visitou veria o print com o
+banner laranja por uma semana. Copy do destaque NUNCA promete conteúdo que
+o perfil pode não ter ("vagas novas" saiu — fica "novidades e dicas").
+3 checks estruturais `📸 v963` no smoke. sw v172.
