@@ -7236,6 +7236,56 @@ function _findUserByEmail(email) {
   for (const u of Object.values(DB_USERS)) { if (!u || u.deleted) continue; if (String(u.emailContato || "").toLowerCase() === e || String(u.email || "").toLowerCase() === e) return u; }
   return null;
 }
+// 🔑 v965 (caso real, 10/10/2026 — "usuários que perderam a senha e não estão
+// conseguindo recuperar a conta, usando nome de usuário ou e-mail"): a
+// recuperação só aceitava E-MAIL (exigia "@" no front e no servidor) e
+// procurava a conta por igualdade exata — quem só lembrava o NOME DE USUÁRIO
+// não conseguia nem começar, e quem digitava o Gmail sem os pontos
+// (joaosilva@gmail.com × joao.silva@gmail.com — pro Google são o MESMO
+// endereço) caía no "nenhuma conta". Resolvedor ÚNICO, usado pelo login, pela
+// recuperação (pedir código e redefinir) e pelo admin (🔑): aceita a chave da
+// conta (usuário, ou o Gmail das contas legadas), o e-mail cadastrado e, em
+// último caso, o mesmo Gmail sem pontos/+sufixo — esse fallback só vale se
+// bater em EXATAMENTE UMA conta (ambíguo = ninguém, nunca a errada).
+const _normGmailKey = (e) => { const m = String(e || "").trim().toLowerCase().match(/^([^@+\s]+)(?:\+[^@\s]*)?@(?:gmail|googlemail)\.com$/); return m ? m[1].replace(/\./g, "") + "@gmail.com" : null; };
+// Normaliza o que a pessoa digitou: minúsculas, sem espaços (colar com espaço/
+// quebra de linha é comum no celular) e sem "@" na frente do usuário ("@maria").
+// Devolve "" se não parecer usuário nem e-mail (nunca chega a procurar nada).
+function _identRecuperacao(v) {
+  let id = String(v || "").trim().toLowerCase().replace(/\s+/g, "");
+  if (/^@+[^@]+$/.test(id)) id = id.replace(/^@+/, "");
+  if (id.length < 3 || id.length > 254 || !/^[a-z0-9._+@-]+$/.test(id)) return "";
+  return id;
+}
+function _findUserByLogin(ident) {
+  const id = _identRecuperacao(ident); if (!id) return null;
+  const direct = getUser(id); if (direct) return direct;
+  if (!id.includes("@")) return null;
+  const byMail = _findUserByEmail(id); if (byMail) return byMail;
+  const ng = _normGmailKey(id); if (!ng) return null;
+  const hits = Object.values(DB_USERS).filter(u => u && !u.deleted && (_normGmailKey(u.emailContato) === ng || _normGmailKey(u.email) === ng));
+  return hits.length === 1 ? hits[0] : null;
+}
+// Pra onde o código de recuperação vai: o e-mail cadastrado e confirmado; conta
+// LEGADA (chave = Gmail real, sem emailContato) usa a própria chave. Sem nenhum
+// dos dois = null (só o suporte destrava — o admin vê isso na linha do tempo).
+function _recoveryEmail(u) {
+  const c = String(u && u.emailContato || "").trim().toLowerCase(); if (c.includes("@")) return c;
+  const k = String(u && u.email || "").trim().toLowerCase(); return k.includes("@") ? k : null;
+}
+// Alerta pros admins (Central de eventos) quando a recuperação NÃO consegue
+// entregar — antes o envio era fire-and-forget e a falha virava só um
+// console.warn: a pessoa via "código enviado" pra sempre e ninguém sabia.
+// Throttle por tipo+chave pra uma falha repetida não inundar a Central.
+const _senhaAlertaVisto = new Map();
+function _senhaAlerta(tipo, chave, msg, level = "warn", janelaMs = 30 * 60_000) {
+  try {
+    const k = tipo + ":" + chave, agora = Date.now();
+    if (agora - (_senhaAlertaVisto.get(k) || 0) < janelaMs) return;
+    _senhaAlertaVisto.set(k, agora);
+    pushGlobalEvent(tipo, chave === "global" ? "sistema" : chave, msg, level);
+  } catch (e) {}
+}
 // Data de nascimento: aceita AAAA-MM-DD (input date) ou DD/MM/AAAA (digitado);
 // devolve ISO ou null se não for uma data real de alguém entre 16 e 100 anos.
 function _parseNasc(v) {
@@ -9184,7 +9234,12 @@ filtrar();
   // ≥8 e derruba todas as sessões antigas daquela conta.
   if(pathname==="/api/senha/enviar-codigo"&&req.method==="POST"){
     const _ip=_clientIp(req);
-    if(rateLimit("senhacod_"+_ip,10,3600_000))return json(res,429,{error:"Muitos pedidos deste aparelho. Aguarde 1 hora."});
+    // 📶 v965: 10/h por IP era pouco — rede móvel brasileira (CGNAT) e Wi-Fi de
+    // alojamento/escritório fazem DEZENAS de pessoas dividirem o MESMO IP, e a
+    // 11ª pessoa levava "Aguarde 1 hora" sem culpa nenhuma. O que protege a
+    // caixa de cada pessoa são os limites POR E-MAIL (60s entre envios, 3 a
+    // cada 15min, no cooldown abaixo e no mod-notif) — o IP só barra varredura.
+    if(rateLimit("senhacod_"+_ip,40,3600_000))return json(res,429,{error:"Muitos pedidos vindos desta rede. Aguarde um pouco e tente de novo — ou chame o suporte no WhatsApp."});
     // 🚨 v237m (achado de auditoria — Média, auth): a anti-enumeração desta
     // rota era ILUSÓRIA. O comentário já dizia "mesmo tempo de resposta —
     // sem enumeração", mas só o ramo SEM conta esperava um floor fixo de
@@ -9225,58 +9280,77 @@ filtrar();
     const _t0=Date.now();
     try{
       const d=JSON.parse((await readBody(req))||"{}");
-      const email=String(d.email||"").trim().toLowerCase();
-      if(!email.includes("@"))return json(res,400,{error:"Informe o e-mail cadastrado."});
-      if(!NOTIF.conectada())return json(res,503,{error:"A recuperação por e-mail está temporariamente indisponível. Chame o suporte no WhatsApp."});
-      // v237q: cooldown UNIFORME por e-mail digitado — roda pra QUALQUER
-      // e-mail (com conta ou sem), então nunca vira sinal de enumeração.
-      const _cd60=rateLimit("senhacd60_"+email,1,60_000);
-      const _cd15=rateLimit("senhacd15_"+email,3,900_000);
+      // v965: aceita USUÁRIO ou E-MAIL (front antigo em cache ainda manda `email`).
+      const ident=_identRecuperacao(d.identificador||d.email||d.username);
+      if(!ident)return json(res,400,{error:"Digite o seu nome de usuário ou o e-mail cadastrado."});
+      if(!NOTIF.conectada()){
+        _senhaAlerta("recuperacao_fora_do_ar","global","🚨 Alguém pediu recuperação de senha mas a conta de notificações (e-mail do site) está DESCONECTADA — ninguém consegue receber código. Reconecte em Admin → Notificações.","error");
+        return json(res,503,{error:"A recuperação por e-mail está temporariamente indisponível. Chame o suporte no WhatsApp."});
+      }
+      // v237q: cooldown UNIFORME por identificador digitado — roda pra QUALQUER
+      // valor (com conta ou sem), então nunca vira sinal de enumeração.
+      const _cd60=rateLimit("senhacd60_"+ident,1,60_000);
+      const _cd15=rateLimit("senhacd15_"+ident,3,900_000);
       if(_cd60||_cd15){
         const _falta0=400-(Date.now()-_t0);
         if(_falta0>0)await new Promise(r=>setTimeout(r,_falta0));
         return json(res,200,{ok:true,cooldown:true,
-          msg:_cd15?"Muitos pedidos de código pra esse e-mail. Aguarde alguns minutos antes de tentar de novo (confira também o spam).":"Se você já pediu um código pra esse e-mail, aguarde 1 minuto antes de pedir outro (confira também o spam)."});
+          msg:_cd15?"Muitos pedidos de código pra essa conta. Aguarde alguns minutos antes de tentar de novo (confira também o spam).":"Se você já pediu um código, aguarde 1 minuto antes de pedir outro (confira também a caixa de spam)."});
       }
-      const u=_findUserByEmail(email);
-      // 🚨 v177-FIX (auditoria 14/09/2026, ALTA): isAdminEmail(u.email) só
-      // protege conta admin do formato ANTIGO (chave = Gmail real). Uma
-      // conta admin do v175/v176 (username reservado, "andrio"/"diego")
-      // tem u.email===username (sem @) — isAdminEmail nunca batia, e quem
-      // tivesse acesso ao Gmail conectado (emailContato) conseguia pedir
-      // código e redefinir a senha da conta admin inteira pelo autoatendimento
-      // comum, sem nunca precisar da senha do painel /admin dedicado.
-      // isAdminVip(u) cobre os 2 formatos (checa u.isAdmin OU isAdminEmail).
+      const u=_findUserByLogin(ident);
+      // 🚨 v177-FIX (auditoria 14/09/2026, ALTA): conta admin NUNCA recebe código
+      // — isAdminVip(u) cobre os 2 formatos (chave Gmail real OU username reservado).
       if(u&&!isAdminVip(u)){
-        const c=NOTIF.gerarCodigo("senha",email);
-        const tpl=NOTIF.templateCodigoSenha({codigo:c.codigo});
-        NOTIF.sendMail({to:email,subject:tpl.subject,text:tpl.text,tipo:"codigo_senha"})
-          .catch(e=>console.warn("[senha/enviar-codigo] falha no envio (resposta segue genérica, anti-enumeração):",e.message));
+        const dest=_recoveryEmail(u);
+        if(!dest){
+          // Conta sem NENHUM e-mail (cadastro de antes do v175): o código não tem
+          // pra onde ir. A resposta segue genérica (anti-enumeração); o admin vê
+          // o pedido na linha do tempo da conta e na Central, e destrava pelo 🔑.
+          _authEvent(u.email,"senha_sem_email","Pediu recuperação de senha, mas a conta não tem e-mail cadastrado — só o suporte destrava (Admin → Usuários → 🔑)");
+          _senhaAlerta("recuperacao_sem_email",u.email,`Pediu recuperação de senha mas a conta não tem e-mail cadastrado — definir senha nova em Admin → Usuários → 🔑 (@${u.email})`,"warn",6*3600_000);
+        }else if(NOTIF.podeEnviar("senha",dest).ok){
+          // O código nasce amarrado ao E-MAIL DE DESTINO (não ao que foi digitado):
+          // usuário e e-mail da mesma conta compartilham 1 código e 1 teto de
+          // envios — digitar os dois nunca dobra o spam na caixa da pessoa.
+          const c=NOTIF.gerarCodigo("senha",dest);
+          const tpl=NOTIF.templateCodigoSenha({codigo:c.codigo});
+          NOTIF.sendMail({to:dest,subject:tpl.subject,text:tpl.text,tipo:"codigo_senha"})
+            .catch(e=>{
+              console.warn("[senha/enviar-codigo] falha no envio (resposta segue genérica, anti-enumeração):",e.message);
+              _authEvent(u.email,"senha_codigo_nao_enviado","O código de recuperação NÃO saiu: "+String(e.message||e).slice(0,160));
+              _senhaAlerta("recuperacao_envio_falhou","global","🚨 O código de recuperação de senha NÃO foi entregue ("+String(e.message||e).slice(0,120)+") — confira Admin → Notificações (conta de e-mail do site).","error");
+            });
+        }
       }
       const _falta=400-(Date.now()-_t0);
       if(_falta>0)await new Promise(r=>setTimeout(r,_falta));
-      return json(res,200,{ok:true,msg:"Se existir uma conta com esse e-mail, o código foi enviado. Vale 5 minutos."});
+      return json(res,200,{ok:true,msg:"Se existir uma conta com esse usuário ou e-mail, o código foi enviado para o e-mail cadastrado nela. Vale 5 minutos."});
     }catch(e){return json(res,400,{error:"Corpo inválido: "+e.message});}
   }
   if(pathname==="/api/senha/redefinir"&&req.method==="POST"){
     const _ip=_clientIp(req);
-    if(rateLimit("senharedef_"+_ip,30,3600_000))return json(res,429,{error:"Muitas tentativas. Aguarde um pouco."});
+    if(rateLimit("senharedef_"+_ip,90,3600_000))return json(res,429,{error:"Muitas tentativas vindas desta rede. Aguarde um pouco."});
     try{
       const d=JSON.parse((await readBody(req))||"{}");
-      const email=String(d.email||"").trim().toLowerCase();
+      const ident=_identRecuperacao(d.identificador||d.email||d.username);
       const nova=String(d.novaSenha||"");
       if(nova.length<8)return json(res,400,{error:"A nova senha precisa ter pelo menos 8 caracteres."});
-      // 🔒 v335: simularSeAusente fecha a enumeração — e-mail sem conta some,
+      // v965: a conta sai do que foi digitado (usuário OU e-mail) e o código é
+      // procurado pelo e-mail de DESTINO — a mesma chave em que nasceu. Sem
+      // conta, usa o digitado: o MESMO caminho de "código incorreto".
+      const u0=ident?_findUserByLogin(ident):null;
+      const chave=(u0&&!isAdminVip(u0)&&_recoveryEmail(u0))||ident||"?";
+      // 🔒 v335: simularSeAusente fecha a enumeração — conta sem código some,
       // até neste código de erro, atrás da MESMA resposta de "código incorreto".
-      const r=NOTIF.confirmarCodigo("senha",email,d.codigo,{simularSeAusente:true});
+      const r=NOTIF.confirmarCodigo("senha",chave,d.codigo,{simularSeAusente:true});
       if(!r.ok)return json(res,400,{error:r.motivo});
-      const u=_findUserByEmail(email);
+      const u=u0;
       if(!u||isAdminVip(u))return json(res,400,{error:"Conta não encontrada."}); // v177-FIX: mesma régua acima — cobre conta admin dos 2 formatos
       const {salt,hash}=await _hashPw(nova);
       setUser(u.email,{passwordSalt:salt,passwordHash:hash,passwordChangedAt:Date.now()});
       let _derrubadas=0;for(const sid of Object.keys(sessions)){if(sessions[sid]?.user_email===u.email){delete sessions[sid];_derrubadas++;}}
       persistSessionsDebounced(500);
-      _authEvent(u.email,"senha_redefinida",`Senha redefinida pelo e-mail cadastrado (${_derrubadas} sessão(ões) antiga(s) derrubada(s))`);
+      _authEvent(u.email,"senha_redefinida",`Senha redefinida pelo código enviado ao e-mail cadastrado (${_derrubadas} sessão(ões) antiga(s) derrubada(s))`);
       console.log(`[senha] 🔑 ${u.email} redefiniu a senha pelo e-mail (${_derrubadas} sessões derrubadas)`);
       return json(res,200,{ok:true,username:u.username||u.email});
     }catch(e){return json(res,400,{error:"Corpo inválido: "+e.message});}
@@ -9518,7 +9592,7 @@ filtrar();
       const senha=String(d.password||"");
       // v175: aceita também o E-MAIL cadastrado no lugar do usuário (quem
       // esquece o username ainda entra) — a identidade continua sendo o username.
-      const u=getUser(username)||(username.includes("@")?_findUserByEmail(username):null);
+      const u=_findUserByLogin(username); // v965: usuário, e-mail cadastrado ou o mesmo Gmail sem pontos
       const _ident=u?String(u.email||username):username;
       // 🆘 v172c-UX (12/09/2026): conta ANTIGA (login era só Google, migrada
       // sem passwordHash) tomava a mesma mensagem genérica de "senha errada"
@@ -10888,9 +10962,13 @@ filtrar();
       const novaSenha=String(d.novaSenha||"");
       if(!email)return json(res,400,{error:"email obrigatório"});
       if(novaSenha.length<8)return json(res,400,{error:"A senha precisa ter pelo menos 8 caracteres."});
-      const tgt=getUser(email);if(!tgt)return json(res,404,{error:"Usuário não encontrado"});
+      // v965: o admin pode digitar o USUÁRIO ou o E-MAIL que o cliente mandou no
+      // WhatsApp — antes só a chave exata da conta valia ("Usuário não encontrado"
+      // pra quem digitava o e-mail de uma conta cuja chave é o usuário).
+      const tgt=_findUserByLogin(email);if(!tgt)return json(res,404,{error:"Usuário não encontrado"});
+      const chaveConta=String(tgt.email);
       const {salt,hash}=await _hashPw(novaSenha);
-      setUser(email,{passwordSalt:salt,passwordHash:hash});
+      setUser(chaveConta,{passwordSalt:salt,passwordHash:hash});
       // 🚨 v172c-SEC (auditoria de segurança, 12/09/2026): trocar a senha
       // (conta comprometida, esquecida, etc.) SEM derrubar as sessões
       // antigas deixava quem já estava logado continuar logado pra sempre
@@ -10898,12 +10976,12 @@ filtrar();
       // quem já tinha uma sessão aberta antes da troca.
       let _sessõesDerrubadas=0;
       for(const sid of Object.keys(sessions)){
-        if(sessions[sid]?.user_email===email){delete sessions[sid];_sessõesDerrubadas++;}
+        if(sessions[sid]?.user_email===chaveConta){delete sessions[sid];_sessõesDerrubadas++;}
       }
       if(_sessõesDerrubadas)persistSessionsDebounced(500);
-      logAdminAction(s.user_email,"set_password",email,{tinhaSenha:!!tgt.passwordHash},{tinhaSenha:true,sessõesDerrubadas:_sessõesDerrubadas},"Senha definida/redefinida pelo admin");
-      console.log(`[admin] 🔑 ${s.user_email} definiu senha nova para ${email}`);
-      return json(res,200,{ok:true});
+      logAdminAction(s.user_email,"set_password",chaveConta,{tinhaSenha:!!tgt.passwordHash},{tinhaSenha:true,sessõesDerrubadas:_sessõesDerrubadas},"Senha definida/redefinida pelo admin");
+      console.log(`[admin] 🔑 ${s.user_email} definiu senha nova para ${chaveConta}`);
+      return json(res,200,{ok:true,conta:chaveConta});
     }catch(e){return json(res,500,{error:e.message});}
   }
   // 🧹 v237 (achado de auditoria — Média): /api/admin/push-user foi
@@ -12772,7 +12850,8 @@ filtrar();
       const d=JSON.parse(await readBody(req));
       if(String(d.token||"")!==_tt)return json(res,403,{error:"token inválido"});
       const email=String(d.email||"").toLowerCase().trim();
-      if(!email.includes("@"))return json(res,400,{error:"email inválido"});
+      // v965 (só teste): contas do cadastro novo têm USUÁRIO como chave (sem "@") — `semArroba` reproduz esse formato.
+      if(!email.includes("@")&&d.semArroba!==true)return json(res,400,{error:"email inválido"});
       if(!getUser(email))setUser(email,{email,name:String(d.name||"Test User"),created_at:new Date().toISOString(),plan:"free",cvs:[],profiles:[],saved:[],onboarded:true,isAdmin:d.isAdmin===true});
       else if(d.isAdmin===true)setUser(email,{isAdmin:true});
       // 🔐 v165 (só teste): semeia e-mails extras pra provar a guarda do
@@ -12800,6 +12879,8 @@ filtrar();
       // caminho "sessão sem token + refresh_token morto" do envio manual; `rtInvalid`
       // semeia a marca de queda confirmada que o status devolve como gmailNeedsReconnect.
       if(d.rtInvalid===true)setUser(email,{rtInvalid:true,rtInvalidAt:Date.now()});
+      // 🔑 v965 (só teste): e-mail cadastrado+confirmado da conta — é pra onde a recuperação de senha manda o código.
+      if(d.emailContato)setUser(email,{emailContato:String(d.emailContato).toLowerCase().trim(),emailVerificadoEm:Date.now()});
       const sid="test_"+crypto.randomBytes(16).toString("hex");
       sessions[sid]={user_email:email,user_name:String(d.name||"Test"),created_at:Date.now(),access_token:d.semAccessToken===true?"":"test-token",expires_at:Date.now()+3600_000};
       res.writeHead(200,{"Content-Type":"application/json","Set-Cookie":makeCookieStr(sid)});
@@ -13844,6 +13925,8 @@ if(pathname==="/api/admin/contabilidade"&&req.method==="GET"){
         manualExpires:vip.manualExpires||0,autoExpires:vip.autoExpires||0,
         daysLeft,diasCreditadosPagos,diasCreditadosCortesia,
         gmailConectado:!!u.refresh_token,
+        // 🔎 v965: o admin acha o cliente pelo que ele manda no WhatsApp (e-mail cadastrado, telefone) e vê quando o Gmail de envio CAIU (Google derrubou) — pagante que não consegue enviar.
+        emailContato:u.emailContato||"",telefone:String(u.whatsapp||u.phone||""),gmailCaiu:!!(u.refresh_token&&u.rtInvalid),
         robo:_jobU?{ativo:!!_jobU.active,status:String(_jobU.status||""),fila:(_jobU.queue||[]).length}:null,
         isAdmin:isAdminVip(u),assinatura,
         suspeita:!!suspeita,motivo:rawSuspeita?"dias restantes maiores que o total creditado":null

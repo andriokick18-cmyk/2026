@@ -1242,7 +1242,7 @@ async function drillAdminSettingsLegado() {
       JSON.stringify({ comConta: _redefEnumOk.json, semConta: _redefEnumNo.json, corpoIgual: _redefEnumOk.body === _redefEnumNo.body }));
     const _srv335 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
     check("🔒 v335 (estrutural): só a rota de SENHA passa simularSeAusente — /api/email/confirmar (finalidade 'cadastro') continua sem a opção, porque já revela existência de conta de propósito em outro ponto do fluxo (409 no /api/email/enviar-codigo)",
-      _srv335.includes('NOTIF.confirmarCodigo("senha",email,d.codigo,{simularSeAusente:true})') &&
+      _srv335.includes('NOTIF.confirmarCodigo("senha",chave,d.codigo,{simularSeAusente:true})') &&
       _srv335.includes('NOTIF.confirmarCodigo("cadastro",email,d.codigo)'),
       "o call site de cadastro ganhou simularSeAusente, ou o de senha perdeu");
     // 🚨 v237m (achado de auditoria — Média, auth): a anti-enumeração de cima
@@ -1282,6 +1282,120 @@ async function drillAdminSettingsLegado() {
     check("🔑 v175: código errado/senha curta não redefinem; código certo redefine, a senha velha morre e a nova entra",
       _redefBad.status === 400 && _redefCurta.status === 400 && _redefOk.status === 200 && _logVelha.status === 403 && _logNova.status === 200,
       JSON.stringify({ bad: _redefBad.status, curta: _redefCurta.status, ok: _redefOk.status, velha: _logVelha.status, nova: _logNova.status }));
+    // ═══ 🔑 v965 (caso real, 10/10/2026 — "usuários que perderam a senha e não
+    // estão conseguindo recuperar a conta, usando nome de usuário ou e-mail"):
+    // a recuperação só aceitava E-MAIL com "@" e achava a conta por igualdade
+    // exata. Agora aceita USUÁRIO ("@Maria" também) ou E-MAIL (inclusive o mesmo
+    // Gmail sem pontos), manda o código SEMPRE pro e-mail cadastrado da conta
+    // (nunca pro que foi digitado) e usuário+e-mail da mesma conta dividem 1 código.
+    COOKIE = "";
+    const _outAntes = lerOutbox().length;
+    const _recPorUser = await req2("POST", "/api/senha/enviar-codigo", { identificador: "@Novo_User_V172C" });
+    const _recSemConta = await req2("POST", "/api/senha/enviar-codigo", { identificador: "usuario_que_nao_existe_v965" });
+    const _codPorUser = ultimoCodigo("fulano.v175@gmail.com", "codigo_senha");
+    const _outDepoisUser = lerOutbox();
+    check("🔑 v965: recuperação pelo NOME DE USUÁRIO (com @ na frente e maiúsculas) manda o código pro e-mail CADASTRADO da conta — resposta idêntica à de usuário inexistente (sem enumeração) e nada sai pra quem não tem conta",
+      _recPorUser.status === 200 && _recSemConta.status === 200 && _recPorUser.body === _recSemConta.body &&
+      /^\d{6}$/.test(_codPorUser || "") && _codPorUser !== _codRec && _outDepoisUser.length === _outAntes + 1 &&
+      _outDepoisUser[_outDepoisUser.length - 1].to === "fulano.v175@gmail.com" && !_outDepoisUser.some((x) => /usuario_que_nao_existe/.test(x.to || "")),
+      JSON.stringify({ user: _recPorUser.status, sem: _recSemConta.status, corpoIgual: _recPorUser.body === _recSemConta.body, cod: _codPorUser, novos: _outDepoisUser.length - _outAntes }));
+    // mesma conta pelo E-MAIL digitado SEM os pontos (pro Google é o mesmo Gmail): não gera 2º e-mail
+    const _recPorMailSemPonto = await req2("POST", "/api/senha/enviar-codigo", { identificador: "fulanov175@gmail.com" });
+    const _outDepoisMail = lerOutbox();
+    check("🔑 v965: o mesmo Gmail digitado SEM os pontos (fulanov175@gmail.com × fulano.v175@gmail.com) acha a conta, MAS não manda um 2º e-mail — usuário e e-mail da mesma conta dividem o teto de envios (digitar os dois nunca dobra o spam na caixa) e nada vai pro endereço digitado",
+      _recPorMailSemPonto.status === 200 && _outDepoisMail.length === _outDepoisUser.length && !_outDepoisMail.some((x) => x.to === "fulanov175@gmail.com"),
+      JSON.stringify({ status: _recPorMailSemPonto.status, novos: _outDepoisMail.length - _outDepoisUser.length }));
+    const _redefMailSemPonto = await req2("POST", "/api/senha/redefinir", { identificador: "fulanov175@gmail.com", codigo: _codPorUser, novaSenha: "porusuario123" });
+    COOKIE = "";
+    const _logPorUser = await req2("POST", "/api/login", { username: "novo_user_v172c", password: "porusuario123" });
+    COOKIE = "";
+    const _logVelha2 = await req2("POST", "/api/login", { username: "novo_user_v172c", password: "novasenha123" });
+    COOKIE = "";
+    const _logSemPonto = await req2("POST", "/api/login", { username: "FulanoV175@Gmail.com", password: "porusuario123" });
+    check("🔑 v965: o código pedido pelo USUÁRIO redefine pela tela do E-MAIL (mesma chave de destino) — a senha nova entra por usuário E pelo Gmail sem pontos, a anterior morre",
+      _redefMailSemPonto.status === 200 && _redefMailSemPonto.json?.username === "novo_user_v172c" && _logPorUser.status === 200 && _logVelha2.status === 403 && _logSemPonto.status === 200,
+      JSON.stringify({ redef: _redefMailSemPonto.status, user: _logPorUser.status, velha: _logVelha2.status, semPonto: _logSemPonto.status }));
+    const _recFormatoRuim = await req2("POST", "/api/senha/enviar-codigo", { identificador: "a b/c<script>" });
+    const _recVazio = await req2("POST", "/api/senha/enviar-codigo", {});
+    check("🔑 v965: identificador vazio ou fora do formato (espaço, <, /) → 400 claro (nunca procura conta com lixo) — e o front antigo em cache, que ainda manda {email}, segue funcionando",
+      _recFormatoRuim.status === 400 && _recVazio.status === 400 && /usuário ou o e-mail/i.test(_recVazio.json?.error || ""),
+      JSON.stringify({ ruim: _recFormatoRuim.status, vazio: _recVazio.status, msg: _recVazio.json?.error }));
+    // conta SEM e-mail nenhum (cadastro de antes do v175): resposta genérica, nada sai, e o admin SABE (linha do tempo da conta)
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "semmail_v965", name: "Sem Email", semArroba: true });
+    COOKIE = "";
+    const _outAntesSem = lerOutbox().length;
+    const _recSemMail = await req2("POST", "/api/senha/enviar-codigo", { identificador: "semmail_v965" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
+    const _rxSemMail = (await get("/api/admin/financeiro-usuario/" + encodeURIComponent("semmail_v965"))).json;
+    check("🔑 v965: conta SEM e-mail cadastrado pede recuperação → resposta genérica (200), nenhum e-mail sai (não tem pra onde), e a linha do tempo da conta registra 'senha_sem_email' — o admin vê que essa pessoa precisa do 🔑 em vez de ela esperar um código que nunca vem",
+      _recSemMail.status === 200 && lerOutbox().length === _outAntesSem && (_rxSemMail?.auth?.timeline || []).some((ev) => ev.tipo === "senha_sem_email"),
+      JSON.stringify({ status: _recSemMail.status, novos: lerOutbox().length - _outAntesSem, tl: (_rxSemMail?.auth?.timeline || []).map((e) => e.tipo) }));
+    // admin 🔑: aceita o E-MAIL que o cliente mandou no WhatsApp (a chave da conta é o usuário)
+    // (a senha que o admin define é a "novasenha123" que o teste seguinte — v237h — espera pra relogar)
+    const _admSetMail = await req2("POST", "/api/admin/set-password", { email: "Fulano.V175@gmail.com", novaSenha: "novasenha123" });
+    const _admSetUser = await req2("POST", "/api/admin/set-password", { email: "usuario_que_nao_existe_v965", novaSenha: "novasenha123" });
+    COOKIE = "";
+    const _logAdminResetAntiga = await req2("POST", "/api/login", { username: "novo_user_v172c", password: "porusuario123" });
+    COOKIE = "";
+    const _logAdminReset = await req2("POST", "/api/login", { username: "novo_user_v172c", password: "novasenha123" });
+    check("🔑 v965: o admin (🔑) redefine a senha digitando o E-MAIL do cliente — acha a conta cuja chave é o usuário, devolve qual conta mexeu e o cliente entra com a senha nova; usuário inexistente continua 404",
+      _admSetMail.status === 200 && _admSetMail.json?.conta === "novo_user_v172c" && _admSetUser.status === 404 && _logAdminReset.status === 200 && _logAdminResetAntiga.status === 403,
+      JSON.stringify({ mail: _admSetMail.json, inexistente: _admSetUser.status, login: _logAdminReset.status, antiga: _logAdminResetAntiga.status }));
+    // 🔎 v965: o admin precisa ACHAR o cliente pelo que ele manda no WhatsApp — e-mail cadastrado ou telefone.
+    // O painel só buscava por nome e usuário (a chave da conta), então "meu e-mail é X" não achava ninguém.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
+    const _dashU = (await get("/api/admin/contabilidade")).json?.usuarios || [];
+    const _uBusca = _dashU.find((u) => u.email === "novo_user_v172c");
+    check("🔎 v965: o painel de Usuários recebe o E-MAIL CADASTRADO e o telefone de cada conta (antes só o usuário/nome — o admin não achava o cliente pelo e-mail que ele manda no WhatsApp) e sabe quando o Gmail de envio CAIU",
+      _uBusca?.emailContato === "fulano.v175@gmail.com" && typeof _uBusca?.telefone === "string" && _uBusca.telefone.length > 5 && _uBusca?.gmailCaiu === false,
+      JSON.stringify({ ec: _uBusca?.emailContato, tel: _uBusca?.telefone, caiu: _uBusca?.gmailCaiu }));
+    COOKIE = "";
+    await req2("POST", "/api/login", { username: "novo_user_v172c", password: "novasenha123" });
+    // códigos SOBREVIVEM a restart/deploy (hash com chave no disco) — e o arquivo não entrega o código
+    {
+      const { createNotif: _mkNotif } = require("./mod-notif.js");
+      const _dirN = fs.mkdtempSync(path.join(os.tmpdir(), "notif-persist-"));
+      const _novo = (segredo) => _mkNotif({ fs, path, DATA_DIR: _dirN, httpsReq: async () => ({}), buildMime: () => "", encStr: (x) => x, decStr: (x) => x, getClientId: () => "", getClientSecret: () => "", isTest: true, hmacSecret: segredo, appUrl: "" });
+      const _nA = _novo("segredo-persistencia-v965");
+      const _cA = _nA.gerarCodigo("senha", "persist.v965@gmail.com");
+      await new Promise((r) => setTimeout(r, 800));
+      const _arq = fs.readFileSync(path.join(_dirN, "notif_codes.json"), "utf8");
+      const _nB = _novo("segredo-persistencia-v965");           // "reiniciou" (mesma chave do servidor)
+      const _nC = _novo("OUTRA-chave-do-servidor-v965");        // chave diferente não valida
+      const _rC = _nC.confirmarCodigo("senha", "persist.v965@gmail.com", _cA.codigo);
+      const _rErr = _nB.confirmarCodigo("senha", "persist.v965@gmail.com", "000000");
+      const _rOk = _nB.confirmarCodigo("senha", "persist.v965@gmail.com", _cA.codigo);
+      const _rDepois = _nB.confirmarCodigo("senha", "persist.v965@gmail.com", _cA.codigo);
+      check("📦 v965: o código de verificação SOBREVIVE a restart/deploy — gerado antes, confirmado depois num módulo novo (mesma chave do servidor); o arquivo guarda só HMAC (nunca o código nem o sha256 puro), outra chave de servidor NÃO valida, e depois de usado o código morre também no disco",
+        _cA.codigo.length === 6 && !_arq.includes(crypto.createHash("sha256").update(_cA.codigo).digest("hex")) &&
+        _rC.ok === false && _rErr.ok === false && /incorreto/.test(_rErr.motivo || "") && _rOk.ok === true && typeof _rOk.token === "string" && _rDepois.ok === false,
+        JSON.stringify({ c: _rC.ok, err: _rErr.motivo, ok: _rOk.ok, depois: _rDepois.ok }));
+    }
+    const _srv965 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+    const _app965 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+    check("🔑 v965 estrutural: UM resolvedor (_findUserByLogin) serve login, pedir código, redefinir e o 🔑 do admin; a recuperação deixa de exigir '@'; falha de entrega e conta sem e-mail viram alerta na Central; limites por IP relaxados pra CGNAT (40/h pedir, 90/h redefinir) com o teto POR E-MAIL intacto",
+      /function _findUserByLogin\(ident\)/.test(_srv965) && /const u=_findUserByLogin\(username\);/.test(_srv965) &&
+      (_srv965.match(/_findUserByLogin\(/g) || []).length >= 5 && /_identRecuperacao\(d\.identificador\|\|d\.email\|\|d\.username\)/.test(_srv965) &&
+      /const dest=_recoveryEmail\(u\);/.test(_srv965) && /NOTIF\.gerarCodigo\("senha",dest\)/.test(_srv965) &&
+      /_senhaAlerta\("recuperacao_envio_falhou"/.test(_srv965) && /_senhaAlerta\("recuperacao_fora_do_ar"/.test(_srv965) && /_senhaAlerta\("recuperacao_sem_email"/.test(_srv965) &&
+      /rateLimit\("senhacod_"\+_ip,40,3600_000\)/.test(_srv965) && /rateLimit\("senharedef_"\+_ip,90,3600_000\)/.test(_srv965) &&
+      /rateLimit\("senhacd60_"\+ident,1,60_000\)/.test(_srv965) && /rateLimit\("senhacd15_"\+ident,3,900_000\)/.test(_srv965),
+      "contrato da recuperação v965 quebrado no servidor");
+    const _adm965 = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
+    check("🔎 v965 estrutural: o painel de Usuários busca por nome, usuário, E-MAIL CADASTRADO e TELEFONE (dígitos), mostra o e-mail cadastrado sob o usuário e marca 'Gmail caiu'; o servidor entrega emailContato/telefone/gmailCaiu; e a mensagem de login com senha errada aponta o 'Esqueci minha senha'",
+      /placeholder="Buscar por nome, usuário, e-mail ou telefone…"/.test(_adm965) && /String\(u\.emailContato\|\|""\)\.toLowerCase\(\)\.indexOf\(termo\)>=0/.test(_adm965) && /soDig\.length>=4&&String\(u\.telefone\|\|""\)/.test(_adm965) &&
+      /u\.emailContato&&u\.emailContato!==u\.email/.test(_adm965) && /var gm=u\.gmailCaiu/.test(_adm965) && /Gmail caiu/.test(_adm965) &&
+      /emailContato:u\.emailContato\|\|"",telefone:String\(u\.whatsapp\|\|u\.phone\|\|""\),gmailCaiu:!!\(u\.refresh_token&&u\.rtInvalid\)/.test(_srv965) &&
+      /Esqueceu a senha\? Toque em “Esqueci minha senha”\./.test(_app965),
+      "busca do admin / sinal de Gmail caiu / dica de senha errada fora do contrato v965");
+    check("🔑 v965 estrutural (front): a tela de recuperação pede 'Nome de usuário ou e-mail' (campo de texto, sem exigir '@'), manda {identificador}, o login leva o que a pessoa já digitou (agIrRecuperar) e as 2 telas trazem o botão de suporte no WhatsApp",
+      /Nome de usuário ou e-mail<\/label>\s*\n\s*<input class="ag-input" id="ag-r-email" type="text"/.test(_app965) &&
+      !/type="email"[^>]*id="ag-r-email"|id="ag-r-email"[^>]*type="email"/.test(_app965) &&
+      /body:JSON\.stringify\(\{identificador:ident\}\)/.test(_app965) && /body:JSON\.stringify\(\{identificador:_agRecId,codigo,novaSenha:nova\}\)/.test(_app965) &&
+      /function agIrRecuperar\(\)\{/.test(_app965) && /onclick="agIrRecuperar\(\)">Esqueci minha senha/.test(_app965) &&
+      /function _agSuporteBtn\(\)\{return`<a class="ag-btn fantasma" href="\$\{esc\(WA_SUPORTE\)\}"/.test(_app965) && (_app965.match(/\$\{_agSuporteBtn\(\)\}/g) || []).length === 2 &&
+      !/_agRecEmail/.test(_app965) && !/if\(!email\.includes\("@"\)\)\{showErr\("⚠️ Digite o e-mail cadastrado\."\)/.test(_app965),
+      "tela de recuperação do front fora do contrato v965");
     // ═══ 🚨 v237h (achado de auditoria — Alta, 3ª rodada, área auth): "relogar
     // com o MESMO e-mail restaura tudo automaticamente" era só promessa —
     // NENHUM caminho de login limpava accountDeleted. Como a senha nunca é

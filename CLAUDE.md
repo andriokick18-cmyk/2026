@@ -4042,3 +4042,49 @@ e-mail cadastrado). Ganchos de teste (só com TEST_LOGIN_TOKEN): `semAccessToken
 (queda confirmada, rede NÃO marca, auto-cura, status, estruturais) + 12 no Chromium.
 Guarda v172c do `/api/status` exige a sequência literal `gmailConnected,gmailEmail,
 emailContato…` — por isso `gmailNeedsReconnect` vai ANTES de `gmailConnected`. sw v174.
+
+## v965 — Recuperar conta por NOME DE USUÁRIO ou E-MAIL (dono, 10/10/2026)
+
+**Caso real**: "usuários que perderam a senha e não estão conseguindo recuperar a conta —
+verifique todo o sistema de recuperação, usando nome de usuário ou e-mail".
+
+**Achados (auditoria de ponta a ponta, todos reproduzidos)**: (1) a recuperação só aceitava
+E-MAIL — o front e o servidor exigiam "@" ("Informe o e-mail cadastrado"): quem só lembrava
+o USUÁRIO nem começava; (2) a conta era achada por igualdade exata — o mesmo Gmail digitado
+sem os pontos (joaosilva@ × joao.silva@, pro Google é o mesmo endereço) caía em "nenhuma
+conta"; (3) o admin (🔑) só achava conta pela CHAVE (usuário) — o cliente manda o e-mail no
+WhatsApp e `/api/admin/set-password` respondia 404; o painel de Usuários também só buscava
+por nome/usuário (nem e-mail cadastrado nem telefone chegavam ao navegador); (4) os códigos
+viviam SÓ na memória — deploy a cada commit (e o Render acordando) invalidava o código no
+meio dos 5 minutos; (5) falha de envio e conta sem e-mail eram SILENCIOSAS (fire-and-forget
+→ só um console.warn; a pessoa via "código enviado" pra sempre); (6) teto de 10 pedidos/h
+por IP — rede móvel/CGNAT e Wi-Fi de alojamento dividem o MESMO IP e a 11ª pessoa levava
+"Aguarde 1 hora"; (7) não havia caminho de suporte nas telas da recuperação.
+
+**O que mudou**: resolvedor ÚNICO `_findUserByLogin` (server.js) — chave da conta (usuário,
+ou Gmail das contas legadas), e-mail cadastrado e, por último, o mesmo Gmail sem pontos/
++sufixo (SÓ se bater em EXATAMENTE UMA conta; ambíguo = ninguém); `_identRecuperacao`
+normaliza ("@Maria", maiúsculas, espaços colados) e recusa lixo (400). Usado por login,
+pedir código, redefinir e o 🔑 do admin (que devolve `conta`). O código nasce amarrado ao
+E-MAIL DE DESTINO (`_recoveryEmail`: emailContato, ou a própria chave nas contas legadas) —
+usuário e e-mail da mesma conta dividem 1 código e 1 teto de envios (nunca dobra spam), e o
+e-mail SEMPRE vai pro cadastrado, nunca pro digitado. Anti-enumeração intacta: resposta
+genérica idêntica (com conta, sem conta, sem e-mail), piso de 400ms, cooldown uniforme por
+identificador digitado, `simularSeAusente`; admin continua sem código. `mod-notif`: estado dos
+códigos em `notif_codes.json` (hash HMAC COM a chave do servidor — nem o código nem sha256
+puro vão pro disco; outra chave não valida), sobrevive a restart. Alertas na Central
+(`_senhaAlerta`, throttle): conta de notificações desconectada, envio falhou, conta sem
+e-mail pedindo recuperação (+ `authTimeline` da conta: `senha_sem_email`/
+`senha_codigo_nao_enviado`). Limites por IP: 40/h pedir e 90/h redefinir — o teto POR E-MAIL
+(60s entre envios, 3 a cada 15min) NÃO mudou. Front: campo "Nome de usuário ou e-mail"
+(texto, sem exigir "@"), o "Esqueci minha senha" leva o que a pessoa já digitou no login,
+as 2 telas trazem "Não consigo — falar com o suporte" (WhatsApp) e a mensagem de senha
+errada aponta o caminho. Admin: `/api/admin/contabilidade` entrega `emailContato`/`telefone`/
+`gmailCaiu`; o painel busca por nome, usuário, e-mail cadastrado e telefone (dígitos), mostra
+o e-mail cadastrado sob o usuário e marca "Gmail caiu" (v964). Ganchos de teste (só com
+TEST_LOGIN_TOKEN): `emailContato` e `semArroba` no /api/test/login. 12 checks no smoke +
+Chromium (desktop/360px: pedir por usuário → código no e-mail cadastrado → nova senha → entra).
+**Se ainda houver quem não receba o código em produção, olhe Admin → Notificações**: se a
+conta de e-mail do site estiver desconectada/caída ninguém recebe nada (agora a Central
+avisa). Contas de ANTES do e-mail (v172c sem emailContato) só o 🔑 destrava — o admin vê o
+pedido na linha do tempo da conta. sw v176.

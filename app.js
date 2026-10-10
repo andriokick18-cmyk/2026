@@ -330,7 +330,7 @@ function _pulseLandingCTA(){
 // ═══════════════════════════════════════════
 let _agIntent="login",_agUser="",_agBusy=false;
 // 📧 v175: estado da verificação de e-mail no cadastro + recuperação de senha
-let _agEmailToken="",_agEmailOk=false,_agEmailSentTo="",_agResendUntil=0,_agCodeUntil=0,_agResendTimer=null,_agRecEmail="";
+let _agEmailToken="",_agEmailOk=false,_agEmailSentTo="",_agResendUntil=0,_agCodeUntil=0,_agResendTimer=null,_agRecId="";
 function openAuthGate(step,intent){
   const ov=g("#auth-gate"); if(!ov) return;
   // FIX mobile: o gate precisa ser filho direto do <body> — dentro do #landing
@@ -376,7 +376,7 @@ function agRender(step,data){
       <input class="ag-input" id="ag-l-user" type="text" inputmode="email" autocapitalize="off" autocomplete="username" placeholder="Nome de usuário ou e-mail" value="${esc(_agUser)}" onkeydown="if(event.key==='Enter'){const p=g('#ag-l-pass');if(p)p.focus();}">
       <label class="ag-lbl" for="ag-l-pass">Senha</label>
       <input class="ag-input" id="ag-l-pass" type="password" autocomplete="current-password" placeholder="Senha" onkeydown="if(event.key==='Enter')agSubmitLogin()">
-      <div style="text-align:right;margin:-6px 0 10px"><button type="button" class="ag-link" onclick="agRender('recuperar')">Esqueci minha senha</button></div>
+      <div style="text-align:right;margin:-6px 0 10px"><button type="button" class="ag-link" onclick="agIrRecuperar()">Esqueci minha senha</button></div>
       <div class="ag-err" id="ag-err"></div>
       <button class="ag-btn primario" id="ag-submit" onclick="agSubmitLogin()">Entrar <i class="ti ti-arrow-right"></i></button>
       <button class="ag-btn fantasma" onclick="_agIntent='signup';agRender('signup')"><i class="ti ti-user-plus"></i> Não tenho conta — Criar agora</button>`;
@@ -387,27 +387,32 @@ function agRender(step,data){
   // cadastrado — código de 6 dígitos (5 min) → nova senha.
   if(step==="recuperar"){
     const fase=(data&&data.fase)||"email";
+    // 🆘 v965: "falar com o suporte" SEMPRE à mão nas 2 telas — quem perdeu o
+    // acesso ao e-mail do cadastro (ou tem conta de antes do e-mail existir) não
+    // tem como receber código; o admin destrava pelo 🔑 em Usuários.
     if(fase==="email"){
       body.innerHTML=`
       <div class="ag-title">Recuperar senha</div>
-      <div class="ag-sub">Digite o e-mail que você cadastrou. Vamos mandar um código de 6 dígitos pra ele (vale 5 minutos).</div>
-      <label class="ag-lbl" for="ag-r-email">E-mail cadastrado</label>
-      <input class="ag-input" id="ag-r-email" type="email" inputmode="email" autocapitalize="off" autocomplete="email" placeholder="seunome@gmail.com" value="${esc(_agRecEmail)}" onkeydown="if(event.key==='Enter')agRecEnviar()">
+      <div class="ag-sub">Digite o seu <strong style="color:#fff">nome de usuário</strong> ou o <strong style="color:#fff">e-mail que você cadastrou</strong>. Vamos mandar um código de 6 dígitos pro e-mail da conta (vale 5 minutos).</div>
+      <label class="ag-lbl" for="ag-r-email">Nome de usuário ou e-mail</label>
+      <input class="ag-input" id="ag-r-email" type="text" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="username" placeholder="usuário ou seunome@gmail.com" value="${esc(_agRecId)}" onkeydown="if(event.key==='Enter')agRecEnviar()">
       <div class="ag-err" id="ag-err"></div>
       <button class="ag-btn primario" id="ag-submit" onclick="agRecEnviar()">Enviar código <i class="ti ti-send"></i></button>
-      <button class="ag-btn fantasma" onclick="agRender('login')"><i class="ti ti-arrow-left"></i> Voltar pro login</button>`;
+      <button class="ag-btn fantasma" onclick="agRender('login')"><i class="ti ti-arrow-left"></i> Voltar pro login</button>
+      ${_agSuporteBtn()}`;
       setTimeout(()=>{const i=g("#ag-r-email");if(i)i.focus();},150);
     } else {
       body.innerHTML=`
       <div class="ag-title">Digite o código</div>
-      <div class="ag-sub">Se existir uma conta com <strong style="color:#fff">${esc(_agRecEmail)}</strong>, o código chegou lá (olhe também o spam). Ele vale 5 minutos.</div>
+      <div class="ag-sub">Se existir uma conta com <strong style="color:#fff">${esc(_agRecId)}</strong>, o código foi pro e-mail cadastrado nela (olhe também o spam). Ele vale 5 minutos.</div>
       <label class="ag-lbl" for="ag-r-code">Código de 6 dígitos</label>
       <input class="ag-input ag-code" id="ag-r-code" type="text" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,6)">
       <label class="ag-lbl" for="ag-r-pass">Nova senha</label>
       <input class="ag-input" id="ag-r-pass" type="password" autocomplete="new-password" placeholder="Mínimo 8 caracteres" onkeydown="if(event.key==='Enter')agRecRedefinir()">
       <div class="ag-err" id="ag-err"></div>
       <button class="ag-btn verde" id="ag-submit" onclick="agRecRedefinir()">Redefinir senha <i class="ti ti-check"></i></button>
-      <button type="button" class="ag-link" onclick="agRender('recuperar')">Não chegou? Enviar de novo</button>`;
+      <button type="button" class="ag-link" onclick="agRender('recuperar')">Não chegou? Enviar de novo</button>
+      ${_agSuporteBtn()}`;
       setTimeout(()=>{const i=g("#ag-r-code");if(i)i.focus();},150);
     }
     return;
@@ -579,16 +584,26 @@ function agTrocarEmail(limpar){
   const hint=g("#ag-s-email-hint");if(hint)hint.style.display="";
   const box=g("#ag-s-code-box");if(box)box.style.display="none";
 }
+// 🆘 v965: botão "falar com o suporte" das telas de recuperação — HTML fixo e a
+// URL do WhatsApp passa por esc() (registrada no SAFE_FNS do check-xss-guard).
+function _agSuporteBtn(){return`<a class="ag-btn fantasma" href="${esc(WA_SUPORTE)}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;justify-content:center"><i class="ti ti-brand-whatsapp"></i> Não consigo — falar com o suporte</a>`;}
+// 🔑 v965: o campo aceita USUÁRIO ou E-MAIL (o servidor resolve a conta —
+// _findUserByLogin); antes exigia "@" e barrava quem só lembrava o usuário.
+function agIrRecuperar(){
+  const v=(g("#ag-l-user")?.value||"").trim();
+  if(v)_agRecId=v;
+  agRender("recuperar");
+}
 async function agRecEnviar(){
   const inp=g("#ag-r-email"),btn=g("#ag-submit"),err=g("#ag-err");
-  const email=(inp?inp.value:"").trim().toLowerCase();
+  const ident=(inp?inp.value:"").trim().toLowerCase().replace(/\s+/g,"").replace(/^@+(?=[^@]+$)/,"");
   const showErr=m=>{if(err){err.style.display="block";err.textContent=m;}};
   if(err)err.style.display="none";
-  if(!email.includes("@")){showErr("⚠️ Digite o e-mail cadastrado.");return;}
-  _agRecEmail=email;
+  if(ident.length<3){showErr("⚠️ Digite o seu nome de usuário ou o e-mail cadastrado.");return;}
+  _agRecId=ident;
   if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span> Enviando…';}
   try{
-    const r=await fetch("/api/senha/enviar-codigo",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({email})});
+    const r=await fetch("/api/senha/enviar-codigo",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({identificador:ident})});
     const d=await _agReadJson(r);
     if(!r.ok)throw new Error(d.error||"Não foi possível enviar o código agora.");
     agRender("recuperar",{fase:"codigo"});
@@ -608,7 +623,7 @@ async function agRecRedefinir(){
   if(nova.length<8){showErr("⚠️ A nova senha precisa ter pelo menos 8 caracteres.");return;}
   if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span> Redefinindo…';}
   try{
-    const r=await fetch("/api/senha/redefinir",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:_agRecEmail,codigo,novaSenha:nova})});
+    const r=await fetch("/api/senha/redefinir",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({identificador:_agRecId,codigo,novaSenha:nova})});
     const d=await _agReadJson(r);
     if(!r.ok)throw new Error(d.error||"Não foi possível redefinir.");
     _agUser=d.username||_agUser;
@@ -635,7 +650,10 @@ async function agSubmitLogin(){
   }catch(e){
     _agBusy=false;
     if(btn){btn.disabled=false;btn.innerHTML='Entrar <i class="ti ti-arrow-right"></i>';}
-    showErr("⚠️ "+(e.message||"Não foi possível entrar. Tente de novo."));
+    // 🔑 v965: senha errada é o caso nº1 de quem "perdeu a conta" — a mensagem já aponta o caminho
+    // (o link fica logo acima do botão Entrar), em vez de a pessoa tentar a mesma senha de novo.
+    const _m=e.message||"Não foi possível entrar. Tente de novo.";
+    showErr("⚠️ "+_m+(/inválid/i.test(_m)?" Esqueceu a senha? Toque em “Esqueci minha senha”.":""));
   }
 }
 function agSubmitSignup(){

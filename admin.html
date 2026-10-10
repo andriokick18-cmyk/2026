@@ -385,7 +385,7 @@ tbody tr:hover{background:var(--glass2)}
             <div class="panel-actions">
               <div class="search-wrap">
                 <i class="ti ti-search"></i>
-                <input type="search" id="usr-search" placeholder="Buscar por nome ou e-mail…" oninput="filtrarUsuarios()">
+                <input type="search" id="usr-search" placeholder="Buscar por nome, usuário, e-mail ou telefone…" oninput="filtrarUsuarios()">
               </div>
             </div>
           </div>
@@ -1052,7 +1052,7 @@ function renderLinhasUsuarios(lista){
     var creditados=u.diasCreditadosPagos!=null?u.diasCreditadosPagos:0;
     var cortesia=u.diasCreditadosCortesia!=null?u.diasCreditadosCortesia:0;
     html+='<tr>'
-      +'<td><div class="cell-main">'+esc(u.nome||u.email)+'</div><div class="cell-sub">'+esc(u.email)+'</div></td>'
+      +'<td><div class="cell-main">'+esc(u.nome||u.email)+'</div><div class="cell-sub">'+esc(u.email)+'</div>'+((u.emailContato&&u.emailContato!==u.email)?('<div class="cell-sub">📧 '+esc(u.emailContato)+'</div>'):'')+'</td>'
       +'<td><span class="badge blue">'+esc(NOME_PLANO_ADM[u.plano]||u.plano||"free")+'</span></td>'
       +'<td>'+esc(dias)+'</td>'
       +'<td>'+esc(creditados)+' dia'+((creditados===1)?"":"s")+'</td>'
@@ -1072,9 +1072,13 @@ function renderLinhasUsuarios(lista){
 // conectado (sem Gmail, plano pago não manda uma candidatura sequer). Só o
 // BOOLEANO viaja do servidor, nunca o token.
 function celulaGmailRobo(u){
-  var gm=u.gmailConectado
+  // v965: "Gmail caiu" = o Google derrubou a autorização (refresh_token existe mas morreu) — o cliente
+  // vê "Reconectar Gmail" no site; aqui o admin sabe quem avisar. Antes aparecia "Gmail ok".
+  var gm=u.gmailCaiu
+    ?'<span class="badge red" title="O Google derrubou a conexão do Gmail desta pessoa — ela precisa tocar em Reconectar Gmail no site"><i class="ti ti-mail-off"></i> Gmail caiu</span>'
+    :(u.gmailConectado
     ?'<span class="badge green"><i class="ti ti-mail-check"></i> Gmail ok</span>'
-    :'<span class="badge red"><i class="ti ti-mail-off"></i> sem Gmail</span>';
+    :'<span class="badge red"><i class="ti ti-mail-off"></i> sem Gmail</span>');
   var r=u.robo;
   var rb;
   if(!r)rb='<span class="badge gray">robô nunca ligado</span>';
@@ -1221,8 +1225,14 @@ function filtrarUsuarios(){
   var termo=(document.getElementById("usr-search").value||"").trim().toLowerCase();
   var todos=(STATE.dash&&STATE.dash.usuarios)||[];
   if(!termo){renderLinhasUsuarios(todos);return;}
+  // v965: nome, USUÁRIO (chave da conta), E-MAIL CADASTRADO e TELEFONE (só dígitos, com ou sem DDI/máscara) —
+  // o cliente manda "meu e-mail é X" ou o número no WhatsApp e o painel precisa achar a conta.
+  var soDig=termo.replace(/\D/g,"");
   var filtrados=todos.filter(function(u){
-    return (String(u.nome||"").toLowerCase().indexOf(termo)>=0)||(String(u.email||"").toLowerCase().indexOf(termo)>=0);
+    if(String(u.nome||"").toLowerCase().indexOf(termo)>=0)return true;
+    if(String(u.email||"").toLowerCase().indexOf(termo)>=0)return true;
+    if(String(u.emailContato||"").toLowerCase().indexOf(termo)>=0)return true;
+    return soDig.length>=4&&String(u.telefone||"").replace(/\D/g,"").indexOf(soDig)>=0;
   });
   renderLinhasUsuarios(filtrados);
 }

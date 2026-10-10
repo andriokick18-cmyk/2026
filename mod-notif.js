@@ -14,7 +14,9 @@
      npm test (isTest) NUNCA chama o Google — grava em notif_outbox.json,
      que o smoke lê pra pegar o código e provar o pipeline inteiro.
    • CÓDIGOS (OTP): 6 dígitos aleatórios (crypto), válidos por 5 minutos,
-     guardados só em HASH na memória, máx. 5 tentativas erradas (aí o
+     guardados só como HASH (HMAC com a chave do servidor) — na memória e,
+     desde o v965, num arquivo (notif_codes.json) pra sobreviver ao restart/
+     deploy; máx. 5 tentativas erradas (aí o
      código morre), reenvio com espera de 60s e no máx. 3 envios por
      e-mail a cada 15 min — padrão do mercado (NIST SP 800-63B: código
      curto exige limite de tentativas; expiração 5-10 min).
@@ -126,7 +128,36 @@ function createNotif(deps) {
   const CODIGO_TTL_MS = 5 * 60_000, MAX_TENTATIVAS = 5, REENVIO_MS = 60_000, MAX_ENVIOS = 3, JANELA_ENVIOS_MS = 15 * 60_000;
   const pend = new Map(); // `${finalidade}:${email}` → { hash, exp, tentativas, envios:[ts], ultimoEnvio }
   const key = (f, e) => `${f}:${String(e || "").toLowerCase().trim()}`;
-  const hashCode = (c) => crypto.createHash("sha256").update(String(c)).digest("hex");
+  // Chave do HMAC: a mesma do token "e-mail verificado" (abaixo). Hash COM chave —
+  // 6 dígitos em sha256 puro caem num dicionário de 1 milhão de entradas; com HMAC
+  // o arquivo em disco não entrega o código a ninguém sem a chave do servidor.
+  const secret = crypto.createHash("sha256").update(String(hmacSecret || crypto.randomBytes(32).toString("hex"))).digest();
+  const hashCode = (k, c) => crypto.createHmac("sha256", secret).update(k + "|" + String(c)).digest("hex");
+  // 📦 v965 (caso real, 10/10/2026 — "usuários não conseguem recuperar a conta"):
+  // os códigos viviam SÓ na memória, e este repo faz deploy a cada commit (o
+  // Render também acorda do zero no plano free): quem pedia o código e, nos 5
+  // minutos de validade, pegava um restart levava "peça um código novo" sem
+  // entender nada. Agora o estado dos códigos (hash, validade, tentativas, envios)
+  // vai pra disco (gravação adiada 300ms) e volta no boot — restart no meio do
+  // caminho deixa de quebrar cadastro e recuperação de senha.
+  const CODES_FILE = path.join(DATA_DIR, "notif_codes.json");
+  let _codesTimer = null;
+  const salvarCodigos = () => {
+    if (_codesTimer) return;
+    _codesTimer = setTimeout(() => {
+      _codesTimer = null;
+      try {
+        const lim = Date.now() - JANELA_ENVIOS_MS, o = {};
+        for (const [k, v] of pend) if (v.exp > lim) o[k] = v;
+        fs.writeFileSync(CODES_FILE, JSON.stringify(o));
+      } catch (e) { console.warn("[notif] gravar códigos:", e.message); }
+    }, 300);
+    _codesTimer.unref?.();
+  };
+  try {
+    const raw = JSON.parse(fs.readFileSync(CODES_FILE, "utf8")), lim = Date.now() - JANELA_ENVIOS_MS;
+    for (const [k, v] of Object.entries(raw || {})) if (v && typeof v.hash === "string" && Number(v.exp) > lim) pend.set(k, v);
+  } catch { /* sem arquivo (1º boot) ou ilegível: começa vazio */ }
   setInterval(() => { const now = Date.now(); for (const [k, v] of pend) if (v.exp < now - JANELA_ENVIOS_MS) pend.delete(k); }, 60_000).unref?.();
 
   function podeEnviar(finalidade, email) {
@@ -141,7 +172,8 @@ function createNotif(deps) {
     const k = key(finalidade, email); const prev = pend.get(k) || {};
     const codigo = String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
     const now = Date.now();
-    pend.set(k, { hash: hashCode(codigo), exp: now + CODIGO_TTL_MS, tentativas: 0, envios: [...(prev.envios || []).filter(t => now - t < JANELA_ENVIOS_MS), now], ultimoEnvio: now });
+    pend.set(k, { hash: hashCode(k, codigo), exp: now + CODIGO_TTL_MS, tentativas: 0, envios: [...(prev.envios || []).filter(t => now - t < JANELA_ENVIOS_MS), now], ultimoEnvio: now });
+    salvarCodigos();
     return { codigo, expiraEm: CODIGO_TTL_MS / 1000, reenvioEm: REENVIO_MS / 1000 };
   }
   function confirmarCodigo(finalidade, email, codigo, opts) {
@@ -166,25 +198,25 @@ function createNotif(deps) {
       // revela existência de conta de propósito em outro ponto do fluxo
       // (/api/email/enviar-codigo 409), então continua com a mensagem antiga.
       if (opts && opts.simularSeAusente) {
-        v = { hash: hashCode(crypto.randomBytes(4).toString("hex")), exp: Date.now() + CODIGO_TTL_MS, tentativas: 0 };
-        pend.set(k, v);
+        v = { hash: hashCode(k, crypto.randomBytes(4).toString("hex")), exp: Date.now() + CODIGO_TTL_MS, tentativas: 0 };
+        pend.set(k, v); salvarCodigos();
       } else {
         return { ok: false, motivo: "nenhum código pedido pra esse e-mail — clique em Enviar verificação. (Se você acabou de pedir um, o site foi reiniciado no meio do cadastro: peça outro código, o formulário continua preenchido.)" };
       }
     }
-    if (Date.now() > v.exp) { pend.delete(k); return { ok: false, motivo: "código expirado (vale 5 minutos) — peça um novo", expirado: true }; }
+    if (Date.now() > v.exp) { pend.delete(k); salvarCodigos(); return { ok: false, motivo: "código expirado (vale 5 minutos) — peça um novo", expirado: true }; }
     const c = String(codigo || "").replace(/\D/g, "");
-    if (c.length !== 6 || hashCode(c) !== v.hash) {
+    if (c.length !== 6 || hashCode(k, c) !== v.hash) {
       v.tentativas++;
-      if (v.tentativas >= MAX_TENTATIVAS) { pend.delete(k); return { ok: false, motivo: "5 tentativas erradas — o código foi cancelado, peça um novo", cancelado: true }; }
+      if (v.tentativas >= MAX_TENTATIVAS) { pend.delete(k); salvarCodigos(); return { ok: false, motivo: "5 tentativas erradas — o código foi cancelado, peça um novo", cancelado: true }; }
+      salvarCodigos();
       return { ok: false, motivo: `código incorreto (${MAX_TENTATIVAS - v.tentativas} tentativa${MAX_TENTATIVAS - v.tentativas === 1 ? "" : "s"} restante${MAX_TENTATIVAS - v.tentativas === 1 ? "" : "s"})`, restantes: MAX_TENTATIVAS - v.tentativas };
     }
-    pend.delete(k);
+    pend.delete(k); salvarCodigos();
     return { ok: true, token: tokenVerificado(finalidade, email) };
   }
   // ── token "e-mail verificado" (HMAC, 30 min) ──────────────────────────
   const TOKEN_TTL_MS = 30 * 60_000;
-  const secret = crypto.createHash("sha256").update(String(hmacSecret || crypto.randomBytes(32).toString("hex"))).digest();
   function tokenVerificado(finalidade, email) {
     const payload = Buffer.from(JSON.stringify({ e: String(email).toLowerCase().trim(), f: finalidade, x: Date.now() + TOKEN_TTL_MS })).toString("base64url");
     const mac = crypto.createHmac("sha256", secret).update(payload).digest("base64url");
