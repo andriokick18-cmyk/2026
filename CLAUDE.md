@@ -4106,4 +4106,24 @@ em memória (30s), não varredura O(N) com regex por pedido anônimo; (7) o even
 da linha do tempo tem throttle de 6h (pedido anônimo não evicta o diagnóstico de autenticação);
 (8) /senha/redefinir ganhou piso de 250ms nas falhas; a mensagem genérica de "enviado" já explica
 o descarte silencioso dentro de 60s ("o código anterior continua valendo"); o aviso de sucesso diz
-o usuário (quem esqueceu o usuário descobre aqui). sw v177.
+o usuário (quem esqueceu o usuário descobre aqui).
+
+**v965c — achados da 3ª lente (UX/produto/regras) corrigidos**: (1) a Central de eventos
+(`pushGlobalEvent`/GLOBAL_EVENTS) é só memória e NENHUMA tela do admin a lê — então os
+alertas `_senhaAlerta` ficam no log do servidor; o sinal que o dono VÊ é a pílula vermelha
+"!" de Notificações, que agora também acende quando a conta de e-mail do site está
+"conectada" mas o ÚLTIMO envio falhou (nas últimas 24h, `_notifPrecisaAtencao`) — antes só
+acendia desconectada; o que a conta específica sofreu fica na linha do tempo da 💳 Auditoria
+(`senha_sem_email`, `senha_codigo_nao_enviado`); (2) a busca do painel acha telefone com ou sem
+DDI 55 e Gmail com pontos/+tag/googlemail (forma normalizada); (3) o CADASTRO e o BANIMENTO
+passaram a usar a mesma identidade de Gmail do login (`_gmailJaTemConta` nas 3 travas de
+unicidade, `_emailBanido`): `joao.silva+x@gmail.com`/`joaosilva@googlemail.com` não criam mais
+2ª conta (conta única, regra 13v) nem furam o banimento, e a recuperação deixa de ficar
+ambígua; o índice é invalidado a cada conta nova; (4) o 409 "já existe conta com esse e-mail"
+do cadastro deixou de ser beco sem saída: traz "Recuperar meu acesso" e "Entrar com este
+e-mail"; (5) `.ag-link` ("Esqueci minha senha", "Enviar de novo") com alvo de toque de 44px;
+(6) a mensagem genérica de "enviado" cobre o descarte silencioso pelo teto de 15min ("use o
+código mais recente ou aguarde alguns minutos"); (7) o texto da aba Notificações do admin
+explica o fluxo real (usuário OU e-mail; sem acesso ao e-mail → WhatsApp → 🔑 define senha
+PROVISÓRIA). Não feito de propósito: marcar a senha do 🔑 como "trocar no 1º acesso" (fluxo
+novo, fora do pedido). sw v178.

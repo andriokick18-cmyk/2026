@@ -475,7 +475,7 @@ tbody tr:hover{background:var(--glass2)}
           <div class="panel-body">
             <div class="pl-robos">
               <div class="pl-robo"><div class="pl-robo-t"><span>🔐 Código de confirmação no cadastro</span></div><div class="pl-robo-s">Quando alguém cria conta, digita o e-mail e clica em "Enviar verificação", esta conta manda um código de 6 dígitos que vale 5 minutos. Sem confirmar, o cadastro não conclui.</div></div>
-              <div class="pl-robo"><div class="pl-robo-t"><span>🔑 Código de recuperação de senha</span></div><div class="pl-robo-s">"Esqueci minha senha" na tela de login: o usuário recebe um código no e-mail cadastrado e define uma senha nova. Nada de senha no WhatsApp.</div></div>
+              <div class="pl-robo"><div class="pl-robo-t"><span>🔑 Código de recuperação de senha</span></div><div class="pl-robo-s">"Esqueci minha senha" na tela de login: a pessoa digita o <b>usuário OU o e-mail</b>, recebe um código no e-mail cadastrado e define uma senha nova sozinha. Se ela perdeu o acesso ao e-mail (ou a conta é de antes do e-mail existir), o botão de suporte leva pro WhatsApp e você define uma senha PROVISÓRIA em Usuários → 🔑 (busque pelo e-mail ou telefone do cliente).</div></div>
               <div class="pl-robo"><div class="pl-robo-t"><span>💳 Aviso de pedido novo pra você e pro Diego</span></div><div class="pl-robo-s">Cada pedido de plano com comprovante gera um e-mail com os dados do cliente e o comprovante anexado, pra todos os e-mails de admin abaixo. Dá pra desligar aqui.</div></div>
               <div class="pl-robo"><div class="pl-robo-t"><span>🚫 O que ela NUNCA faz</span></div><div class="pl-robo-s">Não lê caixa de entrada de ninguém (permissão só de ENVIO — gmail.send), não manda propaganda, não envia candidatura de usuário (isso sai do Gmail de cada um). Limite do Gmail: 500 e-mails/dia.</div></div>
             </div>
@@ -926,7 +926,7 @@ async function boot(){
       history.replaceState({},"",location.pathname);
       switchTab("notificacoes");
       toast(okN?"✅ Conta "+(q.get("email")||"")+" conectada! Mande um e-mail de teste pra confirmar.":"❌ "+(q.get("msg")||"Não foi possível conectar a conta."),okN?"ok":"err");
-    } else { api("/api/admin/notificacoes/status").then(function(d){var pill=_plG("pill-notif");if(pill)pill.style.display=d.conectada?"none":"";}).catch(function(){}); }
+    } else { api("/api/admin/notificacoes/status").then(function(d){var pill=_plG("pill-notif");if(pill)pill.style.display=_notifPrecisaAtencao(d)?"":"none";}).catch(function(){}); }
   }catch(e){}
   // 🩺 achado de auditoria contínua: pendura o contador de avaliações
   // aguardando moderação no link da sidebar (mesma régua de counts.pending
@@ -1227,12 +1227,19 @@ function filtrarUsuarios(){
   if(!termo){renderLinhasUsuarios(todos);return;}
   // v965: nome, USUÁRIO (chave da conta), E-MAIL CADASTRADO e TELEFONE (só dígitos, com ou sem DDI/máscara) —
   // o cliente manda "meu e-mail é X" ou o número no WhatsApp e o painel precisa achar a conta.
-  var soDig=termo.replace(/\D/g,"");
+  // Gmail: pro Google "joao.silva+x@gmail.com" = "joaosilva@gmail.com" — compara pela forma normalizada.
+  function normG(e){var m=String(e||"").trim().toLowerCase().match(/^([^@+\s]+)(?:\+[^@\s]*)?@(?:gmail|googlemail)\.com$/);return m?m[1].replace(/\./g,"")+"@gmail.com":"";}
+  var soDig=termo.replace(/\D/g,""),termoG=normG(termo);
+  // telefone: o cliente digita com ou sem o DDI 55 ("+55 11 99999-8888" × "11999998888")
+  var semDdi=function(d){return d.length>11&&d.indexOf("55")===0?d.slice(2):d;};
   var filtrados=todos.filter(function(u){
     if(String(u.nome||"").toLowerCase().indexOf(termo)>=0)return true;
     if(String(u.email||"").toLowerCase().indexOf(termo)>=0)return true;
     if(String(u.emailContato||"").toLowerCase().indexOf(termo)>=0)return true;
-    return soDig.length>=4&&String(u.telefone||"").replace(/\D/g,"").indexOf(soDig)>=0;
+    if(termoG&&(normG(u.emailContato)===termoG||normG(u.email)===termoG))return true;
+    if(soDig.length<4)return false;
+    var td=String(u.telefone||"").replace(/\D/g,"");
+    return td.indexOf(soDig)>=0||semDdi(td).indexOf(semDdi(soDig))>=0;
   });
   renderLinhasUsuarios(filtrados);
 }
@@ -2330,8 +2337,17 @@ async function loadNotificacoes(){
     _plG("nt-oauth-note").textContent=d.oauthConfigurado?"":"⚠️ GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET não estão configurados no servidor (Render → Environment). Sem eles o botão não abre o Google.";
     _plG("nt-aviso").checked=d.avisoPedidos!==false;
     _plG("nt-destinatarios").innerHTML=(d.destinatarios||[]).map(function(e){return'<span class="badge blue">'+esc(e)+'</span>';}).join(" ")||'<span class="badge gray">nenhum e-mail de admin configurado</span>';
-    var pill=_plG("pill-notif");if(pill)pill.style.display=con?"none":"";
+    var pill=_plG("pill-notif");if(pill)pill.style.display=_notifPrecisaAtencao(d)?"":"none";
   }catch(e){box.innerHTML='<div class="empty"><i class="ti ti-alert-triangle"></i>'+esc(e.message)+'</div>';}
+}
+// 🔔 v965: a conta de e-mail do site pode estar "conectada" e mesmo assim NÃO entregar (token caiu, quota,
+// Google recusando) — quem pede código de recuperação/cadastro fica sem receber e ninguém sabia. A pílula
+// acende quando está desconectada OU quando a última tentativa de envio falhou (nas últimas 24h) e não houve
+// envio bem-sucedido depois dela.
+function _notifPrecisaAtencao(d){
+  if(!d||!d.conectada)return true;
+  var falhou=d.lastErrorAt&&d.lastErrorAt>(d.lastSendAt||0)&&(Date.now()-d.lastErrorAt)<86400000;
+  return !!falhou;
 }
 function notifConectar(){
   if(!confirm("Vai abrir a tela do Google. Entre com a conta SuporteH2bapply@gmail.com (a conta de suporte, não a sua pessoal) e permita \"Enviar e-mail em seu nome\".\n\nContinuar?"))return;

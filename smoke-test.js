@@ -1288,32 +1288,35 @@ async function drillAdminSettingsLegado() {
     // exata. Agora aceita USUÁRIO ("@Maria" também) ou E-MAIL (inclusive o mesmo
     // Gmail sem pontos), manda o código SEMPRE pro e-mail cadastrado da conta
     // (nunca pro que foi digitado) e usuário+e-mail da mesma conta dividem 1 código.
+    // conta PRÓPRIA pra esta bateria: o teto de envios por destino virou um histórico que NÃO zera ao usar o
+    // código (v965b) — o e-mail de fulano.v175 acabou de receber um, então reaproveitá-lo seria bloquear o teste.
+    const _cadRec = await cadastroCompleto({ username: "rec_user_v965", email: "recuperar.v965@gmail.com", password: "senhainicial123", emailToken: await verificar("recuperar.v965@gmail.com") });
     COOKIE = "";
     const _outAntes = lerOutbox().length;
-    const _recPorUser = await req2("POST", "/api/senha/enviar-codigo", { identificador: "@Novo_User_V172C" });
+    const _recPorUser = await req2("POST", "/api/senha/enviar-codigo", { identificador: "@Rec_User_V965" });
     const _recSemConta = await req2("POST", "/api/senha/enviar-codigo", { identificador: "usuario_que_nao_existe_v965" });
-    const _codPorUser = ultimoCodigo("fulano.v175@gmail.com", "codigo_senha");
+    const _codPorUser = ultimoCodigo("recuperar.v965@gmail.com", "codigo_senha");
     const _outDepoisUser = lerOutbox();
     check("🔑 v965: recuperação pelo NOME DE USUÁRIO (com @ na frente e maiúsculas) manda o código pro e-mail CADASTRADO da conta — resposta idêntica à de usuário inexistente (sem enumeração) e nada sai pra quem não tem conta",
       _recPorUser.status === 200 && _recSemConta.status === 200 && _recPorUser.body === _recSemConta.body &&
-      /^\d{6}$/.test(_codPorUser || "") && _codPorUser !== _codRec && _outDepoisUser.length === _outAntes + 1 &&
-      _outDepoisUser[_outDepoisUser.length - 1].to === "fulano.v175@gmail.com" && !_outDepoisUser.some((x) => /usuario_que_nao_existe/.test(x.to || "")),
+      _cadRec.status === 200 && /^\d{6}$/.test(_codPorUser || "") && _outDepoisUser.length === _outAntes + 1 &&
+      _outDepoisUser[_outDepoisUser.length - 1].to === "recuperar.v965@gmail.com" && !_outDepoisUser.some((x) => /usuario_que_nao_existe/.test(x.to || "")),
       JSON.stringify({ user: _recPorUser.status, sem: _recSemConta.status, corpoIgual: _recPorUser.body === _recSemConta.body, cod: _codPorUser, novos: _outDepoisUser.length - _outAntes }));
     // mesma conta pelo E-MAIL digitado SEM os pontos (pro Google é o mesmo Gmail): não gera 2º e-mail
-    const _recPorMailSemPonto = await req2("POST", "/api/senha/enviar-codigo", { identificador: "fulanov175@gmail.com" });
+    const _recPorMailSemPonto = await req2("POST", "/api/senha/enviar-codigo", { identificador: "recuperarv965@gmail.com" });
     const _outDepoisMail = lerOutbox();
-    check("🔑 v965: o mesmo Gmail digitado SEM os pontos (fulanov175@gmail.com × fulano.v175@gmail.com) acha a conta, MAS não manda um 2º e-mail — usuário e e-mail da mesma conta dividem o teto de envios (digitar os dois nunca dobra o spam na caixa) e nada vai pro endereço digitado",
-      _recPorMailSemPonto.status === 200 && _outDepoisMail.length === _outDepoisUser.length && !_outDepoisMail.some((x) => x.to === "fulanov175@gmail.com"),
+    check("🔑 v965: o mesmo Gmail digitado SEM os pontos (recuperarv965@gmail.com × recuperar.v965@gmail.com) acha a conta, MAS não manda um 2º e-mail — usuário e e-mail da mesma conta dividem o teto de envios (digitar os dois nunca dobra o spam na caixa) e nada vai pro endereço digitado",
+      _recPorMailSemPonto.status === 200 && _outDepoisMail.length === _outDepoisUser.length && !_outDepoisMail.some((x) => x.to === "recuperarv965@gmail.com"),
       JSON.stringify({ status: _recPorMailSemPonto.status, novos: _outDepoisMail.length - _outDepoisUser.length }));
-    const _redefMailSemPonto = await req2("POST", "/api/senha/redefinir", { identificador: "fulanov175@gmail.com", codigo: _codPorUser, novaSenha: "porusuario123" });
+    const _redefMailSemPonto = await req2("POST", "/api/senha/redefinir", { identificador: "recuperarv965@gmail.com", codigo: _codPorUser, novaSenha: "porusuario123" });
     COOKIE = "";
-    const _logPorUser = await req2("POST", "/api/login", { username: "novo_user_v172c", password: "porusuario123" });
+    const _logPorUser = await req2("POST", "/api/login", { username: "rec_user_v965", password: "porusuario123" });
     COOKIE = "";
-    const _logVelha2 = await req2("POST", "/api/login", { username: "novo_user_v172c", password: "novasenha123" });
+    const _logVelha2 = await req2("POST", "/api/login", { username: "rec_user_v965", password: "senhainicial123" });
     COOKIE = "";
-    const _logSemPonto = await req2("POST", "/api/login", { username: "FulanoV175@Gmail.com", password: "porusuario123" });
+    const _logSemPonto = await req2("POST", "/api/login", { username: "RecuperarV965@Gmail.com", password: "porusuario123" });
     check("🔑 v965: o código pedido pelo USUÁRIO redefine pela tela do E-MAIL (mesma chave de destino) — a senha nova entra por usuário E pelo Gmail sem pontos, a anterior morre",
-      _redefMailSemPonto.status === 200 && _redefMailSemPonto.json?.username === "novo_user_v172c" && _logPorUser.status === 200 && _logVelha2.status === 403 && _logSemPonto.status === 200,
+      _redefMailSemPonto.status === 200 && _redefMailSemPonto.json?.username === "rec_user_v965" && _logPorUser.status === 200 && _logVelha2.status === 403 && _logSemPonto.status === 200,
       JSON.stringify({ redef: _redefMailSemPonto.status, user: _logPorUser.status, velha: _logVelha2.status, semPonto: _logSemPonto.status }));
     const _recFormatoRuim = await req2("POST", "/api/senha/enviar-codigo", { identificador: "a b/c<script>" });
     const _recVazio = await req2("POST", "/api/senha/enviar-codigo", {});
@@ -1331,23 +1334,22 @@ async function drillAdminSettingsLegado() {
       _recSemMail.status === 200 && lerOutbox().length === _outAntesSem && (_rxSemMail?.auth?.timeline || []).some((ev) => ev.tipo === "senha_sem_email"),
       JSON.stringify({ status: _recSemMail.status, novos: lerOutbox().length - _outAntesSem, tl: (_rxSemMail?.auth?.timeline || []).map((e) => e.tipo) }));
     // admin 🔑: aceita o E-MAIL que o cliente mandou no WhatsApp (a chave da conta é o usuário)
-    // (a senha que o admin define é a "novasenha123" que o teste seguinte — v237h — espera pra relogar)
-    const _admSetMail = await req2("POST", "/api/admin/set-password", { email: "Fulano.V175@gmail.com", novaSenha: "novasenha123" });
-    const _admSetUser = await req2("POST", "/api/admin/set-password", { email: "usuario_que_nao_existe_v965", novaSenha: "novasenha123" });
+    const _admSetMail = await req2("POST", "/api/admin/set-password", { email: "Recuperar.V965@gmail.com", novaSenha: "adminreset123" });
+    const _admSetUser = await req2("POST", "/api/admin/set-password", { email: "usuario_que_nao_existe_v965", novaSenha: "adminreset123" });
     COOKIE = "";
-    const _logAdminResetAntiga = await req2("POST", "/api/login", { username: "novo_user_v172c", password: "porusuario123" });
+    const _logAdminResetAntiga = await req2("POST", "/api/login", { username: "rec_user_v965", password: "porusuario123" });
     COOKIE = "";
-    const _logAdminReset = await req2("POST", "/api/login", { username: "novo_user_v172c", password: "novasenha123" });
+    const _logAdminReset = await req2("POST", "/api/login", { username: "rec_user_v965", password: "adminreset123" });
     check("🔑 v965: o admin (🔑) redefine a senha digitando o E-MAIL do cliente — acha a conta cuja chave é o usuário, devolve qual conta mexeu e o cliente entra com a senha nova; usuário inexistente continua 404",
-      _admSetMail.status === 200 && _admSetMail.json?.conta === "novo_user_v172c" && _admSetUser.status === 404 && _logAdminReset.status === 200 && _logAdminResetAntiga.status === 403,
+      _admSetMail.status === 200 && _admSetMail.json?.conta === "rec_user_v965" && _admSetUser.status === 404 && _logAdminReset.status === 200 && _logAdminResetAntiga.status === 403,
       JSON.stringify({ mail: _admSetMail.json, inexistente: _admSetUser.status, login: _logAdminReset.status, antiga: _logAdminResetAntiga.status }));
     // 🔎 v965: o admin precisa ACHAR o cliente pelo que ele manda no WhatsApp — e-mail cadastrado ou telefone.
     // O painel só buscava por nome e usuário (a chave da conta), então "meu e-mail é X" não achava ninguém.
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
     const _dashU = (await get("/api/admin/contabilidade")).json?.usuarios || [];
-    const _uBusca = _dashU.find((u) => u.email === "novo_user_v172c");
+    const _uBusca = _dashU.find((u) => u.email === "rec_user_v965");
     check("🔎 v965: o painel de Usuários recebe o E-MAIL CADASTRADO e o telefone de cada conta (antes só o usuário/nome — o admin não achava o cliente pelo e-mail que ele manda no WhatsApp) e sabe quando o Gmail de envio CAIU",
-      _uBusca?.emailContato === "fulano.v175@gmail.com" && typeof _uBusca?.telefone === "string" && _uBusca.telefone.length > 5 && _uBusca?.gmailCaiu === false,
+      _uBusca?.emailContato === "recuperar.v965@gmail.com" && typeof _uBusca?.telefone === "string" && _uBusca.telefone.length > 5 && _uBusca?.gmailCaiu === false,
       JSON.stringify({ ec: _uBusca?.emailContato, tel: _uBusca?.telefone, caiu: _uBusca?.gmailCaiu }));
     COOKIE = "";
     await req2("POST", "/api/login", { username: "novo_user_v172c", password: "novasenha123" });
@@ -1424,6 +1426,18 @@ async function drillAdminSettingsLegado() {
     // devolve a sessão pra conta que o bloco seguinte (v237h) espera estar logada
     COOKIE = "";
     await req2("POST", "/api/login", { username: "novo_user_v172c", password: "novasenha123" });
+    // cadastro com variante do MESMO Gmail (pontos, +tag, googlemail) de uma conta existente → 409 (conta única, regra 13v);
+    // um Gmail realmente diferente segue livre
+    COOKIE = "";
+    const _varPonto = await req2("POST", "/api/email/enviar-codigo", { email: "r.e.c.u.p.e.r.a.r.v965@gmail.com" });
+    const _varTag = await req2("POST", "/api/email/enviar-codigo", { email: "recuperar.v965+promo@gmail.com" });
+    const _varGoogleMail = await req2("POST", "/api/email/enviar-codigo", { email: "recuperarv965@googlemail.com" });
+    const _outroGmail = await req2("POST", "/api/email/enviar-codigo", { email: "pessoa.diferente.v965@gmail.com" });
+    check("🔒 v965 (revisão): o cadastro reconhece o MESMO Gmail escrito com outros pontos, +tag ou @googlemail.com (409 — antes criava 2ª conta, furando a conta única, o banimento e deixando a recuperação ambígua); um Gmail realmente diferente continua livre (200)",
+      _varPonto.status === 409 && _varTag.status === 409 && _varGoogleMail.status === 409 && _outroGmail.status === 200,
+      JSON.stringify({ ponto: _varPonto.status, tag: _varTag.status, googlemail: _varGoogleMail.status, outro: _outroGmail.status }));
+    COOKIE = "";
+    await req2("POST", "/api/login", { username: "novo_user_v172c", password: "novasenha123" });
     const _srv965 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
     const _app965 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
     check("🔑 v965 estrutural: UM resolvedor (_findUserByLogin) serve login, pedir código, redefinir e o 🔑 do admin; a recuperação deixa de exigir '@'; falha de entrega e conta sem e-mail viram alerta na Central; limites por IP relaxados pra CGNAT (40/h pedir, 90/h redefinir) com o teto POR E-MAIL intacto",
@@ -1437,11 +1451,17 @@ async function drillAdminSettingsLegado() {
       "contrato da recuperação v965 quebrado no servidor");
     const _adm965 = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
     check("🔎 v965 estrutural: o painel de Usuários busca por nome, usuário, E-MAIL CADASTRADO e TELEFONE (dígitos), mostra o e-mail cadastrado sob o usuário e marca 'Gmail caiu'; o servidor entrega emailContato/telefone/gmailCaiu; e a mensagem de login com senha errada aponta o 'Esqueci minha senha'",
-      /placeholder="Buscar por nome, usuário, e-mail ou telefone…"/.test(_adm965) && /String\(u\.emailContato\|\|""\)\.toLowerCase\(\)\.indexOf\(termo\)>=0/.test(_adm965) && /soDig\.length>=4&&String\(u\.telefone\|\|""\)/.test(_adm965) &&
+      /placeholder="Buscar por nome, usuário, e-mail ou telefone…"/.test(_adm965) && /String\(u\.emailContato\|\|""\)\.toLowerCase\(\)\.indexOf\(termo\)>=0/.test(_adm965) && /function normG\(e\)/.test(_adm965) && /semDdi\(td\)\.indexOf\(semDdi\(soDig\)\)/.test(_adm965) && /function _notifPrecisaAtencao\(d\)/.test(_adm965) && (_adm965.match(/_notifPrecisaAtencao\(d\)\?/g) || []).length === 2 &&
       /u\.emailContato&&u\.emailContato!==u\.email/.test(_adm965) && /var gm=u\.gmailCaiu/.test(_adm965) && /Gmail caiu/.test(_adm965) &&
       /emailContato:u\.emailContato\|\|"",telefone:String\(u\.whatsapp\|\|u\.phone\|\|""\),gmailCaiu:!!\(u\.refresh_token&&u\.rtInvalid\)/.test(_srv965) &&
       /Esqueceu a senha\? Toque em “Esqueci minha senha”\./.test(_app965),
       "busca do admin / sinal de Gmail caiu / dica de senha errada fora do contrato v965");
+    check("🔑 v965 estrutural (revisão): cadastro e banimento comparam pelo Gmail NORMALIZADO (_gmailJaTemConta nas 3 travas de unicidade, _emailBanido na checagem de banido, índice invalidado ao criar conta); o 409 do cadastro traz os atalhos 'Recuperar meu acesso' / 'Entrar com este e-mail'; os links do login (.ag-link) têm alvo de toque de 44px",
+      (_srv965.match(/_gmailJaTemConta\(email\)\)return json\(res,409/g) || []).length === 3 && !/_findUserByEmail\(email\)\)return json\(res,409/.test(_srv965) &&
+      /if\(_emailBanido\(email\)\)return json\(res,403/.test(_srv965) && /_gmailIdx\.at=0;/.test(_srv965) &&
+      /er\.status=r\.status;throw er;/.test(_app965) && /onclick="agJaTemConta\('rec'\)">Recuperar meu acesso/.test(_app965) && /^function agJaTemConta\(modo\)\{/m.test(_app965) &&
+      /\.ag-link\{[^}]*min-height:44px[^}]*\}/.test(_idxV214),
+      "atalhos do 409 / identidade de Gmail do cadastro / alvo de toque fora do contrato");
     check("🔑 v965 estrutural (front): a tela de recuperação pede 'Nome de usuário ou e-mail' (campo de texto, sem exigir '@'), manda {identificador}, o login leva o que a pessoa já digitou (agIrRecuperar) e as 2 telas trazem o botão de suporte no WhatsApp",
       /Nome de usuário ou e-mail<\/label>\s*\n\s*<input class="ag-input" id="ag-r-email" type="text"/.test(_app965) &&
       !/type="email"[^>]*id="ag-r-email"|id="ag-r-email"[^>]*type="email"/.test(_app965) &&

@@ -7276,6 +7276,18 @@ function _gmailIndex() {
   }
   return _gmailIdx.map;
 }
+// Cadastro e banimento usam a MESMA identidade de Gmail do login/recuperação: joao.silva+x@gmail.com,
+// joaosilva@googlemail.com e joaosilva@gmail.com são a MESMA caixa — antes a variante criava uma 2ª conta
+// (fura a regra de conta única e o banimento) e deixava a recuperação ambígua.
+function _gmailJaTemConta(email) {
+  const ex = _findUserByEmail(email); if (ex) return ex;
+  const ng = _normGmailKey(email); if (!ng) return null;
+  const hits = _gmailIndex().get(ng); return hits && hits.length ? hits[0] : null;
+}
+function _emailBanido(email) {
+  const e = String(email || "").trim().toLowerCase(); if (DB_BLOCKED.emails.includes(e)) return true;
+  const ng = _normGmailKey(e); return !!ng && DB_BLOCKED.emails.some(b => _normGmailKey(b) === ng);
+}
 function _findUserByLogin(ident) {
   const id = _identRecuperacao(ident); if (!id) return null;
   // chave PRÓPRIA do banco: DB_USERS é um objeto comum — "constructor"/"__proto__" não são contas.
@@ -9206,7 +9218,7 @@ filtrar();
       const d=JSON.parse((await readBody(req))||"{}");
       const email=String(d.email||"").trim().toLowerCase();
       if(!_isGmail(email))return json(res,400,{error:"Use um Gmail válido (…@gmail.com) — é por ele que o site envia suas candidaturas."});
-      if(_findUserByEmail(email))return json(res,409,{error:"Já existe uma conta com esse e-mail. Entre com seu usuário ou use \"Esqueci minha senha\"."});
+      if(_gmailJaTemConta(email))return json(res,409,{error:"Já existe uma conta com esse e-mail. Entre com seu usuário ou use \"Esqueci minha senha\"."});
       // 🔐 v176 (dono, 13/09/2026 — "quando o sistema identificar meu e-mail
       // que é de adm ele não pede verificação... desativa o código pra esse
       // cadastro do usuário andrio que é o adm"): os e-mails de admin
@@ -9348,7 +9360,7 @@ filtrar();
       }
       const _falta=400-(Date.now()-_t0);
       if(_falta>0)await new Promise(r=>setTimeout(r,_falta));
-      return json(res,200,{ok:true,msg:"Se existir uma conta com esse usuário ou e-mail, o código foi enviado para o e-mail cadastrado nela. Vale 5 minutos. Se você pediu há menos de 1 minuto, aguarde — o código anterior continua valendo."});
+      return json(res,200,{ok:true,msg:"Se existir uma conta com esse usuário ou e-mail, o código foi enviado para o e-mail cadastrado nela. Vale 5 minutos. Se você já pediu um agora há pouco, use o código mais recente ou aguarde alguns minutos pra pedir outro."});
     }catch(e){return json(res,400,{error:"Corpo inválido: "+e.message});}
   }
   if(pathname==="/api/senha/redefinir"&&req.method==="POST"){
@@ -9562,12 +9574,12 @@ filtrar();
       // de contato (só trocando o username, que é livre). Checado aqui,
       // ANTES do fluxo de verificação de código, pra não fazer alguém
       // banido gastar um código de e-mail à toa.
-      if(DB_BLOCKED.emails.includes(email))return json(res,403,{error:"Esse e-mail está banido permanentemente do H2BApply. Se você acredita que isso é um engano, chame o suporte no WhatsApp +55 53 98145-3496."});
+      if(_emailBanido(email))return json(res,403,{error:"Esse e-mail está banido permanentemente do H2BApply. Se você acredita que isso é um engano, chame o suporte no WhatsApp +55 53 98145-3496."});
       // 🚨 v177-FIX7: o token "e-mail verificado" é assinado com um segredo que
       // NASCE JUNTO COM O PROCESSO — um deploy entre o "confirmar código" e o
       // "criar conta" invalida um token legítimo. A mensagem agora explica.
       if(!NOTIF.validarToken(d.emailToken,"cadastro",email))return json(res,400,{error:"Confirme seu e-mail primeiro: clique em \"Enviar verificação\" e digite o código que chegou no seu Gmail. (Se você já confirmou agora há pouco, o site foi reiniciado no meio do cadastro — é só confirmar de novo, seus dados continuam preenchidos.)"});
-      if(_findUserByEmail(email))return json(res,409,{error:"Já existe uma conta com esse e-mail. Entre com seu usuário ou use \"Esqueci minha senha\"."});
+      if(_gmailJaTemConta(email))return json(res,409,{error:"Já existe uma conta com esse e-mail. Entre com seu usuário ou use \"Esqueci minha senha\"."});
       // Cinto-e-suspensório: impossível "roubar" identidade de admin pelo username.
       if(isAdminEmail(username))return json(res,400,{error:"Esse nome de usuário não pode ser usado."});
       if(getUser(username))return json(res,409,{error:"Esse nome de usuário já existe. Escolha outro ou entre na sua conta."});
@@ -9578,7 +9590,7 @@ filtrar();
       if(_nasceAdmin&&!isAdminEmail(email))return json(res,400,{error:"Esse nome de usuário é reservado. Escolha outro."});
       const {salt,hash}=await _hashPw(senha);
       // 🚨 v172c-SEC: _hashPw é assíncrono — reconfere unicidade antes de gravar.
-      if(_findUserByEmail(email))return json(res,409,{error:"Já existe uma conta com esse e-mail."});
+      if(_gmailJaTemConta(email))return json(res,409,{error:"Já existe uma conta com esse e-mail."});
       if(getUser(username))return json(res,409,{error:"Esse nome de usuário já existe. Escolha outro ou entre na sua conta."});
       const nomeCompleto=(nome+" "+sobrenome).trim();
       // 🔒 v172: conta nova nasce 100% free (0 manual/0 auto), sem trial nenhum;
@@ -9598,6 +9610,7 @@ filtrar();
       persistSessionsDebounced(500);
       console.log(`[cadastro] 🆕 Conta nova por usuário+senha: ${username} (${email})${_nasceAdmin?" (👑 admin — username reservado + e-mail de admin)":""}`);
       try{ trackJourney(username,'first_login',{detail:"Novo. Cadastro usuário+senha com e-mail confirmado por código",meta:{name:nomeCompleto,email}}); }catch(e){}
+      _gmailIdx.at=0; // conta nova entra no índice de Gmail já na próxima consulta
       try{ pushGlobalEvent('new_user',username,`Novo: ${nomeCompleto}`,"info"); }catch(e){}
       res.writeHead(200,{"Content-Type":"application/json","Set-Cookie":makeCookieStr(sid)});
       return res.end(JSON.stringify({ok:true,username,novaConta:true}));

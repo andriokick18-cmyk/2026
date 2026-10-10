@@ -404,7 +404,7 @@ function agRender(step,data){
     } else {
       body.innerHTML=`
       <div class="ag-title">Digite o código</div>
-      <div class="ag-sub">Se existir uma conta com <strong style="color:#fff">${esc(_agRecId)}</strong>, o código foi pro e-mail cadastrado nela (olhe também o spam). Ele vale 5 minutos. Se você pediu há menos de 1 minuto, aguarde — o código anterior continua valendo.</div>
+      <div class="ag-sub">Se existir uma conta com <strong style="color:#fff">${esc(_agRecId)}</strong>, o código foi pro e-mail cadastrado nela (olhe também o spam). Ele vale 5 minutos. Se você já pediu um agora há pouco, use o código mais recente ou aguarde alguns minutos pra pedir outro.</div>
       <label class="ag-lbl" for="ag-r-code">Código de 6 dígitos</label>
       <input class="ag-input ag-code" id="ag-r-code" type="text" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,6)">
       <label class="ag-lbl" for="ag-r-pass">Nova senha</label>
@@ -508,7 +508,7 @@ async function agEnviarCodigo(){
   try{
     const r=await fetch("/api/email/enviar-codigo",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({email})});
     const d=await _agReadJson(r);
-    if(!r.ok)throw new Error(d.error||"Não foi possível enviar o código agora.");
+    if(!r.ok){const er=new Error(d.error||"Não foi possível enviar o código agora.");er.status=r.status;throw er;}
     _agEmailSentTo=email;
     // 🔐 v176 (dono, 13/09/2026): e-mail de admin — o servidor já devolve o
     // token confirmado, sem código nenhum pra digitar (ver server.js
@@ -536,9 +536,17 @@ async function agEnviarCodigo(){
     gaEvent("email_code_sent",{});
   }catch(e){
     showErr("⚠️ "+e.message);
+    // 🔑 v965: "já existe conta com esse e-mail" era beco sem saída pra quem perdeu o acesso e tentou criar
+    // outra — agora o próprio aviso traz os 2 caminhos (recuperar a senha / entrar com este e-mail).
+    if(e.status===409&&err)err.innerHTML=`${esc("⚠️ "+e.message)}<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px"><button type="button" class="ag-link" onclick="agJaTemConta('rec')">Recuperar meu acesso</button><button type="button" class="ag-link" onclick="agJaTemConta('login')">Entrar com este e-mail</button></div>`;
     if(btn){btn.disabled=false;btn.textContent="Enviar verificação";}
     if(rs)rs.disabled=false;
   }
+}
+function agJaTemConta(modo){
+  const em=(g("#ag-s-email")?.value||"").trim().toLowerCase();
+  if(modo==="rec"){_agRecId=em;agRender("recuperar");}
+  else{_agUser=em;agRender("login");}
 }
 function _agResendTick(){
   clearTimeout(_agResendTimer);
