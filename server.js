@@ -7192,7 +7192,8 @@ function _saveEnrichedSheet(sheetKey, sheet){
     // gravou NADA em disco, e ninguém via log de erro nenhum.
     if(_gravou)_enrichBot.savedAt = Date.now();
     else _enrichLog(`⚠️ "${sheetKey}" não bate com nenhum destino de gravação conhecido (planilha apagada?) — nada foi salvo.`, "warn");
-  }catch(e){ _enrichLog(`❌ Erro ao salvar: ${e.message}`,"error"); }
+    return _gravou; // v968: quem precisa SABER se gravou (robô da H-2A) lê isto; os demais ignoram
+  }catch(e){ _enrichLog(`❌ Erro ao salvar: ${e.message}`,"error"); return false; }
 }
 
 // ═══ 📋 v174 — ALIMENTAÇÃO AUTOMÁTICA DAS PLANILHAS (ordem do dono, 13/09/2026:
@@ -8385,7 +8386,10 @@ ul li{margin-bottom:6px}
   if(pathname==="/api/admin/sheet/h2a-novas-run"&&req.method==="POST"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
     const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
-    try{const r=await PLANILHAS.runH2aNovasCycle("manual:"+s.user_email);return json(res,r.ok?200:500,r);}
+    try{
+      let _b={};try{_b=JSON.parse(await readBody(req)||"{}");}catch{}
+      const r=await PLANILHAS.runH2aNovasCycle("manual:"+s.user_email,{cap:_b.cap}); // cap só vale no npm test (mod-planilhas ignora fora dele)
+      return json(res,r.ok?200:500,r);}
     catch(e){return json(res,500,{ok:false,error:e.message});}
   }
 
@@ -8822,7 +8826,7 @@ ul li{margin-bottom:6px}
     const out=[
       _mk("jan2026","Jan 2026","H-2B","☀️"),
       _mk("jul2025","Jul 2025","H-2B","❄️"),
-      _mk("h2a-jun2026","H-2A Agricultura","H-2A","🌾"),
+      {..._mk("h2a-jun2026","H-2A Agricultura","H-2A","🌾"),h2aInfo:PLANILHAS.h2aJanelaInfo()}, // v968: alimenta o card "Atualizada em"
     ];
     for(const [k,meta] of Object.entries(DB_SHEETS_META)){
       if(k==="jan2026"||k==="jul2025") continue;
@@ -16247,6 +16251,11 @@ server.listen(PORT,"0.0.0.0",()=>{
   // publicar temporada nova (poucas vezes por ano). Chamada mantida pra não
   // esconder o boot deste módulo, mas não registra timer algum.
   PLANILHAS.iniciarAgendadores();
+  // 🌾 v968 (dono, 10/10/2026 — ordem EXPRESSA e NOVA, exceção ao v217 só pra
+  // planilha H-2A): janela rolante de 5.000 vagas, busca sozinha no 1º boot
+  // sem estado e depois a cada 14 dias. Mora em função PRÓPRIA, fora de
+  // iniciarAgendadores(), pra guarda do v217 continuar provando algo.
+  PLANILHAS.iniciarAgendadorH2a();
 
   // ── 📧 v282 (dono, 24/09/2026 — achado ao vivo: Julho 2026 estava com só
   // 1.267 de 2.625 vagas liberadas, porque o robô de Enriquecimento é manual

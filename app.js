@@ -1096,6 +1096,7 @@ function setTab(t){
   if(!["random","desc","wage","start","match"].includes(fSort)){setSort("random");}
   document.querySelectorAll(".stab").forEach(b=>b.classList.remove("active"));
   g("#stab-"+t)?.classList.add("active");
+  renderH2aUpdCard();
   g("#jlist").innerHTML="";g("#lmore").innerHTML="";
   const _existing=document.getElementById("sheet-filter-warn");if(_existing)_existing.remove();
   g("#jd-empty")?.classList.remove("gone");g("#jd-content").style.display="none";closeMobDetail();
@@ -4523,6 +4524,20 @@ function buildAutoDocSlots(){
 // mostrar o nome CERTO da planilha ativa (antes era um ternário fixo que
 // mostrava "Jul 2025" pra qualquer planilha nova/H-2A/histórica).
 let _sheetNameMap={};
+// v968: card "H-2A atualizada em" — o usuário vê que a planilha é viva (robô renova a cada 14 dias).
+function _h2aDia(v){try{return new Date(v).toLocaleDateString('pt-BR');}catch(e){return'';}}
+function renderH2aUpdCard(){
+  const el=g("#h2a-upd-card");if(!el)return;
+  if(typeof tab==='undefined'||tab!=='h2a-jun2026'){el.style.display="none";el.innerHTML="";return;}
+  const i=window._h2aInfo;
+  if(i===undefined){el.style.display="none";el.innerHTML="";return;} // ainda não carregou (ou a lista falhou): não afirma nada
+  el.style.display="block";
+  if(!i||!i.atualizadoEm){el.innerHTML=`<div style="display:flex;gap:10px;align-items:center;padding:11px 14px;border-radius:14px;background:rgba(16,185,129,.1);border:1.5px solid rgba(16,185,129,.3);font-size:12.5px;color:var(--text)"><i class="ti ti-plant-2" style="font-size:20px;color:#059669"></i><span>${esc(t('h2u_never'))}</span></div>`;return;}
+  const dia=_h2aDia(i.atualizadoEm);
+  const rec=i.maisRecente?new Date(i.maisRecente+'T12:00:00').toLocaleDateString('pt-BR'):'';
+  const sub=t('h2u_s').replace('{a}',(i.novas||0).toLocaleString('pt-BR')).replace('{r}',rec||'—');
+  el.innerHTML=`<div style="display:flex;gap:10px;align-items:center;padding:11px 14px;border-radius:14px;background:rgba(16,185,129,.1);border:1.5px solid rgba(16,185,129,.35)"><i class="ti ti-refresh" style="font-size:22px;color:#059669;flex-shrink:0"></i><div style="min-width:0"><div style="font-size:13.5px;font-weight:800;color:#047857">${esc(t('h2u_t').replace('{d}',dia))}</div><div style="font-size:12px;color:var(--text);margin-top:1px">${esc(sub)}</div>${i.proxima?`<div style="font-size:11px;opacity:.75;margin-top:2px">${esc(t('h2u_next').replace('{d}',_h2aDia(i.proxima)))}</div>`:''}</div></div>`;
+}
 function _sheetLabelFor(key){
   const m=_sheetNameMap[key];
   if(m)return `${m.emoji||'📋'} ${m.name}`;
@@ -4559,7 +4574,8 @@ async function loadDynamicSheets(){
     };
     d.sheets.forEach(s=>{
       const id=s.key==='jan2026'?'src-jan-cnt':s.key==='jul2025'?'src-jul-cnt':s.key==='h2a-jun2026'?'src-h2a-cnt':null;
-      if(id){const el=document.getElementById(id);if(el)el.innerHTML=_srcCntHtml(s);}
+      if(id){const el=document.getElementById(id);if(el)el.innerHTML=_srcCntHtml(s)+(s.key==='h2a-jun2026'&&s.h2aInfo&&s.h2aInfo.atualizadoEm?`<br><span style="font-size:9.5px;opacity:.75">🔄 ${esc(t('h2u_short').replace('{d}',_h2aDia(s.h2aInfo.atualizadoEm)))}</span>`:'');}
+      if(s.key==='h2a-jun2026'){window._h2aInfo=s.h2aInfo||null;renderH2aUpdCard();}
     });
     // injeta só planilhas que NÃO estão fixas no HTML (jan2026/jul2025/h2a-jun2026 já existem)
     const extras=d.sheets.filter(s=>!['jan2026','jul2025','h2a-jun2026'].includes(s.key));
@@ -7270,6 +7286,11 @@ const LANG_DICT = {
     "gm_re_t":"⚠️ Seu Gmail desconectou — reconecte pra voltar a enviar",
     "gm_re_s":"O Google encerrou a autorização do seu Gmail (acontece por segurança). Reconecte em 1 minuto — seu plano e seus dias continuam valendo.",
     "gm_btn":"Conectar meu Gmail agora",
+    "h2u_t":"🌾 Planilha H-2A atualizada em {d}",
+    "h2u_s":"+{a} vagas novas na última atualização · vaga mais recente protocolada em {r}",
+    "h2u_next":"Próxima atualização automática: {d}",
+    "h2u_short":"atualizada {d}",
+    "h2u_never":"A primeira atualização automática da planilha H-2A está sendo preparada.",
     "pfg_t":"Gmail de envio",
     "pfg_s":"Conecte o Gmail que vai enviar suas candidaturas. Leva 1 minuto.",
     "pfg_free":"Somente conecte seu Gmail com um plano ativo.",
@@ -7432,6 +7453,11 @@ const LANG_DICT = {
     "gm_re_t":"⚠️ Your Gmail got disconnected — reconnect to keep sending",
     "gm_re_s":"Google ended the authorization for your Gmail (it happens for security). Reconnect in 1 minute — your plan and days stay valid.",
     "gm_btn":"Connect my Gmail now",
+    "h2u_t":"🌾 H-2A sheet updated on {d}",
+    "h2u_s":"+{a} new jobs in the last update · most recent job filed on {r}",
+    "h2u_next":"Next automatic update: {d}",
+    "h2u_short":"updated {d}",
+    "h2u_never":"The first automatic update of the H-2A sheet is being prepared.",
     "pfg_t":"Sending Gmail",
     "pfg_s":"Connect the Gmail that will send your applications. Takes 1 minute.",
     "pfg_free":"Only connect your Gmail with an active plan.",
@@ -7576,6 +7602,11 @@ const LANG_DICT = {
     "gm_re_t":"⚠️ Tu Gmail se desconectó — reconecta para volver a enviar",
     "gm_re_s":"Google cerró la autorización de tu Gmail (pasa por seguridad). Reconecta en 1 minuto — tu plan y tus días siguen vigentes.",
     "gm_btn":"Conectar mi Gmail ahora",
+    "h2u_t":"🌾 Planilla H-2A actualizada el {d}",
+    "h2u_s":"+{a} vacantes nuevas en la última actualización · vacante más reciente presentada el {r}",
+    "h2u_next":"Próxima actualización automática: {d}",
+    "h2u_short":"actualizada {d}",
+    "h2u_never":"La primera actualización automática de la planilla H-2A se está preparando.",
     "pfg_t":"Gmail de envío",
     "pfg_s":"Conecta el Gmail que enviará tus postulaciones. Toma 1 minuto.",
     "pfg_free":"Solo conecta tu Gmail con un plan activo.",

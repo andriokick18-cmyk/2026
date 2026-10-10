@@ -103,6 +103,8 @@ const feedSrv = http.createServer((rq, rs) => {
   // 🗓️ v207: simula o DOL sem o arquivo de HOJE (404 só na data de hoje) ou
   // sem arquivo nenhum (404 em qualquer data) — caso real de 19/09/2026.
   const _dataUrl = (url.match(/\/(\d{4}-\d{2}-\d{2})/) || [])[1] || "";
+  // v968: feeds ANTIGOS (qualquer data ≠ hoje) ausentes — só o mais recente responde (rodada parcial)
+  if (h2a && fs.existsSync(path.join(DATA, "h2a_feed_so_hoje.flag")) && _dataUrl !== new Date().toISOString().slice(0, 10)) { rs.writeHead(404); return rs.end("not found"); }
   if (fs.existsSync(path.join(DATA, "h2a_feed_404_todos.flag")) || (fs.existsSync(path.join(DATA, "h2a_feed_404_hoje.flag")) && _dataUrl === new Date().toISOString().slice(0, 10))) { rs.writeHead(404); return rs.end("not found"); }
   const vagas = [];
   for (let i = 1; i <= 14; i++) vagas.push(h2a ? _mkVagaH2A(i) : _mkVaga(i));
@@ -115,6 +117,8 @@ const feedSrv = http.createServer((rq, rs) => {
   // v50: com o arquivo-bandeira presente, a vaga 14 vem RETIRADA (withdrawn)
   // — o robô tem que atualizar o status e REMOVER ela da planilha.
   if (h2a && fs.existsSync(path.join(DATA, "h2a_feed_withdraw.flag"))) vagas[13].case_status = "withdrawn";
+  // v968: vaga cuja temporada JÁ ACABOU (end_date no passado) não pode entrar na planilha H-2A
+  if (h2a && fs.existsSync(path.join(DATA, "h2a_feed_expirada.flag"))) vagas[12].end_date = "2020-01-01";
   rs.writeHead(200, { "Content-Type": "application/json" });
   rs.end(JSON.stringify(vagas));
 });
@@ -5224,6 +5228,122 @@ async function drillAdminSettingsLegado() {
       const hn6 = await req2("POST", "/api/admin/sheet/h2a-novas-run", {});
       const _stH2a3 = (await get("/api/admin/planilhas/status")).json;
       check("🗓️ v207: o ciclo seguinte com o DOL de volta limpa o erro e a tentativa agendada", hn6.json?.ok === true && !_stH2a3?.h2aNovas?.lastError && !_stH2a3?.h2aNovas?.proximaTentativa, hn6.body.slice(0, 120));
+      // 🌾 v968 (dono, 10/10/2026) — PLANILHA H-2A COM JANELA ROLANTE DE 5.000 VAGAS
+      // + agendamento automático (1º deploy e depois a cada 14 dias) + card "atualizada em".
+      const _mpH2a = require("./mod-planilhas.js");
+      check("🌾 v968: data de protocolo sai do ETA case number (H-300-YYDDD) — dia 121 de 2026 = 01/05; dia 366 em ano comum, outro visto e vazio = sem data",
+        _mpH2a.dataDoCaso("H-300-26121-860855") === "2026-05-01" && _mpH2a.dataDoCaso("H-300-26001-1") === "2026-01-01" && _mpH2a.dataDoCaso("H-300-24366-1") === "2024-12-31" &&
+        _mpH2a.dataDoCaso("H-300-26366-1") === "" && _mpH2a.dataDoCaso("H-400-26121-1") === "" && _mpH2a.dataDoCaso("") === "",
+        JSON.stringify([_mpH2a.dataDoCaso("H-300-26121-860855"), _mpH2a.dataDoCaso("H-300-26366-1")]));
+      {
+        const R = (c, o = {}) => ({ c, t: "Farm Worker", st: "Certified", d: "2026-12-01", de: "2027-06-01", ...o });
+        const A = R("H-300-26200-000001", { st: "Denied" }), B = R("H-300-26010-000002"), C = R("H-300-26121-000003"), D = R("SEM-DATA-1"), E = R("H-300-26273-000005"), F = R("H-300-26274-000006");
+        const atual = [A, B, C, D], novas = [E, F];
+        const r1 = _mpH2a.mesclarJanelaH2a(atual, novas, { cap: 4, hoje: "2026-10-10" });
+        check("🌾 v968: passou do teto → saem PRIMEIRO a inativa e a sem data, depois as mais antigas; entram as novas; ordem das que ficam preservada; entradas não mutadas",
+          r1.despejadas.length === 2 && r1.despejadas[0] === A && r1.despejadas[1] === D && r1.rows.map((x) => x.c).join() === [B, C, E, F].map((x) => x.c).join() && atual.length === 4 && novas.length === 2,
+          JSON.stringify({ desp: r1.despejadas.map((x) => x.c), rows: r1.rows.map((x) => x.c) }));
+        const r2 = _mpH2a.mesclarJanelaH2a([B, C], [E], { cap: 5000, hoje: "2026-10-10" });
+        const r3 = _mpH2a.mesclarJanelaH2a([B, C], [E, F], { cap: 2, hoje: "2026-10-10" });
+        const r4 = _mpH2a.mesclarJanelaH2a([E, F, C, B, D], [], { cap: 3, hoje: "2026-10-10" });
+        check("🌾 v968: abaixo do teto nada sai; se as NOVAS sozinhas passam do teto ficam só as mais recentes; planilha já acima do teto é aparada sem novas",
+          r2.despejadas.length === 0 && r2.rows.length === 3 && r3.rows.map((x) => x.c).join() === [E, F].map((x) => x.c).join() && r4.rows.map((x) => x.c).join() === [E, F, C].map((x) => x.c).join(),
+          JSON.stringify({ r3: r3.rows.map((x) => x.c), r4: r4.rows.map((x) => x.c) }));
+      }
+      const _slV968 = (await get("/api/sheets-list")).json;
+      const _h2aV968 = (_slV968?.sheets || []).find((x) => x.key === "h2a-jun2026");
+      const _stV968 = (await get("/api/admin/planilhas/status")).json;
+      check("🌾 v968: depois da rodada o card 'atualizada em' tem dado (data, novas, teto 5000, próxima ≈ 14 dias depois) e o painel mostra que NÃO está mais vencida",
+        _h2aV968?.h2aInfo?.atualizadoEm > Date.now() - 600_000 && _h2aV968.h2aInfo.janela === 5000 && _h2aV968.h2aInfo.novas === 0 &&
+        Math.abs(_h2aV968.h2aInfo.proxima - _h2aV968.h2aInfo.atualizadoEm - 14 * 86400_000) < 5000 && _stV968?.h2aNovas?.devido === false && _stV968.h2aNovas.agendadorLigado === false,
+        JSON.stringify(_h2aV968?.h2aInfo) + " | devido=" + _stV968?.h2aNovas?.devido);
+      const _totV968 = (await get("/api/sheets-list")).json.sheets.find((x) => x.key === "h2a-jun2026").count;
+      const hnCap = await req2("POST", "/api/admin/sheet/h2a-novas-run", { cap: _totV968 - 2 });
+      const _h2aDepV968 = (await get("/api/sheets-list")).json.sheets.find((x) => x.key === "h2a-jun2026");
+      check("🌾 v968: rodada com teto menor que a planilha APARA exatamente o excesso (as 2 mais velhas) sem duplicar nem perder o resto — nunca esvazia",
+        hnCap.json?.ok === true && hnCap.json.evicted === 2 && hnCap.json.total === _totV968 - 2 && _h2aDepV968.count === _totV968 - 2 && _h2aDepV968.h2aInfo.despejadas === 2,
+        hnCap.body.slice(0, 200) + " | lista=" + _h2aDepV968?.count);
+      // ⏰ agendador DE VERDADE (em processo, com o feed falso): 1º boot sem estado roda; depois só vence em 14 dias
+      {
+        const mkInst = (tmpD, ref, saveFn) => _mpH2a.createPlanilhas({
+          fs, path, DATA_DIR: tmpD, SHEETS_DIR: path.join(tmpD, "sheets"), SHEETS_META_FILE: path.join(tmpD, "meta.json"),
+          getSheet: () => [], getSheetH2A: () => ref.rows, setSheetH2A: (a) => { ref.rows = a; }, getExtras: () => ({}), getMeta: () => ({}),
+          enrichBot: { running: false }, enrichLog: () => { }, saveSheet: saveFn || (() => true), httpsReq: async () => ({ status: 500, body: "" }),
+          botLog: (b, l, m) => ref.logs.push(m), pushToUser: async () => { }, ADMIN_EMAILS: [], detectCategory: () => "other", detectCategoryH2A: () => "crop",
+          dedupe: (r) => ({ rows: r }), verify: () => ({ ok: true, duplicateCases: [] }), manifest: () => ({}), limparCidade: (x) => x,
+          registrarVagasNovasNoRadar: async () => 0, isTest: false,
+        });
+        const esperaRodada = async (inst, n) => { for (let i = 0; i < 80; i++) { await new Promise((r) => setTimeout(r, 100)); if (!inst.h2aNovasBot.running && inst.h2aNovasBot.runs >= n) return true; } return false; };
+        const lerEstadoR = (d) => JSON.parse(fs.readFileSync(path.join(d, "h2a_rolling.json"), "utf8"));
+        const _env = process.env.DOL_FEED_BASE; process.env.DOL_FEED_BASE = `http://127.0.0.1:${FEED_PORT}/feed`;
+        const tmpD = fs.mkdtempSync(path.join(DATA, "h2a-roll-"));
+        const ref = { rows: [], logs: [] }; const refInicial = ref.rows;
+        const inst = mkInst(tmpD, ref);
+        const _tm = global.setTimeout, _iv = global.setInterval; const caps = [];
+        global.setTimeout = (fn, ms) => { caps.push({ tipo: "t", fn, ms }); return { unref() { } }; };
+        global.setInterval = (fn, ms) => { caps.push({ tipo: "i", fn, ms }); return { unref() { } }; };
+        let liga; try { liga = inst.iniciarAgendadorH2a(); } finally { global.setTimeout = _tm; global.setInterval = _iv; }
+        const devidoAntes = inst.h2aDevido();
+        fs.writeFileSync(path.join(DATA, "h2a_feed_expirada.flag"), "1");
+        caps.find((c) => c.tipo === "t").fn();                      // dispara o relógio de boot (~90s depois do deploy)
+        const rodou1 = await esperaRodada(inst, 1);
+        fs.unlinkSync(path.join(DATA, "h2a_feed_expirada.flag"));
+        const estado1 = lerEstadoR(tmpD); const n1 = ref.rows.length; const expiradaEntrou = ref.rows.some((r) => r.c === "H-300-260013-222222" || /260013/.test(r.c));
+        caps.find((c) => c.tipo === "i").fn();                      // relógio de 3h: ainda não venceu → não bate no DOL
+        await new Promise((r) => setTimeout(r, 400));
+        const runsDepoisTick = inst.h2aNovasBot.runs;
+        const _dn = Date.now; Date.now = () => _dn() + 15 * 86400_000;  // pula 15 dias
+        const devidoDepois = inst.h2aDevido();
+        caps.find((c) => c.tipo === "i").fn();
+        const rodou2 = await esperaRodada(inst, 2);
+        Date.now = _dn;
+        check("⏰ v968: agendador da H-2A liga 2 relógios (boot ~90s + conferência a cada 3h), roda SOZINHO na 1ª vez sem estado (enche a planilha), grava a próxima pra 14 dias e o relógio de 3h não bate no DOL antes de vencer",
+          liga === true && caps.some((c) => c.tipo === "t" && c.ms === 90_000) && caps.some((c) => c.tipo === "i" && c.ms === 3 * 3600_000) && devidoAntes === true &&
+          rodou1 && Math.abs(estado1.nextRunAt - estado1.lastOkAt - 14 * 86400_000) < 5000 && estado1.lastTrigger === "primeira-vez" && runsDepoisTick === 1,
+          JSON.stringify({ liga, devidoAntes, rodou1, n1, estado1, runsDepoisTick, logs: ref.logs.slice(0, 3) }));
+        check("🌾 v968: vaga cuja temporada JÁ ACABOU no feed não entra na planilha (13 de 14 entram)",
+          n1 === 13 && !expiradaEntrou,
+          JSON.stringify({ n1, expiradaEntrou }));
+        check("⏰ v968: passados 14 dias a conferência vence e roda de novo sozinha ('agendado'); a vaga que antes era encerrada agora entra (14), nenhuma duplicada",
+          devidoDepois === true && rodou2 && ref.rows.length === 14 && inst.h2aNovasBot.lastAdded === 1 && lerEstadoR(tmpD).lastTrigger === "agendado",
+          JSON.stringify({ devidoDepois, rodou2, n: ref.rows.length, add: inst.h2aNovasBot.lastAdded }));
+        // identidade do array: rodar com uma referência segurada de fora deve enxergar as linhas novas
+        const tmpI = fs.mkdtempSync(path.join(DATA, "h2a-roll-")); const segurada = []; const refI = { rows: segurada, logs: [] };
+        const instI = mkInst(tmpI, refI); const rI = await instI.runH2aNovasCycle("teste-identidade");
+        check("🌾 v968: o merge é IN PLACE — quem segurou a referência do array (robô de Enriquecimento) vê as vagas novas e a planilha não é trocada por baixo dele",
+          rI.ok === true && segurada.length === 14 && refI.rows === segurada, JSON.stringify({ rI, n: segurada.length }));
+        // gravação em disco que falha NÃO vira 'sucesso por 14 dias'
+        const tmpF = fs.mkdtempSync(path.join(DATA, "h2a-roll-")); let discoOk = false; const refF = { rows: [], logs: [] };
+        const instF = mkInst(tmpF, refF, () => discoOk);
+        const rF1 = await instF.runH2aNovasCycle("teste-disco"); discoOk = true;
+        const rF2 = await instF.runH2aNovasCycle("retry");
+        check("🌾 v968: disco que falha ao gravar a H-2A vira ERRO com nova tentativa (não carimba 'ok' por 14 dias) e a tentativa seguinte grava mesmo sem novidade no feed",
+          rF1.ok === false && /disco/.test(rF1.error || "") && rF1.proximaTentativa > Date.now() && rF2.ok === true && rF2.added === 0 && instF.h2aNovasBot.pendenteGravar === false && !!lerEstadoR(tmpF).lastOkAt,
+          JSON.stringify({ rF1, rF2 }));
+        // feeds antigos ausentes: rodada PARCIAL → volta em 6h, no máximo 3 vezes seguidas
+        fs.writeFileSync(path.join(DATA, "h2a_feed_so_hoje.flag"), "1");
+        const tmpP = fs.mkdtempSync(path.join(DATA, "h2a-roll-")); const refP = { rows: [], logs: [] }; const instP = mkInst(tmpP, refP);
+        const rP1 = await instP.runH2aNovasCycle("teste-parcial"); const eP1 = lerEstadoR(tmpP);
+        await instP.runH2aNovasCycle("teste-parcial"); await instP.runH2aNovasCycle("teste-parcial"); await instP.runH2aNovasCycle("teste-parcial");
+        const eP4 = lerEstadoR(tmpP);
+        fs.unlinkSync(path.join(DATA, "h2a_feed_so_hoje.flag"));
+        check("🌾 v968: só o feed mais recente respondeu enquanto a planilha ainda não encheu → NÃO agenda 14 dias (volta em ~6h, o relógio de 3h pega); depois de 3 parciais seguidas segue o ciclo normal de 14 dias",
+          rP1.ok === true && refP.rows.length === 14 && Math.abs(eP1.nextRunAt - eP1.lastOkAt - 6 * 3600_000) < 5000 && eP1.parciaisSeguidas === 1 && Math.abs(eP4.nextRunAt - eP4.lastOkAt - 14 * 86400_000) < 5000,
+          JSON.stringify({ eP1, eP4 }));
+        // exclusão mútua: coleta do DOL não sobe enquanto a H-2A baixa feeds
+        const tmpM = fs.mkdtempSync(path.join(DATA, "h2a-roll-")); const refM = { rows: [], logs: [] }; const instM = mkInst(tmpM, refM);
+        const pM = instM.runH2aNovasCycle("teste-mutex");
+        const rM = await instM.runPlanilhaMensal({ visa: "H-2A", prefix: "h2a", emoji: "🌾", botId: "x", botNome: "x", autoPublish: false, getState: () => ({}), setState: () => { } }, "t", true, false);
+        await pM; process.env.DOL_FEED_BASE = _env;
+        check("🌾 v968: planilha do mês (coleta do DOL) é recusada enquanto a rodada da H-2A está baixando feeds — nunca 2 downloads gigantes ao mesmo tempo (RAM)",
+          rM.ok === false && /coleta rodando/.test(rM.error || ""), JSON.stringify(rM));
+      }
+      const _modPl968 = fs.readFileSync(path.join(__dirname, "mod-planilhas.js"), "utf8"), _srv968 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8"), _app968 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      check("🌾 v968 (estrutural): agendador mora em função PRÓPRIA (iniciarAgendadores segue sem timer — guarda v217 intacta), server liga no boot, cap só vale no teste, o enriquecimento é acionado após a rodada, e o card + i18n (3 línguas) existem no front",
+        /function iniciarAgendadorH2a\(\)/.test(_modPl968) && _srv968.includes("PLANILHAS.iniciarAgendadorH2a();") && /isTest && opts && Number\(opts\.cap\) > 0/.test(_modPl968) &&
+        /if \(!isTest && novasQueFicaram\.length\) autoEnrichCycle\(\)/.test(_modPl968) && /^function renderH2aUpdCard\(\)\{/m.test(_app968) && fs.readFileSync(path.join(__dirname, "index.html"), "utf8").includes('id="h2a-upd-card"') &&
+        ["h2u_t", "h2u_s", "h2u_next", "h2u_short", "h2u_never"].every((k) => (_app968.match(new RegExp('"' + k + '":"', "g")) || []).length === 3),
+        "faltou alguma peça do agendador/card da H-2A");
       // 📅 H-2A DO MÊS — publica sozinha (H2A_BIM_MIN_PUBLICAR=10 no env do teste)
       const bim1 = await req2("POST", "/api/admin/sheet/h2a-bimestral-run", {});
       check("🌾 v174: última rodada há 1 mês (fixture) → o disparo MENSAL responde NA HORA (started:true) com a chave do mês",

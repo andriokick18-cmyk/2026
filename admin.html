@@ -2111,16 +2111,16 @@ function _plRenderRobos(d){
   var en=d.enrich||{},hn=d.h2aNovas||{},ma=d.mensalH2a||{},mb=d.mensalH2b||{},co=d.coleta||{};
   var rodando=[en.running&&"enriquecimento",co.running&&"coleta",hn.running&&"vagas novas H-2A"].filter(Boolean);
   _plSet("pl-robos",d.agendado?"Ligados":"Só manual");
-  _plSet("pl-robos-sub",rodando.length?"rodando agora: "+rodando.join(", "):"sem agendador — clique o botão de cada robô quando precisar (v217)");
+  _plSet("pl-robos-sub",rodando.length?"rodando agora: "+rodando.join(", "):"só a planilha H-2A roda sozinha (a cada 14 dias) — os demais robôs, clique quando precisar");
   var cards=[
     {emoji:"🤖",titulo:"Enriquecimento DOL",badge:_plBadge(en.running?"⚡ Rodando":"⏹ Parado",en.running?"green":"gray"),
      desc:"Completa cada vaga pela API do DOL (e-mail, cidade, datas, nº de vagas, telefone, salário, funções, URL). Só roda no upload de uma planilha nova (automático, 3s depois) ou quando você clica.",
      res:(en.running?"Planilha <b>"+esc(en.sheetKey||"?")+"</b> — "+_plNum(en.done)+"/"+_plNum(en.total)+" (ok "+_plNum(en.ok)+" · sem e-mail "+_plNum(en.noEmail)+" · erros "+_plNum(en.errors)+")":"Último salvamento: "+esc(en.savedAt?fmtData(en.savedAt):"nunca")+". Use \"Enriquecer DOL\" de cada planilha pra rodar.")
        +_plFilaHtml(d.enrichFila)},
-    {emoji:"🌾",titulo:"Vagas novas H-2A",badge:_plBadge(hn.running?"⚡ Rodando":hn.lastError?"⚠️ Erro":"⏹ Parado",hn.running?"green":hn.lastError?"amber":"gray"),
-     desc:"Sincroniza a planilha H-2A com o feed oficial: ENTRA vaga ativa nova (nunca duplica) e SAI inativa (negada/retirada/temporada encerrada). Trava se mais da metade sumiria de uma vez. Roda só quando você clica — o DOL só publica temporada nova poucas vezes por ano.",
-     res:"Última rodada: "+esc(_plAgo(hn.lastRunAt))+" — +"+_plNum(hn.lastAdded)+" novas · −"+_plNum(hn.lastRemoved)+" inativas (acumulado +"+_plNum(hn.totalAdded)+" / −"+_plNum(hn.totalRemoved)+", "+_plNum(hn.runs)+" rodadas). Planilha H-2A: <b>"+_plNum(hn.totalPlanilha)+"</b> vagas."+(hn.lastError?"<br>⚠️ "+esc(hn.lastError)+(hn.proximaTentativa?" — nova tentativa automática às "+esc(fmtData(hn.proximaTentativa))+" (até 3x, só pra esta rodada).":""):""),
-     btn:{id:"pl-btn-h2a-novas",fn:"plH2aNovasRun()",ic:"ti-plant-2",lbl:"Buscar novas agora",off:!!hn.running}},
+    {emoji:"🌾",titulo:"Planilha H-2A — "+_plNum(hn.janela||5000)+" mais recentes (automática)",badge:_plBadge(hn.running?"⚡ Rodando":hn.lastError?"⚠️ Erro":hn.atualizadoEm?"⏰ Automática":"⏳ 1ª busca no deploy",hn.running?"green":hn.lastError?"amber":"blue"),
+     desc:"Roda SOZINHA a cada 14 dias (e na 1ª vez, logo depois do deploy): baixa os feeds do Seasonal Jobs, ignora quem já está na planilha, ENTRA o que é novo e SAI o inativo/encerrado e, se passar do teto, as vagas mais antigas (data de protocolo). Nunca esvazia a planilha; o usuário vê o card \"atualizada em\". Você também pode forçar agora.",
+     res:(hn.proxima?"Próxima automática: <b>"+esc(fmtData(hn.proxima))+"</b>. ":"")+"Última rodada: "+esc(_plAgo(hn.lastRunAt))+" — +"+_plNum(hn.lastAdded)+" novas · −"+_plNum(hn.lastRemoved)+" inativas · −"+_plNum(hn.lastEvicted)+" mais antigas (acumulado +"+_plNum(hn.totalAdded)+" / −"+_plNum(hn.totalRemoved)+", "+_plNum(hn.runs)+" rodadas). Planilha H-2A: <b>"+_plNum(hn.totalPlanilha)+"</b> vagas."+(hn.lastError?"<br>⚠️ "+esc(hn.lastError)+(hn.proximaTentativa?" — nova tentativa automática às "+esc(fmtData(hn.proximaTentativa))+" (até 3x, só pra esta rodada).":""):""),
+     btn:{id:"pl-btn-h2a-novas",fn:"plH2aNovasRun()",ic:"ti-plant-2",lbl:"Atualizar H-2A agora",off:!!hn.running}},
     {emoji:"🌾",titulo:"H-2A do mês (publica sozinha)",badge:_plBadge(ma.lastKey?"Última: "+ma.lastKey:"Nunca rodou",ma.lastKey?"blue":"gray"),
      desc:"Monta a \"H-2A <Mês> <Ano>\" com as vagas dos últimos 90 dias (6 feeds do DOL). Publica sozinha se passar na guarda de qualidade; senão fica em rascunho. Roda só quando você clica.",
      res:ma.lastRunAt?"Última: "+esc(fmtData(ma.lastRunAt))+" — "+_plNum(ma.lastCount)+" vagas, "+(ma.lastPublished?"publicada sozinha":"em rascunho")+".":"Nunca rodou — clique quando o DOL publicar temporada nova.",
@@ -2204,7 +2204,7 @@ async function plH2aNovasRun(){
   var btn=_plG("pl-btn-h2a-novas");if(btn)btn.disabled=true;
   try{
     var d=await api("/api/admin/sheet/h2a-novas-run",{method:"POST",body:{}});
-    toast((d.added||d.removidas)?"🌾 +"+_plNum(d.added)+" novas · −"+_plNum(d.removidas)+" inativas — total "+_plNum(d.total):"🌾 Nada mudou — "+_plNum(d.jaTinha)+" do feed já estavam (total "+_plNum(d.total)+")","ok");
+    toast((d.added||d.removidas||d.evicted)?"🌾 +"+_plNum(d.added)+" novas · −"+_plNum(d.removidas)+" inativas · −"+_plNum(d.evicted)+" antigas — total "+_plNum(d.total):"🌾 Nada mudou — "+_plNum(d.jaTinha)+" do feed já estavam (total "+_plNum(d.total)+")","ok");
     loadPlanilhas();
   }catch(e){toast(e.message,"err");if(btn)btn.disabled=false;}
 }

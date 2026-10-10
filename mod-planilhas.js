@@ -152,6 +152,30 @@ function mesesExperiencia(dol) {
   return null;
 }
 
+// ── 🌾 v968: PURO (sem I/O) — a regra da janela rolante da planilha H-2A ──────
+// O ETA case number H-300-YYDDD-NNNNNN carrega a DATA DE PROTOCOLO (ano + dia
+// do ano): é a régua oficial e sempre presente de "quão recente é a vaga" —
+// vale também pras linhas antigas da planilha, que nunca tiveram campo de data.
+const H2A_JANELA_PADRAO = Math.max(100, Math.min(20000, parseInt(process.env.H2A_JANELA_MAX || "5000", 10) || 5000));
+const ISO_DIA = /^\d{4}-\d{2}-\d{2}$/;
+const DEAD_ST_H2A = /denied|withdrawn|invalidat|expired|cancel/i;
+function dataDoCaso(caseNumber) {
+  const m = /^H-300-(\d{2})(\d{3})-/i.exec(String(caseNumber || "").trim()); if (!m) return "";
+  const ano = 2000 + Number(m[1]), doy = Number(m[2]); if (doy < 1 || doy > 366) return "";
+  const d = new Date(Date.UTC(ano, 0, 1) + (doy - 1) * 86400_000);
+  return d.getUTCFullYear() === ano ? d.toISOString().slice(0, 10) : "";
+}
+const h2aMorta = (r, hojeISO) => DEAD_ST_H2A.test(String((r && r.st) || "")) || !!(r && ISO_DIA.test(String(r.de || "")) && r.de < hojeISO);
+// Quem sai primeiro quando falta lugar: inativa/encerrada → protocolo mais antigo → temporada que começa antes.
+const chaveDespejoH2a = (r, hojeISO) => (h2aMorta(r, hojeISO) ? "0" : "1") + "|" + (dataDoCaso(r.c) || "0000-00-00") + "|" + (ISO_DIA.test(String(r.d || "")) ? r.d : "0000-00-00") + "|" + String(r.c || "");
+function mesclarJanelaH2a(atual, novas, { cap, hoje }) {
+  const todas = [...(atual || []), ...(novas || [])]; const excesso = todas.length - cap;
+  if (excesso <= 0) return { rows: todas, despejadas: [] };
+  const ord = todas.map(r => [chaveDespejoH2a(r, hoje), r]).sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0));
+  const despejadas = ord.slice(0, excesso).map(x => x[1]); const fora = new Set(despejadas);
+  return { rows: todas.filter(r => !fora.has(r)), despejadas };
+}
+
 function createPlanilhas(deps) {
   const {
     fs, path, DATA_DIR, SHEETS_DIR, SHEETS_META_FILE,
@@ -194,8 +218,7 @@ function createPlanilhas(deps) {
     }
     throw new Error(`o DOL não publicou o arquivo ${type} de nenhum dos últimos ${dias} dias (${datas[datas.length - 1]} a ${datas[0]}) — o site oficial pode estar sem atualização ou fora do ar`);
   }
-  const DEAD_ST = /denied|withdrawn|invalidat|expired|cancel/i;
-  const DOL_HDR = () => ({ "Accept": "application/json", "Accept-Encoding": "gzip", "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36", "Cache-Control": "no-cache", "Referer": "https://seasonaljobs.dol.gov/" });
+    const DOL_HDR = () => ({ "Accept": "application/json", "Accept-Encoding": "gzip", "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36", "Cache-Control": "no-cache", "Referer": "https://seasonaljobs.dol.gov/" });
 
   // 🌐 v182 LOTE 8 — A BASE DA API DO DOL NUMA CONSTANTE SÓ. O enriquecimento e
   // o frescor batiam no hostname fixo `api.seasonaljobs.dol.gov`, o que deixava
@@ -471,6 +494,7 @@ function createPlanilhas(deps) {
     console.log("[coleta]", msg);
   }
   async function runDolColeta({ visa, sheetKey, sheetName, beginFrom, beginTo, feedDates, visaStrict, autoPublishMin, publishedBy }) {
+    if (h2aNovasBot.running) { dolColeta.error = "a planilha H-2A está sendo atualizada agora — tente de novo em alguns minutos (dois downloads do DOL ao mesmo tempo estouram a memória)"; dcLog(`⏳ ${dolColeta.error}`, "warn"); return; }
     dolColeta.running = true; dolColeta.log = []; dolColeta.startedAt = Date.now();
     dolColeta.finishedAt = 0; dolColeta.key = sheetKey; dolColeta.count = 0; dolColeta.error = null; dolColeta.progress = 0;
     try {
@@ -557,7 +581,7 @@ function createPlanilhas(deps) {
   let DB_H2A_BIM = lerEstado(H2A_BIM_FILE), DB_H2B_MEN = lerEstado(H2B_MEN_FILE);
   const MESES_PT = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
   async function runPlanilhaMensal(cfg, trigger, force, background) {
-    if (dolColeta.running) return { ok: false, error: "já existe uma coleta rodando — tente de novo em alguns minutos" };
+    if (dolColeta.running || h2aNovasBot.running) return { ok: false, error: "já existe uma coleta rodando — tente de novo em alguns minutos" };
     const now = new Date(); const st0 = cfg.getState();
     if (!force && st0.lastRunAt) {
       const last = new Date(st0.lastRunAt);
@@ -606,78 +630,165 @@ function createPlanilhas(deps) {
   }
 
   // ══════════════════════════════════════════════════════════════════════
-  //  🌾 VAGAS NOVAS H-2A — planilha H-2A sempre completa (entra nova, sai inativa)
+  //  🌾 PLANILHA H-2A — JANELA ROLANTE DE 5.000 VAGAS (v968, dono, 10/10/2026)
+  //  "A planilha do H2A sempre tem que estar alimentada. Pelo menos duas
+  //  vezes no mês, tem que ter um agendamento para ela iniciar sozinha...
+  //  sempre vai ter 5 mil vagas. É obrigatório tirar as vagas mais velhas e
+  //  colocar as mais recentes." Reestrutura o antigo "Vagas novas H-2A":
+  //   1) baixa os feeds do Seasonal Jobs (os MESMOS arquivos do Download de
+  //      Dados do site oficial) cobrindo desde a última rodada;
+  //   2) compara por ETA case number com a planilha — quem já está nela é
+  //      IGNORADO (só tem o status/data atualizado); só entra o que não tinha;
+  //   3) tira primeiro o inativo/encerrado e, se passar do teto, as MAIS
+  //      ANTIGAS (data de protocolo, que o próprio case number carrega);
+  //   4) carimba quando atualizou, pro card "Atualizada em" do usuário.
+  //  Só ADICIONA e tira pra dar lugar — nunca esvazia a planilha.
   // ══════════════════════════════════════════════════════════════════════
-  const h2aNovasBot = { running: false, lastRunAt: null, lastError: null, lastAdded: 0, totalAdded: 0, lastRemoved: 0, totalRemoved: 0, runs: 0 };
-  async function runH2aNovasCycle(trigger) {
+  const H2A_ROLL_FILE = path.join(DATA_DIR, "h2a_rolling.json");
+  let DB_H2A_ROLL = lerEstado(H2A_ROLL_FILE);
+  const gravarRoll = (patch) => { DB_H2A_ROLL = { ...DB_H2A_ROLL, ...patch }; try { fs.writeFileSync(H2A_ROLL_FILE, JSON.stringify(DB_H2A_ROLL, null, 2)); } catch (e) { console.warn("[h2a-roll] estado não gravado:", e.message); } };
+  const h2aCap = (opts) => (isTest && opts && Number(opts.cap) > 0) ? Math.floor(Number(opts.cap)) : H2A_JANELA_PADRAO;
+  const h2aIntervaloMs = () => Math.max(1, parseInt(process.env.H2A_INTERVALO_DIAS || "14", 10) || 14) * 86400_000;
+  const h2aDevido = (agora = Date.now()) => !DB_H2A_ROLL.lastOkAt || agora >= (DB_H2A_ROLL.nextRunAt || 0);
+  const h2aNovasBot = { running: false, lastRunAt: null, lastError: null, lastAdded: 0, totalAdded: 0, lastRemoved: 0, totalRemoved: 0, lastEvicted: 0, totalEvicted: 0, runs: 0 };
+  async function runH2aNovasCycle(trigger, opts) {
     if (h2aNovasBot.running) return { ok: false, error: "já rodando" };
+    if (dolColeta.running) return { ok: false, error: "já existe uma coleta rodando — tente de novo em alguns minutos" };
     h2aNovasBot.running = true; h2aNovasBot.lastError = null;
+    const LOG = (m, t) => botLog("h2a-novas", "Planilha H-2A (5.000 mais recentes)", m, t || "info");
     try {
       const bs = require("./build-sheets.js");
       const base = (process.env.DOL_FEED_BASE || bs.DOL_BASE).replace(/\/$/, "");
-      botLog("h2a-novas", "Vagas Novas H-2A", `🌾 Conferindo vagas H-2A novas no DOL (${trigger || "agendado"})`, "info");
-      const { raw, data: dataFeed, pulados } = await baixarFeedComFallback(bs, base, "h2a", { dias: 7, onPulo: d => botLog("h2a-novas", "Vagas Novas H-2A", `📭 O DOL ainda não publicou o arquivo de ${d} — tentando o dia anterior`, "info") });
-      if (pulados) botLog("h2a-novas", "Vagas Novas H-2A", `📅 Usando o arquivo de ${dataFeed} (o mais recente que o DOL publicou)`, "info");
-      const records = Array.isArray(raw) ? raw : (raw.data || raw.results || raw.items || raw.cases || []);
-      for (const rec of records) rec._cn = String(rec.case_number || rec.case_id || "").trim().toUpperCase();
-      const { rows: uniq } = dedupe(records, { caseField: "_cn" });
+      const cap = h2aCap(opts); const agora = Date.now(); const _hoje = hoje();
       let SHEET_H2A = getSheetH2A();
+      const antesTotal = SHEET_H2A.length;
+      // Quanto do passado cobrir: planilha cheia e rodada recente → só o que saiu
+      // desde então (+21 dias de folga, cada feed enxerga ~20 dias pra trás);
+      // primeira vez ou planilha abaixo do teto → até 126 dias pra ENCHER.
+      const diasDesde = DB_H2A_ROLL.lastOkAt ? Math.ceil((agora - DB_H2A_ROLL.lastOkAt) / 86400_000) : Infinity;
+      const encher = !DB_H2A_ROLL.lastOkAt || antesTotal < cap * 0.95;
+      const cobrir = encher ? 126 : Math.min(126, diasDesde + 21);
+      const nFeeds = Math.max(1, Math.min(8, Math.ceil(cobrir / 18)));
+      LOG(`🌾 Conferindo o Seasonal Jobs (${trigger || "agendado"}): planilha com ${antesTotal} vagas, teto ${cap}; olhando ${cobrir} dias (${nFeeds} feed${nFeeds > 1 ? "s" : ""})`);
       const have = new Set(SHEET_H2A.map(r => String(r.c || "").trim().toUpperCase()));
-      let descartadas = 0, jaTinha = 0, outroVisto = 0; const novas = [];
-      for (const rec of uniq) {
-        if (bs.shouldDiscard(rec)) { descartadas++; continue; }
-        const c = bs.toCompact(rec);
-        if (String(c.visa || "").toUpperCase() !== "H-2A") { outroVisto++; continue; }
-        if (have.has(String(c.c || "").trim().toUpperCase())) { jaTinha++; continue; }
-        // 🌾 v332: daqui pra baixo é SEMPRE H-2A (filtro da linha acima) —
-        // usa o categorizador próprio (mesmo motivo do runDolColeta: c.k já
-        // vem da taxonomia H-2B errada, e o fallback antigo nunca disparava).
-        c.k = detectCategoryH2A(c.t);
-        novas.push(c);
+      const statusDoFeed = new Map();   // TODO case do feed (inclusive negado/retirado) → status/datas mais novos
+      const candidatas = new Map();     // só o que a planilha ainda NÃO tem e passa na qualidade
+      let descartadas = 0, outroVisto = 0, feedsOk = 0, feedsFalharam = 0, brutos = 0; const usados = new Set();
+      for (let i = 0; i < nFeeds; i++) {
+        const planejada = new Date(Date.parse(_hoje + "T12:00:00Z") - i * 18 * 86400_000).toISOString().slice(0, 10);
+        try {
+          const { raw, data: dataFeed, pulados } = await baixarFeedComFallback(bs, base, "h2a", { desde: planejada, dias: i === 0 ? 7 : 4, onPulo: d => LOG(`📭 O DOL ainda não publicou o arquivo de ${d} — tentando o dia anterior`) });
+          if (pulados) LOG(`📅 Usando o arquivo de ${dataFeed} (o mais recente que o DOL publicou)`);
+          if (usados.has(dataFeed)) continue; usados.add(dataFeed);
+          const recs = Array.isArray(raw) ? raw : (raw.data || raw.results || raw.items || raw.cases || []);
+          brutos += recs.length; feedsOk++;
+          for (const rec of recs) {
+            const cn = String(rec.case_number || rec.case_id || "").trim().toUpperCase(); if (!cn) continue;
+            if (!statusDoFeed.has(cn)) statusDoFeed.set(cn, { st: (rec.case_status || "").trim(), d: (rec.begin_date || rec.start_date || "").slice(0, 10), de: (rec.end_date || rec.expiration_date || "").slice(0, 10) });
+            if (have.has(cn) || candidatas.has(cn)) continue;
+            if (bs.shouldDiscard(rec)) { descartadas++; continue; }
+            const c = bs.toCompact(rec);
+            if (String(c.visa || "").toUpperCase() !== "H-2A") { outroVisto++; continue; }
+            if (h2aMorta(c, _hoje)) { descartadas++; continue; }   // temporada já encerrada / status morto: não ocupa lugar da viva
+            // categorizador PRÓPRIO do H-2A (v332): c.k de toCompact é da taxonomia H-2B.
+            c.k = detectCategoryH2A(c.t); candidatas.set(cn, c);
+          }
+        } catch (e) {
+          if (i === 0) throw e;   // sem o feed mais recente não há rodada: erro honesto, planilha intacta
+          feedsFalharam++;
+          LOG(`⚠️ feed de ${planejada} falhou (${e.message}) — seguindo com os demais`, "warn");
+        }
+        if (i < nFeeds - 1) await new Promise(r => setTimeout(r, process.env.DOL_FEED_BASE ? 20 : 8000)); // educado com o DOL
       }
-      // sai inativa: (a) o feed traz o case com status morto → atualiza; (b) temporada acabou.
-      const feedByCase = new Map(); for (const rec of uniq) feedByCase.set(String(rec._cn || ""), rec);
-      let atualizadas = 0;
+      // (a) quem já está na planilha só tem status/datas atualizados — NUNCA reentra
+      let atualizadas = 0, jaTinha = 0;
       for (const r of SHEET_H2A) {
-        const rec = feedByCase.get(String(r.c || "").trim().toUpperCase()); if (!rec) continue;
-        const c = bs.toCompact(rec);
-        if (c.st && c.st !== r.st) { r.st = c.st; atualizadas++; }
-        if (c.d && c.d !== r.d) r.d = c.d;
-        if (c.de && c.de !== r.de) r.de = c.de;
+        const f = statusDoFeed.get(String(r.c || "").trim().toUpperCase()); if (!f) continue; jaTinha++;
+        if (f.st && f.st !== r.st) { r.st = f.st; atualizadas++; }
+        if (f.d && f.d !== r.d) r.d = f.d;
+        if (f.de && f.de !== r.de) r.de = f.de;
       }
-      const _hoje = hoje(); const antes = SHEET_H2A.length;
-      const vivas = SHEET_H2A.filter(r => !DEAD_ST.test(String(r.st || "")) && !(r.de && /^\d{4}-\d{2}-\d{2}$/.test(r.de) && r.de < _hoje));
-      let removidas = antes - vivas.length;
-      if (removidas > antes * 0.5) { botLog("h2a-novas", "Vagas Novas H-2A", `🛡️ ${removidas} de ${antes} vagas dariam como inativas de uma vez — suspeito de dado quebrado, NENHUMA foi removida neste ciclo.`, "warn"); removidas = 0; }
-      else if (removidas > 0) { SHEET_H2A = vivas; setSheetH2A(SHEET_H2A); }
-      if (novas.length) {
-        const chk = verify([...SHEET_H2A, ...novas], { caseField: "c" });
-        if (!chk.ok) throw new Error(`integridade: duplicata após o merge (${chk.duplicateCases.length}) — NADA foi salvo`);
-        SHEET_H2A.push(...novas);
-        registrarVagasNovasNoRadar(novas, "Vagas novas H-2A").catch(() => { });
+      // (b) inativo (negado/retirado/inválido) ou temporada encerrada SAI — com a trava anti-catástrofe
+      const vivas = SHEET_H2A.filter(r => !h2aMorta(r, _hoje));
+      let removidas = antesTotal - vivas.length;
+      if (removidas > antesTotal * 0.5) { LOG(`🛡️ ${removidas} de ${antesTotal} vagas dariam como inativas de uma vez — suspeito de dado quebrado, NENHUMA foi removida por inatividade neste ciclo (as mais velhas ainda saem só se faltar lugar).`, "warn"); removidas = 0; }
+      else if (removidas > 0) SHEET_H2A = vivas;
+      // (c) entra o novo; (d) passou do teto? saem as MAIS ANTIGAS (inativas primeiro)
+      const novas = [...candidatas.values()];
+      const { rows: finais, despejadas } = mesclarJanelaH2a(SHEET_H2A, novas, { cap, hoje: _hoje });
+      const chk = verify(finais, { caseField: "c" });
+      if (!chk.ok) throw new Error(`integridade: duplicata após o merge (${chk.duplicateCases.length}) — NADA foi salvo`);
+      const despSet = new Set(despejadas.map(r => r.c));
+      const novasQueFicaram = novas.filter(c => !despSet.has(c.c));
+      const mudou = novasQueFicaram.length || despejadas.length || removidas > 0 || atualizadas > 0;
+      if (mudou || h2aNovasBot.pendenteGravar) {
+        // IN PLACE de propósito: o robô de Enriquecimento segura a REFERÊNCIA do array por horas e
+        // regrava ele inteiro a cada vaga — trocar o array deixaria ele sobrescrevendo a planilha nova com a velha.
+        const viva = getSheetH2A(); viva.splice(0, viva.length, ...finais); setSheetH2A(viva);
+        if (saveSheet("h2a-jun2026", viva) === false) { h2aNovasBot.pendenteGravar = true; throw new Error("não consegui gravar a planilha H-2A no disco — nova tentativa já agendada (a memória já está atualizada)"); }
+        h2aNovasBot.pendenteGravar = false;
+        // 📡 só avisa o Radar do que é NOVO de verdade (protocolado nas últimas 3 semanas) — o preenchimento do começo não é "vaga nova"
+        const corte = new Date(Date.parse(_hoje + "T12:00:00Z") - 21 * 86400_000).toISOString().slice(0, 10);
+        registrarVagasNovasNoRadar(novasQueFicaram.filter(c => dataDoCaso(c.c) >= corte), "Vagas novas H-2A").catch(() => { });
       }
-      if (novas.length || removidas > 0 || atualizadas > 0) {
-        saveSheet("h2a-jun2026", SHEET_H2A);
-        botLog("h2a-novas", "Vagas Novas H-2A", `✅ Planilha sincronizada: +${novas.length} nova(s), −${removidas} inativa(s) retirada(s), ${atualizadas} status atualizado(s) — total ${SHEET_H2A.length}. (${jaTinha} do feed já estavam, ${descartadas} sem e-mail/qualidade)`, "ok");
-        console.log(`[h2a-novas] ✅ +${novas.length} novas, -${removidas} inativas, ${atualizadas} atualizadas (total ${SHEET_H2A.length})`);
-      } else botLog("h2a-novas", "Vagas Novas H-2A", `💤 Nada mudou desta vez (${jaTinha} do feed já estavam na planilha, ${descartadas} sem e-mail/qualidade).`, "info");
-      h2aNovasBot.lastAdded = novas.length; h2aNovasBot.totalAdded += novas.length;
+      SHEET_H2A = getSheetH2A();
+      const maisRecente = finais.reduce((m, r) => { const d = dataDoCaso(r.c); return d > m ? d : m; }, "");
+      const total = finais.length;
+      LOG(mudou
+        ? `✅ Planilha H-2A atualizada: +${novasQueFicaram.length} nova(s), −${removidas} inativa(s), −${despejadas.length} mais antiga(s) pra caber o teto de ${cap}, ${atualizadas} status atualizado(s) — total ${total}. (${jaTinha} do feed já estavam na planilha e foram ignoradas, ${descartadas} sem e-mail/qualidade.)`
+        : `💤 Nada mudou desta vez (${jaTinha} do feed já estavam na planilha, ${descartadas} sem e-mail/qualidade). Planilha com ${total} vagas.`, mudou ? "ok" : "info");
+      console.log(`[h2a-novas] ✅ +${novasQueFicaram.length} novas, -${removidas} inativas, -${despejadas.length} antigas, ${atualizadas} atualizadas (total ${total})`);
+      h2aNovasBot.lastAdded = novasQueFicaram.length; h2aNovasBot.totalAdded += novasQueFicaram.length;
       h2aNovasBot.lastRemoved = removidas; h2aNovasBot.totalRemoved += removidas;
-      h2aNovasBot.runs++; h2aNovasBot.lastRunAt = Date.now(); h2aNovasBot.retries = 0; h2aNovasBot.proximaTentativa = null;
-      return { ok: true, added: novas.length, removidas, atualizadas, jaTinha, descartadas, outroVisto, total: SHEET_H2A.length };
+      h2aNovasBot.lastEvicted = despejadas.length; h2aNovasBot.totalEvicted += despejadas.length;
+      h2aNovasBot.runs++; h2aNovasBot.lastRunAt = agora; h2aNovasBot.retries = 0; h2aNovasBot.proximaTentativa = null;
+      // Pediu pra ENCHER (1ª vez / abaixo do teto) mas só parte dos feeds respondeu: não agenda 14 dias —
+      // volta em 6h (o relógio de 3h pega), no máximo 3 vezes seguidas; depois segue o ciclo normal.
+      const parcial = encher && feedsFalharam > 0 && (DB_H2A_ROLL.parciaisSeguidas || 0) < 3;
+      if (parcial) LOG(`⚠️ Só ${feedsOk} de ${nFeeds} feeds responderam — a planilha ainda não encheu; o robô tenta de novo em ~6 horas.`, "warn");
+      gravarRoll({ lastOkAt: agora, lastRunAt: agora, nextRunAt: agora + (parcial ? 6 * 3600_000 : h2aIntervaloMs()), parciaisSeguidas: parcial ? (DB_H2A_ROLL.parciaisSeguidas || 0) + 1 : 0, lastAdded: novasQueFicaram.length, lastRemoved: removidas, lastEvicted: despejadas.length,
+        total, cap, maisRecente, feeds: feedsOk, brutos, runs: (DB_H2A_ROLL.runs || 0) + 1, lastTrigger: String(trigger || ""), lastError: null, falhasSeguidas: 0 });
+      // as vagas que acabaram de entrar vêm do feed (e-mail, cargo, datas, salário); descrição/telefone/endereço completa o Enriquecimento — sozinho, 1 vaga por vez
+      if (!isTest && novasQueFicaram.length) autoEnrichCycle().catch(e => console.warn("[h2a-novas] enriquecimento pós-rodada:", e.message));
+      return { ok: true, added: novasQueFicaram.length, removidas, evicted: despejadas.length, atualizadas, jaTinha, descartadas, outroVisto, total, cap };
     } catch (e) {
       h2aNovasBot.lastError = e.message; h2aNovasBot.lastRunAt = Date.now();
-      // v207: nunca fica preso em "⚠️ Erro" esperando o ciclo de 12h — re-tenta
-      // sozinho em 1 hora (até 3 vezes seguidas; depois volta ao ciclo normal).
+      // v207: nunca fica preso em "⚠️ Erro" — re-tenta sozinho em 1 hora (até 3 vezes seguidas;
+      // depois o relógio de 3h do agendador volta a tentar). Planilha atual SEMPRE intacta.
       const tentativa = trigger === "retry" ? (h2aNovasBot.retries || 0) + 1 : 1;
       h2aNovasBot.retries = tentativa;
+      const falhas = (DB_H2A_ROLL.falhasSeguidas || 0) + 1;
+      gravarRoll({ lastRunAt: Date.now(), lastError: String(e.message).slice(0, 300), falhasSeguidas: falhas });
       if (tentativa <= 3) {
         h2aNovasBot.proximaTentativa = Date.now() + 3600_000;
         if (!isTest) { const t = setTimeout(() => runH2aNovasCycle("retry").catch(() => { }), 3600_000); if (t.unref) t.unref(); }
       } else h2aNovasBot.proximaTentativa = null;
-      botLog("h2a-novas", "Vagas Novas H-2A", `⚠️ ${e.message} (planilha atual intacta — ${tentativa <= 3 ? "nova tentativa automática em 1 hora" : "3 tentativas seguidas falharam; volta no ciclo de 12h"})`, "warn");
+      LOG(`⚠️ ${e.message} (planilha atual intacta — ${tentativa <= 3 ? "nova tentativa automática em 1 hora" : "3 tentativas seguidas falharam; o agendador tenta de novo em até 3 horas"})`, "warn");
+      if (falhas === 3 && !isTest) for (const ae of ADMIN_EMAILS) pushToUser(ae, { type: "generic", title: "⚠️ Planilha H-2A não atualizou", body: `${String(e.message).slice(0, 110)} — o robô continua tentando sozinho.`, icon: "/icon-192.png", url: "/admin" }).catch(() => { });
       return { ok: false, error: e.message, proximaTentativa: h2aNovasBot.proximaTentativa };
     } finally { h2aNovasBot.running = false; }
+  }
+  // Card "Atualizada em" (usuário) e painel (admin): uma leitura só do estado persistido.
+  function h2aJanelaInfo() {
+    const s = DB_H2A_ROLL;
+    return { atualizadoEm: s.lastOkAt || null, novas: s.lastAdded || 0, despejadas: s.lastEvicted || 0, proxima: s.nextRunAt || null, maisRecente: s.maisRecente || null, janela: s.cap || H2A_JANELA_PADRAO };
+  }
+  // ⏰ AGENDADOR DA H-2A — autorizado EXPRESSAMENTE pelo dono (10/10/2026), exceção
+  // ao v217 só pra esta planilha. Sem estado (primeiro deploy) roda ~90s depois do boot;
+  // depois, a cada 14 dias (estado em /data sobrevive a deploy). O relógio de 3h só
+  // olha "venceu?" — não bate no DOL sem necessidade. Desligado no npm test.
+  function iniciarAgendadorH2a() {
+    if (isTest) { console.log("[h2a-roll] 🧪 modo teste — agendador da H-2A desligado (disparo só por rota)"); return false; }
+    const tick = (origem) => {
+      if (!h2aDevido() || h2aNovasBot.running || dolColeta.running) return;
+      if (h2aNovasBot.proximaTentativa && Date.now() < h2aNovasBot.proximaTentativa) return;   // a re-tentativa de 1h já está armada
+      console.log(`[h2a-roll] ⏰ venceu (${origem}) — ${DB_H2A_ROLL.lastOkAt ? "ciclo de " + Math.round(h2aIntervaloMs() / 86400_000) + " dias" : "primeira busca desde o deploy"}`);
+      runH2aNovasCycle(DB_H2A_ROLL.lastOkAt ? "agendado" : "primeira-vez").catch(e => console.warn("[h2a-roll]", e.message));
+    };
+    const t1 = setTimeout(() => tick("boot"), 90_000); if (t1.unref) t1.unref();
+    const t2 = setInterval(() => tick("relógio"), 3 * 3600_000); if (t2.unref) t2.unref();
+    console.log(`[h2a-roll] ⏰ agendador ligado: ${DB_H2A_ROLL.lastOkAt ? "próxima busca em " + new Date(DB_H2A_ROLL.nextRunAt || 0).toISOString() : "nunca rodou — primeira busca ~90s após o boot"}`);
+    return true;
   }
 
   // ══════════════════════════════════════════════════════════════════════
@@ -713,7 +824,7 @@ function createPlanilhas(deps) {
       // o robô vai atacá-las (e pela MESMA função que ele usa) — o painel
       // mostrava "100%" pra planilha que não tem cidade nem descrição nenhuma.
       enrichFila: filaEnriquecimento().slice(0, 8),
-      h2aNovas: { ...h2aNovasBot, totalPlanilha: (getSheetH2A() || []).length },
+      h2aNovas: { ...h2aNovasBot, totalPlanilha: (getSheetH2A() || []).length, ...h2aJanelaInfo(), devido: h2aDevido(), agendadorLigado: !isTest },
       // 🚨 v177-FIX2 (auditoria 14/09/2026): faltava `published` — o admin.html
       // sempre mostrava "em rascunho, publique abaixo" mesmo DEPOIS de clicar
       // "Publicar pros usuários" com sucesso, porque esse campo nunca existia
@@ -729,7 +840,7 @@ function createPlanilhas(deps) {
   }
 
   return { runEnrichBot, autoEnrichCycle, filaEnriquecimento, planilhasPublicadas, dolColeta, runDolColeta, runPlanilhaMensal, runH2aMensal, runH2bMensal,
-    getEstadoH2a: () => DB_H2A_BIM, getEstadoH2b: () => DB_H2B_MEN, runH2aNovasCycle, h2aNovasBot, iniciarAgendadores, statusPainel, aplicarDolNaLinha };
+    getEstadoH2a: () => DB_H2A_BIM, getEstadoH2b: () => DB_H2B_MEN, runH2aNovasCycle, h2aNovasBot, h2aJanelaInfo, h2aDevido, iniciarAgendadorH2a, iniciarAgendadores, statusPainel, aplicarDolNaLinha };
 }
 
-module.exports = { createPlanilhas, CAMPOS_ESSENCIAIS, linhaCompleta, progressoPlanilha, unidadeSalario, mesesExperiencia };
+module.exports = { createPlanilhas, dataDoCaso, mesclarJanelaH2a, CAMPOS_ESSENCIAIS, linhaCompleta, progressoPlanilha, unidadeSalario, mesesExperiencia };

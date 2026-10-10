@@ -4136,3 +4136,66 @@ então a referência ficava velha por até 30s — o login pelo Gmail "sem ponto
 redefinir a senha caía em "conta sem senha" (o objeto antigo não tinha o `passwordHash`).
 Agora o índice guarda só a CHAVE da conta e o lookup relê `DB_USERS[chave]`. Regra: índice/cache
 guarda chave, nunca objeto de usuário.
+
+## v966 — Card do Gmail de envio dentro do Perfil, pra todos (dono, 10/10/2026)
+
+Cliente que pagou o manual não achava onde conectar o Gmail (no Perfil o botão só existia na
+área de admin). `#pf-gmail-card` (logo abaixo do topo do Perfil), desenhado por
+`renderProfileGmailCard()` (chamado de `loadProfile()` e de `updateGmailPrompts()`): plano ativo
+→ botão clicável (`connectGmailForSending('profile')`); SEM plano → o botão aparece apagado e o
+toque só mostra "Somente conecte seu Gmail com um plano ativo." e leva a Planos (guarda também
+dentro de `connectGmailForSending`); conectado → selo verde com o Gmail; caiu → Reconectar.
+**Regra do dono, inegociável: ninguém autentica o Gmail antes de pagar** — o servidor continua
+recusando em `/oauth/connect-send` sem dias VIP. i18n `pfg_*`. sw v180.
+
+## v967 — Landing abre com Instagram + UM botão grande "Entrar ou criar conta" (dono, 10/10/2026)
+
+Primeira dobra da landing (`.ln-top`, antes do hero): card do @h2bapply + botão grande no meio
+que abre `openAuthGate('choice')` (escolha entre entrar e criar conta). Hero e botões antigos
+continuam logo abaixo. A guarda ♿ v299 (landmarks) passou a esperar o bloco `.ln-top` dentro do
+`<main>`, antes do `.ln-hero`. sw v181.
+
+## v968 — Planilha H-2A: janela rolante de 5.000 vagas, automática (dono, 10/10/2026)
+
+Ordem do dono (áudio/texto): "a planilha do H2A sempre tem que estar alimentada, pelo menos 2x
+no mês, sozinha... sempre 5 mil vagas, tirar as mais velhas e colocar as mais recentes... se
+dessas 5 mil, 4.500 já estão na planilha, ignore; se 500 são novas, tira 500 velhas e põe 500
+novas... card com a data da atualização... no 1º deploy já faz a busca, sem eu clicar".
+**Exceção EXPRESSA e NOVA ao v217/v282, SÓ pra planilha H-2A** (os outros robôs continuam
+manuais; `iniciarAgendadores()` segue sem timer — o agendador novo é `iniciarAgendadorH2a()`,
+função própria).
+
+- **Motor** (`runH2aNovasCycle`, mod-planilhas.js — o antigo "Vagas novas H-2A" reestruturado,
+  mesma rota `/api/admin/sheet/h2a-novas-run`): baixa os feeds do Seasonal Jobs (os MESMOS
+  ZIPs do Download de Dados do site oficial, via `baixarFeedComFallback`), cobrindo desde a última
+  rodada (+21 dias de folga) ou até 126 dias pra ENCHER (1ª vez / abaixo de 95% do teto); compara
+  por ETA case number — quem já está na planilha é IGNORADO (só atualiza status/datas); entra só
+  o que é novo, H-2A, com e-mail, não-encerrado e não-morto; sai o inativo/encerrado (trava
+  anti-catástrofe de 50% mantida) e, passando do teto (`H2A_JANELA_MAX`, 5000), saem as MAIS
+  ANTIGAS: ordem de despejo = inativa/encerrada → **data de protocolo** (o case number
+  `H-300-YYDDD-NNNNNN` carrega ano+dia do ano: `dataDoCaso()`, vale até pras linhas antigas que
+  nunca tiveram campo de data) → início da temporada. Nunca esvazia: só tira pra dar lugar.
+  `mesclarJanelaH2a` é PURA (testada). Merge **IN PLACE** (o robô de Enriquecimento segura a
+  referência do array por horas e regrava ele inteiro — trocar o array o faria sobrescrever a
+  planilha nova com a velha). Gravação conferida (`_saveEnrichedSheet` agora devolve true/false;
+  falha de disco = erro + retry, nunca "ok por 14 dias"). Depois da rodada dispara
+  `autoEnrichCycle()` (descrição/telefone/endereço de cada vaga nova; só em produção).
+- **Agendamento**: `iniciarAgendadorH2a()` (ligado em server.js logo após `iniciarAgendadores()`):
+  sem estado → roda ~90s depois do boot ("primeira-vez"); depois a cada `H2A_INTERVALO_DIAS`
+  (14) — estado persistido em `DATA/h2a_rolling.json` (sobrevive a deploy; o deploy a cada commit
+  NÃO dispara busca nova). Relógio de 3h só confere "venceu?". Falha: planilha intacta, re-tenta em
+  1h (até 3x), push aos admins UMA vez por sequência de falhas (`falhasSeguidas===3`). Rodada
+  PARCIAL (só parte dos feeds respondeu enquanto a planilha ainda não encheu) volta em 6h, máx 3x
+  seguidas. Exclusão mútua com `runDolColeta`/planilhas do mês (nunca 2 downloads gigantes juntos —
+  OOM é a dor nº1). Desligado no `npm test` (disparo só por rota; `cap` só vale no teste).
+- **Card pro usuário**: `/api/sheets-list` devolve `h2aInfo` na linha da H-2A; `renderH2aUpdCard()`
+  mostra "🌾 Planilha H-2A atualizada em DD/MM/AAAA · +N novas · vaga mais recente protocolada em …
+  · próxima atualização …" só na aba H-2A (e "atualizada DD/MM" no botão do Automático). i18n `h2u_*`.
+  Painel admin: card do robô com a próxima automática e o botão "Atualizar H-2A agora".
+- **Limite honesto**: o sandbox NÃO alcança o DOL — a esteira inteira foi provada com o feed falso
+  (as mesmas rotas/arquivos do feed real, já em produção desde o v174). Se o feed real vier com
+  menos de 5.000 vagas válidas, a planilha fica com o que existe (nunca enche com lixo).
+- Revisão adversarial (4 lentes + céticos) em cima da 1ª versão achou e corrigiu ANTES do deploy:
+  vaga já encerrada entrando como candidata; array trocado por baixo do Enriquecimento (alta);
+  falha parcial de feeds adiando 14 dias; push de falha em loop; coleta concorrente; falha de disco
+  engolida; card afirmando "preparando" antes de a lista carregar.
