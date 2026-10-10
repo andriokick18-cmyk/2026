@@ -4127,3 +4127,10 @@ código mais recente ou aguarde alguns minutos"); (7) o texto da aba Notificaç�
 explica o fluxo real (usuário OU e-mail; sem acesso ao e-mail → WhatsApp → 🔑 define senha
 PROVISÓRIA). Não feito de propósito: marcar a senha do 🔑 como "trocar no 1º acesso" (fluxo
 novo, fora do pedido). sw v178.
+
+**v965d — bug real pego pelo teste (classe 13j, de novo)**: o índice de Gmail normalizado guardava o
+OBJETO do usuário; `setUser` troca o objeto a cada gravação (`DB_USERS[e]={...velho,...novo}`),
+então a referência ficava velha por até 30s — o login pelo Gmail "sem pontos" logo depois de
+redefinir a senha caía em "conta sem senha" (o objeto antigo não tinha o `passwordHash`).
+Agora o índice guarda só a CHAVE da conta e o lookup relê `DB_USERS[chave]`. Regra: índice/cache
+guarda chave, nunca objeto de usuário.

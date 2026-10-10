@@ -7269,7 +7269,10 @@ function _gmailIndex() {
       if (!u || u.deleted) continue;
       for (const e of [u.emailContato, u.email]) {
         const k = _normGmailKey(e); if (!k) continue;
-        const a = m.get(k); if (!a) m.set(k, [u]); else if (!a.includes(u)) a.push(u);
+        // guarda a CHAVE da conta (nunca o objeto): setUser troca o objeto do usuário a cada gravação e uma
+        // referência guardada aqui ficaria velha (login logo após redefinir a senha via o índice caía em
+        // "conta sem senha" porque o objeto antigo ainda não tinha o passwordHash).
+        const a = m.get(k); if (!a) m.set(k, [u.email]); else if (!a.includes(u.email)) a.push(u.email);
       }
     }
     _gmailIdx = { at: Date.now(), map: m };
@@ -7282,7 +7285,7 @@ function _gmailIndex() {
 function _gmailJaTemConta(email) {
   const ex = _findUserByEmail(email); if (ex) return ex;
   const ng = _normGmailKey(email); if (!ng) return null;
-  const hits = _gmailIndex().get(ng); return hits && hits.length ? hits[0] : null;
+  const hits = _gmailIndex().get(ng); return hits && hits.length ? (DB_USERS[hits[0]] || null) : null;
 }
 function _emailBanido(email) {
   const e = String(email || "").trim().toLowerCase(); if (DB_BLOCKED.emails.includes(e)) return true;
@@ -7297,7 +7300,7 @@ function _findUserByLogin(ident) {
   const byMail = _findUserByEmail(id); if (byMail) return byMail;
   const ng = _normGmailKey(id); if (!ng) return null;
   const hits = _gmailIndex().get(ng) || [];
-  return hits.length === 1 ? hits[0] : null;
+  return hits.length === 1 ? (DB_USERS[hits[0]] || null) : null;
 }
 // Pra onde o código de recuperação vai: o e-mail cadastrado e confirmado; conta
 // LEGADA (chave = Gmail real, sem emailContato) usa a própria chave. Sem nenhum

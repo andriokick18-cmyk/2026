@@ -1460,7 +1460,7 @@ async function drillAdminSettingsLegado() {
       (_srv965.match(/_gmailJaTemConta\(email\)\)return json\(res,409/g) || []).length === 3 && !/_findUserByEmail\(email\)\)return json\(res,409/.test(_srv965) &&
       /if\(_emailBanido\(email\)\)return json\(res,403/.test(_srv965) && /_gmailIdx\.at=0;/.test(_srv965) &&
       /er\.status=r\.status;throw er;/.test(_app965) && /onclick="agJaTemConta\('rec'\)">Recuperar meu acesso/.test(_app965) && /^function agJaTemConta\(modo\)\{/m.test(_app965) &&
-      /\.ag-link\{[^}]*min-height:44px[^}]*\}/.test(_idxV214),
+      /\.ag-link\{[^}]*min-height:44px[^}]*\}/.test(fs.readFileSync(path.join(__dirname, "index.html"), "utf8")),
       "atalhos do 409 / identidade de Gmail do cadastro / alvo de toque fora do contrato");
     check("🔑 v965 estrutural (front): a tela de recuperação pede 'Nome de usuário ou e-mail' (campo de texto, sem exigir '@'), manda {identificador}, o login leva o que a pessoa já digitou (agIrRecuperar) e as 2 telas trazem o botão de suporte no WhatsApp",
       /Nome de usuário ou e-mail<\/label>\s*\n\s*<input class="ag-input" id="ag-r-email" type="text"/.test(_app965) &&
