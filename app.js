@@ -3060,6 +3060,7 @@ function loadProfile(){
   const wEl=g("#cfg-whatsapp");if(wEl)wEl.value=U.whatsapp||"";
   // ── Gmail Extra: mostrar seção conforme plano ──
   _renderProfileSenderSection();
+  renderProfileGmailCard();
   g("#p-name")&&(g("#p-name").textContent=U.name);g("#p-email")&&(g("#p-email").textContent=U.email);
   // Novos IDs do hero do perfil redesenhado
   const _pnl=g("#prof-name-lbl");if(_pnl)_pnl.textContent=U.name||"–";
@@ -5487,7 +5488,23 @@ function renderHdrGmailBtn(){
   b.style.display="flex";
   if(h)h.classList.add("hdr-has-gmail"); // celular estreito: o nome do site some pra o botão caber (ver CSS)
 }
-function updateGmailPrompts(){renderHomeGmailGate();renderHdrGmailBtn();}
+function updateGmailPrompts(){renderHomeGmailGate();renderHdrGmailBtn();renderProfileGmailCard();}
+// v966: card do Gmail DENTRO do Perfil, pra todo mundo. Plano ativo → botão
+// clicável; sem plano → botão visível, mas o toque só explica (regra do dono).
+function renderProfileGmailCard(){
+  const el=g("#pf-gmail-card");if(!el||!U)return;
+  const livre=!U.isAdmin&&U.needsPlan;
+  if(U.gmailConnected){
+    el.innerHTML=`<div style="display:flex;align-items:center;gap:10px;background:rgba(16,185,129,.1);border:1.5px solid rgba(16,185,129,.35);border-radius:14px;padding:12px 14px"><i class="ti ti-circle-check" style="font-size:20px;color:#059669"></i><div style="min-width:0"><div style="font-size:13px;font-weight:800;color:#047857">${esc(t('pfg_ok'))}</div><div style="font-size:12px;color:var(--t1);word-break:break-all">${esc(U.gmailEmail||U.email||"")}</div></div></div>`;
+    return;
+  }
+  const re=!!U.gmailNeedsReconnect;
+  el.innerHTML=`<div style="background:var(--surface);border:1.5px solid ${livre?'var(--border)':'#f59e0b'};border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:9px">
+    <div style="font-size:13px;font-weight:800;color:var(--text)">${esc(t(re?'gm_re_t':'pfg_t'))}</div>
+    <div style="font-size:12px;color:var(--t2);line-height:1.5">${esc(t(livre?'pfg_free':(re?'gm_re_s':'pfg_s')))}</div>
+    <button type="button" onclick="connectGmailForSending('profile')" class="btn btn-primary w100" style="justify-content:center;min-height:46px;font-size:14px;font-weight:800${livre?';opacity:.75':''}"><i class="ti ti-brand-google" style="font-size:17px"></i> ${esc(t(re?'gm_btn_re':'gm_btn'))}</button>
+  </div>`;
+}
 // Erro de envio por Gmail desconectado/caído: o botão de resolver mora DENTRO
 // do aviso vermelho do modal — a pessoa nunca mais lê "Conectar Gmail" sem ter
 // onde tocar. Marca o estado local e acende os outros convites na hora.
@@ -5506,6 +5523,7 @@ function gmailFixFromModal(){closeModal();connectGmailForSending('home');}
 // v172c (12/09/2026): passa pelo aviso obrigatório (showGmailConnectWarnModal)
 // antes de ir pro Google — é a conta que vira e-mail de envio PRA SEMPRE.
 function connectGmailForSending(fromTab){
+  if(U&&!U.isAdmin&&U.needsPlan){toast(t('pfg_free'),'r',7000);try{sv('plans');}catch(e){}return;}
   showGmailConnectWarnModal(fromTab);
 }
 async function loadPublicStats(){
@@ -7252,6 +7270,10 @@ const LANG_DICT = {
     "gm_re_t":"⚠️ Seu Gmail desconectou — reconecte pra voltar a enviar",
     "gm_re_s":"O Google encerrou a autorização do seu Gmail (acontece por segurança). Reconecte em 1 minuto — seu plano e seus dias continuam valendo.",
     "gm_btn":"Conectar meu Gmail agora",
+    "pfg_t":"Gmail de envio",
+    "pfg_s":"Conecte o Gmail que vai enviar suas candidaturas. Leva 1 minuto.",
+    "pfg_free":"Somente conecte seu Gmail com um plano ativo.",
+    "pfg_ok":"Gmail conectado",
     "gm_btn_re":"Reconectar meu Gmail agora",
     "gm_steps":"1) Toque no botão · 2) Entre com o Gmail que você cadastrou · 3) Aceite a permissão de enviar e-mails",
     "gm_hdr":"Conectar Gmail",
@@ -7410,6 +7432,10 @@ const LANG_DICT = {
     "gm_re_t":"⚠️ Your Gmail got disconnected — reconnect to keep sending",
     "gm_re_s":"Google ended the authorization for your Gmail (it happens for security). Reconnect in 1 minute — your plan and days stay valid.",
     "gm_btn":"Connect my Gmail now",
+    "pfg_t":"Sending Gmail",
+    "pfg_s":"Connect the Gmail that will send your applications. Takes 1 minute.",
+    "pfg_free":"Only connect your Gmail with an active plan.",
+    "pfg_ok":"Gmail connected",
     "gm_btn_re":"Reconnect my Gmail now",
     "gm_steps":"1) Tap the button · 2) Sign in with the Gmail you registered · 3) Accept the permission to send emails",
     "gm_hdr":"Connect Gmail",
@@ -7550,6 +7576,10 @@ const LANG_DICT = {
     "gm_re_t":"⚠️ Tu Gmail se desconectó — reconecta para volver a enviar",
     "gm_re_s":"Google cerró la autorización de tu Gmail (pasa por seguridad). Reconecta en 1 minuto — tu plan y tus días siguen vigentes.",
     "gm_btn":"Conectar mi Gmail ahora",
+    "pfg_t":"Gmail de envío",
+    "pfg_s":"Conecta el Gmail que enviará tus postulaciones. Toma 1 minuto.",
+    "pfg_free":"Solo conecta tu Gmail con un plan activo.",
+    "pfg_ok":"Gmail conectado",
     "gm_btn_re":"Reconectar mi Gmail ahora",
     "gm_steps":"1) Toca el botón · 2) Entra con el Gmail que registraste · 3) Acepta el permiso para enviar correos",
     "gm_hdr":"Conectar Gmail",

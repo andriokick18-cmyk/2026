@@ -9976,6 +9976,14 @@ async function drillAdminSettingsLegado() {
     check("📧 v964 i18n: os textos do convite de Gmail (gm_*) existem no LANG_DICT em pt+en+es, exatamente 1x por língua — regra 6f",
       ["gm_new_t", "gm_new_s", "gm_re_t", "gm_re_s", "gm_btn", "gm_btn_re", "gm_steps", "gm_hdr", "gm_hdr_re", "gm_err_default", "gm_toast_ativo", "gm_done_4"].every((k) => (_appV209.match(new RegExp('"' + k + '":"', "g")) || []).length === 3),
       "chave gm_* faltando ou duplicada em alguma língua");
+    check("📧 v966: Perfil tem o card do Gmail pra todos (plano ativo clica; sem plano o toque só explica 'Somente conecte seu Gmail com um plano ativo'), chamado do loadProfile e do updateGmailPrompts, com i18n pfg_* em 3 línguas",
+      /id="pf-gmail-card"/.test(_idxV214) && _idxV214.indexOf('id="pf-gmail-card"') > _idxV214.indexOf('id="pf-sec-me"') && _idxV214.indexOf('id="pf-gmail-card"') < _idxV214.indexOf('id="cfg-name"') &&
+      /^function renderProfileGmailCard\(\)\{/m.test(_appV209) && /renderProfileGmailCard\(\);\n\s*g\("#p-name"\)/.test(_appV209) &&
+      /function updateGmailPrompts\(\)\{[^}]*renderProfileGmailCard\(\);\}/.test(_appV209) &&
+      /function connectGmailForSending\(fromTab\)\{\n\s*if\(U&&!U\.isAdmin&&U\.needsPlan\)\{toast\(t\('pfg_free'\)/.test(_appV209) &&
+      ["pfg_t", "pfg_s", "pfg_free", "pfg_ok"].every((k) => (_appV209.match(new RegExp('"' + k + '":"', "g")) || []).length === 3) &&
+      /"pfg_free":"Somente conecte seu Gmail com um plano ativo\."/.test(_appV209),
+      "card do Gmail no Perfil, guarda de plano grátis ou textos pfg_* sumiram");
     check("🚧 estrutural: loadPlanos() troca o banner de manutenção pelo seletor de compra lendo SEMPRE U.newPurchasesBlocked (nunca decide sozinho no front) — e applyStatus() propaga o campo vindo do /api/status",
       /if\(U\.newPurchasesBlocked\)\{/.test(_appV209) &&
       /newPurchasesBlocked:!!d\.newPurchasesBlocked/.test(_appV209),
