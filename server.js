@@ -6728,7 +6728,7 @@ async function refreshToken(sid){
   if(r.access_token){
     if(s){s.access_token=r.access_token;s.expires_at=Date.now()+(r.expires_in||3600)*1000;}
     // Persiste o novo access_token no banco (para uso pelo auto sem sessão)
-    if(s?.user_email){setUser(s.user_email,{cached_access_token:r.access_token,cached_token_expiry:Date.now()+(r.expires_in||3600)*1000});}
+    if(s?.user_email){setUser(s.user_email,{cached_access_token:r.access_token,cached_token_expiry:Date.now()+(r.expires_in||3600)*1000,...(getUser(s.user_email)?.rtInvalid?{rtInvalid:false,rtInvalidAt:null}:{})});} // v964: renovou = o token está vivo, a marca de queda sai sozinha
     // Atualiza refresh_token se veio um novo
     if(r.refresh_token&&s?.user_email){setUser(s.user_email,{refresh_token:r.refresh_token});if(s)s.refresh_token=r.refresh_token;}
   }
@@ -6742,7 +6742,7 @@ async function refreshTokenForUser(email){
   if(r.error){_authEvent(email,"refresh_falhou",String(r.error_description||r.error).slice(0,180));throw new Error(r.error_description||r.error);} // 🔐 v165: o erro CRU do Google fica na linha do tempo
   if(!r.access_token)throw new Error("Token não retornado pelo Google.");
   const expiresAt=Date.now()+(r.expires_in||3600)*1000;
-  setUser(email,{cached_access_token:r.access_token,cached_token_expiry:expiresAt});
+  setUser(email,{cached_access_token:r.access_token,cached_token_expiry:expiresAt,...(u.rtInvalid?{rtInvalid:false,rtInvalidAt:null}:{})}); // v964: renovou = token vivo, a marca de queda sai sozinha
   if(r.refresh_token)setUser(email,{refresh_token:r.refresh_token});
   // Atualiza todas as sessões ativas desse usuário
   for(const sid of Object.keys(sessions)){const s=sessions[sid];if(s.user_email===email){s.access_token=r.access_token;s.expires_at=expiresAt;if(r.refresh_token)s.refresh_token=r.refresh_token;}}
@@ -7002,6 +7002,26 @@ function buildMime(opts){ return _buildMimeMod(opts); } // corpo em src/gmail.js
 // refreshToken() nunca era chamado. Agora tenta refresh SEMPRE que falta
 // (ou está vencendo) — refreshToken() já sabe cair pro refresh_token
 // persistido (ver função refreshToken acima) mesmo sem um na sessão.
+// 📧 v964 (caso real, 10/10/2026 — cliente pagou o plano e "não achava onde
+// conectar o Gmail"): quando o Google derruba a autorização (invalid_grant /
+// revogada / expirada) e a sessão não tem access_token, esta função jogava a
+// MESMA frase pra tudo ("Conecte seu Gmail…") — sem marcar a conta, sem
+// código pro front. Resultado: o site seguia achando que o Gmail estava
+// conectado (gmailConnected = "tem refresh_token"), ESCONDIA todos os botões
+// de conectar, e o envio falhava pra sempre — beco sem saída. Agora: queda
+// CONFIRMADA pelo Google marca rtInvalid (mesma marca do robô automático,
+// regra 13a3) e sobe com needsReconnect=true; erro de rede NUNCA marca nada e
+// diz a verdade (instabilidade, o Gmail continua conectado).
+const GMAIL_RECONNECT_MSG="Seu Gmail desconectou do H2BApply (o Google encerrou a autorização — acontece por segurança). Toque em “Conectar Gmail” pra reconectar em 1 minuto; seu plano e seus dias continuam valendo.";
+function _gmailReconnectErr(email,raw){
+  try{
+    if(email&&getUser(email)?.refresh_token){
+      setUser(email,{rtInvalid:true,rtInvalidAt:Date.now()});
+      _authEvent(email,"refresh_falhou","Envio manual: o Google recusou renovar o acesso — "+String(raw||"sem detalhe").slice(0,160));
+    }
+  }catch(e){console.warn("[send] não consegui marcar rtInvalid:",e.message);}
+  const err=new Error(GMAIL_RECONNECT_MSG);err.needsReconnect=true;return err;
+}
 async function _ensureSendToken(sid){
   const s=sessions[sid];
   if(!s)throw new Error("Sessão expirada.");
@@ -7009,10 +7029,14 @@ async function _ensureSendToken(sid){
   if(stale){
     try{await refreshToken(sid);}
     catch(e){
-      if(!s.access_token)throw new Error("Conecte seu Gmail pra enviar candidaturas (Automático ou Manual → Conectar Gmail).");
+      if(!s.access_token){
+        const raw=String(e&&e.message||"");
+        if(/invalid_grant|expired or revoked|revoked|Sem refresh_token/i.test(raw))throw _gmailReconnectErr(s.user_email,raw);
+        throw new Error("Não consegui falar com o Google agora (conexão instável). Tente de novo em instantes — seu Gmail continua conectado.");
+      }
     }
   }
-  if(!s.access_token)throw new Error("Conecte seu Gmail pra enviar candidaturas (Automático ou Manual → Conectar Gmail).");
+  if(!s.access_token)throw _gmailReconnectErr(s.user_email,"sem access_token após renovar");
   return s;
 }
 // 🐛 v172c: fromEmail do sender PRINCIPAL não pode mais ser s.user_email cru
@@ -11872,7 +11896,7 @@ filtrar();
     // planGateMsg). null quando não há provisório vencendo com pedido pendente.
     const _provPend = _provisorioPendente(p);
     return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,newPurchasesBlocked:NEW_PURCHASES_BLOCKED&&!isAdminVip(p),planRulesNotice:_prNotice,
-      provisorioPendente:_provPend?{pedidoId:_provPend.pedidoId,ref:_provPend.ref}:null,manualCdOff:p.manualCdOff===true,gmailConnected,gmailEmail,emailContato:p.emailContato||null,emailVerificado:!!p.emailVerificadoEm,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",estado:p.estado||p.state||"",language:p.language||"pt",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||null}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,aprendaProgresso:p.aprendaProgresso||[],adminMessage:p.adminMessage||null,profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.gmailConnectedAt||p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===(gmailEmail||s.user_email)||x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||300),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
+      provisorioPendente:_provPend?{pedidoId:_provPend.pedidoId,ref:_provPend.ref}:null,manualCdOff:p.manualCdOff===true,gmailNeedsReconnect:!!(p.refresh_token&&p.rtInvalid),gmailConnected,gmailEmail,emailContato:p.emailContato||null,emailVerificado:!!p.emailVerificadoEm,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",estado:p.estado||p.state||"",language:p.language||"pt",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||null}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,aprendaProgresso:p.aprendaProgresso||[],adminMessage:p.adminMessage||null,profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.gmailConnectedAt||p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===(gmailEmail||s.user_email)||x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||300),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
   }
 
   if(pathname==="/api/onboard"&&req.method==="POST"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});setUser(s.user_email,{onboarded:true});return json(res,200,{ok:true});}
@@ -12370,6 +12394,10 @@ filtrar();
       _manualSendInFlight.delete(dedupKey);
       if(_reservedManualSlot){_releaseManualSlot(s.user_email);_reservedManualSlot=false;}
       console.error("[send]",e.message);
+      // 📧 v964: Gmail do principal caiu (queda confirmada pelo Google) — mesmo
+      // contrato do 403 de "nunca conectou": needsGmailConnect, e gmailReconnect
+      // pra o front dizer "RECONECTAR" com o botão grande no próprio modal.
+      if(e&&e.needsReconnect)return json(res,403,{error:e.message,needsGmailConnect:true,gmailReconnect:true});
       // v18-FIX: antes devolvia e.message CRU pro usuário — texto técnico do
       // Google tipo "User-rate limit exceeded. Retry after 2026-07-15T12:31:47Z"
       // que ninguém leigo entende e parece bug do H2BApply (não é — é o Google
@@ -12767,8 +12795,13 @@ filtrar();
       if(d.createdAt)setUser(email,{created_at:String(d.createdAt)});
       if(d.gmailConnectedAt)setUser(email,{gmailConnectedAt:Number(d.gmailConnectedAt)});
       if(d.vip)setUser(email,{vip:d.vip,plan:d.plan||getUser(email)?.plan});
+      // 📧 v964 (só teste): conta que entra por usuário+senha chega SEM access_token
+      // (login é só identidade) — `semAccessToken` reproduz esse estado pra provar o
+      // caminho "sessão sem token + refresh_token morto" do envio manual; `rtInvalid`
+      // semeia a marca de queda confirmada que o status devolve como gmailNeedsReconnect.
+      if(d.rtInvalid===true)setUser(email,{rtInvalid:true,rtInvalidAt:Date.now()});
       const sid="test_"+crypto.randomBytes(16).toString("hex");
-      sessions[sid]={user_email:email,user_name:String(d.name||"Test"),created_at:Date.now(),access_token:"test-token",expires_at:Date.now()+3600_000};
+      sessions[sid]={user_email:email,user_name:String(d.name||"Test"),created_at:Date.now(),access_token:d.semAccessToken===true?"":"test-token",expires_at:Date.now()+3600_000};
       res.writeHead(200,{"Content-Type":"application/json","Set-Cookie":makeCookieStr(sid)});
       return res.end(JSON.stringify({ok:true,email}));
     }catch(e){return json(res,500,{error:e.message});}

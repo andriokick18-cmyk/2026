@@ -177,7 +177,8 @@ function applyStatus(d){
   // Gmail conectado (/oauth/connect-send), nunca antes disso.
   // 🐛 v172c: gmailEmail é o Gmail REAL de envio (null se ainda não conectou)
   // — email é só a identidade de login (username sem @ pra conta nova).
-  gmailConnected:!!d.gmailConnected,gmailEmail:d.gmailEmail||null,needsPlan:!!d.needsPlan,
+  // 📧 v964: "tem refresh_token" não basta — se o Google derrubou a autorização (gmailNeedsReconnect), o Gmail NÃO está conectado de verdade: todos os botões de conectar precisam aparecer.
+  gmailConnected:!!d.gmailConnected&&!d.gmailNeedsReconnect,gmailNeedsReconnect:!!d.gmailNeedsReconnect,gmailEmail:d.gmailEmail||null,needsPlan:!!d.needsPlan,
   // 💳 v187: {pedidoId,ref} quando a janela provisória de 3 dias venceu e o
   // pedido AINDA está com o admin — é o que impede a tela de mandar quem já
   // pagou "assinar de novo" (ver _planGateSubTxt).
@@ -189,6 +190,7 @@ function applyStatus(d){
   // Pedido pendente na Home: se o plano/gate mudou, o card em cache virou
   // mentira — força uma releitura na próxima renderização.
   if(_antes&&(_antes.needsPlan!==!!U.needsPlan||_antes.plan!==U.plan||_antes.gmail!==!!U.gmailConnected))_pendingOrderCache=undefined;
+  try{updateGmailPrompts();}catch(e){}
 }
 
 async function checkStatus(){
@@ -880,6 +882,7 @@ function renderPlanStatusCard(){
       <button class="btn btn-primary btn-sm w100" style="margin-top:10px;justify-content:center" onclick="sv('plans')">${esc(t('ns4_c'))} <i class="ti ti-arrow-right"></i></button>
     </div>`;
   }
+  if((hasManual||hasAuto||U.isAdmin)&&!U.gmailConnected)html+=`<div style="background:rgba(245,158,11,.12);border:1.5px solid rgba(245,158,11,.4);border-radius:var(--r);padding:12px 14px;margin-top:4px">${_gmailCardHTML('plans')}</div>`; // v964
   html+=`<div id="mc-pedido" style="font-size:11.5px;color:var(--t3);margin-top:8px"></div>
   </div>`;
   el.innerHTML=html;
@@ -935,6 +938,7 @@ function renderHdr(){
       plansBtn.style.background="linear-gradient(135deg,#4f46e5,#7c3aed)";
     }
   }
+  try{renderHdrGmailBtn();}catch(e){}
 }
 // v198 LOTE 16: updateLimChip() REMOVIDA (e as 10 chamadas junto). Ela
 // pintava um chip #hdr-lim que não existe no HTML há tempos — g() é null-safe,
@@ -2820,6 +2824,7 @@ async function doSend(){
     // FIX: mostra TODOS os erros de forma visível — esconde spinner e reabilita botão ANTES de mostrar
     if(!d.ok){
       g("#m-sending").style.display="none";g("#m-send").disabled=false;
+      if(d.needsGmailConnect){_gmailFalhouNoEnvio(d);return;} // v964
       const errMsg=d.error||"Erro ao enviar. Tente novamente.";
       warn(errMsg);
       // Rola para o topo do modal body para mostrar o aviso
@@ -5201,16 +5206,7 @@ function updateManualSendGate(){
     </div>`;
     el.style.background="rgba(239,68,68,.1)";el.style.border="1.5px solid rgba(239,68,68,.35)";el.style.color="#dc2626";
   } else {
-    el.innerHTML=`<div style="display:flex;flex-direction:column;gap:10px;width:100%">
-      <div style="display:flex;align-items:center;gap:12px">
-        <div style="width:42px;height:42px;border-radius:12px;background:rgba(245,158,11,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ti ti-mail-exclamation" style="font-size:21px;color:#b45309"></i></div>
-        <div style="flex:1;min-width:150px">
-          <div style="font-size:14px;font-weight:800;color:#b45309">Conecte seu Gmail pra começar a enviar</div>
-          <div style="font-size:12px;color:#78350f;opacity:.85;margin-top:2px">Esse e-mail vai ser o único usado pra enviar suas candidaturas — não dá pra trocar depois.</div>
-        </div>
-      </div>
-      <button onclick="connectGmailForSending('jobs')" class="btn btn-primary w100" style="justify-content:center;padding:13px;font-size:14.5px;font-weight:800"><i class="ti ti-brand-google" style="font-size:17px"></i> Conectar meu Gmail agora</button>
-    </div>`;
+    el.innerHTML=_gmailCardHTML('jobs');
     el.style.background="rgba(245,158,11,.12)";el.style.border="1.5px solid rgba(245,158,11,.4)";el.style.color="#b45309";
   }
 }
@@ -5262,13 +5258,7 @@ function _updateAutoFreeBanner(){
     lbl.innerHTML='<i class="ti ti-mail-exclamation"></i> <strong>Conecte seu Gmail</strong> pra começar a enviar';
     lbl.style.background="rgba(245,158,11,.12)";lbl.style.borderColor="rgba(245,158,11,.4)";lbl.style.color="#b45309";
     if(card){card.style.display="flex";card.style.background="rgba(245,158,11,.12)";card.style.border="1.5px solid rgba(245,158,11,.4)";
-      card.innerHTML=`<div style="display:flex;flex-direction:column;gap:10px;width:100%">
-        <div style="display:flex;align-items:center;gap:12px">
-          <div style="width:42px;height:42px;border-radius:12px;background:rgba(245,158,11,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ti ti-mail-exclamation" style="font-size:21px;color:#b45309"></i></div>
-          <div style="flex:1;min-width:150px"><div style="font-size:14px;font-weight:800;color:#b45309">Conecte seu Gmail pra começar a enviar</div><div style="font-size:12px;color:#78350f;opacity:.85;margin-top:2px">Esse e-mail vai ser o único usado pra enviar suas candidaturas — não dá pra trocar depois.</div></div>
-        </div>
-        <button onclick="connectGmailForSending('auto')" class="btn btn-primary w100" style="justify-content:center;padding:13px;font-size:14.5px;font-weight:800"><i class="ti ti-brand-google" style="font-size:17px"></i> Conectar meu Gmail agora</button>
-      </div>`;
+      card.innerHTML=_gmailCardHTML('auto');
     }
   } else if(U.plan==="doublepro"){
     lbl.innerHTML=`<i class="ti ti-crown"></i> <strong>Máximo</strong> — ${U.autoLimit} envios/dia com 2 Gmails`;
@@ -5425,6 +5415,68 @@ async function syncData(){
 // 🔒 v172 (ORDEM DO DONO, 11/09/2026): pedido SEPARADO do login — só existe
 // pra quem JÁ tem plano pago ativo (o servidor confere de novo e barra quem
 // não tem). fromTab devolve a pessoa pra onde ela estava tentando enviar.
+// 📧 v964 (caso real, 10/10/2026 — "cliente pagou o VIP e não achou onde
+// conectar o Gmail"; o erro do modal de envio dizia "Conectar Gmail" sem
+// nenhum botão). Duas causas: (1) o botão só existia em telas secundárias
+// (Envio Manual/Automático, Perfil); (2) quando o Google derrubava a
+// autorização, o site seguia achando o Gmail "conectado" e escondia tudo.
+// Agora o convite aparece em 4 lugares sem a pessoa procurar: botão fixo no
+// cabeçalho, card grande no topo da Início, botão dentro do erro do modal de
+// envio e na tela "Plano liberado". Fonte única do "precisa conectar?":
+// gmailPrecisaConectar() — plano ativo (ou admin) e Gmail não conectado.
+function gmailPrecisaConectar(){return !!U&&!!U.connected&&!U.needsPlan&&!U.gmailConnected;}
+function gmailPromptTexts(){
+  const re=!!(U&&U.gmailNeedsReconnect);
+  return{re,title:t(re?'gm_re_t':'gm_new_t'),sub:t(re?'gm_re_s':'gm_new_s'),btn:t(re?'gm_btn_re':'gm_btn'),hdr:t(re?'gm_hdr_re':'gm_hdr')};
+}
+function _gmailCardHTML(from){
+  const gp=gmailPromptTexts();
+  return`<div style="display:flex;flex-direction:column;gap:10px;width:100%">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="width:42px;height:42px;border-radius:12px;background:rgba(245,158,11,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ti ti-mail-exclamation" style="font-size:21px;color:#b45309"></i></div>
+      <div style="flex:1;min-width:150px"><div style="font-size:14px;font-weight:800;color:#b45309">${esc(gp.title)}</div><div style="font-size:12px;color:#78350f;opacity:.9;margin-top:2px;line-height:1.5">${esc(gp.sub)}</div></div>
+    </div>
+    <button onclick="connectGmailForSending('${esc(from)}')" class="btn btn-primary w100" style="justify-content:center;padding:13px;font-size:14.5px;font-weight:800"><i class="ti ti-brand-google" style="font-size:17px"></i> ${esc(gp.btn)}</button>
+  </div>`;
+}
+function renderHomeGmailGate(){
+  const el=g("#home-gmail-gate");if(!el)return;
+  if(!gmailPrecisaConectar()){el.style.display="none";el.innerHTML="";return;}
+  const gp=gmailPromptTexts();
+  el.style.display="block";
+  el.innerHTML=`<div style="background:linear-gradient(135deg,#fff7ed,#ffedd5);border:2.5px solid #f59e0b;border-radius:22px;padding:18px 18px 16px;box-shadow:0 10px 30px rgba(245,158,11,.28)">
+    <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:12px">
+      <div style="width:50px;height:50px;border-radius:15px;background:linear-gradient(135deg,#f59e0b,#ea580c);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ti ti-brand-google" style="font-size:26px;color:#fff"></i></div>
+      <div style="min-width:0"><div style="font-size:17px;font-weight:900;color:#9a3412;line-height:1.3">${esc(gp.title)}</div><div style="font-size:13px;color:#7c2d12;line-height:1.55;margin-top:4px">${esc(gp.sub)}</div></div>
+    </div>
+    <button type="button" onclick="connectGmailForSending('home')" class="btn btn-primary w100" style="justify-content:center;min-height:58px;font-size:17px;font-weight:900;border-radius:16px;background:linear-gradient(135deg,#f59e0b,#ea580c);border:none"><i class="ti ti-brand-google" style="font-size:20px"></i> ${esc(gp.btn)} <i class="ti ti-arrow-right"></i></button>
+    <div style="font-size:12px;color:#9a3412;text-align:center;margin-top:9px;line-height:1.5">${esc(t('gm_steps'))}</div>
+  </div>`;
+}
+function renderHdrGmailBtn(){
+  const b=g("#hdr-gmail-btn");if(!b)return;
+  const h=g("#app-hdr");
+  if(!gmailPrecisaConectar()){b.style.display="none";if(h)h.classList.remove("hdr-has-gmail");return;}
+  const l=g("#hdr-gmail-label");if(l)l.textContent=gmailPromptTexts().hdr;
+  b.style.display="flex";
+  if(h)h.classList.add("hdr-has-gmail"); // celular estreito: o nome do site some pra o botão caber (ver CSS)
+}
+function updateGmailPrompts(){renderHomeGmailGate();renderHdrGmailBtn();}
+// Erro de envio por Gmail desconectado/caído: o botão de resolver mora DENTRO
+// do aviso vermelho do modal — a pessoa nunca mais lê "Conectar Gmail" sem ter
+// onde tocar. Marca o estado local e acende os outros convites na hora.
+function _gmailFalhouNoEnvio(d){
+  U.gmailConnected=false;U.gmailNeedsReconnect=!!d.gmailReconnect;
+  const w=g("#m-warn");
+  if(w)w.innerHTML=`<div class="alert al-red" style="margin-top:8px;flex-direction:column;align-items:stretch;gap:12px">
+    <div style="display:flex;gap:9px"><i class="ti ti-alert-circle"></i><span>${esc(d.error||t('gm_err_default'))}</span></div>
+    <button type="button" class="btn btn-primary w100" style="justify-content:center;min-height:56px;font-size:16.5px;font-weight:900;border-radius:14px;background:linear-gradient(135deg,#f59e0b,#ea580c);border:none" onclick="gmailFixFromModal()"><i class="ti ti-brand-google" style="font-size:20px"></i> ${esc(gmailPromptTexts().btn)} <i class="ti ti-arrow-right"></i></button>
+  </div>`;
+  const mb=g("#modal")?.querySelector(".mbody");if(mb)mb.scrollTop=0;
+  toast("📧 "+gmailPromptTexts().title,"r",8000);
+  try{updateManualSendGate();_updateAutoFreeBanner();updateGmailPrompts();}catch(e){}
+}
+function gmailFixFromModal(){closeModal();connectGmailForSending('home');}
 // v172c (12/09/2026): passa pelo aviso obrigatório (showGmailConnectWarnModal)
 // antes de ir pro Google — é a conta que vira e-mail de envio PRA SEMPRE.
 function connectGmailForSending(fromTab){
@@ -6073,6 +6125,7 @@ function renderHome(){
   try{renderHomeActivity();}catch(e){}
   try{renderHomePraVoce();}catch(e){}
   try{renderNextStep();}catch(e){}
+  try{updateGmailPrompts();}catch(e){}
   try{renderPendingOrderCard();}catch(e){}
   // Stats — Vagas Disponíveis (cache de loadDynamicSheets) + Empresas Contatadas (HIST únicas)
   const sj=g("#home-stat-jobs");
@@ -7168,6 +7221,18 @@ const LANG_DICT = {
     "insta_kicker":"Siga a gente no Instagram",
     "insta_sub":"Novidades do H2BApply e dicas de H-2B/H-2A no perfil oficial do site.",
     "insta_close":"Fechar destaque do Instagram",
+    "gm_new_t":"✅ Plano ativo — falta conectar o seu Gmail",
+    "gm_new_s":"É por ele que o H2BApply envia as suas candidaturas. Leva 1 minuto. O site só ENVIA — nunca lê a sua caixa de entrada.",
+    "gm_re_t":"⚠️ Seu Gmail desconectou — reconecte pra voltar a enviar",
+    "gm_re_s":"O Google encerrou a autorização do seu Gmail (acontece por segurança). Reconecte em 1 minuto — seu plano e seus dias continuam valendo.",
+    "gm_btn":"Conectar meu Gmail agora",
+    "gm_btn_re":"Reconectar meu Gmail agora",
+    "gm_steps":"1) Toque no botão · 2) Entre com o Gmail que você cadastrou · 3) Aceite a permissão de enviar e-mails",
+    "gm_hdr":"Conectar Gmail",
+    "gm_hdr_re":"Reconectar Gmail",
+    "gm_err_default":"Seu Gmail precisa ser conectado pra enviar candidaturas.",
+    "gm_toast_ativo":"🎉 Plano ativo! Último passo: conecte o seu Gmail pra começar a enviar.",
+    "gm_done_4":"Com o plano ativo, aparece um botão grande “Conectar Gmail” no topo do Início — é por ele que seus e-mails saem.",
     "insta_cta":"Seguir no Instagram",
     "insta_aria":"Abrir o Instagram @h2bapply em nova aba",
     "contact_data":"Seus dados de contato","contact_sub":"Para ativarmos seu plano e entrar em contato",
@@ -7314,6 +7379,18 @@ const LANG_DICT = {
     "insta_kicker":"Follow us on Instagram",
     "insta_sub":"H2BApply news and H-2B/H-2A tips on the site's official profile.",
     "insta_close":"Close the Instagram highlight",
+    "gm_new_t":"✅ Plan active — now connect your Gmail",
+    "gm_new_s":"H2BApply sends your applications through it. Takes 1 minute. The site only SENDS — it never reads your inbox.",
+    "gm_re_t":"⚠️ Your Gmail got disconnected — reconnect to keep sending",
+    "gm_re_s":"Google ended the authorization for your Gmail (it happens for security). Reconnect in 1 minute — your plan and days stay valid.",
+    "gm_btn":"Connect my Gmail now",
+    "gm_btn_re":"Reconnect my Gmail now",
+    "gm_steps":"1) Tap the button · 2) Sign in with the Gmail you registered · 3) Accept the permission to send emails",
+    "gm_hdr":"Connect Gmail",
+    "gm_hdr_re":"Reconnect Gmail",
+    "gm_err_default":"Your Gmail must be connected to send applications.",
+    "gm_toast_ativo":"🎉 Plan active! Last step: connect your Gmail to start sending.",
+    "gm_done_4":"With the plan active, a big “Connect Gmail” button shows up at the top of Home — that's how your emails go out.",
     "insta_cta":"Follow on Instagram",
     "insta_aria":"Open the @h2bapply Instagram in a new tab",
     "contact_data":"Your contact info","contact_sub":"So we can activate your plan and reach you",
@@ -7442,6 +7519,18 @@ const LANG_DICT = {
     "insta_kicker":"Síguenos en Instagram",
     "insta_sub":"Novedades de H2BApply y consejos de H-2B/H-2A en el perfil oficial del sitio.",
     "insta_close":"Cerrar el destaque de Instagram",
+    "gm_new_t":"✅ Plan activo — falta conectar tu Gmail",
+    "gm_new_s":"H2BApply envía tus postulaciones por él. Toma 1 minuto. El sitio solo ENVÍA — nunca lee tu bandeja de entrada.",
+    "gm_re_t":"⚠️ Tu Gmail se desconectó — reconecta para volver a enviar",
+    "gm_re_s":"Google cerró la autorización de tu Gmail (pasa por seguridad). Reconecta en 1 minuto — tu plan y tus días siguen vigentes.",
+    "gm_btn":"Conectar mi Gmail ahora",
+    "gm_btn_re":"Reconectar mi Gmail ahora",
+    "gm_steps":"1) Toca el botón · 2) Entra con el Gmail que registraste · 3) Acepta el permiso para enviar correos",
+    "gm_hdr":"Conectar Gmail",
+    "gm_hdr_re":"Reconectar Gmail",
+    "gm_err_default":"Tu Gmail debe estar conectado para enviar postulaciones.",
+    "gm_toast_ativo":"🎉 ¡Plan activo! Último paso: conecta tu Gmail para empezar a enviar.",
+    "gm_done_4":"Con el plan activo, aparece un botón grande “Conectar Gmail” arriba del Inicio — por ahí salen tus correos.",
     "insta_cta":"Seguir en Instagram",
     "insta_aria":"Abrir el Instagram @h2bapply en una pestaña nueva",
     "contact_data":"Tus datos de contacto","contact_sub":"Para activar tu plan y contactarte",
@@ -8355,7 +8444,10 @@ function _vigiarAtivacaoProvisoria(planoLabel,diasPagos){
             // servidor zera o provisório e credita o período comprado).
             const _dp=parseInt(diasPagos,10)>0?(' Quando ela confirmar, seus <strong>'+parseInt(diasPagos,10)+' dias</strong> pagos começam a contar.'):'';
             if(dMsg)dMsg.innerHTML='O robô conferiu seu comprovante e já liberou o <strong>'+esc(planoLabel)+'</strong> provisoriamente — pode começar a enviar agora mesmo.<br>A confirmação final da equipe continua na fila.'+_dp+'<br><strong>Para dúvidas, entre em contato:</strong>';
-            toast('⚡ Plano liberado — já pode enviar!','g',7000);
+            // 📧 v964: quem acabou de pagar precisa do Gmail conectado pra enviar —
+            // o botão fica NA PRÓPRIA tela de confirmação, sem a pessoa procurar.
+            if(dMsg&&!U.gmailConnected)dMsg.innerHTML+='<div style="margin-top:14px"><button type="button" class="btn btn-primary w100" style="justify-content:center;min-height:56px;font-size:16px;font-weight:900;border-radius:14px;background:linear-gradient(135deg,#f59e0b,#ea580c);border:none" onclick="connectGmailForSending(\'home\')"><i class="ti ti-brand-google" style="font-size:20px"></i> '+esc(gmailPromptTexts().btn)+' <i class="ti ti-arrow-right"></i></button><div style="font-size:12px;color:var(--t2);margin-top:7px;text-align:center;line-height:1.5">'+esc(t('gm_steps'))+'</div></div>';
+            toast(U.gmailConnected?'⚡ Plano liberado — já pode enviar!':t('gm_toast_ativo'),'g',9000);
             try{renderHome();}catch(e){}
             return; // acabou: não precisa das próximas conferidas
           }
@@ -8456,7 +8548,8 @@ async function submitPlanOrder() {
           +'<div style="text-align:left;font-size:13px;line-height:1.7"><strong>O que acontece agora</strong><br>'
           +'1. Nossa equipe confere o comprovante — '+medTxt+'. Se o robô conseguir conferir na hora, você já pode enviar <em>provisoriamente</em> enquanto a equipe confirma.<br>'
           +'2. Confirmado, seu <strong>'+esc(PLAN_NAMES[plano]||plano)+'</strong> vale por <strong>'+dias+' dias</strong> contados a partir da confirmação (não da compra). Sem renovação automática.<br>'
-          +'3. Acompanhe o status em 🧾 Meus pedidos.</div>'
+          +'3. Acompanhe o status em 🧾 Meus pedidos.<br>'
+          +'4. '+esc(t('gm_done_4'))+'</div>'
           +'<br><strong>Para dúvidas, entre em contato:</strong>';
         toast('✅ Pedido enviado! Aguarde a confirmação.', 'g');
         _vigiarAtivacaoProvisoria(PLAN_NAMES[plano]||plano,dias);

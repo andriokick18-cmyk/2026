@@ -141,8 +141,10 @@ const GOOGLE = {
   falhasEnvio: [],
   // refresh_tokens que o Google considera MORTOS (invalid_grant)
   rtMortos: new Set(),
+  // fila de respostas FORÇADAS pro próximo /token (v964): {networkError:true} derruba o socket sem responder
+  tokenForcado: [],
   n: 0,
-  limpar() { this.envios = []; this.refreshes = []; this.revokes = []; this.falhasEnvio = []; this.rtMortos = new Set(); },
+  limpar() { this.envios = []; this.refreshes = []; this.revokes = []; this.falhasEnvio = []; this.rtMortos = new Set(); this.tokenForcado = []; },
 };
 // Lê o cabeçalho To:/From: do MIME base64url que o app monta — é o que prova
 // que a MESMA vaga foi re-enviada depois da renovação de token.
@@ -189,6 +191,8 @@ const googleSrv = http.createServer((rq, rs) => {
     if (url === "/token") {
       const rt = new URLSearchParams(b || "").get("refresh_token") || "";
       GOOGLE.refreshes.push({ refresh_token: rt, em: Date.now() });
+      const _tf = GOOGLE.tokenForcado.shift();
+      if (_tf) { if (_tf.networkError) { rq.socket.destroy(); return; } return resp(_tf.status, _tf.body); }
       if (GOOGLE.rtMortos.has(rt)) return resp(400, { error: "invalid_grant", error_description: "Token has been expired or revoked." });
       GOOGLE.n++;
       return resp(200, { access_token: "at-vivo-" + GOOGLE.n, expires_in: 3600, scope: "https://www.googleapis.com/auth/gmail.send", token_type: "Bearer" });
@@ -8935,6 +8939,58 @@ async function drillAdminSettingsLegado() {
         (_udMorto?.auth?.timeline || []).some((ev) => ev.tipo === "pausa_auth"),
         JSON.stringify({ envios: GOOGLE.envios.length, job: { a: _jMorto.active, s: _jMorto.status, q: _jMorto.queueSize }, rtInvalid: _udMorto?.auth?.rtInvalid, tl: (_udMorto?.auth?.timeline || []).map((ev) => ev.tipo) }).slice(0, 320));
 
+      // ── 5b) 📧 v964 (caso real, 10/10/2026 — cliente pagou o VIP e "não achava
+      // onde conectar o Gmail"): o Google derruba a autorização, a sessão
+      // (login por senha) não tem access_token, e o envio MANUAL dizia só
+      // "Conecte seu Gmail…" — sem marcar a conta e sem código pro front. O site
+      // seguia achando o Gmail "conectado" e escondia todos os botões. Prova os 3
+      // lados: (a) queda CONFIRMADA → 403 needsGmailConnect+gmailReconnect, nada
+      // sai, rtInvalid marcado e /api/status devolve gmailNeedsReconnect;
+      // (b) erro de REDE nunca marca nada e diz a verdade; (c) reconectou (token
+      // vivo de novo) → a marca de queda some sozinha e o envio sai.
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "gmailcaido@test.com", name: "Gmail Caido", refreshToken: "rt-gmailcaido", plan: "vipro", vip: { active: true, plan: "vipro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 }, semAccessToken: true });
+      await req2("POST", "/api/cv/upload", { base64: Buffer.from("%PDF-1.4 " + "caido ".repeat(300)).toString("base64"), name: "CV_Caido.pdf", cvType: "resume" });
+      await req2("POST", "/api/settings", { manualCdOff: true });
+      GOOGLE.limpar();
+      GOOGLE.rtMortos.add("rt-gmailcaido");
+      const _stAntes964 = (await get("/api/status")).json;
+      const _caido964 = await req2("POST", "/api/send", { to: "rh@empresa-gmailcaido.com", subject: "Candidatura — Cook", message: "Olá, gostaria de me candidatar à vaga.", jobTitle: "Cook", company: "Empresa Gmail Caído", caseNum: "H-400-CAIDO" });
+      const _stDepois964 = (await get("/api/status")).json;
+      check("📧 v964 (comportamental): Gmail DERRUBADO pelo Google (invalid_grant) no envio manual → 403 com needsGmailConnect+gmailReconnect e texto que manda reconectar (nada sai pelo Gmail); antes ele só dizia 'Conecte seu Gmail…' sem código pro front",
+        _caido964.status === 403 && _caido964.json?.needsGmailConnect === true && _caido964.json?.gmailReconnect === true &&
+        /desconectou/i.test(_caido964.json?.error || "") && GOOGLE.envios.length === 0 && GOOGLE.refreshes.length >= 1,
+        JSON.stringify({ status: _caido964.status, body: (_caido964.body || "").slice(0, 200), envios: GOOGLE.envios.length, refreshes: GOOGLE.refreshes.length }));
+      check("📧 v964 (comportamental): depois da queda CONFIRMADA o /api/status passa a dizer gmailNeedsReconnect:true (antes dizia só gmailConnected:true e o site escondia todo botão de conectar — beco sem saída); antes da queda a flag era falsa",
+        _stAntes964?.gmailNeedsReconnect === false && _stDepois964?.gmailNeedsReconnect === true && _stDepois964?.gmailConnected === true,
+        JSON.stringify({ antes: _stAntes964?.gmailNeedsReconnect, depois: _stDepois964?.gmailNeedsReconnect, conectado: _stDepois964?.gmailConnected }));
+      // (b) erro de REDE no refresh: NUNCA marca a conta como caída (regra 13a3)
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "gmailrede@test.com", name: "Gmail Rede", refreshToken: "rt-gmailrede", plan: "vipro", vip: { active: true, plan: "vipro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 }, semAccessToken: true });
+      await req2("POST", "/api/cv/upload", { base64: Buffer.from("%PDF-1.4 " + "rede ".repeat(300)).toString("base64"), name: "CV_Rede.pdf", cvType: "resume" });
+      await req2("POST", "/api/settings", { manualCdOff: true });
+      GOOGLE.limpar();
+      GOOGLE.tokenForcado.push({ networkError: true }, { networkError: true });
+      const _rede964 = await req2("POST", "/api/send", { to: "rh@empresa-gmailrede.com", subject: "Candidatura — Cook", message: "Olá, gostaria de me candidatar à vaga.", jobTitle: "Cook", company: "Empresa Gmail Rede", caseNum: "H-400-REDE" });
+      const _stRede964 = (await get("/api/status")).json;
+      check("📧 v964 (regra 13a3): erro de REDE ao renovar o token NUNCA marca o Gmail como caído nem manda reconectar — a resposta diz que a conexão com o Google está instável e que o Gmail continua conectado; gmailNeedsReconnect segue falso",
+        _rede964.json?.needsGmailConnect !== true && _rede964.json?.gmailReconnect !== true && /inst[aá]vel|continua conectado/i.test(_rede964.json?.error || "") &&
+        _stRede964?.gmailNeedsReconnect === false && GOOGLE.envios.length === 0,
+        JSON.stringify({ status: _rede964.status, body: (_rede964.body || "").slice(0, 220), flag: _stRede964?.gmailNeedsReconnect }));
+      // (c) reconectou: o token volta a ser aceito → a marca some SOZINHA e o envio sai
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "gmailcaido@test.com", name: "Gmail Caido", semAccessToken: true });
+      await req2("POST", "/api/settings", { manualCdOff: true });
+      GOOGLE.limpar();
+      const _cura964 = await req2("POST", "/api/send", { to: "rh@empresa-gmailcaido2.com", subject: "Candidatura — Cook", message: "Olá, gostaria de me candidatar à vaga.", jobTitle: "Cook", company: "Empresa Gmail Caído 2", caseNum: "H-400-CAIDO2" });
+      const _stCura964 = (await get("/api/status")).json;
+      check("📧 v964: quando o Google volta a aceitar o token (reconexão), a marca de queda SAI SOZINHA — o envio manual sai (200, 1 e-mail no Gmail) e gmailNeedsReconnect volta a falso (nunca fica o aviso de 'reconecte' preso)",
+        _cura964.status === 200 && _cura964.json?.ok === true && GOOGLE.envios.length === 1 && _stCura964?.gmailNeedsReconnect === false,
+        JSON.stringify({ status: _cura964.status, body: (_cura964.body || "").slice(0, 160), envios: GOOGLE.envios.length, flag: _stCura964?.gmailNeedsReconnect }));
+      // gancho de teste: o status reflete rtInvalid semeado (base do teste de UI)
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "gmailsemeado@test.com", name: "Gmail Semeado", refreshToken: "rt-semeado", plan: "vipro", vip: { active: true, plan: "vipro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 }, rtInvalid: true });
+      const _stSem964 = (await get("/api/status")).json;
+      check("📧 v964: conta com plano ativo e rtInvalid gravado → /api/status devolve gmailNeedsReconnect:true; e quem NUNCA conectou (sem refresh_token) continua com gmailNeedsReconnect:false (esse é o caso 'conectar', não 'reconectar')",
+        _stSem964?.gmailNeedsReconnect === true && _stSem964?.needsPlan === false,
+        JSON.stringify({ flag: _stSem964?.gmailNeedsReconnect, needsPlan: _stSem964?.needsPlan }));
+
       // ── 6) EXTRA COM AUTH MORTA: isolado, e o robô SEGUE pelas outras ───
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "extra20@test.com", name: "Extra 20", refreshToken: "rt-extra20-principal", plan: "doublepro", vip: { active: true, plan: "doublepro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 }, senderEmails: [{ email: "extraruim20@test.com", active: true, refresh_token: "rt-extra20-morto", addedAt: Date.now() - 60 * 86400_000 }] });
       const _cvExtra = await req2("POST", "/api/cv/upload", { base64: Buffer.from("%PDF-1.4 " + "extra20 ".repeat(300)).toString("base64"), name: "CV_Extra20.pdf", cvType: "resume" });
@@ -9705,6 +9761,32 @@ async function drillAdminSettingsLegado() {
       ["insta_kicker", "insta_sub", "insta_cta", "insta_aria", "insta_close"].every((k) => (_appV209.match(new RegExp('"' + k + '":"', "g")) || []).length === 3) &&
       /data-i18n="insta_kicker"/.test(_vHomeIG) && /data-i18n="insta_sub"/.test(_vHomeIG) && /data-i18n="insta_cta"/.test(_vHomeIG) && /data-i18n-title="insta_aria"/.test(_vHomeIG) && /data-i18n-title="insta_close"/.test(_vHomeIG),
       "chave insta_* faltando em alguma língua ou etiqueta data-i18n sumiu do card");
+    // 📧 v964 (caso real, 10/10/2026 — cliente pagou o VIP e "não achava onde conectar
+    // o Gmail"; o erro do modal de envio dizia "Conectar Gmail" sem botão nenhum, e quando
+    // o Google derrubava a autorização o site escondia TODOS os botões de conectar):
+    // guardas estruturais (as comportamentais estão no bloco 5b do motor de envio).
+    const _srv964 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+    check("📧 v964 estrutural (servidor): queda de autorização do Gmail no envio manual → _gmailReconnectErr marca rtInvalid SÓ com invalid_grant/revogado/sem refresh_token (erro de rede diz 'instável' e não marca), /api/send devolve 403 needsGmailConnect+gmailReconnect, /api/status expõe gmailNeedsReconnect e a renovação bem-sucedida limpa a marca (refreshToken e refreshTokenForUser)",
+      /function _gmailReconnectErr\(email,raw\)/.test(_srv964) && /err\.needsReconnect=true/.test(_srv964) &&
+      /invalid_grant\|expired or revoked\|revoked\|Sem refresh_token/.test(_srv964) && /conexão instável/.test(_srv964) &&
+      /if\(e&&e\.needsReconnect\)return json\(res,403,\{error:e\.message,needsGmailConnect:true,gmailReconnect:true\}\)/.test(_srv964) &&
+      /gmailNeedsReconnect:!!\(p\.refresh_token&&p\.rtInvalid\)/.test(_srv964) &&
+      (_srv964.match(/rtInvalid:false,rtInvalidAt:null/g) || []).length >= 2,
+      "contrato de reconexão do Gmail quebrado no servidor");
+    check("📧 v964 estrutural (front): U.gmailConnected só vale com a conexão viva (gmailNeedsReconnect derruba), e o convite de conectar existe nos 4 lugares — botão fixo no cabeçalho, card grande na Início (antes do CTA do automático), botão DENTRO do erro do modal de envio (_gmailFalhouNoEnvio) e na tela 'Plano liberado' — além do cartão do Planos",
+      /gmailConnected:!!d\.gmailConnected&&!d\.gmailNeedsReconnect,gmailNeedsReconnect:!!d\.gmailNeedsReconnect/.test(_appV209) &&
+      /^function gmailPrecisaConectar\(\)\{return !!U&&!!U\.connected&&!U\.needsPlan&&!U\.gmailConnected;\}/m.test(_appV209) &&
+      /^function renderHomeGmailGate\(\)\{/m.test(_appV209) && /^function renderHdrGmailBtn\(\)\{/m.test(_appV209) &&
+      /^function _gmailFalhouNoEnvio\(d\)\{/m.test(_appV209) && /^function gmailFixFromModal\(\)\{closeModal\(\);connectGmailForSending\('home'\);\}/m.test(_appV209) &&
+      /if\(d\.needsGmailConnect\)\{_gmailFalhouNoEnvio\(d\);return;\}/.test(_appV209) &&
+      /try\{updateGmailPrompts\(\);\}catch\(e\)\{\}\n\}/.test(_appV209) && /try\{renderHdrGmailBtn\(\);\}catch\(e\)\{\}\n\}/.test(_appV209) &&
+      /_gmailCardHTML\('plans'\)/.test(_appV209) && /Plano liberado na hora[\s\S]{0,1800}connectGmailForSending\(\\'home\\'\)/.test(_appV209) &&
+      /<button id="hdr-gmail-btn" type="button" onclick="connectGmailForSending\('home'\)"/.test(_idxV214) &&
+      _idxV214.indexOf('id="home-gmail-gate"') > _idxV214.indexOf('id="v-home"') && _idxV214.indexOf('id="home-gmail-gate"') < _idxV214.indexOf('id="home-auto-card"'),
+      "algum dos convites de conectar o Gmail sumiu (cabeçalho, Início, modal de envio, 'Plano liberado' ou Planos) ou o gmailConnected deixou de considerar a queda");
+    check("📧 v964 i18n: os textos do convite de Gmail (gm_*) existem no LANG_DICT em pt+en+es, exatamente 1x por língua — regra 6f",
+      ["gm_new_t", "gm_new_s", "gm_re_t", "gm_re_s", "gm_btn", "gm_btn_re", "gm_steps", "gm_hdr", "gm_hdr_re", "gm_err_default", "gm_toast_ativo", "gm_done_4"].every((k) => (_appV209.match(new RegExp('"' + k + '":"', "g")) || []).length === 3),
+      "chave gm_* faltando ou duplicada em alguma língua");
     check("🚧 estrutural: loadPlanos() troca o banner de manutenção pelo seletor de compra lendo SEMPRE U.newPurchasesBlocked (nunca decide sozinho no front) — e applyStatus() propaga o campo vindo do /api/status",
       /if\(U\.newPurchasesBlocked\)\{/.test(_appV209) &&
       /newPurchasesBlocked:!!d\.newPurchasesBlocked/.test(_appV209),

@@ -4006,3 +4006,39 @@ tem cache de 7 dias — com o mesmo nome, quem já visitou veria o print com o
 banner laranja por uma semana. Copy do destaque NUNCA promete conteúdo que
 o perfil pode não ter ("vagas novas" saiu — fica "novidades e dicas").
 3 checks estruturais `📸 v963` no smoke. sw v172.
+
+## v964 — Gmail desconectado/caído: botão grande em 4 lugares + queda confirmada pelo Google (dono, 10/10/2026)
+
+**Caso real** (foto do cliente no WhatsApp): pagou o VIP, o modal de envio mostrou
+"❌ Não foi possível enviar: Conecte seu Gmail pra enviar candidaturas (Automático ou
+Manual → Conectar Gmail)" — sem nenhum botão — e ele "não achou onde conectar". Ordem do
+dono: *"depois que a pessoa paga tem que ser fácil logar o gmail... se esse botão não
+existir, crie, deixe maior"*.
+
+**Causa raiz (2 falhas somadas)**: (1) o botão só existia em telas secundárias (Envio
+Manual/Automático, Perfil); (2) pior: `gmailConnected` no `/api/status` é "tem
+refresh_token" — quando o GOOGLE derruba a autorização (invalid_grant/revogada) e a
+sessão (login por senha) não tem access_token, o servidor recusava o envio MAS o site
+seguia achando o Gmail "conectado" e ESCONDIA todos os botões de conectar: beco sem saída.
+
+**O que mudou**: `_ensureSendToken` (server.js) distingue (a) queda CONFIRMADA pelo
+Google (`invalid_grant|expired or revoked|revoked|Sem refresh_token`) → marca `rtInvalid`
+(a MESMA marca do robô automático, regra 13a3) e sobe `needsReconnect`; (b) erro de rede →
+mensagem honesta ("conexão instável, seu Gmail continua conectado") e NUNCA marca nada
+(13a3: PROIBIDO marcar queda por erro transitório). `/api/send` devolve 403
+`{needsGmailConnect,gmailReconnect}`; `/api/status` ganhou `gmailNeedsReconnect`;
+renovação bem-sucedida (`refreshToken`/`refreshTokenForUser`) LIMPA `rtInvalid` sozinha.
+No front, `U.gmailConnected` só vale com a conexão viva e o convite aparece em 4 lugares
+sem a pessoa procurar: botão FIXO no cabeçalho (`#hdr-gmail-btn`, some o nome do site em
+celular estreito), card GRANDE na Início (`#home-gmail-gate`, acima do automático),
+botão DENTRO do erro vermelho do modal de envio (`_gmailFalhouNoEnvio`) e na tela "Plano
+liberado na hora" — mais o cartão "Minha conta" do Planos e os cartões de bloqueio do
+Envio Manual/Automático (todos pela fonte única `_gmailCardHTML`/`gmailPrecisaConectar`).
+Texto muda de "Plano ativo — falta conectar" (nunca conectou) pra "Seu Gmail desconectou —
+reconecte" (caiu). Passo "4." no "O que acontece agora" do pedido. Textos `gm_*` nas 3
+línguas. Fluxo do Google inalterado (continua passando pelo aviso obrigatório #gwm e pelo
+e-mail cadastrado). Ganchos de teste (só com TEST_LOGIN_TOKEN): `semAccessToken` e
+`rtInvalid` no /api/test/login; fake Google ganhou `tokenForcado`. 8 checks no smoke
+(queda confirmada, rede NÃO marca, auto-cura, status, estruturais) + 12 no Chromium.
+Guarda v172c do `/api/status` exige a sequência literal `gmailConnected,gmailEmail,
+emailContato…` — por isso `gmailNeedsReconnect` vai ANTES de `gmailConnected`. sw v174.
