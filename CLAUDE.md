@@ -4199,3 +4199,26 @@ função própria).
   vaga já encerrada entrando como candidata; array trocado por baixo do Enriquecimento (alta);
   falha parcial de feeds adiando 14 dias; push de falha em loop; coleta concorrente; falha de disco
   engolida; card afirmando "preparando" antes de a lista carregar.
+
+## 🎨 v969 — ORDEM PERMANENTE DE DESIGN (dono, 12/10/2026 — "aprenda e guarde na memória pra sempre")
+
+O dono mandou a transcrição do vídeo "5 ferramentas de design do Claude Code" e ordenou
+implementar tudo. As 5 viraram regra DESTE repo — manual completo em
+**`docs/DESIGN_GUIDELINES.md`** (ler antes de QUALQUER mudança visual):
+
+1. **Taste (bom gosto)**: régua de premium do §1 — 1 ação principal por tela, hierarquia
+   tipográfica, espaço em branco, cor com papel (azul=ação, verde=sucesso, âmbar=atenção,
+   vermelho=erro, roxo=marca), NO MÁXIMO 1 gradiente por tela ("degradê roxo com cards
+   arredondados" em série é o clichê proibido), mobile 360px primeiro, claro E escuro.
+2. **Auditoria (web design guidelines)**: checklist do §2 rodado antes de dar entrega visual
+   por pronta (ação principal óbvia, 360px sem overflow, toque ≥44px, AA 4.5:1, escuro ok,
+   estados vazio/erro/carregando, i18n 6f, esc(), sw 6c, saldo de divs 6d).
+3. **Design system (awesome design)**: §3 é a fonte única — tokens do `:root` (cores,
+   `--r/--rl/--rxl`, sombras), escala tipográfica DM Sans, escala de espaçamento
+   4/6/8/10/12/14/16/20/24/32 e componentes canônicos (.btn/.alert/.jcard/.stab/card padrão).
+   PROIBIDO hex solto ou raio/espaçamento "mágico" em componente novo.
+4. **Imagem → código**: print do dono = ler a imagem, extrair a ESTRUTURA e reconstruir com
+   NOSSOS tokens (§4) — nunca colar estilo alheio cru nem copiar marca de terceiro.
+5. **Playwright (auto-revisão)**: entrega que muda tela TERMINA com o Claude abrindo a tela
+   no Chromium (script no scratchpad, padrão insta-check/), fotografando 1280+360px e
+   conferindo por medida o que afirmou (§5). O print é prova; produção quem confirma é o dono.
