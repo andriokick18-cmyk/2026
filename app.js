@@ -359,8 +359,8 @@ function agRender(step,data){
     body.innerHTML=`
       <div class="ag-title">Bem-vindo(a)! 👋</div>
       <div class="ag-sub">Candidate-se automaticamente a centenas de vagas H-2B e H-2A nos Estados Unidos.</div>
-      <button class="ag-btn primario" onclick="_agIntent='login';agRender('login')"><i class="ti ti-login"></i> Já tenho conta — Entrar</button>
-      <button class="ag-btn verde" onclick="_agIntent='signup';agRender('signup')"><i class="ti ti-user-plus"></i> Criar conta grátis</button>`;
+      <button class="ag-btn verde" onclick="_agIntent='signup';agRender('signup')"><i class="ti ti-user-plus"></i> Criar conta grátis</button>
+      <button class="ag-btn fantasma" onclick="_agIntent='login';agRender('login')"><i class="ti ti-login"></i> Já tenho conta — Entrar</button>`;
     return;
   }
   // 🔒 ordem do dono, 12/09/2026: login/cadastro viraram usuário+senha —
@@ -2331,7 +2331,7 @@ async function loadSheetMeta(reset=false){
       // "Jul 2025" pra qualquer outra planilha, e com as estações invertidas)
       const sheetLabel=_sheetLabelFor(tab);
       const filtrosLbl=vfResumoCurto("manual");
-      cnt.innerHTML=`<strong>${remaining.toLocaleString("pt-BR")}</strong> restantes · <span style="font-size:11px;color:var(--t3)">${sentInSheet>0?`<span style="color:var(--green)">✅ ${sentInSheet} enviadas</span> de ${sTrueTotal.toLocaleString("pt-BR")}`:sTrueTotal.toLocaleString("pt-BR")+` vagas`}</span> · <span style="font-size:11px;color:var(--blue)">${esc(sheetLabel)}</span>${filtrosLbl}`;
+      cnt.innerHTML=`<strong>${remaining.toLocaleString("pt-BR")}</strong> restantes${sentInSheet>0?` · <span style="font-size:11px;color:var(--t3)"><span style="color:var(--green)">✅ ${sentInSheet} enviadas</span> de ${sTrueTotal.toLocaleString("pt-BR")}</span>`:(remaining===sTrueTotal?``:` · <span style="font-size:11px;color:var(--t3)">${sTrueTotal.toLocaleString("pt-BR")} vagas</span>`)} · <span style="font-size:11px;color:var(--blue)">${esc(sheetLabel)}</span>${filtrosLbl}`;
     }
     const sib=g("#sib-jobs");if(sib){sib.style.display="";sib.textContent=sTotal>999?"999+":String(sTotal);}
   }catch(e){if(mySeq===sCtxSeq)g("#lmore").innerHTML=`<div style="padding:14px;text-align:center;font-size:13px;color:var(--red)">Erro. <span style="cursor:pointer;text-decoration:underline" onclick="loadSheetMeta()">Tentar novamente</span></div>`;}
@@ -2355,7 +2355,7 @@ function updSheetCounter(){
   const remaining=sTotal;
   const trueTotal=sTrueTotal||sTotal;
   const sheetLabel=_sheetLabelFor(tab); // v90: nome real da planilha ativa
-  cnt.innerHTML=`<strong>${remaining.toLocaleString("pt-BR")}</strong> restantes · <span style="font-size:11px;color:var(--t3)">${sentInSheet>0?`<span style="color:var(--green)">${sentInSheet} enviadas</span> de ${trueTotal.toLocaleString("pt-BR")}`:trueTotal.toLocaleString("pt-BR")+` total`}</span> · <span style="font-size:11px;color:var(--blue)">${esc(sheetLabel)}</span>`;
+  cnt.innerHTML=`<strong>${remaining.toLocaleString("pt-BR")}</strong> restantes${sentInSheet>0?` · <span style="font-size:11px;color:var(--t3)"><span style="color:var(--green)">${sentInSheet} enviadas</span> de ${trueTotal.toLocaleString("pt-BR")}</span>`:(remaining===trueTotal?``:` · <span style="font-size:11px;color:var(--t3)">${trueTotal.toLocaleString("pt-BR")} total</span>`)} · <span style="font-size:11px;color:var(--blue)">${esc(sheetLabel)}</span>`;
 }
 
 function mkSheetCard(j){
@@ -2375,7 +2375,7 @@ function mkSheetCard(j){
     ?`<span class="tag ${j.visa==="H-2A"?"ta":"tb"}">${j.visa}</span>`
     :'<span class="tag tb">H-2B</span>';
   const stateLbl=j.state&&j.state!=="–"?`<span class="tag tgr"><i class="ti ti-map-pin" style="font-size:9px"></i>${esc(j.state)}</span>`:"";
-  const dateLbl=j.start&&j.start!=="–"?`<span class="tag ta"><i class="ti ti-calendar" style="font-size:9px"></i>${esc(j.start)}</span>`:"";
+  const dateLbl=j.start&&j.start!=="–"?`<span class="tag ta"><i class="ti ti-calendar" style="font-size:9px"></i>${esc(_fmtDataBR(j.start))}</span>`:"";
   const wageLbl=j.wage&&j.wage!=="–"?`<span class="tag tg">${esc(j.wage)}</span>`:"";
   const wkTag=j.workers&&j.workers>0?`<span class="tag tgr">👥 ${j.workers} vagas</span>`:"";
 
@@ -3054,7 +3054,7 @@ function reviewInviteDismiss(){
 //  PROFILE / TEMPLATE
 // ═══════════════════════════════════════════
 function loadProfile(){
-  g("#cfg-name").value=CFG.name||U.name||"";g("#cfg-country").value=CFG.country||"Brazil";g("#cfg-phone").value=CFG.phone||"";g("#cfg-city").value=CFG.city||"";
+  g("#cfg-name").value=CFG.name||U.name||"";g("#cfg-country").value=CFG.country||"Brazil";// "Brazil" de propósito: o valor alimenta o {pais} dos e-mails pro EMPREGADOR americano (inglês)g("#cfg-phone").value=CFG.phone||"";g("#cfg-city").value=CFG.city||"";
   // v168: removida a escrita em #pstat-total-stats — a aba "Números"
   // (gamificação) foi excluída por completo do Perfil.
   // Novos campos
@@ -5511,7 +5511,9 @@ function renderProfileGmailCard(){
   const el=g("#pf-gmail-card");if(!el||!U)return;
   const livre=!U.isAdmin&&U.needsPlan;
   if(U.gmailConnected){
-    el.innerHTML=`<div style="display:flex;align-items:center;gap:10px;background:rgba(16,185,129,.1);border:1.5px solid rgba(16,185,129,.35);border-radius:14px;padding:12px 14px"><i class="ti ti-circle-check" style="font-size:20px;color:#059669"></i><div style="min-width:0"><div style="font-size:13px;font-weight:800;color:#047857">${esc(t('pfg_ok'))}</div><div style="font-size:12px;color:var(--t1);word-break:break-all">${esc(U.gmailEmail||U.email||"")}</div></div></div>`;
+    // v969 (auditoria visual): conectado, quem conta é a seção "Gmail conectado"
+    // logo abaixo (_renderProfileSenderSection) — 2 cards iguais era ruído.
+    el.style.display="none";el.innerHTML="";void t('pfg_ok');
     return;
   }
   const re=!!U.gmailNeedsReconnect;
@@ -5546,6 +5548,7 @@ async function loadPublicStats(){
   try{
     const r=await fetch("/api/public-stats");const d=await r.json();
     const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=(v||0).toLocaleString("pt-BR");};
+    const _bar=document.querySelector(".ln-stats-bar");if(_bar)_bar.style.display=(d.totalUsers>0)?"":"none"; // v969: números zerados não vendem — some até ter prova social real
     set("ps-users",d.totalUsers);set("ps-today",d.last7Sent);set("ps-auto-today",d.last7Auto);
     set("ps-total",d.totalSent);set("ps-total-auto",d.totalAuto);set("ps-vip",d.vipUsers);
   }catch{}
@@ -6012,23 +6015,23 @@ function renderNextStep(){
   // /api/auto/start usam). NUNCA usar U.plan==='free' aqui: getPlan() devolve
   // "vipro" pra quem só tem o automático, e foi essa a armadilha do v177-FIX8.
   if(!U.isAdmin && U.needsPlan){
-    step={icon:"⭐",ic:"var(--purple)",bg:"linear-gradient(135deg,#f5f3ff,#ede9fe)",bd:"var(--purpleb)",title:t('ns0_t'),sub:t('ns0_s'),cta:t('ns0_c'),act:"goPlans"};
+    step={icon:"⭐",ic:"var(--purple)",bg:"var(--purplel)",bd:"var(--purpleb)",title:t('ns0_t'),sub:t('ns0_s'),cta:t('ns0_c'),act:"goPlans"};
   } else if(!hasProfile){
-    step={icon:"📝",ic:"var(--blue)",bg:"linear-gradient(135deg,#eff6ff,#dbeafe)",bd:"var(--blueb)",title:t('ns1_t'),sub:t('ns1_s'),cta:t('ns1_c'),act:"goProfile"};
+    step={icon:"📝",ic:"var(--blue)",bg:"var(--bluel)",bd:"var(--blueb)",title:t('ns1_t'),sub:t('ns1_s'),cta:t('ns1_c'),act:"goProfile"};
   } else if(!hasCv){
-    step={icon:"📎",ic:"#d97706",bg:"linear-gradient(135deg,#fffbeb,#fef3c7)",bd:"#fcd34d",title:t('ns2_t'),sub:t('ns2_s'),cta:t('ns2_c'),act:"goProfile"};
+    step={icon:"📎",ic:"var(--amber)",bg:"var(--amberl)",bd:"var(--amberb)",title:t('ns2_t'),sub:t('ns2_s'),cta:t('ns2_c'),act:"goProfile"};
   } else if(sentToday===0 && !autoActive){
-    step={icon:"🚀",ic:"var(--green)",bg:"linear-gradient(135deg,#ecfdf5,#d1fae5)",bd:"var(--greenb)",title:t('ns3_t'),sub:t('ns3_s'),cta:t('ns3_c'),act:"goJobs"};
+    step={icon:"🚀",ic:"var(--green)",bg:"var(--greenl)",bd:"var(--greenb)",title:t('ns3_t'),sub:t('ns3_s'),cta:t('ns3_c'),act:"goJobs"};
   } else if((U.manualLimit||0)>0 && (U.manualRemaining||0)<=0){
-    step={icon:"⭐",ic:"var(--purple)",bg:"linear-gradient(135deg,#f5f3ff,#ede9fe)",bd:"var(--purpleb)",title:t('ns4_t'),sub:t('ns4_s'),cta:t('ns4_c'),act:"goPlans"};
+    step={icon:"⭐",ic:"var(--purple)",bg:"var(--purplel)",bd:"var(--purpleb)",title:t('ns4_t'),sub:t('ns4_s'),cta:t('ns4_c'),act:"goPlans"};
   } else if(U.plan!=="free" && !autoActive){
-    step={icon:"🤖",ic:"var(--purple)",bg:"linear-gradient(135deg,#f5f3ff,#ede9fe)",bd:"var(--purpleb)",title:t('ns5_t'),sub:t('ns5_s'),cta:t('ns5_c'),act:"goAuto"};
+    step={icon:"🤖",ic:"var(--purple)",bg:"var(--purplel)",bd:"var(--purpleb)",title:t('ns5_t'),sub:t('ns5_s'),cta:t('ns5_c'),act:"goAuto"};
   }
   if(!step){box.style.display="none";box.innerHTML="";return;}
   const acts={goProfile:"sv('profile');setTimeout(function(){try{switchProfileTab('profiles')}catch(e){}},120)",goJobs:"sv('jobs')",goPlans:"sv('plans')",goAuto:"sv('auto')"};
   box.style.display="block";
   box.innerHTML=`<div style="background:${step.bg};border:1.5px solid ${step.bd};border-radius:14px;padding:13px 14px;display:flex;align-items:center;gap:12px">
-    <div style="width:42px;height:42px;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:21px;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.06)">${step.icon}</div>
+    <div style="width:42px;height:42px;border-radius:12px;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:21px;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.06)">${step.icon}</div>
     <div style="flex:1;min-width:0">
       <div style="font-size:10px;font-weight:800;color:${step.ic};text-transform:uppercase;letter-spacing:.05em;margin-bottom:1px">Próximo passo</div>
       <div style="font-size:14px;font-weight:800;color:var(--text);line-height:1.25">${step.title}</div>
