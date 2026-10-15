@@ -1581,7 +1581,7 @@ async function drillAdminSettingsLegado() {
       const _srv = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
       check("🧱 v175: (estrutural) cadastro com verificação por código no front (agEnviarCodigo/agConfirmarCodigo, 1 só WhatsApp, sem campo telefone), 'Esqueci minha senha', janela pós-cadastro no lugar do wizard antigo, aviso do e-mail cadastrado no modal do Gmail, editor 3+3 e aba Notificações no admin",
         _app.includes("function agEnviarCodigo(") && _app.includes("function agConfirmarCodigo(") && _app.includes("function agRecRedefinir(") && !_app.includes('id="ag-s-tel"') && _app.includes("function checkShowCvPrompt(") && !_app.includes("function showOnboarding(") && !_app.includes("function obSavePersonal(") &&
-        _idx.includes('id="cv-prompt-overlay"') && !_idx.includes('id="onboarding-overlay"') && _idx.includes('id="gwm-email-block"') && _idx.includes("③ Título do e-mail (assunto)") && _idx.includes("NÃO é obrigatória") && !_idx.includes('id="pe-subjects-empty"') &&
+        _idx.includes('id="cv-prompt-overlay"') && !_idx.includes('id="onboarding-overlay"') && _idx.includes('id="gwm-email-block"') && _idx.includes("② Título do e-mail (assunto)") && _idx.includes("NÃO é obrigatória") && !_idx.includes('id="pe-subjects-empty"') &&
         _app.includes("function _pePad(") && _adm.includes('v:"notificacoes"') && _adm.includes("/oauth/notif-connect") && _srv.includes('sessions["__notif__"+_st]') && _srv.includes("login_hint") && _srv.includes("_hintCS=p.emailContato||resolveSendGmail(p)"),
         "estrutura do v175 incompleta");
       // 🔐 v176: bootstrap de e-mail admin — presente no servidor (isAdminEmail
@@ -7483,16 +7483,28 @@ async function drillAdminSettingsLegado() {
       _stP984.status === 200 && _okP984 === true && _envP984?.assunto === "Unico titulo bom", JSON.stringify({ st: _stP984.status, ok: _okP984, assunto: _envP984?.assunto }));
     // imagens PÚBLICAS do editor nunca voltam à versão antiga (com botões {vaga}/exemplo/preview)
     const _sha984 = (b) => require("crypto").createHash("sha256").update(b).digest("hex");
-    const _aposentadas984 = new Set(["6c21577c6a718541b4cd040cf6daf37c28c70bfc11568a09d9ce0b09b2277aed", "1be6ef669d51242681d1e9b84b2e0265a2eea2a696316812f336da95452634f4", "5380c23a4d2bb1f7b0d8277e5b86537d7a1e9140bee55c9702ae40c900cda0e0", "35401217d976211acc95b00476018c32f5fecd3efab72f4875c6067207e3e182", "b20cbfb90b45741aaf73a47e36ad4c9139d0c3c880732fefc047605e28f5885f", "36385eb374e8599a2417de92f4fc62759233f9204867a608043f3e9318e9ade0", "86f3d6cd5be0cb23221a4defe4a887bc5dbec7f90b93d1d81092390af135b0eb"]);
+    const _aposentadas984 = new Set(["6c21577c6a718541b4cd040cf6daf37c28c70bfc11568a09d9ce0b09b2277aed", "1be6ef669d51242681d1e9b84b2e0265a2eea2a696316812f336da95452634f4", "5380c23a4d2bb1f7b0d8277e5b86537d7a1e9140bee55c9702ae40c900cda0e0", "35401217d976211acc95b00476018c32f5fecd3efab72f4875c6067207e3e182", "b20cbfb90b45741aaf73a47e36ad4c9139d0c3c880732fefc047605e28f5885f", "36385eb374e8599a2417de92f4fc62759233f9204867a608043f3e9318e9ade0", "86f3d6cd5be0cb23221a4defe4a887bc5dbec7f90b93d1d81092390af135b0eb", "c5fa8ee814046bceca4de346f9a2a998b35bb0b24c215214da6af24ec9c12d73", "232ed25c765a2472f5334f554460ddccb6516b430eabe96d091aa781c37c3846", "ed105631fd630eeb61cd095f5316359d40b7cbc8a576dd13988d081ac2456cd9", "347c3189fc7de6c42ebac7f7a4082e5e0bdf06a2777f5d462c5021bbd9592e5b", "26834909c169a1158c9f89b88d2c5d130a1569e33624cac6a746eb4b3246d413", "aedacbabe20480d0fea78954b5ed869c5624ceb4a89ac3503fc48fe9578bd499", "183f57c927025b281f74bda98a84290cb13937cb3bf90283a72c3f6f89d6948d"]);
     const _imgsVelhas984 = fs.readdirSync(path.join(__dirname, "tutorial-img")).filter((f) => _aposentadas984.has(_sha984(fs.readFileSync(path.join(__dirname, "tutorial-img", f)))));
     const _cuHtml984 = fs.readFileSync(path.join(__dirname, "como-usar.html"), "utf8");
     const _cuVelhas984 = [..._cuHtml984.matchAll(/src="data:image\/jpeg;base64,([A-Za-z0-9+\/=]+)"/g)].filter((m) => _aposentadas984.has(_sha984(Buffer.from(m[1], "base64")))).length;
     check("🧹 v984: nenhuma imagem pública (landing, tutorial, /como-usar) volta a mostrar o editor ANTIGO com botões de variável, exemplo e preview — a captura foi refeita e as versões aposentadas ficam barradas por impressão digital",
-      _imgsVelhas984.length === 0 && _cuVelhas984 === 0 && /landing-6-perfil-editor\.jpg\?v=984/.test(_idx983),
+      _imgsVelhas984.length === 0 && _cuVelhas984 === 0 && /landing-6-perfil-editor\.jpg\?v=985/.test(_idx983),
       JSON.stringify({ arquivos: _imgsVelhas984, comoUsar: _cuVelhas984 }));
     check("🧹 v984 (estrutural): o arquivo de originais NUNCA sobrescreve o 1º original e é gravado atômico; o pool de envio filtra itens vazios; as funções do boot são declarações içadas (sem TDZ)",
       /if\(!\(k in ant\[em\]\)\)ant\[em\]\[k\]=v;/.test(_srv982) && /fs\.renameSync\(tmp,f\)/.test(_srv982) && /\.filter\(_txtUtil\)/.test(_srv982) && /function _txtUtil\(x\)\{/.test(_srv982) && /function _curingaNaoVaga\(t\)\{/.test(_srv982),
       "faltou peça do v984");
+    // ✂️ v985 (ORDEM DO DONO, 15/10/2026): "é somente o título do e-mail, o corpo do e-mail e o PDF, acabou! Nada mais".
+    const _tut985 = fs.readFileSync(path.join(__dirname, "tutorial-conteudo.html"), "utf8");
+    const _ed985 = _idx983.slice(_idx983.indexOf('id="profile-editor-overlay"'), _idx983.indexOf('<!-- ══ MODAL CANDIDATURA ══ -->'));
+    check("✂️ v985: o editor de perfil tem SÓ currículo/carta (PDF), título e corpo — sem ícone, sem 'Seu inglês', sem CNH, sem 'Informações básicas' nem caixa 'Configuração' — e as 3 seções são numeradas ①②③",
+      _ed985.length > 2000 && !/pe-english|pe-cnh|pe-icon|peSelectIcon|peToggleIconPicker|icon-opt|Informações Básicas|Seu inglês|CNH|Proteções sempre ativas|⑤|④/.test(_ed985) &&
+      /① Currículo/i.test(_ed985) && /② Título do e-mail/.test(_ed985) && /③ Corpo do e-mail/.test(_ed985) &&
+      ["pe-active", "pe-favorite", "pe-allow-manual", "pe-allow-auto", "pe-rotate-subj", "pe-rotate-body", "pe-delay-random"].every((id) => _ed985.includes(`id="${id}"`)),
+      "sobrou pergunta/seção no editor, ou sumiu um campo escondido que o servidor ainda lê");
+    check("✂️ v985: o app.js não tem mais seletor de ícone nem leitura/gravação de inglês/CNH, as chaves de tradução órfãs saíram dos 3 idiomas e o tutorial não manda mais 'marcar o nível de inglês'",
+      !/peSelectIcon|peToggleIconPicker|#pe-english|#pe-cnh|#pe-icon/.test(_app983) && !/"(g_152|g_154|g_171|g_172|g_173|pe_eng_[a-z]+|pe_cnh_lbl)":/.test(_app983) &&
+      /icon:_peIcon\|\|\(editingVisaType==="h2a"\?"🌾":"🎯"\)/.test(_app983) && !/nível de inglês/.test(_tut985),
+      "sobrou código/tradução/tutorial das perguntas removidas");
     check("📚 v981: o fragmento do app segue noindex (conteúdo duplicado fora do Google), tópico inexistente — inclusive o quiz, que é interativo e fica só no app — dá 404 noindex, e a home e o hub /vagas-h2b linkam /aprenda por <a href>",
       /noindex/.test(String(_apFrag.headers["x-robots-tag"] || "")) && _apQuiz.status === 404 && /noindex/.test(String(_apQuiz.headers["x-robots-tag"] || "")) &&
       (await req2("GET", "/")).body.includes('href="/aprenda"') && (await req2("GET", "/vagas-h2b")).body.includes('href="/aprenda"'),

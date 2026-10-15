@@ -4560,3 +4560,19 @@ dá TDZ. **Decisões mantidas**: `limpaCuringas` apaga qualquer `{algo}` (regra 
 fechada sem ordem); capturas com textos fictícios de uma usuária de exemplo continuam (é texto DA pessoa, não sugestão do
 sistema). Visto de passagem e NÃO corrigido (fora do escopo): nome do remetente cai em "H2BApply" se a conta não tem
 nome (`POST /api/settings` aceita `name` vazio). 6 checks + 2 fixtures. sw v204.
+
+## ✂️ v985 — Editor de perfil só com PDF, título e corpo (dono, 15/10/2026)
+
+Ordem do dono: "essas informações básicas, inglês e CNH, não precisa ter essas perguntas — é somente o título do e-mail,
+o corpo do e-mail e o PDF, acabou! Nada mais". O editor (`#profile-editor-overlay`) agora tem só: ① Currículo & Cover
+Letter (PDF), ② Título do e-mail, ③ Corpo do e-mail. Saíram: "① Informações Básicas" (seletor de ícone, "Seu inglês",
+"Tenho CNH"), a caixa "⑤ Configuração / Proteções sempre ativas", o JS do seletor de ícone (`peSelectIcon`,
+`peToggleIconPicker`), a leitura/gravação de `h2bProfile.englishLevel/hasDriverLicense` ao salvar, o CSS `.icon-opt`, 11
+chaves de tradução órfãs (3 idiomas), e a linha do tutorial que mandava marcar o nível de inglês. Perfil existente
+CONSERVA o ícone que já tinha (`_peIcon` só carrega, sem tela); os checkboxes escondidos (`pe-active`, `pe-favorite`,
+`pe-allow-*`, `pe-rotate-*`, `pe-delay-random`) ficam porque o servidor ainda lê esses campos. As 7 capturas públicas
+do editor foram refeitas de novo (versões v984 aposentadas por impressão digital, `?v=985`). **Consequência a saber**:
+a nota 🎯 de encaixe (regra 13m) usa `englishLevel`, `hasDriverLicense`, `preferredArea` e experiência de
+`h2bProfile`; nenhuma tela coleta mais esses dados (a de inglês/CNH era a última), então a nota fica neutra para conta
+nova e usa o que já estava salvo nas antigas — o servidor segue lendo, nulo-seguro. O item 7 do tutorial ("Dados que
+aumentam suas chances") já descrevia campos que não existem na tela e continua defasado. 2 checks. sw v206.

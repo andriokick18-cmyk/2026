@@ -734,8 +734,6 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 
 
 
-.icon-opt{width:36px;height:36px;border:1.5px solid var(--border2);border-radius:8px;background:var(--sf2);cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:all .14s}
-.icon-opt:hover{border-color:var(--blue);background:var(--bluel);transform:scale(1.1)}
 
 /* ══ TEMPLATE & PROFILE SYSTEM ══ */
 .profile-card{padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--sf);cursor:pointer;transition:all .14s}
@@ -2101,15 +2099,15 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
           <figcaption><strong>Crie sua conta</strong>Usuário e senha — sem precisar conectar o Gmail pra começar.</figcaption>
         </figure>
         <figure class="ln-real-card">
-          <img src="/tut-img/landing-6-perfil-editor.jpg?v=984" width="2640" height="1960" alt="Editor de perfil H-2B com currículo e carta de apresentação em PDF anexados" loading="lazy">
+          <img src="/tut-img/landing-6-perfil-editor.jpg?v=985" width="2640" height="1960" alt="Editor de perfil H-2B com currículo e carta de apresentação em PDF anexados" loading="lazy">
           <figcaption><strong>Anexe seu currículo (PDF)</strong>Seu próprio currículo, do seu jeito — a carta de apresentação é opcional.</figcaption>
         </figure>
         <figure class="ln-real-card">
-          <img src="/tut-img/landing-7-perfil-assuntos.jpg?v=983" width="2640" height="1960" alt="Editor de perfil mostrando os 3 títulos de e-mail escritos pelo próprio usuário" loading="lazy">
+          <img src="/tut-img/landing-7-perfil-assuntos.jpg?v=985" width="2640" height="1960" alt="Editor de perfil mostrando os 3 títulos de e-mail escritos pelo próprio usuário" loading="lazy">
           <figcaption><strong>Você escreve o título do e-mail</strong>3 versões diferentes, escritas por você — o H2BApply nunca preenche isso sozinho.</figcaption>
         </figure>
         <figure class="ln-real-card">
-          <img src="/tut-img/landing-8-perfil-corpo.jpg?v=983" width="2640" height="1960" alt="Editor de perfil mostrando os 3 corpos de e-mail escritos pelo próprio usuário" loading="lazy">
+          <img src="/tut-img/landing-8-perfil-corpo.jpg?v=985" width="2640" height="1960" alt="Editor de perfil mostrando os 3 corpos de e-mail escritos pelo próprio usuário" loading="lazy">
           <figcaption><strong>Você escreve o corpo do e-mail</strong>A mensagem inteira que o empregador recebe — com suas próprias palavras, em inglês.</figcaption>
         </figure>
         <figure class="ln-real-card">
@@ -2149,7 +2147,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
           <figcaption><strong>Candidate-se do celular</strong>Mesma vaga, mesmos detalhes, na palma da mão.</figcaption>
         </figure>
         <figure class="ln-real-card">
-          <img src="/tut-img/landing-16-mobile-assuntos.jpg?v=983" width="828" height="1792" alt="Editor de perfil no celular mostrando os títulos de e-mail escritos pelo usuário" loading="lazy">
+          <img src="/tut-img/landing-16-mobile-assuntos.jpg?v=985" width="828" height="1792" alt="Editor de perfil no celular mostrando os títulos de e-mail escritos pelo usuário" loading="lazy">
           <figcaption><strong>Escreva de onde estiver</strong>O editor de perfil funciona igual no celular — os textos continuam sendo seus.</figcaption>
         </figure>
         <figure class="ln-real-card">
@@ -2161,7 +2159,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
           <figcaption><strong>Busque vagas no celular</strong>A mesma lista de vagas reais, otimizada pra tela pequena.</figcaption>
         </figure>
         <figure class="ln-real-card">
-          <img src="/tut-img/landing-17-mobile-corpo.jpg?v=983" width="828" height="1792" alt="Editor de perfil no celular mostrando o corpo do e-mail escrito pelo usuário" loading="lazy">
+          <img src="/tut-img/landing-17-mobile-corpo.jpg?v=985" width="828" height="1792" alt="Editor de perfil no celular mostrando o corpo do e-mail escrito pelo usuário" loading="lazy">
           <figcaption><strong>O corpo do e-mail, no celular</strong>A mensagem que o empregador recebe — sempre escrita por você.</figcaption>
         </figure>
         <figure class="ln-real-card">
@@ -4333,82 +4331,19 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
     </div>
 
     <div class="mbody" style="padding:0">
-      <!-- ══ SEÇÃO: INFORMAÇÕES BÁSICAS ══ -->
-      <div style="padding:16px 18px 12px;border-bottom:1px solid var(--border)">
-        <div style="font-size:12px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px" data-i18n="g_152">① Informações Básicas</div>
-
-        <div class="field" style="display:flex;gap:10px;align-items:center">
-          <button id="pe-icon-btn" onclick="peToggleIconPicker()" aria-label="Escolher ícone do perfil" style="width:44px;height:44px;border:1.5px solid var(--border2);border-radius:var(--r);background:var(--sf2);cursor:pointer;font-size:22px;display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0" title="Escolher ícone">🎯</button>
-          <div style="font-size:12.5px;color:var(--t2);line-height:1.4">Escolha um ícone (opcional) — o nome do perfil (H-2B ou H-2A) é automático, você tem só 1 de cada.</div>
-        </div>
-        <!-- Picker de ícones -->
-        <div id="pe-icon-picker" style="display:none;background:var(--sf);border:1.5px solid var(--border2);border-radius:var(--rl);padding:10px;margin-bottom:10px;box-shadow:0 8px 24px rgba(0,0,0,.12)">
-          <div style="font-size:11px;font-weight:700;color:var(--t2);margin-bottom:8px" data-i18n="g_154">Escolha um ícone para o perfil:</div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px">
-            <button onclick="peSelectIcon('🎯')" class="icon-opt">🎯</button>
-            <button onclick="peSelectIcon('🌿')" class="icon-opt">🌿</button>
-            <button onclick="peSelectIcon('🏗️')" class="icon-opt">🏗️</button>
-            <button onclick="peSelectIcon('🍽️')" class="icon-opt">🍽️</button>
-            <button onclick="peSelectIcon('🏨')" class="icon-opt">🏨</button>
-            <button onclick="peSelectIcon('🧹')" class="icon-opt">🧹</button>
-            <button onclick="peSelectIcon('🌾')" class="icon-opt">🌾</button>
-            <button onclick="peSelectIcon('🦞')" class="icon-opt">🦞</button>
-            <button onclick="peSelectIcon('⛳')" class="icon-opt">⛳</button>
-            <button onclick="peSelectIcon('🎡')" class="icon-opt">🎡</button>
-            <button onclick="peSelectIcon('🏊')" class="icon-opt">🏊</button>
-            <button onclick="peSelectIcon('🌲')" class="icon-opt">🌲</button>
-            <button onclick="peSelectIcon('📦')" class="icon-opt">📦</button>
-            <button onclick="peSelectIcon('🔧')" class="icon-opt">🔧</button>
-            <button onclick="peSelectIcon('🚛')" class="icon-opt">🚛</button>
-            <button onclick="peSelectIcon('🏪')" class="icon-opt">🏪</button>
-            <button onclick="peSelectIcon('🍦')" class="icon-opt">🍦</button>
-            <button onclick="peSelectIcon('⚡')" class="icon-opt">⚡</button>
-            <button onclick="peSelectIcon('🌐')" class="icon-opt">🌐</button>
-            <button onclick="peSelectIcon('📋')" class="icon-opt">📋</button>
-            <button onclick="peSelectIcon('🤝')" class="icon-opt">🤝</button>
-            <button onclick="peSelectIcon('🏕️')" class="icon-opt">🏕️</button>
-            <button onclick="peSelectIcon('🎨')" class="icon-opt">🎨</button>
-            <button onclick="peSelectIcon('🚜')" class="icon-opt">🚜</button>
-            <button onclick="peSelectIcon('🛒')" class="icon-opt">🛒</button>
-            <button onclick="peSelectIcon('🏋️')" class="icon-opt">🏋️</button>
-            <button onclick="peSelectIcon('🎓')" class="icon-opt">🎓</button>
-            <button onclick="peSelectIcon('🩺')" class="icon-opt">🩺</button>
-            <button onclick="peSelectIcon('💼')" class="icon-opt">💼</button>
-            <button onclick="peSelectIcon('🌟')" class="icon-opt">🌟</button>
-          </div>
-        </div>
-        <input type="hidden" id="pe-icon" value="🎯">
-        <!-- v175: as 2 respostas que alimentam a nota de encaixe das vagas viviam
-             no wizard antigo (removido); agora moram aqui, opcionais. -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
-          <div class="field" style="margin:0">
-            <label for="pe-english" style="font-size:11px;font-weight:700;color:var(--t2)" data-i18n="pe_eng_lbl">🗣️ Seu inglês (opcional)</label>
-            <select class="input" id="pe-english" style="font-size:12.5px"><option value="none" data-i18n="pe_eng_none">Não falo</option><option value="basic" data-i18n="pe_eng_basic">Básico</option><option value="intermediate" data-i18n="pe_eng_inter">Intermediário</option><option value="advanced" data-i18n="pe_eng_adv">Avançado</option></select>
-          </div>
-          <div class="field" style="margin:0;display:flex;align-items:flex-end">
-            <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--t2);cursor:pointer;padding:9px 0"><input type="checkbox" id="pe-cnh" style="width:16px;height:16px;accent-color:var(--blue)"> <span data-i18n="pe_cnh_lbl">Tenho CNH (carteira de motorista)</span></label>
-          </div>
-        </div>
-
-
-        
-
-        <!-- 2026-07: perfil único — sempre ativo e liberado pra manual+auto (não tem
-             mais outro perfil pra "preferir" ou desativar). Checkboxes escondidos, não
-             removidos, porque o backend ainda aceita os campos por compatibilidade. -->
-        <div style="display:none">
-          <input type="checkbox" id="pe-active" checked style="width:16px;height:16px;accent-color:var(--green)">
-          <input type="checkbox" id="pe-favorite" checked style="width:16px;height:16px;accent-color:var(--amber)">
-          <input type="checkbox" id="pe-allow-manual" checked style="width:16px;height:16px;accent-color:var(--blue)">
-          <input type="checkbox" id="pe-allow-auto" checked style="width:16px;height:16px;accent-color:var(--purple)">
-        </div>
+      <!-- v985 (ORDEM DO DONO, 15/10/2026): o editor de perfil só tem PDF (currículo/carta), título e corpo do e-mail — nada mais.
+           Nenhuma pergunta extra. Perfil único: sempre ativo e liberado pra manual+auto; os 4 checkboxes ficam escondidos
+           porque o backend ainda lê esses campos (saveProfileFromEditor). -->
+      <div style="display:none">
+        <input type="checkbox" id="pe-active" checked>
+        <input type="checkbox" id="pe-favorite" checked>
+        <input type="checkbox" id="pe-allow-manual" checked>
+        <input type="checkbox" id="pe-allow-auto" checked>
       </div>
-
-
 
       <!-- ══ SEÇÃO: CURRÍCULO ══ -->
       <div style="padding:16px 18px 12px;border-bottom:1px solid var(--border)">
-        <div style="font-size:12px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px" data-i18n="g_155">② Currículo &amp; Cover Letter (PDF)</div>
+        <div style="font-size:12px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px" data-i18n="g_155">① Currículo &amp; Cover Letter (PDF)</div>
 
         <!-- ── CURRÍCULO ── -->
         <div style="font-size:11px;font-weight:700;color:var(--t2);margin-bottom:8px" data-i18n="g_156">📄 Currículo (PDF)</div>
@@ -4508,7 +4443,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
 
       <!-- ══ SEÇÃO: ASSUNTOS ══ -->
       <div style="padding:16px 18px 12px;border-bottom:1px solid var(--border)">
-        <div style="font-size:12px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px" data-i18n="pe_subj_title">③ Título do e-mail (assunto)</div>
+        <div style="font-size:12px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px" data-i18n="pe_subj_title">② Título do e-mail (assunto)</div>
         <div style="font-size:12px;color:var(--t2);margin-bottom:8px;line-height:1.55" data-i18n="pe_subj_help">O título (também chamado de assunto) é a primeira coisa que o empregador vê na caixa de entrada, antes de abrir o e-mail. Ele diz, em poucas palavras, do que se trata a sua mensagem. Escreva do seu jeito, em inglês, de forma curta e direta. Preencha 3 versões diferentes (os 3 campos já estão abertos; pode adicionar mais). O sistema alterna entre elas a cada envio e usa exatamente o que você escrever, sem acrescentar nem trocar nada.</div>
 
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
@@ -4526,7 +4461,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
 
       <!-- ══ SEÇÃO: MENSAGENS ══ -->
       <div style="padding:16px 18px 12px;border-bottom:1px solid var(--border)">
-        <div style="font-size:12px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px" data-i18n="pe_body_title">④ Corpo do e-mail (a mensagem)</div>
+        <div style="font-size:12px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px" data-i18n="pe_body_title">③ Corpo do e-mail (a mensagem)</div>
         <div style="font-size:12px;color:var(--t2);margin-bottom:8px;line-height:1.55" data-i18n="pe_body_help">O corpo é a mensagem do e-mail, o texto que o empregador lê depois de abrir. É aqui que você se apresenta: quem é você, que tipo de trabalho procura, qual é a sua experiência e como a empresa pode falar com você. Escreva com as suas próprias palavras, em inglês. Preencha 3 versões diferentes (os 3 campos já estão abertos). O sistema usa exatamente o que você escrever, sem acrescentar nem trocar nada.</div>
 
         <!-- v18-FIX: removidos os "modelos prontos" (7 corpos de e-mail genéricos
@@ -4607,23 +4542,10 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
         </div>
         </details>
       </div>
-      <div style="padding:16px 18px 12px;border-bottom:1px solid var(--border)">
-        <div style="font-size:12px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px" data-i18n="g_171">⑤ Configuração</div>
-
-        <!-- Info: comportamentos sempre ativos -->
-        <div style="background:var(--sf2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;align-items:flex-start;gap:8px">
-          <i class="ti ti-shield-check" style="font-size:15px;color:var(--green);flex-shrink:0;margin-top:1px"></i>
-          <div style="font-size:11px;color:var(--t2);line-height:1.6">
-            <strong data-i18n="g_172">Proteções sempre ativas:</strong> rotação automática de assuntos e mensagens, delay aleatório anti-spam, detecção de duplicatas. Esses recursos <strong data-i18n="g_173">não podem ser desativados</strong> para proteger sua conta Gmail de bloqueios.
-          </div>
-        </div>
-        <!-- campos ocultos mantidos para compatibilidade com saveProfileFromEditor -->
-        <input type="hidden" id="pe-rotate-subj" checked>
-        <input type="hidden" id="pe-rotate-body" checked>
-        <input type="hidden" id="pe-delay-random" checked>
-      </div>
-
-
+      <!-- v985: sem seção "Configuração" — campos escondidos mantidos pro saveProfileFromEditor -->
+      <input type="hidden" id="pe-rotate-subj" checked>
+      <input type="hidden" id="pe-rotate-body" checked>
+      <input type="hidden" id="pe-delay-random" checked>
 
       <!-- Botões de ação -->
       <div style="padding:14px 18px;display:flex;gap:8px;flex-wrap:wrap">
@@ -5254,7 +5176,6 @@ strong,b{font-weight:700;color:inherit}
    modo touch com o bottom-nav visível, então o alvo de toque precisa
    valer até esse limite também, não só até 640px. ── */
 @media (max-width: 767px) {
-  .icon-opt{width:44px;height:44px;font-size:20px} /* eram 36px — 29 no seletor de ícone do editor de perfil */
   .fbtn{min-height:44px;padding:0 12px} /* eram 30px — filtros/ordenação de Vagas e abas de Enviadas */
   .mx{min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;padding:8px} /* eram ~24px — fechar modal */
   #tour-prev,#tour-next{min-height:44px;padding:12px 18px} /* eram 30px (.btn-xs) — navegação do tour de boas-vindas */
