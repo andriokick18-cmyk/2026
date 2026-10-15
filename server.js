@@ -105,7 +105,7 @@ function readImgCached(fp){
 // usuário, igual já é feito pros arquivos estáticos. Sem ETag aqui de
 // propósito (conteúdo é barato de gerar de novo; Cache-Control já cobre).
 function sendHtmlCompressed(req, res, html, cacheControl){
-  const raw = Buffer.from(html, "utf8");
+  const raw = _injectGaId(Buffer.from(html, "utf8")); // v982: hub/estado/área/vaga/aprenda também recebem o GA_MEASUREMENT_ID
   const ae = String(req.headers["accept-encoding"] || "");
   const h = { "Content-Type": "text/html; charset=utf-8", "Cache-Control": cacheControl || "public, max-age=1800", Vary: "Accept-Encoding" };
   let body = raw, enc = null;
@@ -3868,7 +3868,22 @@ function getAllSheets() {
 // já carregadas em memória — usado por /api/public-wage-stats (página geral)
 // e pelas páginas dinâmicas /vagas-h2b/:estado (SEO programático por estado).
 // Nunca inventa número; só agrega o que já está nos dados do próprio sistema.
-function computeWageStats(){
+// 🛡️ v982: categoria e estado entram em href/<title>/JSON-LD das páginas públicas; vêm de planilha (upload do admin),
+// então só passa o que tem cara de chave/nome — o resto vira "other"/"" (nunca chega HTML hostil nem lixo no sitemap).
+function _catKey(r){const k=String((r&&r.k)||"other");return /^[a-z0-9_]{1,30}$/.test(k)?k:"other";}
+function _stateSafe(raw){const n=normalizeStateName(raw);return /^[A-Z][A-Z .'\-]{1,39}$/.test(n)?n:"";}
+// 🛡️ v982: a conta varre ~16 mil linhas e as rotas públicas (hub, estado, área, até o 404) a refaziam em TODA requisição
+// (~60ms de event loop bloqueado cada — 120 conexões seguravam o site por 12s). Memo por 10min, invalidado quando muda
+// o tamanho de qualquer planilha (upload/publicação); enriquecimento em linha existente vale na próxima janela.
+function _seoSig(){return [SHEET_JAN.length,SHEET_JUL.length,SHEET_H2A.length,...Object.entries(SHEET_EXTRAS).map(([k,a])=>k+":"+(Array.isArray(a)?a.length:0)),Object.keys(DB_SHEETS_META||{}).filter(k=>DB_SHEETS_META[k]?.published===true).join(",")].join("|");}
+const _seoMemoMap=new Map();
+function _seoMemo(chave,fn){
+  const sig=_seoSig(),c=_seoMemoMap.get(chave);
+  if(c&&c.sig===sig&&Date.now()-c.t<600000)return c.v;
+  const v=fn();_seoMemoMap.set(chave,{sig,t:Date.now(),v});return v;
+}
+function computeWageStats(){return _seoMemo("wageStats",_computeWageStatsRaw);}
+function _computeWageStatsRaw(){
   // Corte de US$100/h: remove ~46 vagas de "range livestock/sheepherder" e
   // cargos de temporada (ex.: Alpine Ski Coach) que vêm com wunit="h" mas
   // "w" é na verdade um salário MENSAL (regra federal especial de pastoreio
@@ -3892,15 +3907,15 @@ function computeWageStats(){
       .map(([k,g])=>({key:k,label:labelFn(k),count:g.count,avgWage:+(g.sum/g.count).toFixed(2),minWage:+g.min.toFixed(2),maxWage:+g.max.toFixed(2)}))
       .sort((a,b)=>b.count-a.count);
   };
-  const byCategoryAll=groupBy(r=>r.k||"other",k=>CATEGORY_LABELS[k]?.label||k);
-  const byStateAll=groupBy(r=>normalizeStateName(r.s),k=>k).map(s=>({...s,slug:stateSlug(s.key)}));
+  const byCategoryAll=groupBy(_catKey,k=>CATEGORY_LABELS[k]?.label||k);
+  const byStateAll=groupBy(r=>_stateSafe(r.s),k=>k).map(s=>({...s,slug:stateSlug(s.key)}));
   // Top categorias DENTRO de cada estado (conteúdo único por página de estado)
   const catByState=new Map();
   for(const r of rows){
-    const st=normalizeStateName(r.s);if(!st)continue;
+    const st=_stateSafe(r.s);if(!st)continue;
     if(!catByState.has(st))catByState.set(st,new Map());
     const cm=catByState.get(st);
-    const k=r.k||"other";
+    const k=_catKey(r);
     if(!cm.has(k))cm.set(k,{sum:0,count:0});
     const g=cm.get(k);g.sum+=wageOf(r);g.count++;
   }
@@ -3915,8 +3930,8 @@ function computeWageStats(){
   // (SEO programático por categoria, mesma ideia das páginas por estado).
   const stateByCat=new Map();
   for(const r of rows){
-    const st=normalizeStateName(r.s);if(!st)continue;
-    const k=r.k||"other";
+    const st=_stateSafe(r.s);if(!st)continue;
+    const k=_catKey(r);
     if(!stateByCat.has(k))stateByCat.set(k,new Map());
     const sm=stateByCat.get(k);
     if(!sm.has(st))sm.set(st,{sum:0,count:0});
@@ -3989,10 +4004,12 @@ function _seoFmtUsd(n){return "US$ "+Number(n).toLocaleString("pt-BR",{minimumFr
 // A fonte do DOL manda muito título/empregador em CAIXA ALTA — só normaliza o que está TODO em maiúsculas.
 function _seoTitulo(x){
   const t=String(x==null?"":x).trim();
-  return (t&&t===t.toUpperCase()&&/[A-Z]/.test(t))?t.toLowerCase().replace(/\b[\w']+/g,w=>w.charAt(0).toUpperCase()+w.slice(1)):t;
+  const SIGLAS=new Set(["LLC","INC","LTD","LP","LLP","LLLP","PLLC","PC","USA","US"]);
+  // \p{L} (não \b/\w): "JOSÉ GARCÍA" não vira "José GarcíA"; siglas societárias continuam em maiúsculas
+  return (t&&t===t.toUpperCase()&&/\p{L}/u.test(t))?t.toLowerCase().replace(/(^|[^\p{L}\p{N}'])(\p{L}[\p{L}\p{N}']*)/gu,(m,pre,w)=>pre+(SIGLAS.has(w.toUpperCase())?w.toUpperCase():w.charAt(0).toUpperCase()+w.slice(1))):t;
 }
 // Mesma base de linhas do computeWageStats (salário por hora válido) — contagens batem com o resto do site.
-function _seoLinhasHorarias(){return getAllSheets().filter(r=>r&&r.wunit==="h"&&r.w&&parseFloat(r.w)>0&&parseFloat(r.w)<=100);}
+function _seoLinhasHorarias(){return _seoMemo("linhasH",()=>getAllSheets().filter(r=>r&&r.wunit==="h"&&r.w&&parseFloat(r.w)>0&&parseFloat(r.w)<=100));}
 function _seoAgrega(rows){
   const emp=new Map(),cargo=new Map(),cid=new Map();let h2a=0,h2b=0;const ws=[];
   for(const r of rows){
@@ -4007,7 +4024,7 @@ function _seoAgrega(rows){
     const ck=String(r.t||"").trim().toLowerCase();
     if(ck){if(!cargo.has(ck))cargo.set(ck,{nome:String(r.t).trim(),n:0});cargo.get(ck).n++;}
     const city=String(r.ci||"").trim();
-    if(city){const ky=city.toUpperCase();if(!cid.has(ky))cid.set(ky,{nome:city,n:0});cid.get(ky).n++;}
+    if(city&&visa==="H-2A"){const ky=city.toUpperCase();if(!cid.has(ky))cid.set(ky,{nome:city,n:0});cid.get(ky).n++;}
   }
   ws.sort((a,b)=>a-b);
   const mediana=ws.length?(ws.length%2?ws[(ws.length-1)/2]:(ws[ws.length/2-1]+ws[ws.length/2])/2):0;
@@ -4020,13 +4037,16 @@ function _seoAgrega(rows){
 }
 // Vagas H-2A recentes COM página indexável (_vagaIndexavel — a mesma régua do sitemap): é o caminho de LINK HTML
 // que faltava até as páginas /vaga/ (antes só o sitemap levava lá). Mais novas primeiro, pelo protocolo no DOL.
-function _seoVagasAbertas(filtroFn,limite){
+function _seoVagasAbertas(filtroFn,limite,chave){
+  return chave?_seoMemo("abertas:"+chave+":"+limite,()=>_seoVagasAbertasRaw(filtroFn,limite)):_seoVagasAbertasRaw(filtroFn,limite);
+}
+function _seoVagasAbertasRaw(filtroFn,limite){
   const fontes=[SHEET_JAN,SHEET_JUL,SHEET_H2A,...Object.entries(SHEET_EXTRAS).filter(([k])=>DB_SHEETS_META[k]?.published===true).map(([,arr])=>arr)];
   const vistos=new Set(),out=[];
   for(const arr of fontes){
     if(!Array.isArray(arr))continue;
     for(const r of arr){
-      if(!r||!r.c||vistos.has(r.c)||!filtroFn(r)||!_vagaIndexavel(r))continue;
+      if(!r||!r.c||vistos.has(r.c)||(FILTROS.visaDaLinha(r)||"H-2B")!=="H-2A"||!filtroFn(r)||!_vagaIndexavel(r))continue;
       vistos.add(r.c);out.push(r);
     }
   }
@@ -4047,7 +4067,7 @@ function _seoBlocosDados(o){
     h+=`<section class="section" id="cargos"><div class="section-head"><h2>Cargos mais comuns ${de}</h2><p>Os títulos de vaga que mais se repetem nas planilhas</p></div><div class="card"><p>${agg.cargos.map(x=>`<strong>${e(_seoTitulo(x.nome))}</strong> (${fN(x.n)})`).join(" · ")}</p>${ehEstado&&agg.cidades.length?`<p><strong>Cidades com vagas H-2A listadas:</strong> ${agg.cidades.map(x=>`${e(_seoTitulo(x.nome))} (${fN(x.n)})`).join(" · ")}. As planilhas H-2B não informam a cidade.</p>`:""}</div></section>`;
   }
   if(abertas.length){
-    h+=`<section class="section" id="vagas-recentes"><div class="section-head"><h2>Vagas H-2A recentes ${de}</h2><p>Mais novas primeiro, pela data de protocolo no DOL — cada link abre a página da vaga com o aviso oficial</p></div><div class="card"><table class="wage-table"><thead><tr><th>Vaga</th><th>Período</th><th>Salário</th></tr></thead><tbody>${abertas.map(r=>`<tr><td class="lbl"><a href="/vaga/${encodeURIComponent(r.c)}">${e(_seoTitulo(r.t))}</a><div class="cnt">${e(_seoTitulo(r.n))}${r.ci?" · "+e(_seoTitulo(r.ci)):""}</div></td><td class="cnt">${e(fmtBR(r.d))}${r.d&&r.de?" a ":""}${e(fmtBR(r.de))}</td><td class="wg">${r.w?fU(r.w)+"/h":"—"}</td></tr>`).join("")}</tbody></table></div></section>`;
+    h+=`<section class="section" id="vagas-recentes"><div class="section-head"><h2>Vagas H-2A recentes ${de}</h2><p>Mais novas primeiro, pela data de protocolo no DOL — cada link abre a página da vaga com o aviso oficial</p></div><div class="card"><table class="wage-table"><thead><tr><th>Vaga</th><th>Período</th><th>Salário</th></tr></thead><tbody>${abertas.map(r=>`<tr><td class="lbl"><a href="/vaga/${encodeURIComponent(r.c)}">${e(_seoTitulo(r.t))}</a><div class="cnt">${e(_seoTitulo(r.n))}${r.ci?" · "+e(_seoTitulo(r.ci)):""}</div></td><td class="cnt">${e(fmtBR(r.d))}${r.d&&r.de?" a ":""}${e(fmtBR(r.de))}</td><td class="wg">${_vagaSalarioOk(r)?fU(r.w)+"/"+(_WUNIT_PT[r.wunit||"h"]||"hora"):"—"}</td></tr>`).join("")}</tbody></table></div></section>`;
   }
   h+=`<section class="section" id="veja-tambem"><div class="section-head"><h2>Veja também</h2><p>Outras vagas H-2B e H-2A por estado e por área</p></div><div class="card">`;
   if(outrosEstados.length)h+=`<p><strong>Outros estados:</strong> ${outrosEstados.map(s=>`<a href="/vagas-h2b/${s.slug}" style="text-decoration:underline">${e(_seoTitulo(s.key))}</a>`).join(" · ")}</p>`;
@@ -4401,7 +4421,7 @@ function renderStatePage(entry,topCats,overallCount,ctx){
   // 🔎 v980: seções com dado REAL (visto, mediana, empregadores, cargos, cidades, vagas H-2A recentes, navegação)
   const _rowsE=_seoLinhasHorarias().filter(r=>normalizeStateName(r.s)===stateName);
   const dadosHtml=_seoBlocosDados({nome:titleCase,agg:_seoAgrega(_rowsE),total:count,avgWage,ehEstado:true,
-    abertas:_seoVagasAbertas(r=>normalizeStateName(r.s)===stateName,20),
+    abertas:_seoVagasAbertas(r=>_stateSafe(r.s)===stateName,20,"st:"+stateName),
     outrosEstados:((ctx&&ctx.byStateAll)||[]).filter(s=>s.count>=MIN_JOBS_FOR_STATE_PAGE&&s.slug!==entry.slug).slice(0,12),
     outrasAreas:((ctx&&ctx.byCategoryAll)||[]).filter(c=>c.count>=MIN_JOBS_FOR_CATEGORY_PAGE).slice(0,8)});
   return `<!DOCTYPE html>
@@ -4505,7 +4525,7 @@ footer a{color:var(--blue);font-weight:600}
 </div>
 <main class="content">
   <section class="section" id="categorias">
-    <div class="section-head"><h2>Principais áreas de trabalho em ${titleCase}</h2><p>Categorias com mais vagas abertas no estado, e o salário médio de cada uma</p></div>
+    <div class="section-head"><h2>Principais áreas de trabalho em ${titleCase}</h2><p>Categorias com mais vagas nas planilhas do DOL no estado, e o salário médio de cada uma</p></div>
     <div class="card">
       <table class="wage-table"><thead><tr><th>Área</th><th>Vagas</th><th>Média/hora</th></tr></thead><tbody>${catRows}</tbody></table>
     </div>
@@ -4515,7 +4535,7 @@ footer a{color:var(--blue);font-weight:600}
     <div class="section-head"><h2>Como se candidatar às vagas de ${titleCase}</h2><p>Nenhuma vaga é vendida — a candidatura é direta ao empregador</p></div>
     <div class="card">
       <p>As vagas H-2B e H-2A em ${titleCase} vêm de planilhas públicas do Departamento do Trabalho dos EUA, o mesmo órgão que certifica o salário mínimo obrigatório de cada uma. O H2BApply organiza esses dados e automatiza o envio da sua candidatura para os empregadores certificados — sem cobrar taxa de recrutamento, o que é proibido pelas próprias regras do programa.</p>
-      <p>Quer ver as vagas específicas de ${titleCase} disponíveis agora? Crie uma conta gratuita — leva menos de 1 minuto, com usuário e senha (sem conta do Google).</p>
+      <p>Quer ver as vagas específicas de ${titleCase}? Crie uma conta gratuita — leva menos de 1 minuto, com usuário e senha (sem conta do Google).</p>
     </div>
   </section>
   ${dadosHtml}
@@ -4544,7 +4564,7 @@ ${JSON.stringify({
   "@type":"BreadcrumbList",
   "itemListElement":[
     {"@type":"ListItem","position":1,"name":"H2BApply","item":"https://h2bapply.com/"},
-    {"@type":"ListItem","position":2,"name":"Salários por Estado","item":"https://h2bapply.com/quanto-ganha-h2b"},
+    {"@type":"ListItem","position":2,"name":"Vagas H-2B e H-2A por estado e área","item":"https://h2bapply.com/vagas-h2b"},
     {"@type":"ListItem","position":3,"name":`Vagas H-2B/H-2A em ${titleCase}`,"item":`https://h2bapply.com/vagas-h2b/${entry.slug}`}
   ]
 })}
@@ -4575,7 +4595,7 @@ function renderCategoryPage(entry,topStates,overallCount,ctx){
   // 🔎 v980: seções com dado REAL desta área (visto, mediana, empregadores, cargos, vagas H-2A recentes, navegação)
   const _rowsC=_seoLinhasHorarias().filter(r=>(r.k||"other")===catKey);
   const dadosHtml=_seoBlocosDados({nome:catName,agg:_seoAgrega(_rowsC),total:count,avgWage,ehEstado:false,
-    abertas:_seoVagasAbertas(r=>(r.k||"other")===catKey,20),
+    abertas:_seoVagasAbertas(r=>_catKey(r)===catKey,20,"cat:"+catKey),
     outrosEstados:topStates.slice(0,12),
     outrasAreas:((ctx&&ctx.byCategoryAll)||[]).filter(c=>c.count>=MIN_JOBS_FOR_CATEGORY_PAGE&&c.key!==catKey).slice(0,8)});
   return `<!DOCTYPE html>
@@ -4679,7 +4699,7 @@ footer a{color:var(--blue);font-weight:600}
 </div>
 <main class="content">
   <section class="section" id="estados">
-    <div class="section-head"><h2>Onde tem mais vagas de ${catName}</h2><p>Estados com mais vagas abertas nessa área, e o salário médio de cada um</p></div>
+    <div class="section-head"><h2>Onde tem mais vagas de ${catName}</h2><p>Estados com mais vagas nessa área nas planilhas do DOL, e o salário médio de cada um</p></div>
     <div class="card">
       <table class="wage-table"><thead><tr><th>Estado</th><th>Vagas</th><th>Média/hora</th></tr></thead><tbody>${stateRows}</tbody></table>
     </div>
@@ -4689,7 +4709,7 @@ footer a{color:var(--blue);font-weight:600}
     <div class="section-head"><h2>Como se candidatar às vagas de ${catName}</h2><p>Nenhuma vaga é vendida — a candidatura é direta ao empregador</p></div>
     <div class="card">
       <p>As vagas H-2B e H-2A de ${catName} vêm de planilhas públicas do Departamento do Trabalho dos EUA, o mesmo órgão que certifica o salário mínimo obrigatório de cada uma. O H2BApply organiza esses dados e automatiza o envio da sua candidatura para os empregadores certificados — sem cobrar taxa de recrutamento, o que é proibido pelas próprias regras do programa.</p>
-      <p>Quer ver as vagas específicas de ${catName} disponíveis agora? Crie uma conta gratuita — leva menos de 1 minuto, com usuário e senha (sem conta do Google).</p>
+      <p>Quer ver as vagas específicas de ${catName}? Crie uma conta gratuita — leva menos de 1 minuto, com usuário e senha (sem conta do Google).</p>
     </div>
   </section>
   ${dadosHtml}
@@ -4712,7 +4732,7 @@ ${JSON.stringify({
   "@type":"BreadcrumbList",
   "itemListElement":[
     {"@type":"ListItem","position":1,"name":"H2BApply","item":"https://h2bapply.com/"},
-    {"@type":"ListItem","position":2,"name":"Salários por Estado","item":"https://h2bapply.com/quanto-ganha-h2b"},
+    {"@type":"ListItem","position":2,"name":"Vagas H-2B e H-2A por estado e área","item":"https://h2bapply.com/vagas-h2b"},
     {"@type":"ListItem","position":3,"name":`Vagas de ${catName}`,"item":`https://h2bapply.com/vagas-h2b/categoria/${catKey}`}
   ]
 })}
@@ -4810,7 +4830,7 @@ function _cortaTexto(txt,max){
 function _vagaDescLimpa(desc){
   const t=String(desc||"").trim();
   if(!t)return null;
-  return t.length>=495?_cortaTexto(t,t.length-1):t; // só mexe se bateu no teto de 500 da fonte
+  return (t.length>=495&&t.length<=500)?_cortaTexto(t,t.length-1):t; // só mexe se bateu no teto de 500 da fonte (descrição enriquecida maior que isso vem inteira)
 }
 function _findVagaPublica(caseNumberRaw){
   const alvo=String(caseNumberRaw||"").trim().toUpperCase();
@@ -4832,6 +4852,10 @@ function _findVagaPublica(caseNumberRaw){
 // NÃO têm unitText oficial equivalente — omitir baseSalary nesses casos é
 // mais correto do que forçar um valor incorreto (regra 29: nunca inventar dado).
 const WUNIT_TO_SCHEMA={h:"HOUR",d:"DAY",w:"WEEK",mo:"MONTH",y:"YEAR"};
+const _WUNIT_PT={h:"hora",d:"dia",w:"semana",mo:"mês",y:"ano",bw:"quinzena",pr:"produção"};
+// Mesma régua do computeWageStats: salário "por hora" acima de US$100 é mensal mal-etiquetado na planilha (pastoreio) —
+// não sabemos a unidade certa, então NÃO publicamos o número (nem no texto nem no JSON-LD) em vez de inventar "/h".
+function _vagaSalarioOk(r){return !!(r&&r.w&&parseFloat(r.w)>0&&!((r.wunit||"h")==="h"&&parseFloat(r.w)>100));}
 // 404 real (nunca redirect 302 como as páginas agregadas de estado/categoria
 // — aqui o caso não é "conteúdo fraco", é "essa vaga específica não existe
 // mais"; misturar com 302 faria o Google pensar que a URL foi movida).
@@ -4889,7 +4913,7 @@ function _renderVagaPage(r){
   const visa=FILTROS.visaDaLinha(r)||(stRaw.includes("H-2A")?"H-2A":"H-2B");
   const cat=r.k||"other";
   const catLabelRaw=CATEGORY_LABELS[cat]?.label||cat;
-  const salarioTxtRaw=r.w?`US$ ${r.w}/${({h:"hora",d:"dia",w:"semana",mo:"mês",y:"ano",bw:"quinzena",pr:"produção"})[r.wunit]||"hora"}`:null;
+  const salarioTxtRaw=_vagaSalarioOk(r)?`US$ ${r.w}/${_WUNIT_PT[r.wunit]||"hora"}`:null;
   const descRaw=_vagaDescLimpa(r.desc);
   const reqRaw=r.req||null;
   const caseNumRaw=r.c||"";
@@ -4931,7 +4955,7 @@ function _renderVagaPage(r){
       hiringOrganization:{"@type":"Organization",name:r.n||"Empregador certificado pelo DOL"},
       jobLocation:{"@type":"Place",address:{"@type":"PostalAddress",addressLocality:r.ci||undefined,addressRegion:estadoNome||undefined,addressCountry:"US"}}
     };
-    if(r.w&&WUNIT_TO_SCHEMA[r.wunit]){
+    if(_vagaSalarioOk(r)&&WUNIT_TO_SCHEMA[r.wunit]){
       jobPosting.baseSalary={"@type":"MonetaryAmount",currency:"USD",value:{"@type":"QuantitativeValue",value:parseFloat(r.w),unitText:WUNIT_TO_SCHEMA[r.wunit]}};
     }
   }
@@ -7864,6 +7888,9 @@ const server=http.createServer(async(req,res)=>{
   if((req.method==="GET"||req.method==="HEAD")&&String(req.headers.host||"").toLowerCase().split(":")[0]==="www.h2bapply.com"){
     res.writeHead(301,{"Location":"https://h2bapply.com"+req.url,"Cache-Control":"public, max-age=86400"});return res.end();
   }
+  // 🛡️ v982: %-encoding malformado (ex.: /vaga/%E0%A4%A) fazia decodeURIComponent estourar FORA de qualquer try nas
+  // rotas /vaga/, /api/pedido/… e a conexão ficava pendurada pra sempre. Uma guarda só, antes de todas as rotas.
+  try{decodeURIComponent(pathname);}catch{res.writeHead(400,{"Content-Type":"text/plain; charset=utf-8"});return res.end("URL inválida");}
   res.setHeader("X-Content-Type-Options","nosniff");res.setHeader("X-Frame-Options","SAMEORIGIN");
   res.setHeader("Content-Security-Policy",[
     "default-src 'self'",
@@ -7962,12 +7989,12 @@ const server=http.createServer(async(req,res)=>{
       if(_h)return sendHtmlCompressed(req,res,_h,"public, max-age=1800");
     }catch(e){console.warn("[aprenda] erro:",e.message);}
     res.writeHead(404,{"Content-Type":"text/html; charset=utf-8","X-Robots-Tag":"noindex"});
-    return res.end(_renderSeoNaoEncontrada("Guia não encontrado","Esse tópico do guia não existe. Veja a lista completa em /aprenda.",null));
+    return res.end(_injectGaId(Buffer.from(_renderSeoNaoEncontrada("Guia não encontrado","Esse tópico do guia não existe. Veja a lista completa em /aprenda.",null))));
   }
   const _seo404=(titulo,msg)=>{
     let st=null;try{st=computeWageStats();}catch{}
     res.writeHead(404,{"Content-Type":"text/html; charset=utf-8","X-Robots-Tag":"noindex"});
-    return res.end(_renderSeoNaoEncontrada(titulo,msg,st));
+    return res.end(_injectGaId(Buffer.from(_renderSeoNaoEncontrada(titulo,msg,st))));
   };
   // Checado ANTES da rota genérica por estado abaixo, senão "/vagas-h2b/categoria" seria lido como o slug de um estado.
   if(pathname==="/vagas-h2b/categoria"||pathname==="/vagas-h2b/categoria/"){res.writeHead(302,{"Location":"/vagas-h2b"});return res.end();}
@@ -8009,12 +8036,12 @@ const server=http.createServer(async(req,res)=>{
     const caseNum=decodeURIComponent(pathname.slice("/vaga/".length).replace(/\/$/,""));
     try{
       const r=_findVagaPublica(caseNum);
-      if(!r){res.writeHead(404,{"Content-Type":"text/html; charset=utf-8","X-Robots-Tag":"noindex"});return res.end(_render404Vaga());}
+      if(!r){res.writeHead(404,{"Content-Type":"text/html; charset=utf-8","X-Robots-Tag":"noindex"});return res.end(_injectGaId(Buffer.from(_render404Vaga())));}
       const html=_renderVagaPage(r);
       return sendHtmlCompressed(req,res,html,"public, max-age=900");
     }catch(e){
       console.warn("[vaga] erro:",e.message);
-      res.writeHead(404,{"Content-Type":"text/html; charset=utf-8","X-Robots-Tag":"noindex"});return res.end(_render404Vaga());
+      res.writeHead(404,{"Content-Type":"text/html; charset=utf-8","X-Robots-Tag":"noindex"});return res.end(_injectGaId(Buffer.from(_render404Vaga())));
     }
   }
   if(pathname==="/diagnostico"||pathname==="/diagnostico.html"){res.setHeader("X-Robots-Tag","noindex, nofollow");return serveHtml("diagnostico.html");}

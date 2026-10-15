@@ -7302,9 +7302,13 @@ async function drillAdminSettingsLegado() {
     for (const u of _jobLinksTn.slice(0, 3)) { const r = await get(u); _jobSample.push(r.status + " " + ((r.body.match(/<meta name="robots" content="([^"]+)"/) || [])[1] || "")); }
     check("🔎v980: a página de estado ganhou conteúdo REAL — ≥700 palavras visíveis (eram ~346, 64% repetidas entre estados), seções de visto/mediana, 10 empregadores com vagas e trabalhadores, cargos mais comuns, cidades, vagas H-2A recentes com LINK pra página da vaga (todas indexáveis, 200) e 'Veja também' com o hub",
       _tn.status === 200 && _txtTn.split(/\s+/).filter(Boolean).length >= 700 &&
-      ["h2b-ou-h2a", "empregadores", "cargos", "vagas-recentes", "veja-tambem"].every((id) => _tn.body.includes(`id="${id}"`)) &&
-      (_empTn.match(/<tr><td class="lbl">/g) || []).length === 10 && _jobLinksTn.length >= 5 &&
-      _jobSample.length === 3 && _jobSample.every((x) => x === "200 index, follow") && _tn.body.includes('href="/vagas-h2b"'),
+      ["h2b-ou-h2a", "empregadores", "cargos", "veja-tambem"].every((id) => _tn.body.includes(`id="${id}"`)) &&
+      (_empTn.match(/<tr><td class="lbl">/g) || []).length === 10 &&
+      // 🔎 v982 (achado T1 da revisão): "vagas-recentes" depende de vagas H-2A cujo contrato AINDA não venceu — com a planilha
+      // bundled isso expira sozinho com o calendário. A seção só aparece se houver vaga viva; quando aparece, TODO link tem que
+      // abrir (200, indexável). O dado fixo continua provado pelo resto do check.
+      (!_tn.body.includes('id="vagas-recentes"') || _jobLinksTn.length >= 1) &&
+      _jobSample.every((x) => x === "200 index, follow") && _tn.body.includes('href="/vagas-h2b"'),
       JSON.stringify({ palavras: _txtTn.split(/\s+/).filter(Boolean).length, emp: (_empTn.match(/<tr><td class="lbl">/g) || []).length, vagas: _jobLinksTn.length, amostra: _jobSample }));
     const _emailsTn = (String(_tn.body).match(/[\w.+-]+@[\w-]+\.[\w.]+/g) || []).filter((m) => !/@h2bapply\.com$/i.test(m));
     const _tabelaTn = (String(_tn.body).match(/<tbody>[\s\S]*?<\/tbody>/g) || []).join("");
@@ -7360,6 +7364,35 @@ async function drillAdminSettingsLegado() {
     check("🔎 v981: www.h2bapply.com vira 301 pro domínio sem www (GET, mantendo caminho e query) — um só host pro Google — e POST/outros hosts NÃO são redirecionados",
       _wwwR.status === 301 && _wwwR.headers.location === "https://h2bapply.com/aprenda/h2b?x=1" && _wwwP.status !== 301,
       JSON.stringify({ www: [_wwwR.status, _wwwR.headers.location], post: _wwwP.status }));
+    // 🔎 v982: achados CONFIRMADOS da revisão adversarial dos commits v978–v981 (5 lentes + verificadores independentes).
+    const _srv982 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+    const _hub982 = (await req2("GET", "/vagas-h2b")).body;
+    const _estados982 = [...new Set([..._hub982.matchAll(/href="(\/vagas-h2b\/(?!categoria)[a-z-]+)"/g)].map((x) => x[1]))].slice(0, 12);
+    let _salRuim982 = [], _bc982 = 0;
+    for (const u of _estados982) {
+      const b = (await req2("GET", u)).body;
+      for (const x of b.matchAll(/US\$ ?([\d.]+),\d\d\/h</g)) if (parseFloat(x[1].replace(/\./g, "")) > 100) _salRuim982.push(u + " " + x[0]);
+      if (/"position":2,"name":"Vagas H-2B e H-2A por estado e área","item":"https:\/\/h2bapply\.com\/vagas-h2b"/.test(b)) _bc982++;
+    }
+    const _mal982 = await req2("GET", "/vaga/%E0%A4%A"), _mal982b = await req2("GET", "/api/pedido/%");
+    const _fnT982 = new Function(_srv982.match(/function _seoTitulo\(x\)\{[\s\S]*?\n\}/)[0] + "; return _seoTitulo;")();
+    const _fnC982 = new Function(_srv982.match(/function _catKey\(r\)\{[^\n]*\}/)[0] + "; return _catKey;")();
+    const _qg982 = (await req2("GET", "/quanto-ganha-h2b")).body;
+    check("🔎 v982: nenhuma lista 'Vagas H-2A recentes' mostra salário mensal como '/h' (antes: pastor de ovelhas 'US$ 2.400,00/h'), a unidade vem da planilha e o salário 'por hora' acima de US$100 sai como '—' em vez de inventar unidade",
+      _estados982.length >= 8 && _salRuim982.length === 0 && /_vagaSalarioOk\(r\)\?fU\(r\.w\)\+"\/"\+\(_WUNIT_PT/.test(_srv982) && /if\(_vagaSalarioOk\(r\)&&WUNIT_TO_SCHEMA\[r\.wunit\]\)/.test(_srv982),
+      JSON.stringify({ n: _estados982.length, ruins: _salRuim982.slice(0, 3) }));
+    check("🔎 v982: URL com %-encoding malformado (/vaga/%E0%A4%A, /api/pedido/%) responde 400 na hora — antes a conexão ficava pendurada pra sempre (decodeURIComponent fora de try)",
+      _mal982.status === 400 && _mal982b.status === 400, JSON.stringify([_mal982.status, _mal982b.status]));
+    check("🔎 v982: _seoTitulo respeita acentos e siglas ('JOSÉ GARCÍA FARMS LLC' → 'José García Farms LLC', antes 'José GarcíA Farms Llc'); chave de categoria hostil vira 'other'; estado só aceita nome com cara de nome (nunca HTML na página)",
+      _fnT982("JOSÉ GARCÍA FARMS LLC") === "José García Farms LLC" && _fnT982("AÇÃO MUÑOZ HARVESTING INC") === "Ação Muñoz Harvesting INC" && _fnT982("Já Está em Caixa Mista") === "Já Está em Caixa Mista" &&
+      _fnC982({ k: '"><script>alert(1)</script>' }) === "other" && _fnC982({ k: "landscape" }) === "landscape" && /function _stateSafe\(raw\)\{const n=normalizeStateName\(raw\);return \/\^\[A-Z\]\[A-Z \.'\\-\]\{1,39\}\$\/\.test\(n\)\?n:""/.test(_srv982),
+      "faltou peça");
+    check("🔎 v982: as páginas de estado apontam o breadcrumb pro HUB /vagas-h2b (era /quanto-ganha-h2b), 'ao vivo'/'disponíveis agora'/'vagas abertas' saíram dos textos públicos (a fonte são planilhas do DOL, não vagas abertas em tempo real) e a lista H-2A recente só pega linhas H-2A",
+      _bc982 === _estados982.length && !/calculados? ao vivo/i.test(_qg982) && !/disponíveis agora|vagas abertas/.test(_srv982.slice(_srv982.indexOf("function renderStatePage"), _srv982.indexOf("function _vagaStatusCert"))) &&
+      /\(FILTROS\.visaDaLinha\(r\)\|\|"H-2B"\)!=="H-2A"\|\|!filtroFn\(r\)/.test(_srv982), JSON.stringify({ bc: _bc982, de: _estados982.length }));
+    check("🛡️ v982 (estrutural): computeWageStats/_seoLinhasHorarias/_seoVagasAbertas são memoizados por 10min com assinatura das planilhas (404 e hub não recalculam 16 mil linhas por requisição) e TODA página SEO recebe o GA_MEASUREMENT_ID (sendHtmlCompressed + os 404)",
+      /function computeWageStats\(\)\{return _seoMemo\("wageStats",_computeWageStatsRaw\);\}/.test(_srv982) && /_seoMemo\("linhasH"/.test(_srv982) && /_seoMemo\("abertas:"/.test(_srv982) && /Date\.now\(\)-c\.t<600000/.test(_srv982) &&
+      /const raw = _injectGaId\(Buffer\.from\(html, "utf8"\)\)/.test(_srv982) && (_srv982.match(/_injectGaId\(Buffer\.from\(_render/g) || []).length >= 4, "faltou memo/GA");
     check("📚 v981: o fragmento do app segue noindex (conteúdo duplicado fora do Google), tópico inexistente — inclusive o quiz, que é interativo e fica só no app — dá 404 noindex, e a home e o hub /vagas-h2b linkam /aprenda por <a href>",
       /noindex/.test(String(_apFrag.headers["x-robots-tag"] || "")) && _apQuiz.status === 404 && /noindex/.test(String(_apQuiz.headers["x-robots-tag"] || "")) &&
       (await req2("GET", "/")).body.includes('href="/aprenda"') && (await req2("GET", "/vagas-h2b")).body.includes('href="/aprenda"'),

@@ -4484,3 +4484,22 @@ páginas SEO). Data "Conteúdo revisado em" é lida do comentário do próprio f
 ao revisar o conteúdo, atualize a data lá. Slug inexistente = 404 noindex com corpo útil (nunca 302).
 No sitemap-conteudo, linkado na home (card em #guias-h2b), no hub /vagas-h2b e no rodapé das páginas SEO.
 `_seoPaginaBase` ganhou `extraCss` e `ldExtra` (JSON-LD Article). 3 checks. sw v201.
+
+## 🛡️ v982 — Correções da revisão adversarial do SEO (15/10/2026)
+
+Revisão de 5 lentes (correção, SEO, segurança, testes, produto) sobre v978–v981, com verificadores
+independentes tentando refutar cada achado; só entrou o que foi reproduzido. (1) **Salário "/h" errado**: a
+lista "Vagas H-2A recentes" ignorava `wunit` (pastor de ovelhas "US$ 2.400,00/h"); agora a unidade vem da
+planilha e `_vagaSalarioOk` (fonte única: lista, texto da vaga e JSON-LD) NÃO publica salário "por hora" >US$100 —
+mensal mal-etiquetado na fonte, não inventamos unidade. (2) **URL malformada pendurava a conexão**
+(`/vaga/%E0%A4%A`): uma guarda global antes das rotas devolve 400. (3) **Chaves da planilha saneadas**
+(`_catKey`/`_stateSafe`) antes de virar href/title/JSON-LD. (4) **Cache**: `computeWageStats`, linhas horárias e
+vagas abertas memoizados 10min com assinatura do tamanho das planilhas (`_seoMemo`) — o 404 e o hub deixaram de
+recalcular ~16 mil linhas por requisição (pré-existente, mas agravado pelo hub). (5) `_seoVagasAbertas` só H-2A,
+cidades só H-2A; breadcrumb das páginas de estado/área aponta pro hub; `_seoTitulo` com `\p{L}` e siglas
+(LLC/INC); `_vagaDescLimpa` só corta descrição que bateu no teto de 500; GA_MEASUREMENT_ID injetado em TODA
+página SEO (`sendHtmlCompressed` + 404s); "ao vivo/disponíveis agora/vagas abertas" saíram dos textos públicos
+(a fonte são planilhas do DOL). **Decisões deixadas ao dono (não são bug)**: JobPosting das /vaga/ usa o fim do
+contrato como `validThrough` (mediana 323 dias) e o envio exige plano — manter ou remover é escolha de risco;
+~13% dos títulos de /vaga/ se repetem porque o MESMO empregador abre dezenas de casos (dado, não título);
+"para brasileiros" no H1 do hub foi mantido (pesquisa de marca). 5 checks. Total da suíte: +9 desde o v980.
