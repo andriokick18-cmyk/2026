@@ -118,6 +118,24 @@ function sendHtmlCompressed(req, res, html, cacheControl){
   res.writeHead(200, h);
   return res.end(body);
 }
+// 🗺️ v979: mesma compressão, pra XML (sitemaps) — Content-Type certo (sendHtmlCompressed fixa text/html).
+function _sendXmlCompressed(req, res, xml, cacheControl){
+  const raw = Buffer.from(xml, "utf8");
+  const ae = String(req.headers["accept-encoding"] || "");
+  const h = { "Content-Type": "application/xml; charset=utf-8", "Cache-Control": cacheControl || "public, max-age=3600", Vary: "Accept-Encoding" };
+  let body = raw, enc = null;
+  try {
+    if (/\bbr\b/.test(ae)) { body = zlib.brotliCompressSync(raw, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 5, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: raw.length } }); enc = "br"; }
+    else if (/\bgzip\b/.test(ae)) { body = zlib.gzipSync(raw, { level: 6 }); enc = "gzip"; }
+  } catch(e) { body = raw; enc = null; }
+  if (enc) h["Content-Encoding"] = enc;
+  h["Content-Length"] = body.length;
+  res.writeHead(200, h);
+  return res.end(req.method === "HEAD" ? undefined : body);
+}
+// Data em que o conteúdo das páginas públicas mudou DE PROPÓSITO — vira o <lastmod> do sitemap-conteudo.xml.
+// mtime de arquivo não serve (no Render o checkout zera os mtimes a cada deploy). Suba ao editar as páginas.
+const SEO_CONTENT_LASTMOD = "2026-10-15";
 // ══════════════════════════════════════════════════════════════════════════
 
 // ── Config ────────────────────────────────────────────────
@@ -4401,6 +4419,59 @@ function _vagaEstaViva(r){
   if(r.de&&/^\d{4}-\d{2}-\d{2}$/.test(r.de)&&r.de<hojeISO)return false;
   return true;
 }
+// 🔎 v979 (SEO — auditoria de 7 lentes, 15/10/2026): as 18.590 páginas /vaga/ eram finas, quase idênticas e
+// AFIRMAVAM coisa que o dado não sustenta ("certificada pelo DOL" pra caso ainda em análise e pra toda a H-2A,
+// que nem tem status na planilha; datePosted = data do deploy em 100% delas). Três funções, fonte única:
+//  • _vagaStatusCert  — o que o DADO diz do status (nunca mais "certificada" sem st Certified)
+//  • _vagaDataProtocolo — data REAL de protocolo no DOL, derivada do próprio número do caso (H-400-AADDD-NNNNNN,
+//    AA = ano, DDD = dia juliano em que o caso foi recebido) — substitui o mtime do arquivo da planilha
+//  • _vagaIndexavel   — critério ÚNICO de "página que merece o Google": a mesma régua decide o meta robots da
+//    página E a entrada no sitemap (nunca 2 cópias divergindo). Vaga sem cargo, em análise, ou sem conteúdo
+//    próprio (descrição ou datas de contrato) continua acessível pro usuário, mas fica noindex e fora do sitemap.
+function _vagaStatusCert(r){
+  const st=String((r&&r.st)||"").toUpperCase();
+  if(st.includes("CERTIFIED"))return "certificada";
+  if(st.includes("PENDING")||st.includes("PROCESSING")||st.includes("REVIEW"))return "pendente";
+  return "registrada";
+}
+function _vagaFraseDol(r){
+  const k=_vagaStatusCert(r);
+  if(k==="certificada")return {curta:"certificada pelo Departamento do Trabalho dos EUA (DOL)",longa:"Vaga certificada pelo Departamento do Trabalho dos EUA (DOL)"};
+  if(k==="pendente")return {curta:"em análise no Departamento do Trabalho dos EUA (DOL), ainda sem certificação",longa:"Caso em análise no Departamento do Trabalho dos EUA (DOL), ainda sem certificação"};
+  return {curta:"registrada no Departamento do Trabalho dos EUA (DOL)",longa:"Vaga registrada no Departamento do Trabalho dos EUA (DOL)"};
+}
+function _vagaDataProtocolo(caseNum){
+  const m=String(caseNum||"").trim().match(/^H-\d{3}-(\d{2})(\d{3})-\d+$/i);
+  if(!m)return null;
+  const y=2000+parseInt(m[1],10),doy=parseInt(m[2],10);
+  if(doy<1||doy>366)return null;
+  const d=new Date(Date.UTC(y,0,1)+(doy-1)*86400_000);
+  if(d.getUTCFullYear()!==y)return null;
+  const iso=d.toISOString().slice(0,10);
+  return iso>new Date().toISOString().slice(0,10)?null:iso;
+}
+function _vagaIndexavel(r){
+  if(!r||!_vagaEstaViva(r))return false;
+  if(!String(r.t||"").trim())return false;
+  if(_vagaStatusCert(r)==="pendente")return false;
+  const temDesc=String(r.desc||"").trim().length>=80;
+  const temContrato=/^\d{4}-\d{2}-\d{2}$/.test(String(r.de||""));
+  return temDesc||temContrato;
+}
+// A fonte do DOL trunca a descrição em 500 caracteres NO MEIO DA PALAVRA — corta no último espaço e marca com
+// reticências em vez de exibir "…responsib" como se fosse texto completo.
+function _cortaTexto(txt,max){
+  const t=String(txt||"").trim();
+  if(t.length<=max)return t;
+  const corte=t.slice(0,max);
+  const sp=corte.lastIndexOf(" ");
+  return (sp>max*0.6?corte.slice(0,sp):corte).replace(/[\s,;:.\-–—]+$/,"")+"…";
+}
+function _vagaDescLimpa(desc){
+  const t=String(desc||"").trim();
+  if(!t)return null;
+  return t.length>=495?_cortaTexto(t,t.length-1):t; // só mexe se bateu no teto de 500 da fonte
+}
 function _findVagaPublica(caseNumberRaw){
   const alvo=String(caseNumberRaw||"").trim().toUpperCase();
   if(!alvo)return null;
@@ -4479,7 +4550,7 @@ function _renderVagaPage(r){
   const cat=r.k||"other";
   const catLabelRaw=CATEGORY_LABELS[cat]?.label||cat;
   const salarioTxtRaw=r.w?`US$ ${r.w}/${({h:"hora",d:"dia",w:"semana",mo:"mês",y:"ano",bw:"quinzena",pr:"produção"})[r.wunit]||"hora"}`:null;
-  const descRaw=r.desc||null;
+  const descRaw=_vagaDescLimpa(r.desc);
   const reqRaw=r.req||null;
   const caseNumRaw=r.c||"";
   // Whitelist pro contexto JS (onclick=gtag(...)): case number do DOL só tem
@@ -4491,35 +4562,38 @@ function _renderVagaPage(r){
   // string JS mais cedo — _escHtml sozinho NÃO protege esse contexto.
   const caseNumJs=String(caseNumRaw).replace(/[^A-Za-z0-9-]/g,"");
   const url=`https://h2bapply.com/vaga/${encodeURIComponent(caseNumRaw)}`;
-  const pageTitle=`${tituloRaw}${localRaw?` em ${localRaw}`:""} | Vaga ${visa} — H2BApply`;
-  const pageDesc=`${tituloRaw} na ${empresaRaw}${localRaw?` (${localRaw})`:""} — vaga ${visa} certificada pelo Departamento do Trabalho dos EUA${salarioTxtRaw?`, ${salarioTxtRaw}`:""}. Candidate-se grátis pelo H2BApply.`;
-  // datePosted honesto: não existe campo "publicado em" por vaga na planilha
-  // compacta (regra 29 — nunca inventar) — usa a data real de modificação do
-  // arquivo da planilha em disco como proxy verificável (mesmo espírito do
-  // <lastmod> do sitemap.xml, que já usa "data do boot" por falta de melhor).
-  let datePosted=new Date().toISOString().slice(0,10);
-  try{
-    const arqs=fs.readdirSync(SHEETS_DIR).filter(f=>f.endsWith(".json"));
-    let mtimeMax=0;
-    for(const f of arqs){const st2=fs.statSync(path.join(SHEETS_DIR,f));if(st2.mtimeMs>mtimeMax)mtimeMax=st2.mtimeMs;}
-    if(mtimeMax>0)datePosted=new Date(mtimeMax).toISOString().slice(0,10);
-  }catch{}
+  const fraseDol=_vagaFraseDol(r);
+  // título único por página (65% dividiam o mesmo <title>): inclui o empregador, truncado pra caber (~70)
+  const _tBase=_cortaTexto(`${tituloRaw}${localRaw?` em ${localRaw}`:""}`,48);
+  const _empTitulo=_cortaTexto(empresaRaw,Math.max(14,66-_tBase.length-3));
+  const pageTitle=`${_tBase} — ${_empTitulo}`+((_tBase.length+_empTitulo.length+3+11)<=70?" | H2BApply":"");
+  const pageDesc=_cortaTexto(`${tituloRaw} na ${empresaRaw}${localRaw?` (${localRaw})`:""} — vaga ${visa} ${fraseDol.curta}${salarioTxtRaw?`, ${salarioTxtRaw}`:""}. Cadastro grátis no H2BApply; o envio das candidaturas é por plano.`,300);
+  const indexavel=_vagaIndexavel(r);
+  const dataProtocolo=_vagaDataProtocolo(caseNumRaw);
+  const dataProtocoloBR=dataProtocolo?dataProtocolo.split("-").reverse().join("/"):null;
+  // 🔎 v979: datePosted = data REAL de protocolo do caso no DOL (derivada do número do caso). Antes era o mtime do
+  // arquivo da planilha — a data do DEPLOY em 100% das páginas (falsa frescura = risco na política de vagas do
+  // Google). JobPosting só sai quando dá pra sustentar tudo que ele afirma: página indexável, data de protocolo
+  // derivável E data de fim de contrato futura (vaga sem validThrough nunca "expira" pro Google).
   const hojeISO=new Date().toISOString().slice(0,10);
   const validThrough=(r.de&&/^\d{4}-\d{2}-\d{2}$/.test(r.de)&&r.de>=hojeISO)?r.de:null;
-  const jobPosting={
-    "@context":"https://schema.org",
-    "@type":"JobPosting",
-    title:r.t||"Vaga Sazonal",
-    description:r.desc?String(r.desc):`Vaga ${visa} certificada pelo Departamento do Trabalho dos EUA (DOL) — ${r.t||"função sazonal"}.`,
-    identifier:{"@type":"PropertyValue",name:"H2BApply/DOL Case Number",value:r.c||""},
-    datePosted,
-    employmentType:["TEMPORARY"],
-    hiringOrganization:{"@type":"Organization",name:r.n||"Empregador certificado pelo DOL"},
-    jobLocation:{"@type":"Place",address:{"@type":"PostalAddress",addressLocality:r.ci||undefined,addressRegion:estadoNome||undefined,addressCountry:"US"}}
-  };
-  if(validThrough)jobPosting.validThrough=validThrough;
-  if(r.w&&WUNIT_TO_SCHEMA[r.wunit]){
-    jobPosting.baseSalary={"@type":"MonetaryAmount",currency:"USD",value:{"@type":"QuantitativeValue",value:parseFloat(r.w),unitText:WUNIT_TO_SCHEMA[r.wunit]}};
+  let jobPosting=null;
+  if(indexavel&&dataProtocolo&&validThrough){
+    jobPosting={
+      "@context":"https://schema.org",
+      "@type":"JobPosting",
+      title:r.t||"Vaga Sazonal",
+      description:descRaw?String(descRaw):`Vaga ${visa} ${fraseDol.curta} — ${r.t||"função sazonal"}.`,
+      identifier:{"@type":"PropertyValue",name:"H2BApply/DOL Case Number",value:r.c||""},
+      datePosted:dataProtocolo,
+      validThrough,
+      employmentType:["TEMPORARY"],
+      hiringOrganization:{"@type":"Organization",name:r.n||"Empregador certificado pelo DOL"},
+      jobLocation:{"@type":"Place",address:{"@type":"PostalAddress",addressLocality:r.ci||undefined,addressRegion:estadoNome||undefined,addressCountry:"US"}}
+    };
+    if(r.w&&WUNIT_TO_SCHEMA[r.wunit]){
+      jobPosting.baseSalary={"@type":"MonetaryAmount",currency:"USD",value:{"@type":"QuantitativeValue",value:parseFloat(r.w),unitText:WUNIT_TO_SCHEMA[r.wunit]}};
+    }
   }
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -4530,7 +4604,7 @@ function _renderVagaPage(r){
 <title>${_escHtml(pageTitle)}</title>
 <meta name="description" content="${_escHtml(pageDesc)}">
 <meta name="author" content="H2BApply">
-<meta name="robots" content="index, follow">
+<meta name="robots" content="${indexavel?"index, follow":"noindex, follow"}">
 <link rel="canonical" href="${url}">
 <meta property="og:title" content="${_escHtml(pageTitle)}">
 <meta property="og:description" content="${_escHtml(pageDesc)}">
@@ -4604,25 +4678,26 @@ footer a{color:var(--blue);font-weight:600}
     <div class="job-stat"><div class="job-stat-lbl">Categoria</div><div class="job-stat-val">${_escHtml(catLabelRaw)}</div></div>
     ${salarioTxtRaw?`<div class="job-stat"><div class="job-stat-lbl">Salário</div><div class="job-stat-val">${_escHtml(salarioTxtRaw)}</div></div>`:""}
     ${localRaw?`<div class="job-stat"><div class="job-stat-lbl">Local</div><div class="job-stat-val">${_escHtml(localRaw)}</div></div>`:""}
-    ${r.d||r.de?`<div class="job-stat"><div class="job-stat-lbl">Período</div><div class="job-stat-val">${_escHtml(r.d||"?")} a ${_escHtml(r.de||"?")}</div></div>`:""}
+    ${r.d&&r.de?`<div class="job-stat"><div class="job-stat-lbl">Período</div><div class="job-stat-val">${_escHtml(r.d)} a ${_escHtml(r.de)}</div></div>`:(r.d||r.de?`<div class="job-stat"><div class="job-stat-lbl">${r.d?"Início":"Fim"}</div><div class="job-stat-val">${_escHtml(r.d||r.de)}</div></div>`:"")}
+    ${dataProtocoloBR?`<div class="job-stat"><div class="job-stat-lbl">Protocolo no DOL</div><div class="job-stat-val">${_escHtml(dataProtocoloBR)}</div></div>`:""}
   </div>
   ${descRaw?`<section class="section"><h2>Funções da vaga</h2><div class="card"><p>${_escHtml(descRaw)}</p></div></section>`:""}
   ${reqRaw?`<section class="section"><h2>Requisitos</h2><div class="card"><p>${_escHtml(reqRaw)}</p></div></section>`:""}
-  <div class="warn-box"><i class="ti ti-shield-check"></i><div>Vaga certificada pelo Departamento do Trabalho dos EUA (DOL), caso nº ${_escHtml(caseNumRaw)}. O H2BApply nunca cobra taxa de recrutamento — é proibido pela própria regra do programa H-2B/H-2A. O contato do empregador é liberado só depois de criar conta grátis (proteção contra golpe e coleta indevida de e-mail).</div></div>
+  <div class="warn-box"><i class="ti ti-shield-check"></i><div>${_escHtml(fraseDol.longa)}, caso nº ${_escHtml(caseNumRaw)}${dataProtocoloBR?`, protocolado em ${_escHtml(dataProtocoloBR)}`:""}. <a href="https://seasonaljobs.dol.gov/jobs/${encodeURIComponent(caseNumRaw)}" target="_blank" rel="noopener" style="text-decoration:underline">Ver o aviso oficial no site do DOL</a>. O H2BApply nunca cobra taxa de recrutamento — é proibido pela própria regra do programa H-2B/H-2A. O contato do empregador é liberado só depois de criar conta grátis (proteção contra golpe e coleta indevida de e-mail).</div></div>
   <div class="cta-section">
-    <h3>Candidate-se a esta vaga agora 🇺🇸</h3>
-    <p>Crie uma conta grátis (usuário e senha, sem cartão) e envie sua candidatura direto pelo Gmail em poucos cliques.</p>
+    <h3>Quer se candidatar a esta vaga? 🇺🇸</h3>
+    <p>Crie uma conta grátis (usuário e senha, sem cartão), monte seu perfil e, com um plano ativo, envie sua candidatura direto pelo seu Gmail em poucos cliques.</p>
     <a href="/?cadastro=1" class="btn-cta-white" onclick="gtag('event','sign_up_intent',{method:'password',source:'vaga-${caseNumJs}-cta'})"><i class="ti ti-rocket"></i> Criar conta grátis</a>
   </div>
 </main>
 <footer>
   <div style="margin-bottom:8px"><a href="/">H2BApply</a> · <a href="/guia">Guia H-2B/H-2A</a> · <a href="/h2b-e-golpe">H2B é Golpe?</a> · <a href="/quanto-ganha-h2b">Quanto Ganha?</a> · <a href="/privacidade">Privacidade</a> · <a href="/termos">Termos</a></div>
-  <div>Vaga certificada pelo Departamento do Trabalho dos EUA. Conteúdo educativo, não é aconselhamento jurídico.</div>
+  <div>${_escHtml(fraseDol.longa)}. Conteúdo educativo, não é aconselhamento jurídico.</div>
 </footer>
-<script type="application/ld+json">
+${jobPosting?`<script type="application/ld+json">
 ${_jsonLdSafe(jobPosting)}
 </script>
-</body>
+`:""}</body>
 </html>`;
 }
 
@@ -7580,43 +7655,50 @@ const server=http.createServer(async(req,res)=>{
     res.writeHead(200,{"Content-Type":"text/plain; charset=utf-8","Cache-Control":"public, max-age=3600"});
     return res.end("User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /admin-reviews\nDisallow: /ad\nAllow: /api/public-wage-stats\nDisallow: /api/\nDisallow: /diagnostico\n\nSitemap: https://h2bapply.com/sitemap.xml\n");
   }
-  if(pathname==="/sitemap.xml"){
-    const _pages=[
-      {loc:"https://h2bapply.com/",priority:"1.0",changefreq:"daily"},
-      {loc:"https://h2bapply.com/guia",priority:"0.9",changefreq:"weekly"},
-      {loc:"https://h2bapply.com/h2bapply-funciona",priority:"0.8",changefreq:"weekly"},
-      {loc:"https://h2bapply.com/h2b-e-golpe",priority:"0.8",changefreq:"weekly"},
-      {loc:"https://h2bapply.com/quanto-ganha-h2b",priority:"0.8",changefreq:"weekly"},
-      {loc:"https://h2bapply.com/como-usar",priority:"0.7",changefreq:"weekly"},
-      // 📄 SEO v340: as 2 páginas de conteúdo novas (pedido do dono) + as 5
-      // páginas legais/utilitárias inline do server.js — indexáveis, sem
-      // X-Robots-Tag noindex, mas ausentes do sitemap até aqui.
-      {loc:"https://h2bapply.com/empresas-que-patrocinam-visto-h2b",priority:"0.8",changefreq:"monthly"},
-      {loc:"https://h2bapply.com/quanto-custa-o-visto-h2b",priority:"0.8",changefreq:"monthly"},
-      {loc:"https://h2bapply.com/privacidade",priority:"0.3",changefreq:"yearly"},
-      {loc:"https://h2bapply.com/termos",priority:"0.3",changefreq:"yearly"},
-      {loc:"https://h2bapply.com/excluir-conta",priority:"0.3",changefreq:"yearly"},
-      {loc:"https://h2bapply.com/contact",priority:"0.3",changefreq:"yearly"},
-      {loc:"https://h2bapply.com/google-data-usage",priority:"0.2",changefreq:"yearly"},
-    ];
-    // SEO programático: inclui só os estados com vagas suficientes pra ter página própria
-    // (mesmo corte de MIN_JOBS_FOR_STATE_PAGE usado na rota /vagas-h2b/:estado).
-    try{
-      const{byStateAll,byCategoryAll}=computeWageStats();
-      byStateAll.filter(s=>s.count>=MIN_JOBS_FOR_STATE_PAGE).forEach(s=>{
-        _pages.push({loc:`https://h2bapply.com/vagas-h2b/${s.slug}`,priority:"0.7",changefreq:"weekly"});
-      });
-      // v18-SEO: páginas por categoria (mesmo corte de MIN_JOBS_FOR_CATEGORY_PAGE
-      // usado na rota /vagas-h2b/categoria/:categoria).
-      byCategoryAll.filter(c=>c.count>=MIN_JOBS_FOR_CATEGORY_PAGE).forEach(c=>{
-        _pages.push({loc:`https://h2bapply.com/vagas-h2b/categoria/${c.key}`,priority:"0.7",changefreq:"weekly"});
-      });
-    }catch(e){console.warn("[sitemap] erro ao listar páginas de estado/categoria:",e.message);}
-    // 📄 SEO v340: 1 URL por vaga individual VIVA (/vaga/:caseNumber) — a
-    // MESMA régua de "vaga morta"/rascunho de _findVagaPublica (fonte única,
-    // nunca 2ª cópia do que é "vaga viva"). Dedupe por case number (defensivo
-    // — as fontes não deveriam repetir, mas o sitemap não pode listar 2 URLs
-    // iguais). Bem abaixo do teto de 50.000 URLs do protocolo de sitemaps.
+  // 🗺️ v979 (SEO): /sitemap.xml continua sendo a URL de entrada (o dono pode já ter enviado ao Search Console) mas
+  // virou ÍNDICE de 2 sitemaps — conteúdo (páginas fixas, estados, categorias) e vagas (só as que passam em
+  // _vagaIndexavel). Assim o Search Console mostra separado o que importa, o <lastmod> deixa de ser "data do
+  // boot" em tudo (ignorado pelo Google) e o XML sai comprimido (3,3 MB → ~75 KB). lastmod do conteúdo = a data
+  // em que o conteúdo mudou DE PROPÓSITO (SEO_CONTENT_LASTMOD — suba quando editar as páginas); vaga sem lastmod.
+  if(pathname==="/sitemap.xml"||pathname==="/sitemap-conteudo.xml"||pathname==="/sitemap-vagas.xml"){
+    const _xmlHead='<?xml version="1.0" encoding="UTF-8"?>\n';
+    if(pathname==="/sitemap.xml"){
+      const _idx=`${_xmlHead}<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <sitemap>\n    <loc>https://h2bapply.com/sitemap-conteudo.xml</loc>\n    <lastmod>${SEO_CONTENT_LASTMOD}</lastmod>\n  </sitemap>\n  <sitemap>\n    <loc>https://h2bapply.com/sitemap-vagas.xml</loc>\n  </sitemap>\n</sitemapindex>\n`;
+      return _sendXmlCompressed(req,res,_idx);
+    }
+    if(pathname==="/sitemap-conteudo.xml"){
+      const _pages=[
+        {loc:"https://h2bapply.com/",priority:"1.0",changefreq:"daily"},
+        {loc:"https://h2bapply.com/guia",priority:"0.9",changefreq:"weekly"},
+        {loc:"https://h2bapply.com/h2bapply-funciona",priority:"0.8",changefreq:"weekly"},
+        {loc:"https://h2bapply.com/h2b-e-golpe",priority:"0.8",changefreq:"weekly"},
+        {loc:"https://h2bapply.com/quanto-ganha-h2b",priority:"0.8",changefreq:"weekly"},
+        {loc:"https://h2bapply.com/como-usar",priority:"0.7",changefreq:"weekly"},
+        // 📄 SEO v340: as 2 páginas de conteúdo novas (pedido do dono) + as 5 páginas legais/utilitárias inline do server.js
+        {loc:"https://h2bapply.com/empresas-que-patrocinam-visto-h2b",priority:"0.8",changefreq:"monthly"},
+        {loc:"https://h2bapply.com/quanto-custa-o-visto-h2b",priority:"0.8",changefreq:"monthly"},
+        {loc:"https://h2bapply.com/privacidade",priority:"0.3",changefreq:"yearly"},
+        {loc:"https://h2bapply.com/termos",priority:"0.3",changefreq:"yearly"},
+        {loc:"https://h2bapply.com/excluir-conta",priority:"0.3",changefreq:"yearly"},
+        {loc:"https://h2bapply.com/contact",priority:"0.3",changefreq:"yearly"},
+        {loc:"https://h2bapply.com/google-data-usage",priority:"0.2",changefreq:"yearly"},
+      ];
+      // SEO programático: só os estados/categorias com vagas suficientes pra ter página própria (mesmo corte das rotas).
+      try{
+        const{byStateAll,byCategoryAll}=computeWageStats();
+        byStateAll.filter(s=>s.count>=MIN_JOBS_FOR_STATE_PAGE).forEach(s=>{
+          _pages.push({loc:`https://h2bapply.com/vagas-h2b/${s.slug}`,priority:"0.7",changefreq:"weekly"});
+        });
+        byCategoryAll.filter(c=>c.count>=MIN_JOBS_FOR_CATEGORY_PAGE).forEach(c=>{
+          _pages.push({loc:`https://h2bapply.com/vagas-h2b/categoria/${c.key}`,priority:"0.7",changefreq:"weekly"});
+        });
+      }catch(e){console.warn("[sitemap] erro ao listar páginas de estado/categoria:",e.message);}
+      const _urls=_pages.map(p=>`  <url>\n    <loc>${p.loc}</loc>\n    <lastmod>${SEO_CONTENT_LASTMOD}</lastmod>\n    <changefreq>${p.changefreq}</changefreq>\n    <priority>${p.priority}</priority>\n  </url>`).join("\n");
+      return _sendXmlCompressed(req,res,`${_xmlHead}<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${_urls}\n</urlset>\n`);
+    }
+    // /sitemap-vagas.xml — 1 URL por vaga INDEXÁVEL (_vagaIndexavel, a MESMA régua do meta robots da página).
+    // Dedupe por case number; bem abaixo do teto de 50.000 URLs / 50 MB do protocolo.
+    const _vagas=[];
     try{
       const _fontesVaga=[SHEET_JAN,SHEET_JUL,SHEET_H2A,
         ...Object.entries(SHEET_EXTRAS).filter(([k])=>DB_SHEETS_META[k]?.published===true).map(([,arr])=>arr)];
@@ -7626,20 +7708,13 @@ const server=http.createServer(async(req,res)=>{
         for(const r of arr){
           const cn=String(r?.c||"").trim();
           if(!cn||_casosVistos.has(cn))continue;
-          if(!_vagaEstaViva(r))continue;
+          if(!_vagaIndexavel(r))continue;
           _casosVistos.add(cn);
-          _pages.push({loc:`https://h2bapply.com/vaga/${encodeURIComponent(cn)}`,priority:"0.6",changefreq:"weekly"});
+          _vagas.push(`  <url>\n    <loc>https://h2bapply.com/vaga/${encodeURIComponent(cn)}</loc>\n    <changefreq>weekly</changefreq>\n    <priority>0.6</priority>\n  </url>`);
         }
       }
     }catch(e){console.warn("[sitemap] erro ao listar páginas de vaga individual:",e.message);}
-    // v18-SEO: <lastmod> ajuda o Google a saber que a página foi atualizada
-    // recentemente (o sitemap não tinha nenhuma data — usa a data do boot,
-    // já que o conteúdo destas páginas é recalculado a cada deploy/boot).
-    const _lastmod=new Date().toISOString().slice(0,10);
-    const _urls=_pages.map(p=>`  <url>\n    <loc>${p.loc}</loc>\n    <lastmod>${_lastmod}</lastmod>\n    <changefreq>${p.changefreq}</changefreq>\n    <priority>${p.priority}</priority>\n  </url>`).join("\n");
-    const _xml=`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${_urls}\n</urlset>\n`;
-    res.writeHead(200,{"Content-Type":"application/xml; charset=utf-8","Cache-Control":"public, max-age=3600"});
-    return res.end(_xml);
+    return _sendXmlCompressed(req,res,`${_xmlHead}<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${_vagas.join("\n")}\n</urlset>\n`);
   }
 
   // ── /ad — painel admin protegido ──────────────────────────

@@ -4413,3 +4413,34 @@ tabelas por esse fetch — bloqueado, o Google via "Carregando…"); `/aprenda-c
 **Regra**: link novo na home/rodapé só pra URL que responde 200 (a guarda faz BFS estático e
 falha com link quebrado). 3 checks. sw bump. Próximos passos do plano (v979+): páginas de vaga
 honestas + sitemap em índice, hub /vagas-h2b, SSR de /quanto-ganha-h2b, performance.
+
+## 🔎 v979 — SEO: páginas de vaga HONESTAS + sitemap em índice (15/10/2026, continuação do v978)
+
+A auditoria achou que as 18.590 páginas `/vaga/<caso>` (99,6% do sitemap) eram finas, quase
+idênticas e **afirmavam o que o dado não sustenta**: "certificada pelo DOL" pra caso ainda em
+análise (2.625 linhas `Pending Processing`) e pra toda a H-2A (que nem tem status na
+planilha); `datePosted` = data do deploy em 100% (mtime do arquivo da planilha — falsa
+frescura, risco na política de vagas do Google); `Candidate-se grátis` quando só o cadastro é
+grátis (envio = plano). **Regras novas (valem pra sempre)**: (1) a palavra "certificada" só
+nasce em `_vagaFraseDol` quando `st` contém Certified — em análise = "em análise... sem
+certificação", H-2A sem status = "registrada no DOL"; (2) `datePosted` = data de PROTOCOLO
+derivada do próprio número do caso (`_vagaDataProtocolo`: `H-400-AADDD-N` = ano 20AA + dia
+juliano DDD), exibida na página como "protocolado em DD/MM/AAAA"; (3) **UMA régua**
+`_vagaIndexavel(r)` decide o meta robots da página E a entrada no sitemap: viva + com cargo +
+não pendente + conteúdo próprio (descrição ≥80 chars OU data de fim de contrato) — hoje ~4.500
+H-2A; as ~14 mil restantes (H-2B jan2026/jul2025 sem descrição nem datas, pendentes, sem
+cargo) continuam acessíveis ao usuário mas saem `noindex, follow` e fora do sitemap (camada 1;
+a camada 2, se o Search Console pedir, é endurecer o critério — nunca afrouxar sem dado);
+(4) JobPosting só quando dá pra sustentar tudo: indexável + data de protocolo + `validThrough`
+futuro (sem validThrough a vaga nunca "expira" pro Google); (5) `<title>` único por página
+(empregador entra no título, ≤~70 chars — 65% dividiam o mesmo); descrição que bateu no teto de
+500 chars da fonte é cortada no último espaço com reticências (`_cortaTexto`); (6) cada página
+linka o aviso oficial `seasonaljobs.dol.gov/jobs/<caso>` e o CTA diz "com um plano ativo, envie
+pelo Gmail". **Sitemap**: `/sitemap.xml` (URL de entrada, que o dono pode já ter enviado) virou
+ÍNDICE de `/sitemap-conteudo.xml` (fixas + estados + categorias, `<lastmod>` =
+`SEO_CONTENT_LASTMOD`, constante que se SOBE ao editar as páginas — mtime não serve, o Render
+zera no checkout) e `/sitemap-vagas.xml` (sem lastmod: não existe data de modificação real);
+saem comprimidos (`_sendXmlCompressed`, application/xml; 3,3 MB → ~25 KB). 7 checks; os da v340
+foram reescritos (fixtures com número de caso válido: 990001 indexável, 990002 hostil/XSS, 990003
+quinzenal, 990004 em análise, 990005 H-2A) — o intento (escape, 404 de morta/vencida, rascunho
+nunca público, quinzenal sem baseSalary) foi mantido.

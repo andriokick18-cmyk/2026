@@ -9928,23 +9928,16 @@ async function drillAdminSettingsLegado() {
     // no formato; a página é 100% pública, sem sessão nenhuma).
     {
       const _vgReal = await req2("GET", "/vaga/H-400-26001-520313");
-      check("🗺️ v340: /vaga/:caseNumber existe pra vaga real (jan2026) — 200, título+empresa no HTML, indexável, canonical certo",
+      check("🗺️ v340+v979: /vaga/:caseNumber existe pra vaga real (jan2026) — 200, título+empresa no HTML, canonical certo — e, por ser página FINA (sem descrição nem datas de contrato), sai 'noindex, follow': continua acessível pro usuário, mas não disputa o índice do Google",
         _vgReal.status === 200 && _vgReal.body.includes("Landscape Laborer") && _vgReal.body.includes("312 Land Development") &&
-        _vgReal.body.includes('<meta name="robots" content="index, follow">') &&
+        _vgReal.body.includes('<meta name="robots" content="noindex, follow">') &&
         _vgReal.body.includes('<link rel="canonical" href="https://h2bapply.com/vaga/H-400-26001-520313">'),
         _vgReal.status + " " + _vgReal.body.slice(0, 200));
       check("🗺️ v340: e-mail do empregador NUNCA aparece na página pública (mais estrito que a regra 163 — nem mascarado; página é 100% sem sessão)",
         !_vgReal.body.includes("kimberly.a.mcquade"), "e-mail do empregador vazou na página pública");
-      const _vgSchema = (() => { try { return JSON.parse((_vgReal.body.match(/<script type="application\/ld\+json">\n([\s\S]*?)\n<\/script>/) || [])[1] || "null"); } catch { return null; } })();
-      check("🗺️ v340: JSON-LD JobPosting tem title/hiringOrganization/jobLocation/employmentType/baseSalary certos, e NUNCA inventa addressLocality/validThrough que a planilha bundled não tem (sem cidade, sem data de fim nesta linha)",
-        _vgSchema?.["@type"] === "JobPosting" && _vgSchema.title === "Landscape Laborer" &&
-        _vgSchema.hiringOrganization?.name === "312 Land Development, LLC" &&
-        _vgSchema.jobLocation?.address?.addressRegion === "TENNESSEE" &&
-        _vgSchema.jobLocation?.address?.addressLocality === undefined &&
-        JSON.stringify(_vgSchema.employmentType) === '["TEMPORARY"]' &&
-        _vgSchema.baseSalary?.value?.value === 19.87 && _vgSchema.baseSalary?.value?.unitText === "HOUR" &&
-        typeof _vgSchema.datePosted === "string" && _vgSchema.validThrough === undefined,
-        JSON.stringify(_vgSchema));
+      check("🔎 v979: a vaga jan2026 (certificada, mas sem data de fim nem descrição) NÃO leva JobPosting — sem validThrough a vaga nunca 'expira' pro Google — e a data de protocolo vem do NÚMERO DO CASO (H-400-26001 = 01/01/2026), não da data do deploy",
+        !_vgReal.body.includes("application/ld+json") && _vgReal.body.includes("protocolado em 01/01/2026") && _vgReal.body.includes("Vaga certificada pelo Departamento do Trabalho dos EUA (DOL)"),
+        "jan2026 ganhou JobPosting sem data de fim, ou o protocolo não veio do número do caso");
       const _vg404 = await req2("GET", "/vaga/H-000-NAOEXISTE-0000");
       check("🗺️ v340: case number que nunca existiu devolve 404 de VERDADE (nunca 302 — não é 'conteúdo fraco', é 'essa vaga não existe')",
         _vg404.status === 404 && _vg404.body.includes("não está mais disponível"), _vg404.status);
@@ -9959,6 +9952,12 @@ async function drillAdminSettingsLegado() {
           { c: "H-400-VG340-0002", e: "test340b@example.com", n: "Empresa Morta", t: "Vaga Morta", s: "TEXAS" },
           { c: "H-400-VG340-0003", e: "test340c@example.com", n: "Empresa Vencida", t: "Vaga Vencida", s: "TEXAS" },
           { c: "H-400-VG340-0004", e: "test340d@example.com", n: "Empresa Quinzenal", t: "Vaga Quinzenal", s: "TEXAS" },
+          // 🔎 v979: linhas com número de caso VÁLIDO (H-AAA-AADDD-N) + descrição/contrato = páginas INDEXÁVEIS
+          { c: "H-400-25200-990001", e: "t990001@example.com", n: "Empresa Perfil LLC", t: "Landscape Worker", s: "FLORIDA" },
+          { c: "H-400-25201-990002", e: "t990002@example.com", n: "Hostil", t: "Hostil", s: "FLORIDA" },
+          { c: "H-400-25202-990003", e: "t990003@example.com", n: "Empresa Quinzenal Perfil", t: "Landscape Worker", s: "FLORIDA" },
+          { c: "H-400-25203-990004", e: "t990004@example.com", n: "Empresa Em Analise", t: "Cozinheiro", s: "TEXAS" },
+          { c: "H-300-25204-990005", e: "t990005@example.com", n: "Fazenda Registrada", t: "Farm Worker", s: "TEXAS" },
         ],
       });
       await req2("POST", "/api/test/enriquecer-linha", {
@@ -9978,7 +9977,21 @@ async function drillAdminSettingsLegado() {
         token: TEST_TOKEN, sheet: "vaga340teste", case: "H-400-VG340-0004",
         dol: { case_status: "Certified", basic_rate_from: "1500.00", pay_range_desc: "Bi-Weekly" },
       });
-      const _vgXss = await req2("GET", "/vaga/H-400-VG340-0001");
+      // 🔎 v979: enriquecimento das 5 linhas indexáveis/derivadas
+      const _dutiesV979 = "Realizar manutenção de jardins e áreas externas, cortar grama, podar arbustos e operar equipamentos de jardinagem sob supervisão.";
+      await req2("POST", "/api/test/enriquecer-linha", { token: TEST_TOKEN, sheet: "vaga340teste", case: "H-400-25200-990001",
+        dol: { job_duties: _dutiesV979, begin_date: "2099-01-01", end_date: "2099-12-31", worksite_city: "Tampa", case_status: "Certified", basic_rate_from: "19.50", pay_range_desc: "Hour" } });
+      await req2("POST", "/api/test/enriquecer-linha", { token: TEST_TOKEN, sheet: "vaga340teste", case: "H-400-25201-990002",
+        dol: { job_title: "Cook <script>alert(1)</script>", employer_business_name: 'Empresa "Malvada" & Cia <img src=x onerror=alert(2)>',
+          worksite_city: "Orlando</script><script>alert(3)</script>", job_duties: "Descrição com </script> tentando quebrar a página e o JSON-LD do Google.",
+          begin_date: "2099-01-01", end_date: "2099-12-31", case_status: "Certified", basic_rate_from: "18.50", pay_range_desc: "Hour" } });
+      await req2("POST", "/api/test/enriquecer-linha", { token: TEST_TOKEN, sheet: "vaga340teste", case: "H-400-25202-990003",
+        dol: { job_duties: _dutiesV979, end_date: "2099-12-31", worksite_city: "Tampa", case_status: "Certified", basic_rate_from: "1500.00", pay_range_desc: "Bi-Weekly" } });
+      await req2("POST", "/api/test/enriquecer-linha", { token: TEST_TOKEN, sheet: "vaga340teste", case: "H-400-25203-990004",
+        dol: { job_duties: _dutiesV979, end_date: "2099-12-31", case_status: "Pending Processing" } });
+      await req2("POST", "/api/test/enriquecer-linha", { token: TEST_TOKEN, sheet: "vaga340teste", case: "H-300-25204-990005",
+        dol: { job_duties: _dutiesV979, end_date: "2099-12-31" } });
+      const _vgXss = await req2("GET", "/vaga/H-400-25201-990002");
       const _vgXssLd = (_vgXss.body.match(/<script type="application\/ld\+json">\n([\s\S]*?)\n<\/script>/) || [])[1] || "";
       check("🗺️ v340: campo hostil (título/empresa/cidade/descrição vindos do 'DOL') NUNCA vira HTML executável — sempre escapado, mesmo no JSON-LD (\\u003c no lugar de '<')",
         _upV340.json?.ok === true &&
@@ -9989,10 +10002,10 @@ async function drillAdminSettingsLegado() {
       const _vgVencida = await req2("GET", "/vaga/H-400-VG340-0003");
       check("🗺️ v340: vaga com status de cancelamento do DOL (Withdrawn) e vaga com data de fim NO PASSADO devolvem 404 — mesma régua de 'vaga morta' que /api/sheet-meta já usa (WITHDRAWN/DENIED/EXPIRED/INVALIDATED + contrato vencido)",
         _vgMorta.status === 404 && _vgVencida.status === 404, `morta=${_vgMorta.status} vencida=${_vgVencida.status}`);
-      const _vgQuinzenal = await req2("GET", "/vaga/H-400-VG340-0004");
+      const _vgQuinzenal = await req2("GET", "/vaga/H-400-25202-990003");
       const _vgQzSchema = (() => { try { return JSON.parse((_vgQuinzenal.body.match(/<script type="application\/ld\+json">\n([\s\S]*?)\n<\/script>/) || [])[1] || "null"); } catch { return null; } })();
       check("🗺️ v340: salário QUINZENAL (bi-weekly) nunca vira baseSalary — schema.org não tem unitText honesto pra isso (regra 29: nunca inventar dado) — a vaga continua 200/indexável, só sem esse campo",
-        _vgQuinzenal.status === 200 && _vgQzSchema?.baseSalary === undefined, JSON.stringify(_vgQzSchema?.baseSalary));
+        _vgQuinzenal.status === 200 && _vgQzSchema?.["@type"] === "JobPosting" && _vgQzSchema?.baseSalary === undefined, JSON.stringify(_vgQzSchema));
       // estrutural: rascunho (KB-078/13p2) nunca pode ficar público — sem rota
       // de teste pra "despublicar" uma extra depois do upload (toda extra
       // nasce published:true), a garantia fica na fonte: _findVagaPublica só
@@ -10013,18 +10026,58 @@ async function drillAdminSettingsLegado() {
       // VAGA VIVA (mesma régua de _vagaEstaViva — nunca lista vaga morta/
       // vencida, nunca ADIVINHA vida: a vaga withdrawn e a vencida da
       // fixture v340 acima PROVAM que ficam de fora).
-      const _sm = await req2("GET", "/sitemap.xml");
-      check("🗺️ v340: /sitemap.xml ganha as 2 páginas de conteúdo novas e as 5 páginas legais/utilitárias que faltavam",
-        _sm.status === 200 &&
+      const _smIdx = await req2("GET", "/sitemap.xml");
+      const _sm = await req2("GET", "/sitemap-conteudo.xml");
+      const _smV = await req2("GET", "/sitemap-vagas.xml");
+      const _smGz = await req2("GET", "/sitemap-vagas.xml", undefined, { "Accept-Encoding": "gzip" });
+      const _srvV979 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      check("🗺️ v340+v979: /sitemap.xml (URL de entrada, a mesma que o dono pode já ter enviado) agora é um ÍNDICE de 2 sitemaps — conteúdo e vagas — e o sitemap de conteúdo mantém as 2 páginas de conteúdo novas e as 5 legais/utilitárias",
+        _smIdx.status === 200 && _smIdx.body.includes("<sitemapindex") && _smIdx.body.includes("<loc>https://h2bapply.com/sitemap-conteudo.xml</loc>") && _smIdx.body.includes("<loc>https://h2bapply.com/sitemap-vagas.xml</loc>") &&
+        _sm.status === 200 && _sm.body.includes("<urlset") &&
         _sm.body.includes("<loc>https://h2bapply.com/empresas-que-patrocinam-visto-h2b</loc>") &&
         _sm.body.includes("<loc>https://h2bapply.com/quanto-custa-o-visto-h2b</loc>") &&
-        ["privacidade", "termos", "excluir-conta", "contact", "google-data-usage"].every((s) => _sm.body.includes(`<loc>https://h2bapply.com/${s}</loc>`)),
-        _sm.status);
-      check("🗺️ v340: /sitemap.xml lista a URL da vaga viva (H-400-26001-520313) mas NUNCA a da vaga Withdrawn nem a vencida (mesma régua de _vagaEstaViva usada por /vaga/:caseNumber)",
-        _sm.body.includes("<loc>https://h2bapply.com/vaga/H-400-26001-520313</loc>") &&
-        !_sm.body.includes("/vaga/H-400-VG340-0002") && !_sm.body.includes("/vaga/H-400-VG340-0003") &&
-        _sm.body.includes("/vaga/H-400-VG340-0001") && _sm.body.includes("/vaga/H-400-VG340-0004"),
-        "vaga morta ou vencida vazou no sitemap, ou vaga viva ficou de fora");
+        ["privacidade", "termos", "excluir-conta", "contact", "google-data-usage"].every((x) => _sm.body.includes(`<loc>https://h2bapply.com/${x}</loc>`)),
+        JSON.stringify({ idx: _smIdx.status, cont: _sm.status }));
+      check("🗺️ v979: o sitemap de VAGAS lista só as páginas INDEXÁVEIS (a mesma régua _vagaIndexavel do meta robots): entram as com descrição/contrato (990001, 990002, 990003 e a H-2A 990005) — ficam de fora a fina jan2026 real, a sem descrição/data (VG340-0001/0004), a em análise (990004), a Withdrawn e a vencida",
+        ["H-400-25200-990001", "H-400-25201-990002", "H-400-25202-990003", "H-300-25204-990005"].every((c) => _smV.body.includes(`<loc>https://h2bapply.com/vaga/${c}</loc>`)) &&
+        !_smV.body.includes("H-400-26001-520313") && !_smV.body.includes("H-400-VG340-0001") && !_smV.body.includes("H-400-VG340-0004") &&
+        !_smV.body.includes("H-400-25203-990004") && !_smV.body.includes("H-400-VG340-0002") && !_smV.body.includes("H-400-VG340-0003"),
+        "régua de indexação divergiu entre a página e o sitemap");
+      check("🗺️ v979: os sitemaps saem como application/xml COMPRIMIDOS (gzip/brotli conforme Accept-Encoding — antes eram 3,3 MB crus), <lastmod> do conteúdo é a data em que o conteúdo mudou DE PROPÓSITO (SEO_CONTENT_LASTMOD, nunca 'hoje') e as vagas ficam SEM lastmod (não existe data de modificação real)",
+        /application\/xml/.test(String(_smGz.headers["content-type"] || "")) && _smGz.headers["content-encoding"] === "gzip" &&
+        (() => { const m = _srvV979.match(/const SEO_CONTENT_LASTMOD = "(\d{4}-\d{2}-\d{2})";/); return !!m && _sm.body.includes(`<lastmod>${m[1]}</lastmod>`) && _smIdx.body.includes(`<lastmod>${m[1]}</lastmod>`); })() &&
+        !_smV.body.includes("<lastmod>") && !/_lastmod=new Date\(\)/.test(_srvV979),
+        JSON.stringify({ ct: _smGz.headers["content-type"], enc: _smGz.headers["content-encoding"], lmV: _smV.body.includes("<lastmod>") }));
+
+      // 🔎 v979: as páginas dizem SÓ o que o dado sustenta
+      const _vgOk = await req2("GET", "/vaga/H-400-25200-990001");
+      const _vgOkLd = (() => { try { return JSON.parse((_vgOk.body.match(/<script type="application\/ld\+json">\n([\s\S]*?)\n<\/script>/) || [])[1] || "null"); } catch { return null; } })();
+      const _vgQz = await req2("GET", "/vaga/H-400-25202-990003");
+      const _vgPend = await req2("GET", "/vaga/H-400-25203-990004");
+      const _vgReg = await req2("GET", "/vaga/H-300-25204-990005");
+      const _tit = (r) => ((r.body.match(/<title>([\s\S]*?)<\/title>/) || [])[1] || "");
+      check("🔎 v979: página indexável (descrição + contrato futuro + número de caso válido) — 'index, follow', JobPosting com datePosted = data de protocolo DERIVADA do número do caso (H-400-25200 = dia 200 de 2025 = 19/07/2025, nunca a data do deploy), validThrough real, cidade, salário, link pro aviso oficial no DOL e SEM a promessa enganosa 'candidate-se grátis' (o cadastro é grátis, o envio é por plano)",
+        _vgOk.status === 200 && _vgOk.body.includes('<meta name="robots" content="index, follow">') &&
+        _vgOkLd?.["@type"] === "JobPosting" && _vgOkLd.datePosted === "2025-07-19" && _vgOkLd.validThrough === "2099-12-31" &&
+        _vgOkLd.jobLocation?.address?.addressLocality === "Tampa" && _vgOkLd.baseSalary?.value?.value === 19.5 && _vgOkLd.baseSalary?.value?.unitText === "HOUR" &&
+        _vgOk.body.includes("protocolado em 19/07/2025") && _vgOk.body.includes('href="https://seasonaljobs.dol.gov/jobs/H-400-25200-990001"') &&
+        !/Candidate-se gr[aá]tis/i.test(_vgOk.body) && /com um plano ativo/.test(_vgOk.body),
+        JSON.stringify({ st: _vgOk.status, ld: _vgOkLd && { dp: _vgOkLd.datePosted, vt: _vgOkLd.validThrough } }));
+      check("🔎 v979: duas vagas com o MESMO cargo, cidade e estado (990001 × 990003) saem com <title> DIFERENTE (o empregador entra no título — 65% das páginas dividiam o mesmo) e nenhum título passa de ~75 caracteres",
+        _tit(_vgOk) && _tit(_vgQz) && _tit(_vgOk) !== _tit(_vgQz) && _tit(_vgOk).length <= 75 && _tit(_vgQz).length <= 75,
+        JSON.stringify([_tit(_vgOk), _tit(_vgQz)]));
+      check("🔎 v979: caso EM ANÁLISE (Pending Processing) NUNCA é chamado de 'certificado' — a página diz 'em análise... sem certificação', fica 'noindex, follow', sem JobPosting e fora do sitemap; a vaga H-2A (sem status na fonte) é 'registrada', não 'certificada'",
+        _vgPend.status === 200 && !/certificad[ao]\b/i.test(_vgPend.body.replace(/Empregador certificado pelo DOL/g, "")) && /em análise no Departamento do Trabalho dos EUA \(DOL\), ainda sem certificação/.test(_vgPend.body) &&
+        _vgPend.body.includes('<meta name="robots" content="noindex, follow">') && !_vgPend.body.includes("application/ld+json") &&
+        _vgReg.status === 200 && /Vaga registrada no Departamento do Trabalho dos EUA/.test(_vgReg.body) && !/certificada pelo Departamento/i.test(_vgReg.body),
+        JSON.stringify({ pend: _vgPend.status, reg: _vgReg.status }));
+      const _segV979 = (() => { const i2 = _srvV979.indexOf("function _renderVagaPage("); return _srvV979.slice(i2, _srvV979.indexOf("function shuffleArray", i2)); })();
+      check("🔎 v979 (estrutural): UMA régua de 'página que merece o Google' (_vagaIndexavel) decide o meta robots da página E a entrada no sitemap; datePosted nunca mais vem do mtime do arquivo da planilha; a palavra 'certificada' só nasce em _vagaFraseDol (status Certified); descrição truncada na fonte é cortada no último espaço com reticências",
+        (_srvV979.match(/_vagaIndexavel\(/g) || []).length >= 3 && /const indexavel=_vagaIndexavel\(r\)/.test(_segV979) &&
+        /if\(!_vagaIndexavel\(r\)\)continue;/.test(_srvV979) && !/mtimeMax/.test(_segV979) && !/certificada pelo Departamento/.test(_segV979) &&
+        /function _vagaFraseDol\(r\)/.test(_srvV979) && /function _cortaTexto\(txt,max\)/.test(_srvV979) && /function _sendXmlCompressed\(req, res, xml, cacheControl\)/.test(_srvV979) &&
+        /const SEO_CONTENT_LASTMOD = "\d{4}-\d{2}-\d{2}";/.test(_srvV979),
+        "faltou peça da v979 no server.js");
 
       // 🐛 v347: as 4 páginas SEO server-rendered do v340 (estado/categoria/vaga
       // individual/404) nasceram de um template copiado ANTES da conversão pro
