@@ -4285,3 +4285,26 @@ envio, Gmail (conectado/caiu/nunca, último consentimento, extras com estado), p
 cortado em 8). Botões: 🎁 Dar dias grátis (modal → /api/admin/vip/gift-days com motivo) e 📨
 Envios & logs (carrega /api/admin/user-detail sob demanda: PDFs no disco, perfis de vaga,
 últimos 100 envios, logs com erros em vermelho). 2 checks.
+
+## 🛠️ v973 — Robôs & Envios (Fase 4 da lista de 100 do admin, 15/10/2026 — SEM alertas)
+
+Aba nova na sidebar, seção **Operação** → "Robôs & Envios" (`view-operacao`). Fonte única
+`GET /api/admin/live` (já existia com TUDO: online, sessões, robôs ligados/com fila, no limite
+do dia, travados, envios hoje/total, fila total, uptime/RAM/disco, e por usuário: status do robô,
+`diag {status,reason,action}` com o MOTIVO e a AÇÃO, fila/original/dias de fila, envios
+manual/auto de hoje × limites, falhas/duplicados/pulados nas 24h, último/próximo envio, timer
+vivo, token/PDF/reinícios/erros, `globalEvents`). A tela só mostra e aciona: 8 cards, lista
+com busca, filtros (com problema / rodando / aguardando limite-Google / online / com falhas /
+plano com automático e robô DESLIGADO / todos), paginação de 100, "atualizar a cada 30s"
+(interval desarmado ao sair da aba — `_opStop`), eventos dos robôs (40 mais recentes) e os
+botões das rotas que já existiam: Reiniciar (`force-restart`), Parar (`force-stop`, com aviso
+de que o sistema NÃO avisa o usuário), Corrigir (`fix-auto {email}` → laudo no modal),
+Corrigir todos (`fix-auto {}`) e Reiniciar travados (`restart-all-stalled`, que pula espera
+legítima). `OP_STATUS` traduz cada status interno pra PT (waiting_limit = "Limite do dia
+atingido", waiting_rate_limit = "Google pediu pausa", paused_oauth_expired = "Pausado: Gmail
+desconectou"…); "timer morto" NUNCA é mostrado durante `sending` (o timer some de propósito
+enquanto o envio está em voo). O painel "Robôs parados de quem paga" (vigia/sentinela) mudou de
+Usuários pra cá — é a tela-mãe dele (regra 14). Pill vermelha na sidebar = nº de robôs com
+problema de verdade (travado/sem token/sem PDF/nunca enviou — espera de limite não conta,
+lição KB-001/v19-FIX). **Nenhum alerta/push/e-mail sai desta tela** — ordem expressa do dono
+("alertas ainda não mexa com isso"); a guarda estrutural do smoke prova a ausência. 3 checks.

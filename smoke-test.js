@@ -7063,6 +7063,43 @@ async function drillAdminSettingsLegado() {
       ["limitesEfetivos", "giftHistory", "auth.timeline", "ficha-mais", "totalPagoHistorico", "lastSeenAt", "totalPago"].every((t) => _adm972.includes(t)) &&
       _adm972.includes("#modal-info .modal{max-width:900px}"),
       "faltou peça da F3 (usuários) no admin.html");
+    // 🛠️ v973 (F4 da lista de 100): Operação — /api/admin/live já sabia tudo
+    // sobre os robôs (status, diagnóstico com motivo+ação, fila, envios/
+    // falhas de hoje, token/PDF, eventos) e as 4 rotas de ação já existiam;
+    // só não havia TELA. SEM alertas (ordem do dono: "alertas ainda não").
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "op973@test.com", name: "Op 973", refreshToken: "rt-op973", plan: "doublepro", vip: { active: true, plan: "doublepro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 } });
+    const _cvOp = await req2("POST", "/api/cv/upload", { base64: Buffer.from("%PDF-1.4 " + "op973 ".repeat(300)).toString("base64"), name: "CV_op973.pdf", cvType: "resume" });
+    const _stOp = await req2("POST", "/api/auto/start", { queue: [{ to: "rh1@op973-test.com", title: "Cook", company: "Op A" }, { to: "rh2@op973-test.com", title: "Cook", company: "Op B" }], resumeIdx: _cvOp.json?.cv?.idx, subjects: ["Candidatura"], emailBodies: ["Olá."] });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
+    const _live973 = (await get("/api/admin/live")).json;
+    const _uOp = (_live973?.users || []).find((x) => x.email === "op973@test.com");
+    check("🛠️ v973: /api/admin/live entrega à tela de Operação os cards (online, robôs rodando, aguardando, travados, envios hoje, fila total, servidor) e, por usuário, status do robô + diagnóstico com MOTIVO e AÇÃO, fila, envios/falhas de hoje, token/PDF e eventos — op973 aparece com robô ligado e diagnóstico preenchido",
+      _stOp.json?.ok === true && ["onlineCount", "activeAutoCount", "activeWithQueue", "waitingLimit", "stalledCount", "totalSentToday", "totalQueueAll", "serverUptime", "memMB"].every((k) => typeof _live973?.[k] === "number") && Array.isArray(_live973?.globalEvents) &&
+      _uOp && _uOp.hasAuto === true && typeof _uOp.autoStatus === "string" && _uOp.diag && typeof _uOp.diag.status === "string" && typeof _uOp.diag.reason === "string" && typeof _uOp.todayFailed === "number" && typeof _uOp.queueSize === "number" && "oauthOk" in _uOp && "hasPdf" in _uOp && typeof _uOp.timers === "boolean",
+      JSON.stringify({ st: _stOp.status, b: _stOp.json, u: _uOp && { a: _uOp.hasAuto, s: _uOp.autoStatus, d: _uOp.diag } }).slice(0, 300));
+    const _fr973 = await req2("POST", "/api/admin/force-restart", { email: "op973@test.com" });
+    const _fa973 = await req2("POST", "/api/admin/fix-auto", { email: "op973@test.com" });
+    const _ras973 = await req2("POST", "/api/admin/restart-all-stalled", {});
+    const _fs973 = await req2("POST", "/api/admin/force-stop", { email: "op973@test.com" });
+    const _liveDepois973 = (await get("/api/admin/live")).json;
+    const _uOp2 = (_liveDepois973?.users || []).find((x) => x.email === "op973@test.com");
+    const _ev973 = (_liveDepois973?.globalEvents || []).filter((e) => e.email === "op973@test.com").map((e) => e.type);
+    check("🛠️ v973: os 4 botões da Operação acionam rotas que já existiam — Reiniciar (force-restart conta o reinício), Corrigir (fix-auto devolve o laudo por usuário), Reiniciar travados (pula espera legítima) e Parar (force-stop desliga e apaga a fila) — e cada ação fica registrada nos acontecimentos do painel",
+      _fr973.json?.ok === true && _fr973.json?.restarts >= 1 && _fa973.json?.ok === true && Array.isArray(_fa973.json?.results) && _fa973.json.results.length === 1 && _ras973.json?.ok === true && typeof _ras973.json?.skipped === "number" &&
+      _fs973.json?.ok === true && _uOp2 && _uOp2.hasAuto === false && _uOp2.queueSize === 0 && _ev973.includes("force_restart") && _ev973.includes("force_stop"),
+      JSON.stringify({ fr: _fr973.json, fa: _fa973.json?.results, ras: _ras973.json, fs: _fs973.status, u: _uOp2 && { a: _uOp2.hasAuto, q: _uOp2.queueSize }, ev: _ev973 }).slice(0, 320));
+    const _adm973 = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
+    const _opBlock973 = _adm973.slice(_adm973.lastIndexOf("/*", _adm973.indexOf("v973 — OPERAÇÃO (F4 da lista de 100): robôs")));
+    check("🛠️ v973 (estrutural): a aba Robôs & Envios existe na sidebar (seção Operação) com cards, filtros (problema/rodando/aguardando/online/falhas/sem robô), busca, paginação, auto-atualização e eventos; o vigia de pagantes mudou de Usuários pra lá; os botões chamam force-restart/force-stop/fix-auto/restart-all-stalled; e NENHUM alerta/notificação sai da tela (ordem do dono)",
+      _adm973.includes('data-view="operacao"') && ["view-operacao", "op-grid", "op-filtro", "op-busca", "op-tbody", "op-count", "op-mais", "op-auto", "op-eventos", "pill-operacao"].every((id) => _adm973.includes('id="' + id + '"')) &&
+      ['value="problema"', 'value="aguardando"', 'value="semrobo"', 'value="falhas"'].every((t) => _adm973.includes(t)) &&
+      /if\(nome==="operacao"\)\{carregarSentinela\(\);carregarOperacao\(\);\}/.test(_adm973) && !/if\(nome==="usuarios"\)carregarSentinela/.test(_adm973) &&
+      (() => { const vo = _adm973.indexOf('id="view-operacao"'); const vp = _adm973.indexOf('id="view-pendentes"'); const rb = _adm973.indexOf('id="robos-parados-body"'); return rb > vo && rb < vp; })() &&
+      ["/api/admin/live", "/api/admin/force-restart", "/api/admin/force-stop", "/api/admin/fix-auto", "/api/admin/restart-all-stalled"].every((r) => _opBlock973.includes('"' + r + '"')) &&
+      ["carregarOperacao", "reiniciarRobo", "pararRobo", "corrigirRobo", "corrigirTodos", "reiniciarTravados"].every((f) => new RegExp("async function " + f + "\\(").test(_opBlock973)) &&
+      _opBlock973.includes("OP_STATUS") && _opBlock973.includes("dg.reason") && _opBlock973.includes("dg.action") &&
+      !/push|notif|sendMail|alerta/i.test(_opBlock973.replace(/\/\*[\s\S]*?\*\//g, "")),
+      "faltou peça da F4 (operação) no admin.html");
     const gUsd = await req2("POST", "/api/admin/financeiro", { action: "add_gasto", gasto: { moeda: "USD", valorUSD: 10, cambio: 5, valor: 1, recorrente: true, categoria: "hospedagem", descricao: "Render (teste P5)", pagoPor: "empresa", dataGasto: new Date(Date.now() - 32 * 24 * 3600 * 1000).toISOString() } });
     const _gU = ((await get("/api/admin/financeiro")).json?.gastos || []).find((x) => x.id === gUsd.json?.id);
     const rec1 = await req2("POST", "/api/admin/financeiro", { action: "rodar_recorrentes" });

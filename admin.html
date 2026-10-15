@@ -294,6 +294,8 @@ tbody tr:hover{background:var(--glass2)}
       <div class="sb-section">Clientes</div>
       <button class="sb-item" data-view="usuarios" onclick="switchTab('usuarios')"><i class="ti ti-users"></i> Usuários</button>
       <button class="sb-item" data-view="pendentes" onclick="switchTab('pendentes')"><i class="ti ti-hourglass"></i> Pedidos Pendentes <span class="pill" id="pill-pendentes" style="display:none">0</span></button>
+      <div class="sb-section">Operação</div>
+      <button class="sb-item" data-view="operacao" onclick="switchTab('operacao')"><i class="ti ti-activity"></i> Robôs &amp; Envios <span class="pill" id="pill-operacao" style="display:none;background:var(--red)">0</span></button>
       <div class="sb-section">Vagas</div>
       <button class="sb-item" data-view="planilhas" onclick="switchTab('planilhas')"><i class="ti ti-table-import"></i> Planilhas &amp; Robôs</button>
       <div class="sb-section">Sistema</div>
@@ -523,22 +525,6 @@ tbody tr:hover{background:var(--glass2)}
       </div>
 
       <div class="view" id="view-usuarios">
-        <!-- 🤖 v188 LOTE 6: o maior buraco de receita da auditoria — cliente
-             PAGANTE com o robô morto. O vigia (health-sentinel) já detectava a
-             cada 6h, mas avisava por e-mail e por push, os dois no-op nesta
-             reconstrução: o achado não chegava a ninguém e os sócios só
-             descobriam pelo WhatsApp do cliente. Aqui ele aparece na tela, com
-             a varredura sob demanda. A régua de "robô quebrado" continua UMA
-             SÓ (a do mod-sentinel) — este card só mostra o que ela achou. -->
-        <div class="panel">
-          <div class="panel-head">
-            <div class="panel-title"><i class="ti ti-robot-off" style="color:var(--red)"></i>Robôs parados de quem paga</div>
-            <div class="panel-actions">
-              <button class="btn btn-sm" id="btn-sentinela" onclick="rodarVarreduraSentinela()"><i class="ti ti-refresh"></i> Rodar varredura agora</button>
-            </div>
-          </div>
-          <div class="panel-body" id="robos-parados-body"><div class="spin"></div></div>
-        </div>
         <div class="panel">
           <div class="panel-head">
             <div class="panel-title"><i class="ti ti-users"></i>Usuários</div>
@@ -588,6 +574,79 @@ tbody tr:hover{background:var(--glass2)}
             <div class="empty" id="usr-empty" style="display:none"><i class="ti ti-user-off"></i>Nenhum usuário encontrado.</div>
             <div id="usr-mais" style="text-align:center;margin-top:10px;display:none"><button class="btn btn-sm" onclick="usrMostrarMais()"><i class="ti ti-chevron-down"></i> Mostrar mais</button></div>
           </div>
+        </div>
+      </div>
+
+      <!-- 🛠️ v973 — OPERAÇÃO (F4 da lista de 100 coisas do admin, dono 15/10/2026).
+           Tudo que o servidor já sabia sobre os robôs (GET /api/admin/live:
+           quem está online, fila, status, diagnóstico com motivo e ação,
+           envios/falhas de hoje, token/PDF) só aparecia em JSON. Aqui vira
+           tela: cards, lista com o PORQUÊ de cada robô parado e os botões
+           das rotas que já existiam (force-restart, force-stop, fix-auto,
+           restart-all-stalled). SEM alertas/notificação — ordem do dono:
+           "alertas ainda não mexa com isso". -->
+      <div class="view" id="view-operacao">
+        <div class="stat-grid" id="op-grid">
+          <div class="stat-card green"><div class="ic"><i class="ti ti-wifi"></i></div><div class="lbl">Online agora</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card blue"><div class="ic"><i class="ti ti-robot"></i></div><div class="lbl">Robôs rodando</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card amber"><div class="ic"><i class="ti ti-hourglass"></i></div><div class="lbl">Aguardando (limite/Google)</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card red"><div class="ic"><i class="ti ti-alert-triangle"></i></div><div class="lbl">Com problema</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card green"><div class="ic"><i class="ti ti-send"></i></div><div class="lbl">Envios hoje</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card red"><div class="ic"><i class="ti ti-mail-x"></i></div><div class="lbl">Falhas hoje</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card purple"><div class="ic"><i class="ti ti-stack-2"></i></div><div class="lbl">Fila total</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card blue"><div class="ic"><i class="ti ti-server"></i></div><div class="lbl">Servidor</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+        </div>
+        <!-- 🤖 v188 LOTE 6: o maior buraco de receita da auditoria — cliente
+             PAGANTE com o robô morto. O vigia (health-sentinel) já detectava a
+             cada 6h, mas avisava por e-mail e por push, os dois no-op nesta
+             reconstrução: o achado não chegava a ninguém e os sócios só
+             descobriam pelo WhatsApp do cliente. Aqui ele aparece na tela, com
+             a varredura sob demanda. A régua de "robô quebrado" continua UMA
+             SÓ (a do mod-sentinel) — este card só mostra o que ela achou. -->
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title"><i class="ti ti-robot-off" style="color:var(--red)"></i>Robôs parados de quem paga</div>
+            <div class="panel-actions">
+              <button class="btn btn-sm" id="btn-sentinela" onclick="rodarVarreduraSentinela()"><i class="ti ti-refresh"></i> Rodar varredura agora</button>
+            </div>
+          </div>
+          <div class="panel-body" id="robos-parados-body"><div class="spin"></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title"><i class="ti ti-activity"></i>Robôs e envios por usuário</div>
+            <div class="panel-actions">
+              <div class="search-wrap"><i class="ti ti-search"></i><input type="search" id="op-busca" placeholder="Buscar por nome ou e-mail…" oninput="OP_LIMIT=100;renderOperacao()"></div>
+              <select id="op-filtro" aria-label="Filtrar robôs" onchange="OP_LIMIT=100;renderOperacao()" style="width:auto">
+                <option value="">Todos com robô ou online</option>
+                <option value="problema">Com problema (travado, sem token, sem PDF…)</option>
+                <option value="rodando">Rodando</option>
+                <option value="aguardando">Aguardando (limite do dia / Google)</option>
+                <option value="online">Online agora</option>
+                <option value="falhas">Com falhas hoje</option>
+                <option value="semrobo">Plano com automático e robô DESLIGADO</option>
+                <option value="todos">Todos os usuários</option>
+              </select>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--t2);cursor:pointer" for="op-auto"><input type="checkbox" id="op-auto" onchange="opAutoRefresh()"> atualizar a cada 30s</label>
+              <button class="btn btn-sm" onclick="carregarOperacao()"><i class="ti ti-refresh"></i> Atualizar</button>
+              <button class="btn btn-sm" onclick="corrigirTodos()" title="Roda o reparo automático (fix-auto) em todos os robôs: timer perdido, fila vazia, limite já liberado…"><i class="ti ti-tool"></i> Corrigir todos</button>
+              <button class="btn btn-sm btn-red" onclick="reiniciarTravados()" title="Reinicia só quem está travado de verdade — quem espera limite do dia ou pausa do Google é pulado"><i class="ti ti-refresh-alert"></i> Reiniciar travados</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div id="op-count" style="font-size:12.5px;color:var(--t2);margin-bottom:10px"></div>
+            <div class="tbl-wrap">
+              <table>
+                <thead><tr><th>Usuário</th><th>Plano</th><th>Robô</th><th>Por quê / o que fazer</th><th>Fila</th><th style="white-space:nowrap">Hoje / limite</th><th>Último / próximo envio</th><th>Gmail · PDF</th><th></th></tr></thead>
+                <tbody id="op-tbody"><tr><td colspan="9"><div class="spin"></div></td></tr></tbody>
+              </table>
+            </div>
+            <div id="op-mais" style="text-align:center;margin-top:10px;display:none"><button class="btn btn-sm" onclick="OP_LIMIT+=100;renderOperacao()"><i class="ti ti-chevron-down"></i> Mostrar mais</button></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title"><i class="ti ti-timeline"></i>Últimos acontecimentos dos robôs</div><div class="panel-actions"><span style="font-size:12px;color:var(--t3)">reinícios, paradas, pausas e reparos — os 40 mais recentes</span></div></div>
+          <div class="panel-body" id="op-eventos" style="font-size:13px"><div class="spin"></div></div>
         </div>
       </div>
 
@@ -1283,6 +1342,7 @@ var TITULOS={
   dre:{t:"DRE &amp; Fechamento",s:"Resultado mês a mês, exportações pro contador e meses congelados"},
   usuarios:{t:"Usuários",s:"Quem é, quando entrou, quanto pagou, o que enviou e se o Gmail e o robô estão vivos"},
   pendentes:{t:"Pedidos",s:"Pendentes, aprovados e cancelados — com quem aprovou e por quê"},
+  operacao:{t:"Robôs & Envios",s:"Quem está online, quem está enviando, quem travou e por quê — com o botão pra consertar"},
   planilhas:{t:"Planilhas & Robôs",s:"Coleta e enriquecimento do DOL — 100% manual, clique quando sair temporada nova"},
   notificacoes:{t:"Notificações por e-mail",s:"A conta Google que envia os códigos e avisos do sistema"}
 };
@@ -1302,7 +1362,8 @@ function switchTab(nome){
   if(nome==="notificacoes")loadNotificacoes();
   // 🩺 v188 LOTE 6: o vigia é lido quando a aba abre (nunca no boot — o
   // relatório vive em memória do servidor e a varredura sozinha já roda).
-  if(nome==="usuarios")carregarSentinela();
+  // 🛠️ v973: o vigia (robôs parados de quem paga) mudou de Usuários pra Operação
+  if(nome==="operacao"){carregarSentinela();carregarOperacao();}else _opStop();
   // 💼 v970: telas de dinheiro carregam ao abrir (nunca no boot)
   if(nome==="overview")carregarDono();
   if(nome==="caixa")carregarCaixa();
@@ -3173,6 +3234,117 @@ async function fecharMes(mes){
 async function fecharMesesAntigos(){
   if(!confirm("Fechar TODOS os meses antigos ainda abertos (nunca o mês atual)?"))return;
   try{var r=await api("/api/admin/fechamento/auto",{method:"POST",body:{ignorarDia3:true}});toast("Fechados: "+((r.fechados||[]).length||0)+".","ok");carregarDre();}
+  catch(e){toast(e.message,"err");}
+}
+/* ════════════════════════════════════════════════════════════════════════
+   🛠️ v973 — OPERAÇÃO (F4 da lista de 100): robôs & envios ao vivo.
+   Fonte única: GET /api/admin/live (status, diagnóstico com motivo e ação,
+   fila, envios/falhas de hoje, token/PDF). A tela só mostra e aciona as
+   rotas que já existiam. Nenhum alerta/notificação sai daqui (ordem do dono).
+   ════════════════════════════════════════════════════════════════════════ */
+var OP={live:null,timer:null};var OP_LIMIT=100;
+var OP_STATUS={running:["Rodando","green"],sending:["Enviando agora","green"],starting:["Iniciando","blue"],resuming:["Retomando","blue"],recovering:["Recuperando","blue"],refilled:["Fila recarregada","blue"],restarted_by_admin:["Reiniciado pelo admin","blue"],restarted_by_fix:["Reiniciado pelo reparo","blue"],
+  waiting_interval:["Entre um envio e outro","green"],waiting_limit:["Limite do dia atingido","amber"],waiting_rate_limit:["Google pediu pausa","amber"],waiting_token_retry:["Renovando token","amber"],
+  paused:["Pausado","amber"],paused_no_session:["Pausado: sem sessão","amber"],paused_oauth_expired:["Pausado: Gmail desconectou","red"],paused_token_revoked:["Pausado: Gmail revogou acesso","red"],paused_auth_error:["Pausado: erro de autenticação","red"],paused_no_vip:["Pausado: plano venceu","amber"],paused_account_deleted:["Pausado: conta apagada","red"],paused_corrupt_queue:["Pausado: fila corrompida","red"],finished:["Fila terminou","blue"]};
+var OP_PROB=["stalled","stuck_sending","no_token","no_pdf","never_sent","token_retry"];
+function _opStop(){if(OP.timer){clearInterval(OP.timer);OP.timer=null;}}
+function opAutoRefresh(){_opStop();var cb=document.getElementById("op-auto");if(cb&&cb.checked)OP.timer=setInterval(carregarOperacao,30000);}
+function _opStatusBadge(u){
+  if(!u.hasAuto){var st=String(u.autoStatus||"");if(/^paused|finished/.test(st)){var m0=OP_STATUS[st]||[st,"amber"];return '<span class="badge '+m0[1]+'">'+esc(m0[0])+'</span>';}return '<span class="badge" style="color:var(--t3);border-color:var(--border2)">desligado</span>';}
+  if(OP_PROB.indexOf(u.diag&&u.diag.status)>=0)return '<span class="badge red">'+esc(u.diag.status==="no_token"?"Sem token do Gmail":u.diag.status==="no_pdf"?"Sem PDF":u.diag.status==="never_sent"?"Nunca enviou":u.diag.status==="token_retry"?"Renovando token":"Travado")+'</span>';
+  var m=OP_STATUS[String(u.autoStatus||"")]||[String(u.autoStatus||"ligado"),"green"];
+  return '<span class="badge '+m[1]+'">'+esc(m[0])+'</span>';
+}
+function _opEhProblema(u){return !!(u.hasAuto&&OP_PROB.indexOf(u.diag&&u.diag.status)>=0);}
+function _opAguardando(u){return !!(u.hasAuto&&/^waiting_(limit|rate_limit|token_retry)$/.test(String(u.autoStatus||"")));}
+function _opTemAutoNoPlano(u){return (u.autoLimit||0)>0&&!(u.vip&&u.vip.active===false&&!u.autoLimitLocked);}
+async function carregarOperacao(){
+  try{
+    var d=await api("/api/admin/live");OP.live=d;
+    var us=d.users||[];
+    var manual=0,auto=0,falhas=0,prob=0,aguard=0;
+    us.forEach(function(u){manual+=u.todaySentManual||0;auto+=u.todaySentAuto||0;falhas+=u.todayFailed||0;if(_opEhProblema(u))prob++;if(_opAguardando(u))aguard++;});
+    _setCard("op-grid",0,String(d.onlineCount||0),(d.activeSessions||0)+" sessões abertas · "+(d.totalUsers||0)+" usuários no total");
+    _setCard("op-grid",1,String(d.activeWithQueue||0),(d.activeAutoCount||0)+" ligados · fila total "+(d.totalQueueAll||0)+" vagas");
+    _setCard("op-grid",2,String(aguard),(d.waitingLimit||0)+" no limite do dia · o resto é pausa do Google/token — tudo normal");
+    _setCard("op-grid",3,String(prob),prob?"travado, sem token, sem PDF ou nunca enviou — veja o motivo na lista":"nenhum robô com problema agora");
+    _setCard("op-grid",4,String(d.totalSentToday||0),manual+" manuais · "+auto+" automáticos · "+(d.totalSentAll||0)+" desde sempre");
+    _setCard("op-grid",5,String(falhas),falhas?"erro real do Gmail/token nas últimas 24h (duplicado e pulado NÃO contam)":"nenhuma falha real nas últimas 24h");
+    _setCard("op-grid",6,String(d.totalQueueAll||0),"de "+(d.totalOriginalAll||0)+" vagas carregadas nas filas ativas");
+    _setCard("op-grid",7,Math.floor((d.serverUptime||0)/3600)+"h "+Math.floor(((d.serverUptime||0)%3600)/60)+"min",(d.memMB||0)+" MB de RAM · disco "+(d.diskOk?"ok":"⚠ /tmp (sem persistência)"));
+    var pill=document.getElementById("pill-operacao");if(pill){pill.textContent=String(prob);pill.style.display=prob?"":"none";}
+    renderOperacao();renderEventosOperacao();
+  }catch(e){toast("Operação: "+e.message,"err");}
+}
+function renderOperacao(){
+  var d=OP.live;if(!d)return;
+  var q=String((document.getElementById("op-busca")||{}).value||"").trim().toLowerCase();
+  var f=String((document.getElementById("op-filtro")||{}).value||"");
+  var lista=(d.users||[]).filter(function(u){
+    if(u.accountDeleted)return false;
+    if(q&&!(String(u.email||"").toLowerCase().indexOf(q)>=0||String(u.name||"").toLowerCase().indexOf(q)>=0))return false;
+    if(f==="")return u.hasAuto||u.isOnline||/^paused/.test(String(u.autoStatus||""));
+    if(f==="problema")return _opEhProblema(u)||/^paused_(oauth_expired|token_revoked|auth_error|corrupt_queue)$/.test(String(u.autoStatus||""));
+    if(f==="rodando")return u.hasAuto&&!_opEhProblema(u)&&!_opAguardando(u);
+    if(f==="aguardando")return _opAguardando(u);
+    if(f==="online")return u.isOnline;
+    if(f==="falhas")return (u.todayFailed||0)>0;
+    if(f==="semrobo")return !u.hasAuto&&(u.autoLimit||0)>0&&u.vip&&u.vip.active;
+    return true;
+  });
+  var tb=document.getElementById("op-tbody");
+  document.getElementById("op-count").textContent=lista.length+" usuário(s)"+(lista.length>OP_LIMIT?" — mostrando "+OP_LIMIT:"")+" · atualizado "+fmtData(d.ts);
+  if(!lista.length){tb.innerHTML='<tr><td colspan="9" class="empty">Nenhum usuário neste filtro.</td></tr>';document.getElementById("op-mais").style.display="none";return;}
+  tb.innerHTML=lista.slice(0,OP_LIMIT).map(function(u){
+    var dg=u.diag||{};var prob=_opEhProblema(u);
+    var porque=u.hasAuto?('<div style="font-size:12.5px;color:'+(prob?"var(--red)":"var(--t2)")+'">'+esc(dg.reason||"—")+'</div>'+(dg.action?'<div class="cell-sub">→ '+esc(dg.action)+'</div>':''))
+      :(/^paused/.test(String(u.autoStatus||""))?'<div class="cell-sub">'+esc(u.lastError||"robô pausado — o usuário precisa religar ou reconectar o Gmail")+'</div>':'<div class="cell-sub" style="color:var(--t3)">sem robô ligado</div>');
+    var fila=u.hasAuto?('<b>'+esc(u.queueSize)+'</b><div class="cell-sub" style="white-space:nowrap">de '+esc(u.originalCount||0)+(u.queueDaysLeft!=null?' · ~'+esc(u.queueDaysLeft)+'d':'')+'</div>'):'—';
+    var hoje='<div style="white-space:nowrap"><b>'+esc(u.todaySentManual||0)+'</b>/'+esc(u.manualLimit||0)+' manual</div><div style="white-space:nowrap"><b>'+esc(u.todaySentAuto||0)+'</b>/'+esc(u.autoLimit||0)+' auto</div>'+((u.todayFailed||0)?'<div class="cell-sub" style="color:var(--red)">'+esc(u.todayFailed)+' falha(s)'+((u.todayDuplicates||0)?' · '+esc(u.todayDuplicates)+' dup.':'')+'</div>':((u.todayDuplicates||0)||(u.todaySkipped||0)?'<div class="cell-sub">'+esc(u.todayDuplicates||0)+' dup. · '+esc(u.todaySkipped||0)+' pulados</div>':''));
+    var ult=(u.lastSentAt?_plAgo(u.lastSentAt):"nunca")+(u.hasAuto&&u.nextSendAt&&u.nextSendAt>Date.now()?'<div class="cell-sub">próximo em '+esc(Math.max(1,Math.round((u.nextSendAt-Date.now())/60000)))+'min'+(u.timers||u.autoStatus==="sending"?'':' · <span style="color:var(--red)">timer morto</span>')+'</div>':(u.hasAuto&&!u.timers&&u.autoStatus!=="sending"?'<div class="cell-sub" style="color:var(--red)">timer morto</div>':''));
+    var gm=(u.oauthOk===false?'<span class="badge red">Gmail caiu</span>':u.oauthOk===true?'<span class="badge green">Gmail ok</span>':'<span class="badge" style="color:var(--t3);border-color:var(--border2)">Gmail ?</span>')+' '+(u.hasPdf===false?'<span class="badge red">sem PDF</span>':u.hasPdf===true?'<span class="badge green">PDF</span>':'')+((u.restarts||0)?'<div class="cell-sub">'+esc(u.restarts)+' reinício(s)'+((u.errors||0)?' · '+esc(u.errors)+' erro(s)':'')+'</div>':'');
+    var em=esc(u.email||"");
+    var acoes='<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">'
+      +(u.hasAuto?'<button class="btn btn-sm" data-email="'+em+'" title="Reinicia o robô agora (zera o relógio e reagenda)" onclick="reiniciarRobo(this.dataset.email)"><i class="ti ti-refresh"></i></button><button class="btn btn-sm btn-red" data-email="'+em+'" title="Para o robô e apaga a fila dele" onclick="pararRobo(this.dataset.email)"><i class="ti ti-player-stop"></i></button>':'')
+      +'<button class="btn btn-sm" data-email="'+em+'" title="Reparo automático só deste usuário (fix-auto)" onclick="corrigirRobo(this.dataset.email)"><i class="ti ti-tool"></i></button>'
+      +'<button class="btn btn-sm btn-primary" data-email="'+em+'" title="Ficha completa" onclick="abrirDetalheUsuario(this.dataset.email)"><i class="ti ti-id"></i></button></div>';
+    return '<tr'+(prob?' style="background:var(--redg)"':'')+'><td><div class="cell-main">'+(u.isOnline?'<span title="online agora" style="color:var(--green)">●</span> ':'')+esc(u.name||u.email)+'</div><div class="cell-sub">'+em+'</div></td>'
+      +'<td><span class="badge blue">'+esc(NOME_PLANO_ADM[u.plan]||u.plan||"grátis")+'</span></td>'
+      +'<td>'+_opStatusBadge(u)+'</td><td style="max-width:360px">'+porque+'</td><td>'+fila+'</td><td>'+hoje+'</td><td>'+ult+'</td><td>'+gm+'</td><td>'+acoes+'</td></tr>';
+  }).join("");
+  document.getElementById("op-mais").style.display=lista.length>OP_LIMIT?"":"none";
+}
+function renderEventosOperacao(){
+  var box=document.getElementById("op-eventos");var ev=(OP.live&&OP.live.globalEvents||[]).slice(0,40);
+  if(!ev.length){box.innerHTML='<div style="color:var(--t3)">Nenhum acontecimento registrado desde o último reinício do servidor.</div>';return;}
+  box.innerHTML=ev.map(function(e){var cor=e.level==="error"?"var(--red)":e.level==="warn"?"var(--amber)":"var(--t2)";return '<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)"><span style="color:var(--t3);white-space:nowrap;min-width:120px">'+esc(fmtData(e.ts))+'</span><span style="color:'+cor+';min-width:110px;font-weight:700">'+esc(String(e.type||"").replace(/_/g," "))+'</span><span style="color:var(--text)">'+esc(e.msg||"")+'</span>'+(e.email?'<span class="cell-sub" style="margin-left:auto">'+esc(e.email)+'</span>':'')+'</div>';}).join("");
+}
+async function reiniciarRobo(email){
+  if(!confirm("Reiniciar o robô de "+email+" agora? Ele reagenda o próximo envio e volta a rodar."))return;
+  try{var r=await api("/api/admin/force-restart",{method:"POST",body:{email:email}});toast("Robô reiniciado (reinício #"+(r.restarts||1)+").","ok");carregarOperacao();}
+  catch(e){toast(e.message,"err");}
+}
+async function pararRobo(email){
+  if(!confirm("PARAR o robô de "+email+"? A fila dele é apagada — o usuário precisa ligar de novo pelo site. O sistema NÃO avisa o usuário."))return;
+  try{await api("/api/admin/force-stop",{method:"POST",body:{email:email}});toast("Robô parado.","ok");carregarOperacao();}
+  catch(e){toast(e.message,"err");}
+}
+function _opResumoFix(r){
+  var rs=(r&&r.results)||[];if(!rs.length)return '<div style="color:var(--t3)">Nenhum robô pra reparar.</div>';
+  return '<div style="font-size:13px">'+rs.map(function(x){var ok=["ok","skipped","none"].indexOf(x.action)>=0;return '<div style="display:flex;gap:10px;padding:5px 0;border-bottom:1px solid var(--border)"><span style="min-width:220px;color:var(--t2)">'+esc(x.email)+'</span><span class="badge '+(ok?"green":"amber")+'">'+esc(x.action)+'</span><span>'+esc(x.detail||"")+'</span></div>';}).join("")+'</div>';
+}
+async function corrigirRobo(email){
+  try{var r=await api("/api/admin/fix-auto",{method:"POST",body:{email:email}});abrirModalInfo("🔧 Reparo de "+email,_opResumoFix(r));carregarOperacao();}
+  catch(e){toast(e.message,"err");}
+}
+async function corrigirTodos(){
+  if(!confirm("Rodar o reparo automático em TODOS os robôs? Ele só mexe no que está errado (timer perdido, fila vazia, limite já liberado, robô travado há 10min+) — quem está rodando certo não é tocado."))return;
+  try{var r=await api("/api/admin/fix-auto",{method:"POST",body:{}});abrirModalInfo("🔧 Reparo geral — "+(r.fixed||0)+" de "+(r.total||0)+" robô(s) consertado(s)",_opResumoFix(r));carregarOperacao();}
+  catch(e){toast(e.message,"err");}
+}
+async function reiniciarTravados(){
+  if(!confirm("Reiniciar todos os robôs TRAVADOS? Quem está esperando o limite do dia ou a pausa do Google é pulado (não é travamento)."))return;
+  try{var r=await api("/api/admin/restart-all-stalled",{method:"POST",body:{}});toast((r.restarted||0)+" reiniciado(s) · "+(r.skipped||0)+" em espera legítima pulado(s)"+((r.tokensFailed||0)?" · "+r.tokensFailed+" token(s) falharam":""),"ok");carregarOperacao();}
   catch(e){toast(e.message,"err");}
 }
 </script>

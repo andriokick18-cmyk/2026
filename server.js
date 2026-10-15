@@ -13476,7 +13476,11 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
   // ── ADMIN: Reinicia todos os workers travados de uma vez ───────────────────────
   if(pathname==="/api/admin/restart-all-stalled"&&req.method==="POST"){
     const s=getSess(req);
-    if(!s?.user_email||!isAdminEmail(_sessAdminEmail(s)))return json(res,403,{error:"Acesso negado."});
+    // 🛠️ v973: mesma régua de admin das outras rotas de operação (force-restart/
+    // force-stop/fix-auto aceitam isAdminVip) — esta era a ÚNICA com gate só por
+    // e-mail hardcoded, e o botão "Reiniciar travados" do painel levava 403 pra
+    // admin promovido (isAdmin) que não está na lista de e-mails fixos.
+    if(!s?.user_email||!(isAdminEmail(_sessAdminEmail(s))||isAdminVip(getUser(s.user_email)||{})))return json(res,403,{error:"Acesso negado."});
     let restarted=0, tokensFailed=0, skipped=0;
     const SAFE_WAIT_STATUSES = new Set(["waiting_limit","waiting_rate_limit","waiting_interval","waiting_token_retry"]);
     for(const[email,job] of Object.entries(DB_AUTO)){
