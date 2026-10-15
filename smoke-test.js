@@ -7100,6 +7100,41 @@ async function drillAdminSettingsLegado() {
       _opBlock973.includes("OP_STATUS") && _opBlock973.includes("dg.reason") && _opBlock973.includes("dg.action") &&
       !/push|notif|sendMail|alerta/i.test(_opBlock973.replace(/\/\*[\s\S]*?\*\//g, "")),
       "faltou peça da F4 (operação) no admin.html");
+    // 🛠️ v974 (F5 da lista de 100): Backups & Saúde — listar/criar/restaurar
+    // (dry-run + confirmação pelo nome) e crashes persistidos em disco.
+    const _bk0 = (await get("/api/admin/backups")).json;
+    const _bkCriar = await req2("POST", "/api/admin/backup/criar", {});
+    const _bk1 = (await get("/api/admin/backups")).json;
+    const _bkNovo = (_bk1?.backups || []).find((x) => x.name === _bkCriar.json?.name);
+    check("🛠️ v974: /api/admin/backups lista os backups (nome, data, arquivos, MB, coleções) com retenção, disco livre e o modo do banco; 'Criar backup agora' gera um backup completo que aparece na lista COM users.json dentro",
+      _bk0?.ok === true && typeof _bk0.retencao === "number" && Array.isArray(_bk0.backups) && _bk0.storage && typeof _bk0.storage.mode === "string" &&
+      _bkCriar.json?.ok === true && /^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}$/.test(_bkCriar.json?.name || "") && _bkNovo && _bkNovo.files > 0 && (_bkNovo.colecoes || []).includes("users.json") && _bk1.ultimo && _bk1.ultimo.name === _bkNovo.name,
+      JSON.stringify({ c: _bkCriar.json, n: _bkNovo && { f: _bkNovo.files, col: (_bkNovo.colecoes || []).length } }).slice(0, 240));
+    const _usersAntes = fs.readFileSync(path.join(DATA, "users.json"), "utf8");
+    const _rsDry = await req2("POST", "/api/admin/backup/restaurar", { name: _bkCriar.json?.name, dryRun: true });
+    const _rsSemConf = await req2("POST", "/api/admin/backup/restaurar", { name: _bkCriar.json?.name });
+    const _rsConfErrada = await req2("POST", "/api/admin/backup/restaurar", { name: _bkCriar.json?.name, confirmar: "outro-nome" });
+    const _rsNome = await req2("POST", "/api/admin/backup/restaurar", { name: "../../etc", confirmar: "../../etc" });
+    const _rsInex = await req2("POST", "/api/admin/backup/restaurar", { name: "1999-01-01-00-00-00", confirmar: "1999-01-01-00-00-00" });
+    const _usersDepois = fs.readFileSync(path.join(DATA, "users.json"), "utf8");
+    check("🛠️ v974: restaurar backup — o dry-run mostra o PLANO (coleções com tamanho no backup × hoje, pastas cvs/comprovantes) sem tocar em nada; sem 'confirmar' = 400; confirmar diferente do nome = 400; nome com traversal = 400; backup inexistente = 404 — e nenhum desses caminhos mexeu no disco nem congelou as gravações",
+      _rsDry.json?.ok === true && _rsDry.json?.dryRun === true && Array.isArray(_rsDry.json?.plano) && _rsDry.json.plano.some((x) => x.arquivo === "users.json" && x.bytesBackup > 0) && !_rsDry.json.plano.some((x) => x.arquivo === "sessions.json") &&
+      _rsSemConf.status === 400 && _rsConfErrada.status === 400 && _rsNome.status === 400 && _rsInex.status === 404 &&
+      _usersDepois === _usersAntes && (await get("/api/admin/backups")).json?.congelado === false,
+      JSON.stringify({ dry: _rsDry.status, plano: (_rsDry.json?.plano || []).length, sc: _rsSemConf.status, ce: _rsConfErrada.status, nm: _rsNome.status, ix: _rsInex.status }));
+    const _crash974 = (await get("/api/admin/crashes")).json;
+    const _srv974 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+    const _adm974 = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
+    const _pge974 = (_srv974.match(/function pushGlobalEvent\(type, email, msg, level="warn"\) \{[\s\S]*?\n\}/) || [""])[0];
+    const _rsRota = (_srv974.match(/if\(pathname==="\/api\/admin\/backup\/restaurar"[\s\S]*?\n    \}\n/) || [""])[0];
+    check("🛠️ v974 (estrutural): crashes persistem em disco (crash_log.json gravado SÍNCRONO dentro do pushGlobalEvent de nível error, cap 200, carregado no boot e devolvido em /api/admin/crashes); a restauração grava pelo storagePersist (SQLite vence o JSON no boot — copiar arquivo não restaura), cria backup de segurança ANTES, congela as gravações e reinicia; a aba Backups & Saúde existe com cards, lista, dry-run, modal de confirmação pelo nome, erros graves e resumo de ontem",
+      Array.isArray(_crash974?.crashes) && typeof _crash974?.bootAt === "number" &&
+      /DB_CRASHES\.unshift/.test(_pge974) && /persist\(CRASH_FILE, DB_CRASHES\)/.test(_pge974) && /DB_CRASHES\.length>200/.test(_pge974) && /DB_CRASHES = load\(CRASH_FILE, \[\]\)/.test(_srv974) &&
+      _rsRota.length > 200 && /criarBackupCompleto\(\)/.test(_rsRota) && /congelarGravacoes\(/.test(_rsRota) && /storagePersist\(path\.join\(DATA_DIR,f\),data\)/.test(_rsRota) && /process\.exit\(0\)/.test(_rsRota) && _rsRota.indexOf("criarBackupCompleto()") < _rsRota.indexOf("congelarGravacoes(") && _rsRota.indexOf("congelarGravacoes(") < _rsRota.indexOf("storagePersist(path.join(DATA_DIR,f),data)") &&
+      _adm974.includes('data-view="sistema"') && ["view-sistema", "sis-grid", "sis-backups", "sis-crashes", "sis-resumo", "modal-restaurar", "rs-confirma", "rs-plano"].every((id) => _adm974.includes('id="' + id + '"')) &&
+      ["carregarSistema", "criarBackup", "verPlanoRestauro", "abrirRestaurar", "restaurarBackupConfirmar", "rodarResumoOntem"].every((f) => new RegExp("async function " + f + "\\(").test(_adm974)) &&
+      _adm974.includes('"/api/admin/backup/restaurar"') && _adm974.includes("dryRun:true") && _adm974.includes("confirmar:dig") && /if\(nome==="sistema"\)carregarSistema\(\);/.test(_adm974),
+      "faltou peça da F5 (backups) — " + JSON.stringify({ cr: Array.isArray(_crash974?.crashes), pge: _pge974.length, rota: _rsRota.length }));
     const gUsd = await req2("POST", "/api/admin/financeiro", { action: "add_gasto", gasto: { moeda: "USD", valorUSD: 10, cambio: 5, valor: 1, recorrente: true, categoria: "hospedagem", descricao: "Render (teste P5)", pagoPor: "empresa", dataGasto: new Date(Date.now() - 32 * 24 * 3600 * 1000).toISOString() } });
     const _gU = ((await get("/api/admin/financeiro")).json?.gastos || []).find((x) => x.id === gUsd.json?.id);
     const rec1 = await req2("POST", "/api/admin/financeiro", { action: "rodar_recorrentes" });

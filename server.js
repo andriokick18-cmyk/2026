@@ -570,6 +570,8 @@ let DB_FINANCEIRO  = {pagamentos:[],gastos:[]};  // Dados financeiros persistent
 // ANTES/DEPOIS — e as reversíveis podem ser desfeitas em 1 clique ("adm fez
 // cagada tem reversão?"). Append-only, persistido em disco.
 const ADMIN_AUDIT_FILE = path.join(DATA_DIR, "admin_audit.json");
+const CRASH_FILE = path.join(DATA_DIR, "crash_log.json"); // 🛠️ v974: erros graves que sobrevivem ao reinício
+let DB_CRASHES = [];
 let DB_ADMIN_AUDIT = [];
 function logAdminAction(admin, action, targetEmail, before, after, detail){
   try{
@@ -1299,6 +1301,7 @@ function boot() {
   if(!Array.isArray(DB_PEDIDOS)) DB_PEDIDOS = [];
   _migrarComprovantesParaDisco(); // 🧾 v192 LOTE 10 (idempotente, qualquer status)
   DB_ADMIN_AUDIT = load(ADMIN_AUDIT_FILE, []);
+  DB_CRASHES = load(CRASH_FILE, []); if(!Array.isArray(DB_CRASHES)) DB_CRASHES = [];
   if(!Array.isArray(DB_ADMIN_AUDIT)) DB_ADMIN_AUDIT = [];
   DB_FINANCEIRO = load(FINANCEIRO_FILE, {pagamentos:[],gastos:[],repasses:[]});
   if(!DB_FINANCEIRO.pagamentos) DB_FINANCEIRO = {pagamentos:[],gastos:[],repasses:[]};
@@ -14902,7 +14905,80 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}return json(res,200,{ok:true})
 
     // ── ADMIN CRASH REPORTS ────────────────────────────────────
     if(pathname==="/api/admin/crashes"&&req.method==="GET"){
-      return json(res,200,{events:GLOBAL_EVENTS,total:GLOBAL_EVENTS.length});
+      return json(res,200,{events:GLOBAL_EVENTS,total:GLOBAL_EVENTS.length,crashes:DB_CRASHES,bootAt:Date.now()-Math.round(process.uptime()*1000)});
+    }
+
+    // ── 🛠️ v974 — BACKUPS: listar / criar / restaurar (F5 da lista de 100) ──
+    // criarBackupCompleto() roda sozinho no boot e 1x/dia desde o v11, mas
+    // nenhuma tela listava nem permitia restaurar. ATENÇÃO (achado desta fase):
+    // o boot lê do SQLite primeiro (storageLoad) — copiar o .json do backup
+    // de volta pra pasta NÃO restaura nada, porque a linha do SQLite vence.
+    // A restauração grava cada coleção pelo storagePersist (SQLite + espelho),
+    // com as gravações da memória CONGELADAS antes (congelarGravacoes, v191),
+    // e encerra o processo pro Render subir de novo lendo o que voltou.
+    if(pathname==="/api/admin/backups"&&req.method==="GET"){
+      try{
+        const lista=[];
+        if(fs.existsSync(BACKUP_DIR)){
+          for(const d of fs.readdirSync(BACKUP_DIR).filter(x=>/^\d{4}-/.test(x)).sort().reverse()){
+            const dir=path.join(BACKUP_DIR,d);let files=0,bytes=0,jsons=[];
+            try{
+              const walk=(p)=>{for(const f of fs.readdirSync(p)){const fp=path.join(p,f);const st=fs.statSync(fp);if(st.isDirectory())walk(fp);else{files++;bytes+=st.size;if(p===dir&&f.endsWith(".json"))jsons.push(f);}}};
+              walk(dir);
+            }catch(e){}
+            const m=d.match(/^(\d{4})-(\d{2})-(\d{2})-(\d{2})-(\d{2})-(\d{2})$/);
+            const ts=m?Date.UTC(+m[1],+m[2]-1,+m[3],+m[4]+3,+m[5],+m[6]):null; // nome está em BRT
+            lista.push({name:d,ts,files,mb:Math.round(bytes/1048576*10)/10,colecoes:jsons});
+          }
+        }
+        return json(res,200,{ok:true,dir:BACKUP_DIR,retencao:BACKUP_RETENCAO,livreMB:_diskFreeMB(),ultimo:lista[0]||null,backups:lista,storage:storageInfo(),congelado:_gravacoesCongeladas,excluidos:[...BACKUP_EXCLUIR]});
+      }catch(e){return json(res,500,{error:e.message});}
+    }
+    if(pathname==="/api/admin/backup/criar"&&req.method==="POST"){
+      try{
+        const r=await criarBackupCompleto();
+        if(r&&r.ok)logAdminAction(_sessAdminEmail(s),"backup_manual",null,null,{name:r.name,files:r.files},"Backup completo criado pelo painel");
+        return json(res,r&&r.ok?200:500,r||{ok:false,error:"sem resposta"});
+      }catch(e){return json(res,500,{error:e.message});}
+    }
+    if(pathname==="/api/admin/backup/restaurar"&&req.method==="POST"){
+      try{
+        const d=JSON.parse(await readBody(req));
+        const name=String(d.name||"").trim();
+        if(!/^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}$/.test(name))return json(res,400,{error:"Nome de backup inválido."});
+        const dir=path.join(BACKUP_DIR,name);
+        if(!fs.existsSync(dir))return json(res,404,{error:"Backup não encontrado: "+name});
+        const jsons=fs.readdirSync(dir).filter(f=>f.endsWith(".json")&&f!=="sessions.json"&&f!=="crash_log.json");
+        const plano=jsons.map(f=>{let st=null,atual=null;try{st=fs.statSync(path.join(dir,f)).size;}catch{}try{atual=fs.statSync(path.join(DATA_DIR,f)).size;}catch{}return {arquivo:f,bytesBackup:st,bytesAtual:atual};});
+        const pastas=["cvs","comprovantes"].filter(x=>fs.existsSync(path.join(dir,x))).map(x=>({pasta:x,arquivos:fs.readdirSync(path.join(dir,x)).length}));
+        if(d.dryRun)return json(res,200,{ok:true,dryRun:true,name,plano,pastas,aviso:"Nada foi alterado. A restauração de verdade grava estas coleções no banco, mantém sessões e reinicia o servidor (~30s fora do ar)."});
+        if(String(d.confirmar||"")!==name)return json(res,400,{error:"Digite o nome exato do backup em 'confirmar' pra restaurar."});
+        if(_gravacoesCongeladas)return json(res,409,{error:"Já existe uma restauração em andamento — aguarde o servidor reiniciar."});
+        // 1) backup de segurança do estado ATUAL (aborta se falhar — nunca restaurar sem rede de proteção)
+        const seg=await criarBackupCompleto();
+        if(!seg||!seg.ok)return json(res,500,{error:"Backup de segurança falhou ("+((seg&&seg.error)||"?")+") — restauração abortada."});
+        // 2) congela TODA gravação da memória (debounces, sessões) — nada pode cair por cima do que vai voltar
+        congelarGravacoes("restauração do backup "+name+" por "+_sessAdminEmail(s));
+        // 3) grava cada coleção do backup pelo storagePersist (SQLite + espelho JSON) — o boot lê do SQLite primeiro
+        let restaurados=0,falhas=[];
+        for(const f of jsons){
+          try{const data=JSON.parse(fs.readFileSync(path.join(dir,f),"utf8"));if(storagePersist(path.join(DATA_DIR,f),data))restaurados++;else falhas.push(f);}
+          catch(e){falhas.push(f+": "+e.message);}
+        }
+        // 4) pastas de arquivos (PDFs e comprovantes): MERGE — o que está no backup volta, o que é mais novo fica
+        for(const pst of ["cvs","comprovantes"]){
+          try{if(fs.existsSync(path.join(dir,pst)))await fsp.cp(path.join(dir,pst),path.join(DATA_DIR,pst),{recursive:true,force:true});}catch(e){falhas.push(pst+"/: "+e.message);}
+        }
+        // 5) trilha (direto no disco — persist() está congelado) + evento + reinício
+        try{
+          const trilha=load(ADMIN_AUDIT_FILE,[]);
+          trilha.unshift({id:"aud_"+Date.now().toString(36),ts:Date.now(),admin:_sessAdminEmail(s),action:"backup_restaurado",target:name,detail:`Restaurou o backup ${name} (${restaurados} coleções; segurança: ${seg.name}). Servidor reiniciado em seguida.`});
+          storagePersist(ADMIN_AUDIT_FILE,trilha.slice(0,2000));
+        }catch(_){}
+        console.warn(`[backup] ♻️ RESTAURAÇÃO ${name} por ${_sessAdminEmail(s)}: ${restaurados} coleções, ${falhas.length} falha(s). Reiniciando o processo em 1,5s pra recarregar.`);
+        setTimeout(()=>{try{process.exit(0);}catch(_){}} ,1500);
+        return json(res,200,{ok:true,name,restaurados,falhas,segurancaBackup:seg.name,reiniciando:true,aviso:"Servidor reiniciando pra carregar os dados restaurados (~30s). Todo mundo precisa entrar de novo (sessões não sobrevivem a reinício — de propósito)."});
+      }catch(e){return json(res,500,{error:e.message});}
     }
 
     // ── ADMIN USER DETAIL (completo) ──────────────────────────
@@ -15400,6 +15476,16 @@ function pushGlobalEvent(type, email, msg, level="warn") {
   GLOBAL_EVENTS.unshift({ ts:Date.now(), date:toLocaleBRT(Date.now()), type, email, msg, level });
   if(GLOBAL_EVENTS.length>500) GLOBAL_EVENTS.length=500;
   console.log(`[watchdog/${level}] ${email||"global"}: ${msg}`);
+  // 🛠️ v974: evento de nível ERRO (uncaughtException, unhandledRejection,
+  // falhas graves) sobrevive ao reinício — GLOBAL_EVENTS morre com o processo
+  // e era exatamente no restart (OOM/deploy) que o admin perdia a pista.
+  if(level==="error"){
+    try{
+      DB_CRASHES.unshift({ ts:Date.now(), type, email:email||null, msg:String(msg||"").slice(0,400), uptimeS:Math.round(process.uptime()), memMB:Math.round(process.memoryUsage().rss/1048576) });
+      if(DB_CRASHES.length>200) DB_CRASHES.length=200;
+      persist(CRASH_FILE, DB_CRASHES); // arquivo pequeno — síncrono de propósito (o processo pode morrer a seguir)
+    }catch(_){}
+  }
 }
 
 // Diagnóstico completo de um job ativo

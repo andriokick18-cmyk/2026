@@ -299,6 +299,7 @@ tbody tr:hover{background:var(--glass2)}
       <div class="sb-section">Vagas</div>
       <button class="sb-item" data-view="planilhas" onclick="switchTab('planilhas')"><i class="ti ti-table-import"></i> Planilhas &amp; Robôs</button>
       <div class="sb-section">Sistema</div>
+      <button class="sb-item" data-view="sistema" onclick="switchTab('sistema')"><i class="ti ti-database"></i> Backups &amp; Saúde</button>
       <button class="sb-item" data-view="notificacoes" onclick="switchTab('notificacoes')"><i class="ti ti-mail-forward"></i> Notificações <span class="pill" id="pill-notif" style="display:none;background:var(--red)">!</span></button>
       <!-- 🩺 achado de auditoria contínua: /admin-reviews (moderação de avaliações
            reais, POST /api/reviews → status pending → só aprovada aqui aparece na
@@ -704,6 +705,43 @@ tbody tr:hover{background:var(--glass2)}
            SuporteH2bapply@gmail.com é conectada AQUI pelo Google (só gmail.send)
            e passa a enviar os códigos de cadastro/recuperação e os avisos de
            pedido novo pro Andrio e pro Diego. ═══ -->
+      <!-- 🛠️ v974 — BACKUPS & SAÚDE (F5 da lista de 100). O backup diário existia
+           desde o v11 sem tela; restaurar não existia em lugar nenhum; crashes
+           morriam com o processo. Fonte: /api/admin/backups, /api/admin/crashes,
+           /api/admin/memoria. SEM alertas (ordem do dono). -->
+      <div class="view" id="view-sistema">
+        <div class="stat-grid" id="sis-grid">
+          <div class="stat-card green"><div class="ic"><i class="ti ti-database"></i></div><div class="lbl">Último backup</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card blue"><div class="ic"><i class="ti ti-archive"></i></div><div class="lbl">Backups guardados</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card amber"><div class="ic"><i class="ti ti-device-sd-card"></i></div><div class="lbl">Disco livre</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card red"><div class="ic"><i class="ti ti-bug"></i></div><div class="lbl">Erros graves (histórico)</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title"><i class="ti ti-database"></i>Backups</div>
+            <div class="panel-actions">
+              <button class="btn btn-sm" onclick="carregarSistema()"><i class="ti ti-refresh"></i> Atualizar</button>
+              <button class="btn btn-sm btn-primary" id="btn-backup-criar" onclick="criarBackup()"><i class="ti ti-device-floppy"></i> Criar backup agora</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div id="sis-backup-info" style="font-size:12.5px;color:var(--t2);margin-bottom:10px"></div>
+            <div class="tbl-wrap"><table>
+              <thead><tr><th>Quando</th><th>Arquivos</th><th>Tamanho</th><th>Coleções</th><th></th></tr></thead>
+              <tbody id="sis-backups"><tr><td colspan="5"><div class="spin"></div></td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title"><i class="ti ti-bug"></i>Erros graves do servidor</div><div class="panel-actions"><span style="font-size:12px;color:var(--t3)">uncaughtException / unhandledRejection — guardados em disco, sobrevivem ao reinício</span></div></div>
+          <div class="panel-body" id="sis-crashes" style="font-size:13px"><div class="spin"></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title"><i class="ti ti-report"></i>Resumo de ontem</div><div class="panel-actions"><button class="btn btn-sm" onclick="rodarResumoOntem()"><i class="ti ti-player-play"></i> Gerar agora</button></div></div>
+          <div class="panel-body" id="sis-resumo" style="font-size:13px;color:var(--t2)">O resumo roda sozinho às 8h (BRT). Clique pra ver os números de ontem agora: vendas, pedidos na mesa, envios e cadastros.</div>
+        </div>
+      </div>
+
       <div class="view" id="view-notificacoes">
         <div class="panel">
           <div class="panel-head">
@@ -1092,6 +1130,20 @@ tbody tr:hover{background:var(--glass2)}
 </div>
 
 <!-- 💼 v970: motivo obrigatório (substitui prompt() do navegador) -->
+<!-- 🛠️ v974: restaurar backup — confirmação digitando o nome -->
+<div class="modal-bg" id="modal-restaurar">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-head"><div class="modal-title"><i class="ti ti-restore" style="color:var(--red)"></i> Restaurar backup</div><button class="modal-close" onclick="fecharModal('modal-restaurar')" aria-label="Fechar"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body">
+      <div id="rs-plano" style="font-size:13px;color:var(--t2);margin-bottom:12px"></div>
+      <div style="background:var(--redg);border:1px solid var(--redb);border-radius:9px;padding:10px 12px;font-size:12.5px;color:var(--text);margin-bottom:12px">
+        ⚠️ Isso volta usuários, histórico, pedidos, caixa e robôs pro estado do backup. Antes, o sistema cria um backup de segurança do estado atual. Depois o servidor <b>reinicia</b> (~30s fora do ar) e todo mundo entra de novo. PDFs e comprovantes do backup voltam sem apagar os mais novos.
+      </div>
+      <div class="field"><label for="rs-confirma">Digite o nome do backup pra confirmar</label><input id="rs-confirma" type="text" placeholder="2026-10-15-01-00-00" autocomplete="off"></div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" onclick="fecharModal('modal-restaurar')">Cancelar</button><button type="button" class="btn btn-red" id="rs-ok" onclick="restaurarBackupConfirmar()"><i class="ti ti-restore"></i> Restaurar e reiniciar</button></div>
+  </div>
+</div>
 <div class="modal-bg" id="modal-motivo">
   <div class="modal" style="max-width:420px">
     <div class="modal-head"><div class="modal-title" id="motivo-title">Motivo</div><button class="modal-close" onclick="fecharModal('modal-motivo')"><i class="ti ti-x"></i></button></div>
@@ -1344,6 +1396,7 @@ var TITULOS={
   pendentes:{t:"Pedidos",s:"Pendentes, aprovados e cancelados — com quem aprovou e por quê"},
   operacao:{t:"Robôs & Envios",s:"Quem está online, quem está enviando, quem travou e por quê — com o botão pra consertar"},
   planilhas:{t:"Planilhas & Robôs",s:"Coleta e enriquecimento do DOL — 100% manual, clique quando sair temporada nova"},
+  sistema:{t:"Backups &amp; Saúde",s:"Cópias de segurança (criar, ver, restaurar), erros graves do servidor e o resumo de ontem"},
   notificacoes:{t:"Notificações por e-mail",s:"A conta Google que envia os códigos e avisos do sistema"}
 };
 
@@ -1360,6 +1413,7 @@ function switchTab(nome){
   toggleSidebar(false);
   if(nome==="planilhas")loadPlanilhas();else _plStop();
   if(nome==="notificacoes")loadNotificacoes();
+  if(nome==="sistema")carregarSistema();
   // 🩺 v188 LOTE 6: o vigia é lido quando a aba abre (nunca no boot — o
   // relatório vive em memória do servidor e a varredura sozinha já roda).
   // 🛠️ v973: o vigia (robôs parados de quem paga) mudou de Usuários pra Operação
@@ -3346,6 +3400,72 @@ async function reiniciarTravados(){
   if(!confirm("Reiniciar todos os robôs TRAVADOS? Quem está esperando o limite do dia ou a pausa do Google é pulado (não é travamento)."))return;
   try{var r=await api("/api/admin/restart-all-stalled",{method:"POST",body:{}});toast((r.restarted||0)+" reiniciado(s) · "+(r.skipped||0)+" em espera legítima pulado(s)"+((r.tokensFailed||0)?" · "+r.tokensFailed+" token(s) falharam":""),"ok");carregarOperacao();}
   catch(e){toast(e.message,"err");}
+}
+/* ════════════════════════════════════════════════════════════════════════
+   🛠️ v974 — BACKUPS & SAÚDE (F5 da lista de 100). Backup diário já existia
+   (v11) sem tela; restaurar não existia; crashes morriam com o processo.
+   Restaurar: dry-run mostra o plano, confirmação digitando o nome, backup de
+   segurança antes, servidor reinicia depois. SEM alertas (ordem do dono).
+   ════════════════════════════════════════════════════════════════════════ */
+var SIS={bk:null,cr:null,alvo:null};
+async function carregarSistema(){
+  try{
+    var b=await api("/api/admin/backups");SIS.bk=b;
+    var c=await api("/api/admin/crashes");SIS.cr=c;
+    _setCard("sis-grid",0,b.ultimo?_plAgo(b.ultimo.ts):"nenhum",b.ultimo?fmtData(b.ultimo.ts)+" · "+b.ultimo.files+" arquivos · "+b.ultimo.mb+" MB":"o backup automático roda 2min após cada boot e 1x por dia");
+    _setCard("sis-grid",1,String((b.backups||[]).length),"retenção de "+b.retencao+" (os mais antigos são apagados sozinhos) · banco "+esc(b.storage&&b.storage.mode||"?")+(b.storage&&b.storage.mirror?" + espelho JSON":""));
+    _setCard("sis-grid",2,b.livreMB!=null?(b.livreMB>=1024?(b.livreMB/1024).toFixed(1)+" GB":b.livreMB+" MB"):"?",b.livreMB!=null&&b.livreMB<300?"⚠ abaixo de 300 MB o backup é pulado e a faxina de emergência roda":"backup é pulado abaixo de 150 MB livres");
+    var crs=(c.crashes||[]);
+    _setCard("sis-grid",3,String(crs.length),crs.length?"último: "+_plAgo(crs[0].ts)+" — "+String(crs[0].msg||"").slice(0,60):"nenhum erro grave registrado em disco");
+    document.getElementById("sis-backup-info").textContent="Pasta: "+(b.dir||"")+" · fora do backup (logs efêmeros): "+(b.excluidos||[]).join(", ")+(b.congelado?" · ⚠ RESTAURAÇÃO EM ANDAMENTO — gravações congeladas até o reinício":"");
+    var tb=document.getElementById("sis-backups");
+    tb.innerHTML=(b.backups||[]).map(function(x){
+      return '<tr><td><div class="cell-main">'+esc(fmtData(x.ts))+'</div><div class="cell-sub">'+esc(x.name)+' · '+esc(_plAgo(x.ts))+'</div></td><td>'+esc(x.files)+'</td><td>'+esc(x.mb)+' MB</td><td style="font-size:12px;color:var(--t2)">'+esc((x.colecoes||[]).map(function(f){return f.replace(/\.json$/,"");}).join(", "))+'</td>'
+        +'<td><div style="display:flex;gap:4px;justify-content:flex-end"><button class="btn btn-sm" data-name="'+esc(x.name)+'" onclick="verPlanoRestauro(this.dataset.name)" title="Ver o que voltaria (não altera nada)"><i class="ti ti-eye"></i> O que voltaria</button><button class="btn btn-sm btn-red" data-name="'+esc(x.name)+'" onclick="abrirRestaurar(this.dataset.name)"><i class="ti ti-restore"></i> Restaurar</button></div></td></tr>';
+    }).join("")||'<tr><td colspan="5" class="empty">Nenhum backup ainda — clique em "Criar backup agora".</td></tr>';
+    var box=document.getElementById("sis-crashes");
+    box.innerHTML=crs.length?crs.slice(0,40).map(function(e){return '<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)"><span style="color:var(--t3);white-space:nowrap;min-width:120px">'+esc(fmtData(e.ts))+'</span><span style="color:var(--red);min-width:150px;font-weight:700">'+esc(String(e.type||"").replace(/_/g," "))+'</span><span>'+esc(e.msg||"")+'</span><span class="cell-sub" style="margin-left:auto;white-space:nowrap">'+esc(e.uptimeS!=null?Math.floor(e.uptimeS/60)+"min ligado · "+e.memMB+" MB":"")+'</span></div>';}).join("")
+      :'<div style="color:var(--green)"><i class="ti ti-check"></i> Nenhum erro grave registrado. (Os acontecimentos dos robôs ficam na aba Robôs &amp; Envios.)</div>';
+  }catch(e){toast("Backups: "+e.message,"err");}
+}
+async function criarBackup(){
+  var btn=document.getElementById("btn-backup-criar");if(btn)btn.disabled=true;
+  try{var r=await api("/api/admin/backup/criar",{method:"POST",body:{}});toast("Backup "+(r.name||"")+" criado ("+(r.files||0)+" arquivos).","ok");carregarSistema();}
+  catch(e){toast(e.message,"err");}
+  finally{if(btn)btn.disabled=false;}
+}
+function _planoHtml(r){
+  return '<div><b>'+esc(r.name)+'</b> — '+(r.plano||[]).length+' coleção(ões)'+((r.pastas||[]).length?' + '+r.pastas.map(function(p){return esc(p.pasta)+"/ ("+esc(p.arquivos)+")";}).join(", "):'')+'</div>'
+    +'<div style="margin-top:8px;display:grid;grid-template-columns:1fr auto auto;gap:4px 14px;font-size:12.5px"><div style="color:var(--t3)">coleção</div><div style="color:var(--t3)">no backup</div><div style="color:var(--t3)">hoje</div>'
+    +(r.plano||[]).map(function(x){return '<div>'+esc(x.arquivo.replace(/\.json$/,""))+'</div><div>'+esc(x.bytesBackup!=null?Math.round(x.bytesBackup/1024)+" KB":"—")+'</div><div>'+esc(x.bytesAtual!=null?Math.round(x.bytesAtual/1024)+" KB":"—")+'</div>';}).join("")+'</div>';
+}
+async function verPlanoRestauro(name){
+  try{var r=await api("/api/admin/backup/restaurar",{method:"POST",body:{name:name,dryRun:true}});abrirModalInfo("👁️ O que voltaria do backup",_planoHtml(r)+'<div class="cell-sub" style="margin-top:10px">'+esc(r.aviso||"")+'</div>');}
+  catch(e){toast(e.message,"err");}
+}
+async function abrirRestaurar(name){
+  SIS.alvo=name;
+  try{var r=await api("/api/admin/backup/restaurar",{method:"POST",body:{name:name,dryRun:true}});document.getElementById("rs-plano").innerHTML=_planoHtml(r);}
+  catch(e){document.getElementById("rs-plano").textContent=e.message;}
+  document.getElementById("rs-confirma").value="";document.getElementById("rs-confirma").placeholder=name;
+  abrirModal("modal-restaurar");
+}
+async function restaurarBackupConfirmar(){
+  var name=SIS.alvo;var dig=String(document.getElementById("rs-confirma").value||"").trim();
+  if(dig!==name){toast("Digite o nome EXATO do backup pra confirmar.","err");return;}
+  var ok=document.getElementById("rs-ok");ok.disabled=true;
+  try{
+    var r=await api("/api/admin/backup/restaurar",{method:"POST",body:{name:name,confirmar:dig}});
+    fecharModal("modal-restaurar");
+    abrirModalInfo("♻️ Restauração iniciada",'<div>'+esc(r.restaurados)+' coleção(ões) restaurada(s)'+((r.falhas||[]).length?' · falhas: '+esc(r.falhas.join("; ")):'')+'.</div><div style="margin-top:8px">Backup de segurança do estado anterior: <b>'+esc(r.segurancaBackup||"")+'</b></div><div style="margin-top:8px;color:var(--amber)">'+esc(r.aviso||"")+'</div><div class="cell-sub" style="margin-top:10px">Aguarde ~30s e recarregue a página. Você vai precisar entrar de novo.</div>');
+  }catch(e){toast(e.message,"err");}
+  finally{ok.disabled=false;}
+}
+async function rodarResumoOntem(){
+  var box=document.getElementById("sis-resumo");box.innerHTML='<div class="spin"></div>';
+  try{var r=await api("/api/admin/resumo-diario-run",{method:"POST",body:{}});
+    box.innerHTML=r.ok?'<div style="display:flex;gap:18px;flex-wrap:wrap;color:var(--text)"><div><b>'+esc(fmtMoney(r.vendas||0))+'</b> em '+esc(r.vendasQtd||0)+' venda(s)</div><div><b>'+esc(r.pendentes||0)+'</b> pedido(s) na mesa'+(r.criticos?' <span style="color:var(--red)">('+esc(r.criticos)+' há +24h)</span>':'')+'</div><div><b>'+esc(r.envios||0)+'</b> envio(s)</div><div><b>'+esc(r.novosUsuarios||0)+'</b> cadastro(s) novo(s)</div></div><div class="cell-sub" style="margin-top:6px">Dia: '+esc(r.ontem||"")+'</div>':'<span style="color:var(--red)">'+esc(r.error||"falhou")+'</span>';
+  }catch(e){box.textContent=e.message;}
 }
 </script>
 </body>

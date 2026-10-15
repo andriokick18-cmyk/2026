@@ -4308,3 +4308,32 @@ Usuários pra cá — é a tela-mãe dele (regra 14). Pill vermelha na sidebar =
 problema de verdade (travado/sem token/sem PDF/nunca enviou — espera de limite não conta,
 lição KB-001/v19-FIX). **Nenhum alerta/push/e-mail sai desta tela** — ordem expressa do dono
 ("alertas ainda não mexa com isso"); a guarda estrutural do smoke prova a ausência. 3 checks.
+
+## 🛠️ v974 — Backups & Saúde (Fase 5 da lista de 100 do admin, 15/10/2026 — SEM alertas)
+
+Aba nova na seção Sistema → "Backups & Saúde" (`view-sistema`). **Achado desta fase (classe
+de bug real)**: o backup diário (`criarBackupCompleto`, desde o v11) copia só os `.json` + cvs/
++ comprovantes/, mas o boot lê do **SQLite primeiro** (`storageLoad`: a linha do banco vence; o
+JSON só é importado quando a coleção NÃO existe no SQLite) — copiar o `.json` do backup de volta
+pra pasta NÃO restaura nada. Por isso a restauração (`POST /api/admin/backup/restaurar
+{name,confirmar}`) grava cada coleção pelo `storagePersist` (SQLite + espelho JSON), nesta
+ordem inegociável: (1) backup de segurança do estado atual (aborta se falhar), (2)
+`congelarGravacoes` (v191 — nenhum debounce/sessão cai por cima do que voltou), (3)
+storagePersist de cada `.json` do backup (sessions.json e crash_log.json ficam de fora — login
+nunca sobrevive a deploy de propósito, KB-078), (4) cvs/ e comprovantes/ em MERGE (volta o que
+estava, não apaga o mais novo), (5) trilha `backup_restaurado` direto no disco + `process.exit(0)`
+em 1,5s (o Render sobe de novo lendo o SQLite restaurado). `dryRun:true` devolve o PLANO (coleção
+× bytes no backup × bytes hoje + pastas) sem tocar em nada — é o que o botão "O que voltaria"
+e o modal de confirmação mostram; confirmar = digitar o nome exato do backup (400 se diferente,
+400 nome fora do padrão/traversal, 404 inexistente, 409 se já há restauração em andamento).
+`GET /api/admin/backups` lista nome/data/arquivos/MB/coleções + retenção + disco livre + modo do
+banco (`storageInfo`) + `congelado`; `POST /api/admin/backup/criar` = backup manual com trilha.
+**Crashes sobrevivem ao reinício**: `pushGlobalEvent` de nível `error` grava `DB_CRASHES`
+(cap 200, `crash_log.json`, persist SÍNCRONO — o processo pode morrer logo depois) e
+`/api/admin/crashes` devolve `crashes` + `bootAt`. Painel: cards (último backup, guardados,
+disco livre, erros graves), lista com "O que voltaria"/"Restaurar", erros graves e "Resumo de
+ontem" (rota `resumo-diario-run` que existia sem botão). O smoke prova listar/criar/dry-run/
+validações e que nenhum caminho de erro mexe no disco; a restauração REAL foi ensaiada à mão
+num servidor local (drill: usuário alterado → restaurar → reinício → dado antigo de volta) — a
+suíte não pode rodá-la porque o processo encerra. **Nenhum alerta sai desta tela** (ordem do
+dono). 3 checks.
