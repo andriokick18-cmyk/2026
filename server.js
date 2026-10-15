@@ -13952,7 +13952,33 @@ if(pathname==="/api/admin/pagantes"&&req.method==="GET"){try{
     semData:rows.filter(r=>r.status==="sem_data").length,
     receitaMes:_F.receitaMes,receitaTotal:_F.receitaTotal
   };
-  return json(res,200,{ok:true,rows,summary,generatedAt:now});
+  // 📈 v975 (F6 da lista de 100 — itens 9 e 10): renovações previstas e
+  // churn. Valor ESPERADO de cada renovação = preço de tabela do plano no
+  // período que a pessoa já tem (vip.days, senão 30) — PLANO_PRECO_TAB é a
+  // fonte única (13c); plano fora da tabela entra com valor 0 e é apontado.
+  // Churn = pagante cujo plano venceu há 1–60 dias e não pagou de novo
+  // depois do vencimento. MRR = soma dos planos ativos normalizada pra 30d.
+  const _precoRenov=(r)=>{const u=DB_USERS[r.email]||{};const d=Number((u.vip||{}).days)||30;const tab=PLANO_PRECO_TAB[r.plan]||null;if(!tab)return {valor:0,dias:d,foraTabela:true};if(tab[d]!=null)return {valor:tab[d],dias:d,foraTabela:false};const v30=tab[30]||0;return {valor:Math.round(v30*d/30*100)/100,dias:d,foraTabela:false};};
+  const renovLista=[],churnLista=[];let renov30=0,renov7=0,valor30=0,valor7=0,mrr=0,churn30=0,churn60=0,churnValor=0;
+  for(const r of rows){
+    if(r.daysLeft===null)continue;
+    const pr=_precoRenov(r);
+    if(r.daysLeft>0){
+      mrr+=pr.dias>0?pr.valor*30/pr.dias:0;
+      if(r.daysLeft<=30){renov30++;valor30+=pr.valor;if(r.daysLeft<=7){renov7++;valor7+=pr.valor;}renovLista.push({email:r.email,name:r.name,whatsapp:r.whatsapp,plan:r.plan,daysLeft:r.daysLeft,vence:r.nextExpiry,valorEsperado:pr.valor,dias:pr.dias,foraTabela:pr.foraTabela,totalPago:r.totalPago});}
+    }else{
+      const diasVencido=-r.daysLeft;
+      if(diasVencido<1||diasVencido>60)continue;
+      if(r.lastPaymentDate&&r.lastPaymentDate>r.nextExpiry)continue; // pagou DEPOIS de vencer = renovação em processamento, não churn
+      if(diasVencido<=30)churn30++;churn60++;churnValor+=pr.valor;
+      churnLista.push({email:r.email,name:r.name,whatsapp:r.whatsapp,plan:r.plan,diasVencido,venceuEm:r.nextExpiry,valorPerdido:pr.valor,totalPago:r.totalPago,pagamentos:r.pedidosCount,ultimoPagamento:r.lastPaymentDate});
+    }
+  }
+  renovLista.sort((a,b)=>a.daysLeft-b.daysLeft);churnLista.sort((a,b)=>a.diasVencido-b.diasVencido);
+  const _r2=(x)=>Math.round(x*100)/100;
+  const renovacoes={proximos7d:{n:renov7,valorEsperado:_r2(valor7)},proximos30d:{n:renov30,valorEsperado:_r2(valor30)},mrr:_r2(mrr),lista:renovLista.slice(0,200),formula:"valor esperado = preço de tabela (PLANO_PRECO_TAB) do plano no período que a pessoa já tem (vip.days, senão 30d); MRR = soma dos planos ativos × 30 / dias do período"};
+  const churn={ultimos30d:churn30,ultimos60d:churn60,valorPerdido:_r2(churnValor),taxa30d:(summary.ativos+churn30)>0?Math.round(churn30/(summary.ativos+churn30)*1000)/10:0,lista:churnLista.slice(0,200),formula:"churn = pagante com plano vencido há 1–60 dias sem pagamento posterior ao vencimento; taxa 30d = vencidos nos últimos 30d ÷ (ativos + vencidos 30d)"};
+  return json(res,200,{ok:true,rows,summary,renovacoes,churn,generatedAt:now});
 }catch(e){return json(res,500,{error:e.message});}}
 
 // ══════════════════════════════════════════════════════════════════════════

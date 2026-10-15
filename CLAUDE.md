@@ -4337,3 +4337,21 @@ validações e que nenhum caminho de erro mexe no disco; a restauração REAL fo
 num servidor local (drill: usuário alterado → restaurar → reinício → dado antigo de volta) — a
 suíte não pode rodá-la porque o processo encerra. **Nenhum alerta sai desta tela** (ordem do
 dono). 3 checks.
+
+## 📈 v975 — Renovações, MRR & churn + guarda "toda rota tem tela" (Fase 6, 15/10/2026)
+
+`/api/admin/pagantes` ganhou `renovacoes` e `churn` (itens 9 e 10 da lista de 100), sempre
+com `formula` declarada. Valor esperado de cada renovação = preço de tabela (`PLANO_PRECO_TAB`,
+fonte única 13c) do plano no PERÍODO que a pessoa já tem (`vip.days`, senão 30) — nunca 30d
+cego; plano fora da tabela entra com 0 e `foraTabela:true` (apontado na tela com "?"). MRR =
+soma dos planos ativos × 30 ÷ dias do período. Churn = pagante com plano vencido há 1–60 dias
+SEM pagamento posterior ao vencimento (quem pagou depois de vencer é renovação em
+processamento, não churn); `taxa30d` = vencidos 30d ÷ (ativos + vencidos 30d). Aba Pagantes:
+3 cards (renovações 30d em R$, MRR, perderam o plano) + 2 listas com WhatsApp (renovações
+previstas / venceram e não renovaram), 40 por lista. **Guarda do item 100** no smoke: toda
+rota `GET /api/admin/*` do server.js precisa ser consumida por admin.html/app.js/index.html
+ou estar na lista de exceções documentada (20 rotas em 15/10/2026, cada uma com o motivo —
+bloco J de segurança adiado pelo dono, rotas consumidas só pela suíte, links diretos,
+superadas por fonte única). A lista SÓ PODE DIMINUIR: exceção que ganhou tela ou foi removida
+tem que sair da lista (o check acusa exceção obsoleta). Foi assim que ~50 rotas ficaram anos
+sem botão — nunca mais. 3 checks.

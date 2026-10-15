@@ -445,6 +445,16 @@ tbody tr:hover{background:var(--glass2)}
           <div class="stat-card amber"><div class="ic"><i class="ti ti-hourglass"></i></div><div class="lbl">Vencendo em 3 dias</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
           <div class="stat-card red"><div class="ic"><i class="ti ti-calendar-x"></i></div><div class="lbl">Vencidos</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
         </div>
+        <!-- 📈 v975 (F6 da lista de 100): renovações previstas, MRR e churn — itens 9 e 10 -->
+        <div class="stat-grid" id="pg-grid2">
+          <div class="stat-card green"><div class="ic"><i class="ti ti-calendar-dollar"></i></div><div class="lbl">Renovações nos próximos 30 dias</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card purple"><div class="ic"><i class="ti ti-chart-line"></i></div><div class="lbl">Receita recorrente (MRR)</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card red"><div class="ic"><i class="ti ti-user-minus"></i></div><div class="lbl">Perderam o plano (30 dias)</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px">
+          <div class="panel"><div class="panel-head"><div class="panel-title"><i class="ti ti-calendar-dollar" style="color:var(--green)"></i>Renovações previstas (30 dias)</div></div><div class="panel-body" id="pg-renov" style="font-size:13px"><div class="spin"></div></div></div>
+          <div class="panel"><div class="panel-head"><div class="panel-title"><i class="ti ti-user-minus" style="color:var(--red)"></i>Venceram e não renovaram (60 dias)</div></div><div class="panel-body" id="pg-churn" style="font-size:13px"><div class="spin"></div></div></div>
+        </div>
         <div class="panel">
           <div class="panel-head">
             <div class="panel-title"><i class="ti ti-credit-card"></i>Quem pagou, quanto, quando e até quando vale</div>
@@ -3209,8 +3219,23 @@ async function carregarPagantes(){
     _setCard("pg-grid",1,String(sm.ativos||0),"receita do mês "+fmtMoney(sm.receitaMes));
     _setCard("pg-grid",2,String(sm.vencendo||0),"hora de lembrar de renovar");
     _setCard("pg-grid",3,String(sm.vencidos||0),(sm.semData||0)+" sem data de vencimento");
+    renderRenovacoesChurn(r);
     renderPagantes();
   }catch(e){toast("Pagantes: "+e.message,"err");}
+}
+function _pgWa(w){return w?'<a class="btn btn-sm" href="https://wa.me/'+esc(String(w).replace(/\D/g,""))+'" target="_blank" rel="noopener" title="Chamar no WhatsApp"><i class="ti ti-brand-whatsapp"></i></a>':'';}
+function renderRenovacoesChurn(r){
+  var rv=r.renovacoes||{},ch=r.churn||{};
+  _setCard("pg-grid2",0,fmtMoney((rv.proximos30d||{}).valorEsperado||0),((rv.proximos30d||{}).n||0)+" plano(s) vencem em 30d · "+((rv.proximos7d||{}).n||0)+" em 7d ("+fmtMoney((rv.proximos7d||{}).valorEsperado||0)+") — valor pela tabela do plano");
+  _setCard("pg-grid2",1,fmtMoney(rv.mrr||0),"soma dos planos ativos normalizada pra 30 dias (tabela oficial)");
+  _setCard("pg-grid2",2,String(ch.ultimos30d||0),(ch.ultimos60d||0)+" em 60d · "+fmtMoney(ch.valorPerdido||0)+" de tabela parados · taxa 30d "+(ch.taxa30d||0)+"%");
+  var a=document.getElementById("pg-renov");
+  a.innerHTML=(rv.lista||[]).length?(rv.lista.slice(0,40).map(function(x){return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)"><div style="min-width:0;flex:1"><div class="cell-main">'+esc(x.name||x.email)+'</div><div class="cell-sub">'+esc(x.email)+' · '+esc(NOME_PLANO_ADM[x.plan]||x.plan)+' '+esc(x.dias)+'d · pagou '+esc(fmtMoney(x.totalPago||0))+' até hoje</div></div><span class="badge '+(x.daysLeft<=3?"amber":"green")+'">vence em '+esc(x.daysLeft)+'d</span><b style="white-space:nowrap">'+esc(fmtMoney(x.valorEsperado||0))+(x.foraTabela?' <span title="plano fora da tabela — valor desconhecido">?</span>':'')+'</b>'+_pgWa(x.whatsapp)+'</div>';}).join("")+((rv.lista||[]).length>40?'<div class="cell-sub" style="margin-top:6px">mostrando 40 de '+rv.lista.length+'</div>':''))
+    :'<div style="color:var(--t3)">Nenhum plano vence nos próximos 30 dias.</div>';
+  var b=document.getElementById("pg-churn");
+  b.innerHTML=(ch.lista||[]).length?(ch.lista.slice(0,40).map(function(x){return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)"><div style="min-width:0;flex:1"><div class="cell-main">'+esc(x.name||x.email)+'</div><div class="cell-sub">'+esc(x.email)+' · '+esc(NOME_PLANO_ADM[x.plan]||x.plan)+' · pagou '+esc(x.pagamentos||0)+'x ('+esc(fmtMoney(x.totalPago||0))+') · último '+esc(fmtDia(x.ultimoPagamento))+'</div></div><span class="badge red">venceu há '+esc(x.diasVencido)+'d</span><b style="white-space:nowrap;color:var(--t2)">'+esc(fmtMoney(x.valorPerdido||0))+'</b>'+_pgWa(x.whatsapp)+'</div>';}).join("")+((ch.lista||[]).length>40?'<div class="cell-sub" style="margin-top:6px">mostrando 40 de '+ch.lista.length+'</div>':''))
+    :'<div style="color:var(--green)"><i class="ti ti-check"></i> Ninguém venceu sem renovar nos últimos 60 dias.</div>';
+  var f=document.createElement("div");f.className="cell-sub";f.style.marginTop="8px";f.textContent="Régua: "+(ch.formula||"")+" · "+(rv.formula||"");b.appendChild(f);
 }
 function renderPagantes(){
   if(!DIN.pagantes)return;

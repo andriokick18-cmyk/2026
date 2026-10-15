@@ -7135,6 +7135,64 @@ async function drillAdminSettingsLegado() {
       ["carregarSistema", "criarBackup", "verPlanoRestauro", "abrirRestaurar", "restaurarBackupConfirmar", "rodarResumoOntem"].every((f) => new RegExp("async function " + f + "\\(").test(_adm974)) &&
       _adm974.includes('"/api/admin/backup/restaurar"') && _adm974.includes("dryRun:true") && _adm974.includes("confirmar:dig") && /if\(nome==="sistema"\)carregarSistema\(\);/.test(_adm974),
       "faltou peça da F5 (backups) — " + JSON.stringify({ cr: Array.isArray(_crash974?.crashes), pge: _pge974.length, rota: _rsRota.length }));
+    // 📈 v975 (F6 da lista de 100 — itens 9 e 10): renovações previstas (valor
+    // pela tabela do plano no período que a pessoa já tem), MRR e churn.
+    const _D975 = 86400_000;
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "renov975@test.com", name: "Renova 975", whatsapp: "+55 11 97777-0975", plan: "vipro", vip: { active: true, plan: "vipro", source: "payment", days: 30, manualExpires: Date.now() + 5 * _D975, autoExpires: Date.now() + 5 * _D975 } });
+    await req2("POST", "/api/settings", { whatsapp: "+55 11 97777-0975", phone: "+55 11 97777-0975" }); // o WhatsApp vive em /api/settings (o login de teste não grava)
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "renov15x975@test.com", name: "Renova 15d", plan: "vip", vip: { active: true, plan: "vip", source: "payment", days: 15, manualExpires: Date.now() + 20 * _D975, autoExpires: 0 } });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "churn975@test.com", name: "Churn 975", plan: "vip", vip: { active: true, plan: "vip", source: "payment", days: 30, manualExpires: Date.now() - 10 * _D975, autoExpires: 0 } });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "churnpagou975@test.com", name: "Renovou depois", plan: "vip", vip: { active: true, plan: "vip", source: "payment", days: 30, manualExpires: Date.now() - 5 * _D975, autoExpires: 0 } });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
+    await req2("POST", "/api/admin/financeiro", { action: "add_pagamento", pagamento: { valor: 150, email: "churnpagou975@test.com", nome: "Renovou depois", nota: "pagou de novo depois de vencer (v975)" } });
+    const _pg975 = (await get("/api/admin/pagantes")).json;
+    const _rv = _pg975?.renovacoes || {}, _ch = _pg975?.churn || {};
+    const _rvA = (_rv.lista || []).find((x) => x.email === "renov975@test.com"), _rvB = (_rv.lista || []).find((x) => x.email === "renov15x975@test.com");
+    const _chA = (_ch.lista || []).find((x) => x.email === "churn975@test.com"), _chB = (_ch.lista || []).find((x) => x.email === "churnpagou975@test.com");
+    check("📈 v975: /api/admin/pagantes devolve RENOVAÇÕES previstas — Turbo 30d vencendo em 5d entra com R$300 (tabela) e Manual 15d vencendo em 20d entra com R$75 (o período que a pessoa já tem, nunca 30d cego); 7d/30d somam só quem cabe na janela; MRR normaliza pra 30d; fórmula declarada",
+      _rvA && _rvA.valorEsperado === 300 && _rvA.dias === 30 && _rvA.daysLeft === 5 && _rvA.foraTabela === false && _rvA.whatsapp && _rvB && _rvB.valorEsperado === 75 && _rvB.dias === 15 &&
+      _rv.proximos7d && _rv.proximos7d.n >= 1 && _rv.proximos30d && _rv.proximos30d.n >= 2 && _rv.proximos30d.valorEsperado >= 375 && _rv.proximos7d.valorEsperado < _rv.proximos30d.valorEsperado && typeof _rv.mrr === "number" && _rv.mrr >= 300 + 150 && typeof _rv.formula === "string",
+      JSON.stringify({ a: _rvA && { v: _rvA.valorEsperado, d: _rvA.dias, dl: _rvA.daysLeft }, b: _rvB && { v: _rvB.valorEsperado, d: _rvB.dias }, r7: _rv.proximos7d, r30: _rv.proximos30d, mrr: _rv.mrr }).slice(0, 300));
+    check("📈 v975: CHURN — pagante com plano vencido há 10 dias sem pagar de novo entra na lista (valor perdido R$150 de tabela); quem PAGOU DEPOIS de vencer (renovação em processamento) NÃO é churn; contadores 30d/60d, valor perdido, taxa e fórmula",
+      _chA && _chA.diasVencido === 10 && _chA.valorPerdido === 150 && _chA.plan === "vip" && !_chB &&
+      _ch.ultimos30d >= 1 && _ch.ultimos60d >= _ch.ultimos30d && _ch.valorPerdido >= 150 && typeof _ch.taxa30d === "number" && typeof _ch.formula === "string",
+      JSON.stringify({ a: _chA && { dv: _chA.diasVencido, v: _chA.valorPerdido }, b: !!_chB, c30: _ch.ultimos30d, c60: _ch.ultimos60d, vp: _ch.valorPerdido, taxa: _ch.taxa30d }).slice(0, 260));
+    // 🧭 item 100 da lista: "teste automático que garanta que toda rota
+    // administrativa tem tela" — foi assim que ~50 rotas ficaram anos sem
+    // botão. Toda rota GET /api/admin/* nova PRECISA ser consumida por alguma
+    // tela (admin.html, app.js, index.html) ou entrar na lista abaixo COM o
+    // motivo. A lista é o retrato de 15/10/2026 — só pode DIMINUIR.
+    const _srv975 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+    const _front975 = ["admin.html", "app.js", "index.html", "admin-reviews.html"].map((f) => { try { return fs.readFileSync(path.join(__dirname, f), "utf8"); } catch { return ""; } }).join("\n");
+    const _rotasAdminGet = [...new Set([..._srv975.matchAll(/pathname==="(\/api\/admin\/[a-zA-Z0-9\/_-]+)"&&req\.method==="GET"/g)].map((m) => m[1]))];
+    const _semTelaConhecidas = {
+      "/api/admin/auditoria-pro-legado": "diagnóstico do plano legado 'pro' (consumido só pela suíte)",
+      "/api/admin/banned-emails": "lista de banidos — bloco J (segurança) adiado pelo dono em 15/10/2026",
+      "/api/admin/bulk-status": "status em lote (legado do CCC)",
+      "/api/admin/diagnostico-login": "diagnóstico de login por e-mail (consumido só pela suíte)",
+      "/api/admin/duplicates": "contas duplicadas — bloco J (segurança) adiado pelo dono",
+      "/api/admin/email-intelligence": "inteligência de e-mails inválidos (consumido pela suíte)",
+      "/api/admin/enrich/status": "status do enriquecimento (a aba Planilhas usa o /api/admin/sheet/*)",
+      "/api/admin/fin-insights": "insights antigos — superado pelo DRE/Sócios (fonte única 13n)",
+      "/api/admin/journey-feed": "feed de jornada — a ficha do usuário usa /api/admin/journey/:email",
+      "/api/admin/logs/export": "exportação de logs pra IA (uso manual por URL)",
+      "/api/admin/memoria": "raio-x de memória (v163) — uso manual por URL/suíte",
+      "/api/admin/pedidos-criticos": "pedidos +24h — a aba Pedidos já destaca na lista (F2)",
+      "/api/admin/settings": "configurações globais — rota de leitura usada pela suíte; a UI grava por POST",
+      "/api/admin/sheet-download": "download de planilha (link direto)",
+      "/api/admin/sheet/coleta-status": "status da coleta (consumido pela suíte; a aba usa o log humano)",
+      "/api/admin/sheet/integrity": "integridade da planilha (uso manual por URL)",
+      "/api/admin/sheets-download-list": "lista de downloads (link direto)",
+      "/api/admin/stats": "estatísticas antigas — superadas pela Visão do Dono",
+      "/api/admin/trial-abuse": "abuso de trial — bloco J (segurança) adiado pelo dono",
+      "/api/admin/users": "lista crua antiga — a aba Usuários usa /api/admin/contabilidade",
+    };
+    const _semTela = _rotasAdminGet.filter((r) => !(_front975.includes('"' + r + '"') || _front975.includes("'" + r + "'") || _front975.includes(r + "?") || _front975.includes(r + "/")));
+    const _novasSemTela = _semTela.filter((r) => !_semTelaConhecidas[r]);
+    const _allowObsoleto = Object.keys(_semTelaConhecidas).filter((r) => !_semTela.includes(r));
+    check("🧭 item 100 da lista de 100: TODA rota GET /api/admin/* tem tela — nenhuma rota nova sem botão (lista de exceções documentada, só pode diminuir: exceção que ganhou tela ou sumiu precisa sair da lista)",
+      _rotasAdminGet.length >= 30 && _novasSemTela.length === 0 && _allowObsoleto.length === 0,
+      JSON.stringify({ total: _rotasAdminGet.length, semTela: _semTela.length, novasSemTela: _novasSemTela, exceçõesObsoletas: _allowObsoleto }).slice(0, 400));
     const gUsd = await req2("POST", "/api/admin/financeiro", { action: "add_gasto", gasto: { moeda: "USD", valorUSD: 10, cambio: 5, valor: 1, recorrente: true, categoria: "hospedagem", descricao: "Render (teste P5)", pagoPor: "empresa", dataGasto: new Date(Date.now() - 32 * 24 * 3600 * 1000).toISOString() } });
     const _gU = ((await get("/api/admin/financeiro")).json?.gastos || []).find((x) => x.id === gUsd.json?.id);
     const rec1 = await req2("POST", "/api/admin/financeiro", { action: "rodar_recorrentes" });
