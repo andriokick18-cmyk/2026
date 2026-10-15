@@ -734,8 +734,6 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 
 
 
-.tpl-var{font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;background:var(--purplel);color:var(--purple);border:1px solid var(--purpleb);cursor:pointer;font-family:monospace;transition:all .14s}
-.tpl-var:hover{background:var(--purple);color:#fff}
 .icon-opt{width:36px;height:36px;border:1.5px solid var(--border2);border-radius:8px;background:var(--sf2);cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:all .14s}
 .icon-opt:hover{border-color:var(--blue);background:var(--bluel);transform:scale(1.1)}
 
@@ -2107,11 +2105,11 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
           <figcaption><strong>Anexe seu currículo (PDF)</strong>Seu próprio currículo, do seu jeito — a carta de apresentação é opcional.</figcaption>
         </figure>
         <figure class="ln-real-card">
-          <img src="/tut-img/landing-7-perfil-assuntos.jpg" width="2640" height="1960" alt="Editor de perfil mostrando os 3 títulos de e-mail escritos pelo próprio usuário" loading="lazy">
+          <img src="/tut-img/landing-7-perfil-assuntos.jpg?v=983" width="2640" height="1960" alt="Editor de perfil mostrando os 3 títulos de e-mail escritos pelo próprio usuário" loading="lazy">
           <figcaption><strong>Você escreve o título do e-mail</strong>3 versões diferentes, escritas por você — o H2BApply nunca preenche isso sozinho.</figcaption>
         </figure>
         <figure class="ln-real-card">
-          <img src="/tut-img/landing-8-perfil-corpo.jpg" width="2640" height="1960" alt="Editor de perfil mostrando os 3 corpos de e-mail escritos pelo próprio usuário" loading="lazy">
+          <img src="/tut-img/landing-8-perfil-corpo.jpg?v=983" width="2640" height="1960" alt="Editor de perfil mostrando os 3 corpos de e-mail escritos pelo próprio usuário" loading="lazy">
           <figcaption><strong>Você escreve o corpo do e-mail</strong>A mensagem inteira que o empregador recebe — com suas próprias palavras, em inglês.</figcaption>
         </figure>
         <figure class="ln-real-card">
@@ -2151,7 +2149,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
           <figcaption><strong>Candidate-se do celular</strong>Mesma vaga, mesmos detalhes, na palma da mão.</figcaption>
         </figure>
         <figure class="ln-real-card">
-          <img src="/tut-img/landing-16-mobile-assuntos.jpg" width="828" height="1792" alt="Editor de perfil no celular mostrando os títulos de e-mail escritos pelo usuário" loading="lazy">
+          <img src="/tut-img/landing-16-mobile-assuntos.jpg?v=983" width="828" height="1792" alt="Editor de perfil no celular mostrando os títulos de e-mail escritos pelo usuário" loading="lazy">
           <figcaption><strong>Escreva de onde estiver</strong>O editor de perfil funciona igual no celular — os textos continuam sendo seus.</figcaption>
         </figure>
         <figure class="ln-real-card">
@@ -2163,7 +2161,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
           <figcaption><strong>Busque vagas no celular</strong>A mesma lista de vagas reais, otimizada pra tela pequena.</figcaption>
         </figure>
         <figure class="ln-real-card">
-          <img src="/tut-img/landing-17-mobile-corpo.jpg" width="828" height="1792" alt="Editor de perfil no celular mostrando o corpo do e-mail escrito pelo usuário" loading="lazy">
+          <img src="/tut-img/landing-17-mobile-corpo.jpg?v=983" width="828" height="1792" alt="Editor de perfil no celular mostrando o corpo do e-mail escrito pelo usuário" loading="lazy">
           <figcaption><strong>O corpo do e-mail, no celular</strong>A mensagem que o empregador recebe — sempre escrita por você.</figcaption>
         </figure>
         <figure class="ln-real-card">
@@ -4511,59 +4509,25 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
       <!-- ══ SEÇÃO: ASSUNTOS ══ -->
       <div style="padding:16px 18px 12px;border-bottom:1px solid var(--border)">
         <div style="font-size:12px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px" data-i18n="pe_subj_title">③ Título do e-mail (assunto)</div>
-        <div style="font-size:12px;color:var(--t2);margin-bottom:8px;line-height:1.55" data-i18n="pe_subj_help">O título é a linha que o empregador vê na caixa de entrada antes de abrir — curto e direto, em inglês, ex.: “Application for {vaga} — {nome}”. Escreva 3 versões diferentes (os 3 campos já estão abertos; pode adicionar mais). O sistema alterna entre elas a cada envio pra não parecer spam.</div>
-
-        <!-- Variáveis rápidas -->
-        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">
-          <span style="font-size:10px;color:var(--t3);align-self:center" data-i18n="g_166">Variáveis:</span>
-          <button class="tpl-var" onclick="peInsertSubjVar('{vaga}')" style="font-size:10px">{vaga}</button>
-          <button class="tpl-var" onclick="peInsertSubjVar('{empresa}')" style="font-size:10px">{empresa}</button>
-          <button class="tpl-var" onclick="peInsertSubjVar('{nome}')" style="font-size:10px">{nome}</button>
-          <button class="tpl-var" onclick="peInsertSubjVar('{categoria}')" style="font-size:10px">{categoria}</button>
-        </div>
+        <div style="font-size:12px;color:var(--t2);margin-bottom:8px;line-height:1.55" data-i18n="pe_subj_help">O título (também chamado de assunto) é a primeira coisa que o empregador vê na caixa de entrada, antes de abrir o e-mail. Ele diz, em poucas palavras, do que se trata a sua mensagem. Escreva do seu jeito, em inglês, de forma curta e direta. Preencha 3 versões diferentes (os 3 campos já estão abertos; pode adicionar mais). O sistema alterna entre elas a cada envio e usa exatamente o que você escrever, sem acrescentar nem trocar nada.</div>
 
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
           <span id="pe-subj-count-lbl" style="font-size:11px;font-weight:700;color:var(--t2)" data-i18n="pe_count0">0 de 3 preenchidos</span>
           <button type="button" onclick="peAddSubject()" style="background:var(--blue);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer"><i class="ti ti-plus"></i> <span data-i18n="pe_subj_add">Adicionar outro título</span></button>
         </div>
         <div id="pe-subjects-list" style="display:flex;flex-direction:column;gap:6px"></div>
-        <!-- v18-FIX: removidos os "modelos rápidos" (assuntos prontos/genéricos)
-             de propósito — era exatamente o tipo de preenchimento padrão que o
-             dono do site pediu pra tirar ("gente preguiçosa usa sempre, fica
-             igual aos outros"). Escreva os SEUS 3 assuntos usando as variáveis
-             acima ({vaga}, {empresa}, {nome}, {categoria}). -->
+        <!-- v18-FIX: removidos os "modelos rápidos" (assuntos prontos/genéricos) de propósito — era o tipo de preenchimento
+             padrão que o dono pediu pra tirar. v983: também não há mais variáveis {x}, exemplos nem preview — a pessoa escreve. -->
         <div id="pe-subjects-warn" style="display:none;align-items:center;gap:7px;background:var(--redl);border:1.5px solid var(--redb);border-radius:var(--r);padding:8px 11px;font-size:12px;color:var(--red);font-weight:600;margin-top:6px">
           <i class="ti ti-alert-circle" style="font-size:15px;flex-shrink:0"></i>
           <span data-i18n="pe_subj_warn">Escreva pelo menos 3 títulos diferentes (os campos com *) — é a proteção contra bloqueio por spam.</span>
-        </div>
-
-        <!-- Preview real do assunto -->
-        <div id="pe-subj-preview-wrap" style="display:none;margin-top:8px;padding:8px 11px;background:var(--sf2);border:1px solid var(--border);border-radius:8px;font-size:11px;color:var(--t2)">
-          <div style="font-weight:600;margin-bottom:3px;color:var(--t3)">Preview (vaga exemplo):</div>
-          <div id="pe-subj-preview-text" style="font-style:italic"></div>
         </div>
       </div>
 
       <!-- ══ SEÇÃO: MENSAGENS ══ -->
       <div style="padding:16px 18px 12px;border-bottom:1px solid var(--border)">
         <div style="font-size:12px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px" data-i18n="pe_body_title">④ Corpo do e-mail (a mensagem)</div>
-        <div style="font-size:12px;color:var(--t2);margin-bottom:8px;line-height:1.55" data-i18n="pe_body_help">O corpo é a mensagem completa que o empregador lê ao abrir: quem você é, a vaga que quer, sua experiência e como falar com você. Em inglês, com as suas palavras. Escreva 3 versões diferentes (os 3 campos já estão abertos); as variáveis abaixo são trocadas automaticamente em cada envio.</div>
-
-        <!-- Variáveis -->
-        <div style="background:var(--purplel);border:1.5px solid var(--purpleb);border-radius:var(--r);padding:8px 10px;margin-bottom:8px;font-size:11px">
-          <div style="font-weight:700;color:var(--purple);margin-bottom:4px" data-i18n="g_168">⚙️ Variáveis — clique para copiar:</div>
-          <div style="display:flex;flex-wrap:wrap;gap:4px">
-            <button class="tpl-var" onclick="navigator.clipboard.writeText('{nome}');toast('Copiado!','g')" style="font-size:10px">{nome}</button>
-            <button class="tpl-var" onclick="navigator.clipboard.writeText('{vaga}');toast('Copiado!','g')" style="font-size:10px">{vaga}</button>
-            <button class="tpl-var" onclick="navigator.clipboard.writeText('{empresa}');toast('Copiado!','g')" style="font-size:10px">{empresa}</button>
-            <button class="tpl-var" onclick="navigator.clipboard.writeText('{pais}');toast('Copiado!','g')" style="font-size:10px">{pais}</button>
-            <button class="tpl-var" onclick="navigator.clipboard.writeText('{telefone}');toast('Copiado!','g')" style="font-size:10px">{telefone}</button>
-            <button class="tpl-var" onclick="navigator.clipboard.writeText('{email}');toast('Copiado!','g')" style="font-size:10px">{email}</button>
-            <button class="tpl-var" onclick="navigator.clipboard.writeText('{cidade}');toast('Copiado!','g')" style="font-size:10px">{cidade}</button>
-            <button class="tpl-var" onclick="navigator.clipboard.writeText('{estado}');toast('Copiado!','g')" style="font-size:10px">{estado}</button>
-            <button class="tpl-var" onclick="navigator.clipboard.writeText('{categoria}');toast('Copiado!','g')" style="font-size:10px">{categoria}</button>
-          </div>
-        </div>
+        <div style="font-size:12px;color:var(--t2);margin-bottom:8px;line-height:1.55" data-i18n="pe_body_help">O corpo é a mensagem do e-mail, o texto que o empregador lê depois de abrir. É aqui que você se apresenta: quem é você, que tipo de trabalho procura, qual é a sua experiência e como a empresa pode falar com você. Escreva com as suas próprias palavras, em inglês. Preencha 3 versões diferentes (os 3 campos já estão abertos). O sistema usa exatamente o que você escrever, sem acrescentar nem trocar nada.</div>
 
         <!-- v18-FIX: removidos os "modelos prontos" (7 corpos de e-mail genéricos
              1-clique + biblioteca de 20 templates enlatados) de propósito — era
@@ -5292,7 +5256,6 @@ strong,b{font-weight:700;color:inherit}
 @media (max-width: 767px) {
   .icon-opt{width:44px;height:44px;font-size:20px} /* eram 36px — 29 no seletor de ícone do editor de perfil */
   .fbtn{min-height:44px;padding:0 12px} /* eram 30px — filtros/ordenação de Vagas e abas de Enviadas */
-  .tpl-var{min-height:44px;display:inline-flex;align-items:center;padding:0 12px;font-size:12px} /* eram ~20px — variáveis do editor de e-mail */
   .mx{min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;padding:8px} /* eram ~24px — fechar modal */
   #tour-prev,#tour-next{min-height:44px;padding:12px 18px} /* eram 30px (.btn-xs) — navegação do tour de boas-vindas */
   .sf-soc{min-width:44px;min-height:44px} /* eram 24px — ícones sociais do rodapé fixo (achado de auditoria) */

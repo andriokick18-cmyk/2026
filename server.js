@@ -1297,6 +1297,7 @@ function boot() {
   _sweepOrphanCvFiles(DB_USERS);   // v21 (07/2026): apaga PDFs órfãos do disco (lixo do antigo delete sem unlink)
   _sweepOrphanStagedComprovantes(); // v240c: apaga comprovantes "em preparo" de um processo anterior (o Map de posse morreu com ele)
   _wipeCannedDefaults(DB_USERS);   // v22 (ordem do dono): remove texto enlatado de fábrica intocado — conteúdo é do usuário
+  _limparCuringasUsuarios(DB_USERS); // v983 (ordem do dono): nenhum curinga {x} nos textos — {vaga}→work, demais apagados (originais guardados)
   _migrarIdiomaParaPt(DB_USERS);   // 🇧🇷 v199 LOTE 17: conta presa em EN/ES volta pro português (o site não tem seletor)
   DB_HIST   = mig(HIST_FILE,   path.join(DATA_DIR, "h2b_history.json"), {});
   DB_AUTO   = load(AUTO_FILE, {});
@@ -1785,6 +1786,55 @@ const _CANNED_DEFAULTS=[
   "Following up: {vaga} at {empresa}",
   "Dear Hiring Manager,\n\nFollowing up on {vaga} at {empresa}.\n\nBest regards,\n{nome}",
 ];
+// 🧹 v983 (ORDEM DO DONO, 15/10/2026 — foto do editor de perfil: "quero que tire todo esse sistema de entre chaves, {vaga},
+// {empresa}... a gente não tem nada a ver com criar o título ou o corpo de e-mail da pessoa, isso deixa visível pra todo
+// mundo que é bot"): NENHUM curinga {x} existe mais. O sistema nunca insere dado da vaga/empresa/pessoa no e-mail; o
+// texto sai EXATAMENTE como o usuário escreveu. Texto antigo que ainda tem curinga: {vaga} vira "work", qualquer outro
+// {algo} é apagado (a pessoa edita o perfil). FUNÇÃO ÚNICA — migração do boot, salvamento de perfil, início do
+// automático e envio (manual e automático) passam todos por ela; só mexe no texto se houver "{...}" nele.
+function limpaCuringas(txt){
+  const s=String(txt==null?"":txt);
+  if(!s.includes("{"))return s;
+  // linha a linha: só as linhas que TINHAM curinga são arrumadas (espaço duplo/indentação das demais é do usuário)
+  return s.split("\n").map(l=>{
+    if(!l.includes("{"))return l;
+    return l
+      .replace(/\{\s*(vaga|job|job_title|title|cargo|position)\s*\}/gi,"work")
+      .replace(/\{\s*[A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_ ]{0,30}\}/g,"")
+      .replace(/[ \t]{2,}/g," ").replace(/^[ \t]+/,"").replace(/[ \t]+$/,""); // fecha o buraco dos curingas apagados
+  }).join("\n");
+}
+// Migração IDEMPOTENTE do boot: reescreve só o que tem curinga; guarda os ORIGINAIS num arquivo (desfazer manual) e loga.
+function _limparCuringasUsuarios(users){
+  const orig={};let nUsers=0,nCampos=0;
+  const fix=(o,k,bk)=>{
+    if(!o||typeof o[k]!=="string")return;
+    const nv=limpaCuringas(o[k]);if(nv===o[k])return;
+    (orig[bk.email]=orig[bk.email]||{})[bk.rot]=o[k];o[k]=nv;nCampos++;
+  };
+  for(const email of Object.keys(users||{})){
+    const u=users[email];if(!u)continue;
+    const antes=nCampos;
+    if(u.settings)for(const f of ["subject","body","followupSubject","followupBody"])fix(u.settings,f,{email,rot:"settings."+f});
+    for(const pr of (u.profiles||[])){
+      if(!pr)continue;
+      for(const f of ["subject","body"])fix(pr,f,{email,rot:`perfil[${pr.id}].${f}`});
+      for(const f of ["subjects","emailBodies"])if(Array.isArray(pr[f]))pr[f].forEach((_,i)=>fix(pr[f],i,{email,rot:`perfil[${pr.id}].${f}[${i}]`}));
+    }
+    if(nCampos>antes)nUsers++;
+  }
+  if(nCampos>0){
+    try{
+      const f=path.join(DATA_DIR,"curingas_originais_v983.json");
+      let ant={};try{ant=JSON.parse(fs.readFileSync(f,"utf8"));}catch{}
+      for(const [em,c] of Object.entries(orig))ant[em]={...(ant[em]||{}),...c}; // nunca sobrescreve o 1º original de um campo
+      fs.writeFileSync(f,JSON.stringify(ant));
+    }catch(e){console.warn("[curingas] não gravou o arquivo de originais:",e.message);}
+    persist(USERS_FILE,users); // grava já (como o _wipeCannedDefaults): o boot não pode depender do próximo save pra o texto limpo valer
+    console.log(`[curingas] 🧹 v983: ${nCampos} texto(s) de ${nUsers} usuário(s) limpos ({vaga}→work, demais apagados). Originais em curingas_originais_v983.json`);
+  }
+  return {users:nUsers,campos:nCampos};
+}
 function _wipeCannedDefaults(users){
   let touched=0;
   for(const email of Object.keys(users)){
@@ -6321,12 +6371,12 @@ async function _doAutoSendInner(email) {
     // 🐛 v172c: "email" (parâmetro da função) é a IDENTIDADE da conta — pra
     // conta nova (login usuário+senha) isso é o USERNAME, nunca um Gmail de
     // verdade (sem @, validado assim de propósito no cadastro). Quem
-    // realmente ENVIA (e deve aparecer no From:, no {email} do template e
+    // realmente ENVIA (e deve aparecer no From: e
     // no registro de qual conta mandou) é: o sender EXTRA de verdade
     // (_autoSenderEmail !== email), OU o Gmail conectado pelo principal
     // (resolveSendGmail(p)) — "email" só sobra de fallback pra conta LEGADA,
     // onde ele já É o Gmail. Fonte ÚNICA calculada aqui, reusada em tudo
-    // que precisa do endereço real (MIME From:, {email} do template, log/
+    // que precisa do endereço real (MIME From:, log/
     // histórico) — nunca recalculada duas vezes com risco de divergir.
     const _autoRealSendEmail = (_autoSenderEmail && _autoSenderEmail !== email) ? _autoSenderEmail : (resolveSendGmail(p) || email);
 
@@ -6453,35 +6503,10 @@ async function _doAutoSendInner(email) {
     const newRotState = { lastSubjIdx: newSubjIdx, lastBodyIdx: newBodyIdx };
     setAutoJob(email, { ...getAutoJob(email), rotState: newRotState });
 
-    // Interpola variáveis — novo string a cada chamada
-    // Inclui TODAS as variáveis que os templates podem usar
-    const tplVars = {
-      vaga:       String(target.title    || ""),
-      empresa:    String(target.company  || ""),
-      nome:       String(p.name || sess?.user_name || ""),
-      pais:       String(p.country || "Brazil"),
-      telefone:   String(p.phone || ""),
-      email:      String(_autoRealSendEmail),            // Gmail real de envio (nunca o username de login)
-      cidade:     String(target.city    || p.city || ""),
-      estado:     String(target.state   || ""),
-      // v167 (bug real, auditoria 08/09/2026): {categoria} era um botão
-      // clicável no editor de perfil, mas nem fillTpl (aqui) nem o fill()
-      // do cliente (manual) sabiam essa chave — saía o texto LITERAL
-      // "{categoria}" no e-mail de verdade. Mesma fonte que /api/category-
-      // groups expõe pro front (window._catLabels), pra nunca divergir.
-      categoria:  String(CATEGORY_LABELS[target.category]?.label || target.category || ""),
-      wage:       String(target.wage    || ""),
-      salario:    String(target.wage    || ""),
-      inicio:     String(target.start   || ""),
-      fim:        String(target.end     || ""),
-      case_number:String(target.caseNum || ""),
-      eta_case:   String(target.caseNum || ""),         // alias
-      url_vaga:   target.caseNum && target.caseNum.startsWith("H-")
-                    ? `https://seasonaljobs.dol.gov/jobs/${target.caseNum}`
-                    : (target.url || ""),               // link direto para a vaga no DOL
-    };
-    const subject = fillTpl(String(chosenSubject), tplVars);
-    const body    = fillTpl(String(rawBody),        tplVars);
+    // v983 (ORDEM DO DONO): NADA é interpolado — o texto sai exatamente como o usuário escreveu (sem nome da vaga, da empresa
+    // ou da pessoa inseridos pelo sistema). limpaCuringas só tira "{...}" de texto antigo que escapou da migração.
+    const subject = limpaCuringas(String(chosenSubject));
+    const body    = limpaCuringas(String(rawBody));
 
     // v15-SEC: bloqueia envio com assunto ou corpo vazio
     if (!subject.trim()) {
@@ -6765,38 +6790,6 @@ async function _doAutoSendInner(email) {
 }
 
 // v22 (ORDEM DO DONO): genSubject removido — o programa não inventa assunto.
-// fillTpl: substitui TODAS as variáveis de template — incluindo {email}, {cidade}, {estado}
-// 🚨 v314 (achado de auditoria contínua — CRÍTICO no automático: nenhum
-// humano revisa antes de sair): .replace(/{x}/g, valorString) — com STRING
-// no 2º argumento, sequências $&/$`/$'/$$ DENTRO do valor são interpretadas
-// como diretivas de substituição do regex (spec do JS), não inseridas
-// literalmente. v.nome/v.pais/v.telefone vêm de campo livre (/api/settings,
-// sem filtro de caractere) — um nome com esses símbolos corrompia TODA
-// candidatura automática em silêncio. Função como 2º argumento é inserida
-// SEMPRE verbatim — bypass total, nunca escapar o valor (escapar quebraria
-// o texto real do usuário).
-const fillTpl=(tpl,v)=>(tpl||"")
-  .replace(/{vaga}/g,       ()=>v.vaga||"")
-  .replace(/{empresa}/g,    ()=>v.empresa||"")
-  .replace(/{categoria}/g,  ()=>v.categoria||"")
-  .replace(/{url_vaga}/g,   ()=>v.url_vaga||"")
-  .replace(/{case_number}/g,()=>v.case_number||"")
-  .replace(/{eta_case}/g,   ()=>v.eta_case||"")
-  .replace(/{salario}/g,    ()=>v.salario||"")
-  .replace(/{fim}/g,        ()=>v.fim||"")
-  .replace(/{nome}/g,       ()=>v.nome||"")
-  .replace(/{pais}/g,       ()=>v.pais||"")
-  .replace(/{telefone}/g,   ()=>v.telefone||"")
-  .replace(/{email}/g,      ()=>v.email||"")
-  .replace(/{cidade}/g,     ()=>v.cidade||"")
-  .replace(/{estado}/g,     ()=>v.estado||"")
-  .replace(/{city}/g,       ()=>v.cidade||"")
-  .replace(/{state}/g,      ()=>v.estado||"")
-  .replace(/{wage}/g,       ()=>v.wage||"")
-  .replace(/{salario}/g,    ()=>v.wage||"")
-  .replace(/{inicio}/g,     ()=>v.inicio||"")
-  .replace(/{start}/g,      ()=>v.inicio||"");
-
 // v19-FIX: corpo do loop de reactivateAutoJobs() extraído pra função própria,
 // reutilizável em qualquer lugar que precise "religar" um job travado (timer
 // morto) SEM ignorar um cooldown em andamento — é o que diferencia isso de um
@@ -12761,6 +12754,7 @@ filtrar();
     try{
       const d=JSON.parse(await readBody(req));if(!d.to||!d.subject||!d.message)return json(res,400,{error:"Campos obrigatórios."});
       _toEmailForErr=String(d.to||"");
+      d.subject=limpaCuringas(d.subject);d.message=limpaCuringas(d.message); // v983: nenhum curinga "{...}" sai pro empregador (front antigo em cache)
       // v15-SEC: normalização e validação robusta do destinatário
       const _parsedTo = parseEmail(d.to);
       if (!_parsedTo.ok) return json(res,400,{error:`E-mail inválido: ${_parsedTo.reason}`});
@@ -13550,10 +13544,10 @@ filtrar();
     // só que essa porta de entrada não tinha trava nenhuma). Mesmo
     // padrão de corte já usado em /api/templates/save.
     const rawSubjs=Array.isArray(d.subjects)?d.subjects:[];
-    const subjects=[...new Set(rawSubjs.map(s=>String(s).trim().slice(0,300)).filter(Boolean))].slice(0,10);
+    const subjects=[...new Set(rawSubjs.map(s=>limpaCuringas(String(s)).trim().slice(0,300)).filter(Boolean))].slice(0,10);
     // Validate and normalize email bodies (no empty, com corte de tamanho E de quantidade)
     const rawBodies=Array.isArray(d.emailBodies)?d.emailBodies:[];
-    const emailBodies=rawBodies.map(b=>String(b).trim().slice(0,5000)).filter(Boolean).slice(0,10);
+    const emailBodies=rawBodies.map(b=>limpaCuringas(String(b)).trim().slice(0,5000)).filter(Boolean).slice(0,10);
     // ── PERFIL ÚNICO (2026-07, pedido do dono): mínimo 3 assuntos e 3 corpos
     // diferentes, escritos pelo próprio usuário — sem isso a candidatura sai
     // com texto padrão igual à de milhares de outros usuários. Antes só o
@@ -13587,7 +13581,7 @@ filtrar();
     //     não mexe em PDF) herda o valor do perfil existente — antes recriar o
     //     perfil pelo onboarding APAGAVA o vínculo do currículo. null explícito
     //     continua significando "Nenhum" (escolha do usuário no editor).
-    const prf={id:existing?existing.id:(d.id||crypto.randomUUID()),name:String(d.name).slice(0,80),desc:String(d.desc||"").slice(0,200),active:d.active!==false,type:"normal",visaType,icon:String(d.icon||(visaType==="h2a"?"🌾":"🎯")).slice(0,8),isFavorite:visaType==="h2b",allowManual:d.allowManual!==false,allowAuto:d.allowAuto!==false,coverName:d.coverName?String(d.coverName).slice(0,200):undefined,coverSize:d.coverSize||0,isGeneral:true,subjects,emailBodies,subject:subjects[0]||String(d.subject||"").slice(0,200),body:emailBodies[0]||String(d.body||"").slice(0,5000),categories:[],sheets,resumeIdx:(d.resumeIdx!==undefined)?d.resumeIdx:(existing?(existing.resumeIdx??null):null),pdfName:d.pdfName?String(d.pdfName).slice(0,200):undefined,pdfSize:d.pdfSize||0,coverIdx:(d.coverIdx!==undefined)?d.coverIdx:(existing?(existing.coverIdx??null):null),state:String(d.state||"").slice(0,40),updatedAt:new Date().toISOString(),createdAt:existing?existing.createdAt:(d.createdAt||new Date().toISOString())};
+    const prf={id:existing?existing.id:(d.id||crypto.randomUUID()),name:String(d.name).slice(0,80),desc:String(d.desc||"").slice(0,200),active:d.active!==false,type:"normal",visaType,icon:String(d.icon||(visaType==="h2a"?"🌾":"🎯")).slice(0,8),isFavorite:visaType==="h2b",allowManual:d.allowManual!==false,allowAuto:d.allowAuto!==false,coverName:d.coverName?String(d.coverName).slice(0,200):undefined,coverSize:d.coverSize||0,isGeneral:true,subjects,emailBodies,subject:subjects[0]||limpaCuringas(String(d.subject||"")).slice(0,200),body:emailBodies[0]||limpaCuringas(String(d.body||"")).slice(0,5000),categories:[],sheets,resumeIdx:(d.resumeIdx!==undefined)?d.resumeIdx:(existing?(existing.resumeIdx??null):null),pdfName:d.pdfName?String(d.pdfName).slice(0,200):undefined,pdfSize:d.pdfSize||0,coverIdx:(d.coverIdx!==undefined)?d.coverIdx:(existing?(existing.coverIdx??null):null),state:String(d.state||"").slice(0,40),updatedAt:new Date().toISOString(),createdAt:existing?existing.createdAt:(d.createdAt||new Date().toISOString())};
     // v20 (reclamação real, 07/2026): perfil só pode apontar pra PDF que existe
     // de verdade na conta — e o nome exibido vem SEMPRE do arquivo real. Antes
     // um idx órfão (sobra de migração/exclusão) e nomes-fantasma (pdfName/
@@ -13958,7 +13952,7 @@ filtrar();
         if (!jobSenders.length) jobSenders = null;
       }
       // mode removido — sempre 24/7
-const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,filteredCount:queue.length,profileId:jobProfileId,resumeIdx:jobResumeIdx,coverIdx:jobCoverIdx,bodyTemplate:d.bodyTemplate||p.settings?.body||"",subjects:Array.isArray(d.subjects)&&d.subjects.length?d.subjects:null,emailBodies:Array.isArray(d.emailBodies)&&d.emailBodies.length?d.emailBodies:null,status:"starting",lastSentAt:null,finishedAt:null,source:d.source||"manual",category:d.category||"all",filters:d.filtros||d.filters||{},queueFingerprint,rotState:{lastSubjIdx:-1,lastBodyIdx:-1},senders:jobSenders,lockedAutoLimit:getAutoLimit(p)};
+const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,filteredCount:queue.length,profileId:jobProfileId,resumeIdx:jobResumeIdx,coverIdx:jobCoverIdx,bodyTemplate:limpaCuringas(d.bodyTemplate||p.settings?.body||""),subjects:Array.isArray(d.subjects)&&d.subjects.length?d.subjects.map(x=>limpaCuringas(String(x))):null,emailBodies:Array.isArray(d.emailBodies)&&d.emailBodies.length?d.emailBodies.map(x=>limpaCuringas(String(x))):null,status:"starting",lastSentAt:null,finishedAt:null,source:d.source||"manual",category:d.category||"all",filters:d.filtros||d.filters||{},queueFingerprint,rotState:{lastSubjIdx:-1,lastBodyIdx:-1},senders:jobSenders,lockedAutoLimit:getAutoLimit(p)};
       setAutoJob(s.user_email,job);
       autoStats.set(s.user_email,{sent:0,failed:0,skipped:0,startedAt:Date.now()});
       addLog(s.user_email,{status:"sistema",jobTitle:`Envio automático iniciado: ${queue.length} vagas${skippedAlreadySent>0?` (${skippedAlreadySent} já enviadas foram puladas)`:""}`,company:`Fonte: ${d.source||"manual"} | Categoria: ${d.category||"all"}`,source:d.source||"manual",category:d.category||"all"});

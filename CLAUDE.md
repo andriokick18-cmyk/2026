@@ -378,6 +378,21 @@ se referindo a outro repositório/projeto.
   processo interno que o usuário não precisa saber, plano grátis com
   limite, etc. — ver "O que este repo é" no topo deste arquivo).
 
+- **🧹 SEM CURINGAS E SEM EXEMPLO nos e-mails (dono, 15/10/2026 — foto do
+  editor de perfil: "tire todo esse sistema de entre chaves, {vaga},
+  {empresa}... a gente não tem nada a ver com criar o título ou o corpo de
+  e-mail da pessoa, isso deixa visível pra todo mundo que é bot")**: NENHUM
+  curinga `{x}` existe — nem botão, nem ajuda, nem tutorial, nem motor de
+  envio. O sistema NUNCA insere nome da vaga/empresa/pessoa, cidade, e-mail
+  etc. no assunto ou corpo: o texto sai EXATAMENTE como o usuário escreveu.
+  Também NÃO existe exemplo ou sugestão do que escrever ("ex.: …",
+  placeholder de exemplo, preview "vaga exemplo"); as telas só EXPLICAM, em
+  português simples, o que vai em cada campo. Texto antigo com curinga:
+  `{vaga}` vira `work`, qualquer outro `{algo}` é apagado — função ÚNICA
+  `limpaCuringas` (server.js; espelho `limpaCuringasTxt` no app.js). PROIBIDO
+  reintroduzir motor de variáveis, botão de variável, exemplo de texto ou
+  preview com dado de vaga. Detalhes na seção v983 no fim deste arquivo.
+
 ## Variáveis de ambiente
 
 `.env.example` é a fonte da verdade (revisado contra `process.env.*` real
@@ -4503,3 +4518,24 @@ página SEO (`sendHtmlCompressed` + 404s); "ao vivo/disponíveis agora/vagas abe
 contrato como `validThrough` (mediana 323 dias) e o envio exige plano — manter ou remover é escolha de risco;
 ~13% dos títulos de /vaga/ se repetem porque o MESMO empregador abre dezenas de casos (dado, não título);
 "para brasileiros" no H1 do hub foi mantido (pesquisa de marca). 5 checks. Total da suíte: +9 desde o v980.
+
+## 🧹 v983 — Fim dos curingas {vaga}/{empresa}… (ordem do dono, 15/10/2026)
+
+Pedido do dono olhando o editor de perfil: o sistema oferecia botões `{vaga}`, `{empresa}`, `{nome}`, `{categoria}` (e
+mais 5 no corpo) que viravam o dado da vaga em cada envio. Isso ajuda a pessoa a escrever e deixa visível, pra quem
+recebe, que o e-mail é de robô. Removido de ponta a ponta: botões e "Variáveis:", preview "vaga exemplo", exemplo
+"Application for {vaga} — {nome}" na ajuda (PT/EN/ES), placeholders "Ex.: …", `fill()` do cliente, `tplVars`/`fillTpl`
+do servidor e a linha do tutorial que ensinava "curingas". As ajudas de "Título" e "Corpo" agora só explicam o que vai
+em cada campo e dizem que o sistema usa exatamente o que a pessoa escrever.
+
+**Dados existentes**: migração IDEMPOTENTE no boot (`_limparCuringasUsuarios`, depois do `_wipeCannedDefaults`):
+`{vaga}`→`work`, qualquer outro curinga apagado, só nas linhas que tinham `{…}` (espaço duplo e indentação do resto são
+do usuário). Cobre `settings.subject/body/followup*` e perfis (`subject`, `body`, `subjects[]`, `emailBodies[]`). Os
+ORIGINAIS ficam em `DATA/curingas_originais_v983.json` (nunca sobrescreve o 1º original) pra desfazer à mão, e o log
+`[curingas]` diz quantos textos de quantos usuários. A pessoa precisa reabrir o perfil e reescrever o que foi apagado
+(`{nome}`, `{telefone}`… saem do texto). Front antigo em cache que ainda mande `{…}` é limpo na entrada: salvar perfil,
+iniciar o automático e /api/send.
+
+As 5 capturas de tela do editor (landing e tutorial) foram refeitas no Chromium sem os botões e ganharam `?v=983` na
+URL (o servidor cacheia /tut-img por 7 dias). Achado de passagem: uma linha do app.js tinha um comentário no meio que
+engolia o preenchimento de telefone e cidade nas configurações (corrigido). 4 checks + 2 fixtures. sw v203.

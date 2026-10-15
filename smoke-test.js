@@ -248,6 +248,18 @@ const users = {
     ],
   },
 };
+// 🧹 v983 (ordem do dono): usuário com CURINGAS {x} nos textos salvos — o boot tem que limpar ({vaga}→work, os demais apagados)
+// e guardar os originais num arquivo. Texto sem curinga NÃO pode ser tocado.
+users["curingas983@test.com"] = {
+  name: "Curingas",
+  settings: { body: "Hi {empresa}, vaga {vaga}.\nLinha  intocada  com espaço duplo" },
+  profiles: [
+    { id: "pc983", name: "Perfil H-2B", visaType: "h2b", active: true,
+      subjects: ["Application for {vaga} – {nome}", "Titulo escrito pelo usuario", "{empresa} {categoria} {vaga}"],
+      emailBodies: ["Dear {empresa}, my name is {nome} and I want the {vaga} job.", "Corpo   sem   curinga fica igual", "Call me {telefone}, {email} — {cidade}/{estado}"],
+      subject: "Application for {vaga} – {nome}", body: "Dear {empresa}, my name is {nome} and I want the {vaga} job." },
+  ],
+};
 // v43-PERF: 1.500 usuários sintéticos, cada um com refresh_token/access_token
 // (o mesmo formato de quem conectou Google de verdade) — estressa o MESMO
 // laço de criptografia (AES-256-GCM sobre todos os usuários) que travava o
@@ -2348,10 +2360,10 @@ async function drillAdminSettingsLegado() {
       const _vivos = _mortos.filter((n) => new RegExp("\\b" + n + "\\b").test(_semCom16(_app16)) || new RegExp("\\b" + n + "\\b").test(_htmlSemCom16(_idx16)));
       check("🧹 v198-L16 (guarda negativa): nenhuma das 30 funções/constantes órfãs do front voltou por acidente — cada uma foi conferida por grep antes de sair (zero chamadores em app.js, index.html, h2b-extras-user.js, admin.html, tutorial e smoke); \"closeAuthGate\" saiu da lista no v237g por ter voltado DE PROPÓSITO, com chamador real",
         _vivos.length === 0, `ressuscitaram: ${_vivos.join(", ")}`);
-      check("🧹 v198-L16: o overlay 'Escolher Modelo' e o CSS órfão .tpl-card/.tpl-tag/.tpl-picker-* saíram do index.html — e o .tpl-var (em USO no editor de perfil) e o .profile-card continuam vivos",
-        !/tpl-picker|tpl-card|tpl-tag|tpl-tab-btn/.test(_htmlSemCom16(_idx16)) &&
-        _idx16.includes(".tpl-var{") && _idx16.includes(".profile-card{"),
-        "sobrou CSS/markup do picker, ou o .tpl-var em uso foi levado junto");
+      check("🧹 v198-L16: o overlay 'Escolher Modelo' e o CSS órfão .tpl-card/.tpl-tag/.tpl-picker-* saíram do index.html — v983: o .tpl-var (botões de variável) também saiu, e o .profile-card continua vivo",
+        !/tpl-picker|tpl-card|tpl-tag|tpl-tab-btn|tpl-var/.test(_htmlSemCom16(_idx16)) &&
+        _idx16.includes(".profile-card{"),
+        "sobrou CSS/markup do picker ou dos botões de variável, ou o .profile-card foi levado junto");
 
       // (3) a guarda de função duplicada passou a cobrir o app.js e os mod-*
       check("🧹 v198-L16: check-duplicates.js varre o app.js e os mod-*.js — a guarda nasceu porque 'a segunda declaração sobrescreve a primeira em silêncio' no front, e o MAIOR arquivo do front estava de fora",
@@ -2447,7 +2459,7 @@ async function drillAdminSettingsLegado() {
       // sobe junto com margem, em vez de travar crescimento real do produto.
       check("🧹 v203-L21: o CSS do index.html encolheu de verdade e as regras VIVAS continuam lá (a poda foi por seletor, nunca por bloco inteiro)",
         _estilos21.length < 147_000 && // v978: +1,2KB do bloco de guias da home (SEO) — crescimento real do produto, teto sobe com margem de propósito
-        [".jcard", ".btn", ".view", ".sidebar", ".bottom-nav", ".tpl-var", ".profile-card", ".cv-slot", ".chip", ".banner"].every((c) => _estilos21.includes(c)),
+        [".jcard", ".btn", ".view", ".sidebar", ".bottom-nav", ".profile-card", ".cv-slot", ".chip", ".banner"].every((c) => _estilos21.includes(c)),
         `tamanho do CSS inline: ${_estilos21.length}`);
 
       // ── Guardas anti-FANTASMA (a classe dos 2 bugs achados no Chromium) ──
@@ -2619,6 +2631,18 @@ async function drillAdminSettingsLegado() {
     check("legado: currículo-fantasma religado pelo nome", leg.resumeIdx === 2001);
     check("legado: nome de carta sumida foi limpo", !leg.coverName && leg.coverIdx === null,
       JSON.stringify({ coverName: leg.coverName, coverIdx: leg.coverIdx }));
+
+    const curU = JSON.parse(raw)["curingas983@test.com"], curPr = curU.profiles[0];
+    const _orig983 = (() => { try { return JSON.parse(fs.readFileSync(path.join(DATA, "curingas_originais_v983.json"), "utf8")); } catch { return {}; } })();
+    check("🧹 v983: boot limpa os curingas dos textos salvos — {vaga} vira 'work', todo outro {algo} é apagado (assuntos, corpos, assunto/corpo do perfil e corpo das configurações)",
+      curPr.subjects[0] === "Application for work –" && curPr.subjects[2] === "work" && curPr.emailBodies[0] === "Dear , my name is and I want the work job." &&
+      curPr.emailBodies[2] === "Call me , — /" && curPr.subject === "Application for work –" && curPr.body === curPr.emailBodies[0] &&
+      curU.settings.body === "Hi , vaga work.\nLinha  intocada  com espaço duplo" && ![curPr.subjects, curPr.emailBodies, curPr.subject, curPr.body, curU.settings.body].flat().some((x) => /[{}]/.test(x)),
+      JSON.stringify({ s: curPr.subjects, b: curPr.emailBodies, st: curU.settings.body }));
+    check("🧹 v983: texto SEM curinga não é tocado (nem espaço duplo) e os ORIGINAIS ficam guardados em curingas_originais_v983.json pra desfazer",
+      curPr.subjects[1] === "Titulo escrito pelo usuario" && curPr.emailBodies[1] === "Corpo   sem   curinga fica igual" &&
+      _orig983["curingas983@test.com"]?.["perfil[pc983].subjects[0]"] === "Application for {vaga} – {nome}" && _orig983["curingas983@test.com"]?.["settings.body"]?.includes("{empresa}"),
+      JSON.stringify(Object.keys(_orig983["curingas983@test.com"] || {})));
 
     // Disco
     // ═══ FLUXOS AUTENTICADOS (sessão de teste — só existe com TEST_LOGIN_TOKEN) ═══
@@ -4151,22 +4175,21 @@ async function drillAdminSettingsLegado() {
     await req2("POST", "/api/settings", { name: "Ana$&Souza" });
     const cvV314 = await req2("POST", "/api/cv/upload", { base64: Buffer.from("%PDF-1.4 " + "tplvar314 ".repeat(300)).toString("base64"), name: "CV_TplVar314.pdf", cvType: "resume" });
     GOOGLE.limpar();
-    const startV314 = await req2("POST", "/api/auto/start", { queue: [{ to: "rh@tplvar314-test.com", title: "Farmworker", company: "Empresa TplVar314", category: "farm", state: "FL" }], resumeIdx: cvV314.json?.cv?.idx, subjects: ["Aplicacao de {nome} para a vaga"], emailBodies: ["Ola, meu nome e {nome} e quero me candidatar."] });
+    const startV314 = await req2("POST", "/api/auto/start", { queue: [{ to: "rh@tplvar314-test.com", title: "Farmworker", company: "Empresa TplVar314", category: "farm", state: "FL" }], resumeIdx: cvV314.json?.cv?.idx, subjects: ["Aplicacao de {nome} para a {vaga} da {empresa}"], emailBodies: ["Ola, meu nome e {nome} e quero me candidatar."] });
     const _ateV314 = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 < (ms || 15_000)) { if (fn()) return true; await new Promise((r) => setTimeout(r, 50)); } return false; };
     const _c1V314 = await _ateV314(() => GOOGLE.envios.some((e) => e.para === "rh@tplvar314-test.com"));
     const _envioV314 = GOOGLE.envios.find((e) => e.para === "rh@tplvar314-test.com");
-    check("🚨 v314: candidatura automática REAL preserva EXATAMENTE um nome com $& no assunto — nunca duplica/embaralha o texto por interpretar $ como diretiva de replace",
+    check("🧹 v983: candidatura automática REAL — o sistema NÃO insere nada no título (nem nome da pessoa, nem da vaga, nem da empresa): '{vaga}' vira 'work', '{nome}' e '{empresa}' somem, e nenhum '{' chega ao empregador",
       startV314.status === 200 && _c1V314 === true &&
-      (_envioV314?.assunto || "").includes("Ana$&Souza") &&
-      !(_envioV314?.assunto || "").includes("{nome}"),
+      _envioV314?.assunto === "Aplicacao de para a work da",
       JSON.stringify({ ok: startV314.json?.ok, assunto: _envioV314?.assunto }).slice(0, 260));
     await req2("POST", "/api/auto/stop", {});
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     const _appL314 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
-    check("🚨 v314: o mesmo fix vale no CLIENTE — fill() (envio manual) e o preview do assunto (peUpdateSubjPreview) usam função como 2º argumento do replace, nunca string crua",
-      _appL314.includes('.replace(/{nome}/g,    ()=>CFG.name||U?.name||"")') &&
-      _appL314.includes('.replace(/{nome}/g,()=>U.name||"João Silva")'),
-      "fill()/peUpdateSubjPreview ainda passam string crua pro replace");
+    check("🧹 v983: o CLIENTE também não tem motor de variáveis — sem fill(), sem botões de curinga, sem preview com 'vaga exemplo', sem placeholder de exemplo; só limpaCuringasTxt limpa texto antigo",
+      _appL314.includes("const limpaCuringasTxt=") && !/const fill=\(tpl,j\)/.test(_appL314) && !/peInsertSubjVar|peUpdateSubjPreview|peLastFocusedSubj/.test(_appL314) &&
+      !/placeholder="Ex\.: (Application|Dear)/.test(_appL314) && !/\.replace\(\/\{(vaga|empresa|nome|categoria)\}\/g/.test(_appL314),
+      "sobrou motor de variáveis / botão / preview / exemplo no app.js");
     check("🚨 v315: a UI de busca de vagas (mensagem 'sem resultados' e barra de sugestão) também usa função no replace de {q} — texto LIVRE que o usuário digitou nunca mais interpreta $&/$`/$'/$$",
       _appL314.includes('.replace("{q}",()=>st.q)') &&
       _appL314.includes('.replace("{q}",()=>esc(q||""))'),
@@ -7393,6 +7416,29 @@ async function drillAdminSettingsLegado() {
     check("🛡️ v982 (estrutural): computeWageStats/_seoLinhasHorarias/_seoVagasAbertas são memoizados por 10min com assinatura das planilhas (404 e hub não recalculam 16 mil linhas por requisição) e TODA página SEO recebe o GA_MEASUREMENT_ID (sendHtmlCompressed + os 404)",
       /function computeWageStats\(\)\{return _seoMemo\("wageStats",_computeWageStatsRaw\);\}/.test(_srv982) && /_seoMemo\("linhasH"/.test(_srv982) && /_seoMemo\("abertas:"/.test(_srv982) && /Date\.now\(\)-c\.t<600000/.test(_srv982) &&
       /const raw = _injectGaId\(Buffer\.from\(html, "utf8"\)\)/.test(_srv982) && (_srv982.match(/_injectGaId\(Buffer\.from\(_render/g) || []).length >= 4, "faltou memo/GA");
+    // 🧹 v983 (ORDEM DO DONO, 15/10/2026 — foto do editor de perfil): nenhum curinga {x}, nenhum exemplo do que escrever,
+    // nenhum preview, nenhum botão de variável. O sistema só EXPLICA; título e corpo são 100% da pessoa.
+    const _idx983 = (await req2("GET", "/")).body, _app983 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+    const _tut983 = fs.readFileSync(path.join(__dirname, "tutorial-conteudo.html"), "utf8");
+    const _helpsPt983 = [...(_idx983.match(/data-i18n="pe_(subj|body)_help">[\s\S]*?<\/div>/g) || [])].join(" ");
+    const _dict983 = [..._app983.matchAll(/"pe_(?:subj|body)_help":"((?:[^"\\]|\\.)*)"/g)].map((x) => x[1]);
+    check("🧹 v983: o editor de perfil não tem mais botões de variável, 'Variáveis:', preview com 'vaga exemplo', 'ex.:' nem placeholder de exemplo — e a ajuda (nos 3 idiomas) só explica, sem nenhuma chave {…}",
+      !/tpl-var|peInsertSubjVar|pe-subj-preview|Variáveis|vaga exemplo/.test(_idx983) && !/\{(vaga|empresa|nome|categoria|pais|telefone|email|cidade|estado)\}/.test(_idx983) &&
+      !/"g_166"|"g_168"/.test(_app983) && _dict983.length === 6 && _dict983.every((x) => !/[{}]|ex\.:|e\.g\.|ej\.:/i.test(x)) &&
+      /usa exatamente o que você escrever, sem acrescentar nem trocar nada/.test(_helpsPt983) && _dict983.filter((x) => /exactly what you write|exactamente lo que escribas/.test(x)).length === 4,
+      JSON.stringify({ n: _dict983.length, achouChave: /\{(vaga|empresa|nome)\}/.test(_idx983) }));
+    check("🧹 v983: o tutorial não ensina mais 'curingas' ({vaga}/{empresa}) e o servidor/cliente não têm motor de variáveis (função única limpaCuringas só tira '{…}' de texto antigo)",
+      !/curinga|\{vaga\}|\{empresa\}/.test(_tut983) && /function limpaCuringas\(txt\)\{/.test(_srv982) && !/\.replace\(\/\{vaga\}\/g/.test(_srv982) &&
+      /d\.subject=limpaCuringas\(d\.subject\);d\.message=limpaCuringas\(d\.message\)/.test(_srv982), "sobrou curinga no tutorial/servidor");
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "curingas983b@test.com", name: "Cur B" });
+    const _cv983 = await req2("POST", "/api/cv/upload", { base64: Buffer.from("%PDF-1.4 " + "cur983 ".repeat(300)).toString("base64"), name: "CV_Cur983.pdf", cvType: "resume" });
+    const _sv983 = await req2("POST", "/api/profiles/save", { name: "P", visaType: "h2b", resumeIdx: _cv983.json?.cv?.idx, subjects: ["Oi {vaga} {empresa}", "Dois {nome}", "Tres"], emailBodies: ["Corpo {nome} {vaga}", "Corpo dois", "Corpo tres {email}"] });
+    const _pf983 = ((await get("/api/profiles")).json?.profiles || [])[0] || {};
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    check("🧹 v983: salvar perfil (inclusive de front antigo em cache) limpa os curingas NA ENTRADA — '{vaga}' vira 'work', os outros somem; texto sem curinga fica igual",
+      _sv983.status === 200 && JSON.stringify(_pf983.subjects) === JSON.stringify(["Oi work", "Dois", "Tres"]) &&
+      JSON.stringify(_pf983.emailBodies) === JSON.stringify(["Corpo work", "Corpo dois", "Corpo tres"]),
+      JSON.stringify({ s: _sv983.status, subj: _pf983.subjects, body: _pf983.emailBodies }));
     check("📚 v981: o fragmento do app segue noindex (conteúdo duplicado fora do Google), tópico inexistente — inclusive o quiz, que é interativo e fica só no app — dá 404 noindex, e a home e o hub /vagas-h2b linkam /aprenda por <a href>",
       /noindex/.test(String(_apFrag.headers["x-robots-tag"] || "")) && _apQuiz.status === 404 && /noindex/.test(String(_apQuiz.headers["x-robots-tag"] || "")) &&
       (await req2("GET", "/")).body.includes('href="/aprenda"') && (await req2("GET", "/vagas-h2b")).body.includes('href="/aprenda"'),
@@ -7651,18 +7697,18 @@ async function drillAdminSettingsLegado() {
     // do fix crítico do connect-send/motor de envio, revisando o resto do
     // produto com a mesma lupa. Todos resolvidos com a MESMA fonte única
     // (resolveSendGmail / findAccountByRealGmail), nunca uma 2ª lógica.
-    check("🐛 v172c-FIX: {email} do template automático usa _autoRealSendEmail (Gmail real), não o username cru",
-      _srvSrc.includes("email:      String(_autoRealSendEmail)") || _srvSrc.includes("email: String(_autoRealSendEmail)"),
-      "tplVars.email não usa _autoRealSendEmail — {email} nos assuntos/corpos do envio automático voltaria a vazar o username");
+    check("🧹 v983: o envio automático não monta mais NENHUM dado de template (sem tplVars/fillTpl) — assunto e corpo saem só por limpaCuringas",
+      !_srvSrc.includes("tplVars") && !_srvSrc.includes("fillTpl") && _srvSrc.includes("const subject = limpaCuringas(String(chosenSubject));") && _srvSrc.includes("const body    = limpaCuringas(String(rawBody));"),
+      "voltou tplVars/fillTpl no motor de envio");
     check("🐛 v172c-FIX: histórico/log do envio automático (senderEmail) usa _autoRealSendEmail, nunca mais _autoSenderEmail||email cru",
       !_srvSrc.includes("senderEmail: _autoSenderEmail || email") && !_srvSrc.includes("senderEmail:_autoSenderEmail||email"),
       "ainda existe um senderEmail:_autoSenderEmail||email cru no motor automático — 'Enviado por (Gmail)' voltaria a mostrar o username");
     check("🐛 v172c-FIX: histórico do envio MANUAL resolve senderEmail pelo Gmail real quando é o principal quem envia",
       _srvSrc.includes("(actualSenderEmail && actualSenderEmail !== s.user_email) ? actualSenderEmail : (resolveSendGmail(p) || s.user_email)"),
       "senderEmail do envio manual não resolve mais pelo resolveSendGmail — histórico voltaria a mostrar o username em vez do Gmail");
-    check("🐛 v172c-FIX: fill() do cliente (envio manual) usa U.gmailEmail antes do username pro {email}",
-      _appSrc172d.includes("U?.gmailEmail||U?.email") || _appSrc172d.includes("U?.gmailEmail || U?.email"),
-      "fill() ainda usa só U?.email pro {email} — candidatura manual voltaria a vazar o username pro empregador");
+    check("🧹 v983: o modal do envio manual pré-preenche SÓ com o texto que a pessoa escreveu no perfil (limpaCuringasTxt), sem inserir nada da vaga",
+      _appSrc172d.includes("subjEl.value=limpaCuringasTxt(s)") && _appSrc172d.includes("bodyEl.value=limpaCuringasTxt(b)"),
+      "o modal manual voltou a interpolar dados da vaga");
     check("🐛 v172c-FIX: /api/status devolve gmailEmail (Gmail real resolvido) — front finalmente consegue mostrar o Gmail certo",
       _srvSrc.includes("const gmailEmail = resolveSendGmail(p);") && _srvSrc.includes("gmailConnected,gmailEmail,emailContato:p.emailContato||null,emailVerificado:!!p.emailVerificadoEm,needsPlan"),
       "/api/status não expõe mais gmailEmail — dropdown/checklist de remetente e {email} manual ficariam sem fonte de verdade");
@@ -8480,7 +8526,7 @@ async function drillAdminSettingsLegado() {
       // conteúdo seguinte quando cada imagem terminava de carregar (CLS).
       // A imagem do hero (.ln-preview-main) é candidata a LCP, carregada
       // com loading="eager" pra 100% dos visitantes não logados.
-      const _landingImgs = [...(_idxL9.matchAll(/src="\/tut-img\/(landing-[\w-]+\.jpg)"([^>]*)>/g))];
+      const _landingImgs = [...(_idxL9.matchAll(/src="\/tut-img\/(landing-[\w-]+\.jpg)(?:\?v=\d+)?"([^>]*)>/g))];
       check("🖼️ v280: as 22 tags <img> das fotos reais da landing (hero+thumbs+galeria) TODAS declaram width/height — nunca mais layout pulando quando a foto termina de carregar",
         _landingImgs.length === 22 && _landingImgs.every(([, , attrs]) => /width="\d+"/.test(attrs) && /height="\d+"/.test(attrs)),
         `${_landingImgs.filter(([, , attrs]) => !(/width="\d+"/.test(attrs) && /height="\d+"/.test(attrs))).length} sem dimensão de ${_landingImgs.length}`);
