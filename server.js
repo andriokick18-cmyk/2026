@@ -11266,6 +11266,11 @@ filtrar();
       // (quem, quando, pra quem, quanto e por que saiu da tabela).
       let _valorForaTabela=false;
       if(valorOficial==null){valorOficial=parseFloat(d.valorTotal)||0;_valorForaTabela=true;}
+      // 🧾 v971 (Registrar pagamento feito por fora): o admin registra o valor
+      // que o cliente REALMENTE pagou (desconto combinado, preço antigo) —
+      // antes a tabela vencia em silêncio e o caixa ganhava um valor que
+      // nunca entrou na conta. Usuário comum continua preso à tabela.
+      else if(_isAdminCaller&&parseFloat(d.valorTotal)>0&&Math.abs(parseFloat(d.valorTotal)-valorOficial)>0.009){valorOficial=Math.round(parseFloat(d.valorTotal)*100)/100;_valorForaTabela=true;}
       // Consentimento informado é OBRIGATÓRIO pra pedido de usuário comum —
       // pense como advogado (dono, 09/09/2026): a pessoa precisa confirmar
       // que entende o que está comprando (serviço de envio, nunca garantia
@@ -11524,10 +11529,34 @@ filtrar();
     // WhatsApp de quem pagou ali, não só do e-mail. O nome da CONTA vence o
     // que foi digitado no checkout (o cadastro v175 obriga nome/sobrenome;
     // userName é fallback de pedido antigo).
+    // 🧾 v971 (lista de 100 do admin, F2): a LISTA já diz o que o admin só
+    // descobria ao clicar Aprovar — comprovante REPETIDO (mesmo arquivo ou
+    // mesma transação PIX em outro pedido, de qualquer usuário) e quando a
+    // ativação provisória VENCE (AUTO_ATIVA_DIAS) — nunca mais plano ativo
+    // dias sem confirmação humana sem ninguém ver.
+    let _repIdx=null;
+    if(isAdm){
+      _repIdx={hash:{},tx:{}};
+      for(const x of DB_PEDIDOS){
+        if(!x||!x.id||String(x.status||"")==="cancelado")continue;
+        if(x.comprovanteHash)(_repIdx.hash[x.comprovanteHash]=_repIdx.hash[x.comprovanteHash]||[]).push(x);
+        const _tx=String(x.preCheck?.transacaoIdLida||"").trim();
+        if(_tx.length>=6)(_repIdx.tx[_tx]=_repIdx.tx[_tx]||[]).push(x);
+      }
+    }
+    const _repetidoDe=(pd)=>{
+      const outros=[...((pd.comprovanteHash&&_repIdx.hash[pd.comprovanteHash])||[]),...(((String(pd.preCheck?.transacaoIdLida||"").trim().length>=6)&&_repIdx.tx[String(pd.preCheck.transacaoIdLida).trim()])||[])]
+        .filter(x=>x.id!==pd.id);
+      if(!outros.length)return null;
+      const o=outros[0];
+      return {pedidoId:o.id,email:o.userEmail,status:o.status,mesmoUsuario:o.userEmail===pd.userEmail,n:new Set(outros.map(x=>x.id)).size};
+    };
     const slim=isAdm
       ?list.map(pd=>{const _cu=getUser(pd.userEmail)||{};
         return {...pd,comprovante:temComprovante(pd),ehAdmin:isAdminEmail(pd.userEmail||""),
-          contaNome:_cu.name||"",contaWhatsapp:_cu.whatsapp||_cu.phone||""};})
+          contaNome:_cu.name||"",contaWhatsapp:_cu.whatsapp||_cu.phone||"",
+          comprovanteRepetido:_repetidoDe(pd),
+          provisorioExpiraEm:(pd.autoAtivado&&pd.autoAtivadoEm)?(pd.autoAtivadoEm+AUTO_ATIVA_DIAS*86400_000):null};})
       :list.map(_pedidoVisaoUsuario);
     return json(res,200,{ok:true,pedidos:slim,total:list.length});
   }
@@ -13957,6 +13986,21 @@ if(pathname==="/api/admin/contabilidade"&&req.method==="GET"){
       else gastosEmpresa+=v;
     }
     const totalGastos=gastosAndrio+gastosDiego+gastosEmpresa;
+    // 👤 v972 (F3 da lista de 100): quanto cada usuário JÁ PAGOU em R$ (livro-
+    // caixa, valor efetivo, anulados fora) e quando foi o último — a tabela
+    // mostrava só "dias creditados", nunca dinheiro.
+    const _pagoPorEmail={};
+    {
+      const _pedById={};for(const pd of (DB_PEDIDOS||[])){if(pd&&pd.id)_pedById[pd.id]=pd;}
+      for(const pg of ((DB_FINANCEIRO&&DB_FINANCEIRO.pagamentos)||[])){
+        if(!pg||!pg.email||pg.anuladoPor||pg.tipo==="ajuste")continue;
+        const e=String(pg.email).toLowerCase();
+        const v=_finValorEfetivo(pg,_pedById);if(!(v>0))continue;
+        const t=(x=>{if(!x)return 0;if(typeof x==="number")return x;const tt=Date.parse(x);return isNaN(tt)?0:tt;})(pg.dataPagamento||pg.data)||pg.criadoEm||0;
+        const a=(_pagoPorEmail[e]=_pagoPorEmail[e]||{total:0,n:0,ultimo:0});
+        a.total+=v;a.n++;if(t>a.ultimo)a.ultimo=t;
+      }
+    }
     // Lista de TODOS os usuários por dias de VIP restantes — fórmula EXATA
     // de /api/admin/pagantes, mas DESC (quem tem MAIS dias primeiro).
     const usuarios=[];
@@ -14019,7 +14063,14 @@ if(pathname==="/api/admin/contabilidade"&&req.method==="GET"){
       // está conectado (BOOLEANO — o token NUNCA viaja) e o que o robô dele
       // está fazendo agora.
       const _jobU=getAutoJob(u.email);
+      const _pg=_pagoPorEmail[String(u.email).toLowerCase()]||{total:0,n:0,ultimo:0};
+      const _histU=getHist(u.email);
       usuarios.push({
+        // 👤 v972: cadastro, último acesso, país/cidade, origem do plano, R$ pago, envios
+        createdAt:u.created_at?(new Date(u.created_at).getTime()||0):0,lastSeenAt:u.lastSeenAt||0,
+        country:u.country||"",city:u.city||"",origem:String(vip.source||""),
+        totalPago:Math.round(_pg.total*100)/100,pagamentosN:_pg.n,ultimoPagamento:_pg.ultimo||0,
+        envHoje:countManualToday(_histU)+countAutoToday(_histU),envTotal:_histU.length,
         email:u.email,nome:u.name||u.email,plano:getPlan(u),
         manualExpires:vip.manualExpires||0,autoExpires:vip.autoExpires||0,
         daysLeft,diasCreditadosPagos,diasCreditadosCortesia,

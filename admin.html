@@ -173,6 +173,7 @@ tbody tr:hover{background:var(--glass2)}
 /* ── modal ────────────────────────────────────────────────────── */
 .modal-bg{display:none;position:fixed;inset:0;background:rgba(2,6,15,.72);z-index:60;align-items:flex-start;justify-content:center;padding:26px 14px;overflow-y:auto}
 .modal-bg.open{display:flex}
+#modal-info .modal{max-width:900px} /* 👤 v972: ficha do usuário precisa de largura */
 .modal{width:100%;max-width:480px;background:var(--bg2);border:1px solid var(--border2);border-radius:14px;box-shadow:var(--shadowl);margin:auto}
 .modal-head{display:flex;align-items:center;gap:10px;padding:16px 18px;border-bottom:1px solid var(--border)}
 .modal-title{font-family:'Sora',sans-serif;font-size:16px;font-weight:800;color:#fff;display:flex;align-items:center;gap:8px}
@@ -540,19 +541,44 @@ tbody tr:hover{background:var(--glass2)}
         </div>
         <div class="panel">
           <div class="panel-head">
-            <div class="panel-title"><i class="ti ti-users"></i>Usuários por dias de VIP</div>
+            <div class="panel-title"><i class="ti ti-users"></i>Usuários</div>
             <div class="panel-actions">
               <div class="search-wrap">
                 <i class="ti ti-search"></i>
                 <input type="search" id="usr-search" placeholder="Buscar por nome, usuário, e-mail ou telefone…" oninput="filtrarUsuarios()">
               </div>
+              <select id="usr-filtro" aria-label="Filtrar usuários" onchange="USR_LIMIT=100;filtrarUsuarios()" style="width:auto">
+                <option value="">Todos</option>
+                <option value="pagantes">Já pagaram</option>
+                <option value="ativos">Plano ativo</option>
+                <option value="vencendo">Vencendo em 3 dias</option>
+                <option value="vencidos">Vencidos</option>
+                <option value="sumidos">Pagantes sumidos (7 dias sem entrar)</option>
+                <option value="gmailcaiu">Gmail caiu</option>
+                <option value="semgmail">Sem Gmail conectado</option>
+                <option value="roboparado">Robô parado (com plano)</option>
+                <option value="suspeita">Com suspeita</option>
+                <option value="cortesia">Cortesia / código</option>
+                <option value="novos">Cadastros de 7 dias</option>
+                <option value="admin">Admins</option>
+              </select>
+              <select id="usr-sort" aria-label="Ordenar usuários" onchange="filtrarUsuarios()" style="width:auto">
+                <option value="dias">Mais dias restantes</option>
+                <option value="cadastro">Cadastro mais recente</option>
+                <option value="acesso">Último acesso</option>
+                <option value="pago">Mais pagaram</option>
+                <option value="envhoje">Mais envios hoje</option>
+                <option value="envtotal">Mais envios no total</option>
+                <option value="nome">Nome A–Z</option>
+              </select>
             </div>
           </div>
           <div class="panel-body">
+            <div id="usr-count" style="font-size:12.5px;color:var(--t2);margin-bottom:10px"></div>
             <div class="tbl-wrap">
               <table>
                 <thead>
-                  <tr><th>Usuário</th><th>Plano</th><th>Dias restantes</th><th>Dias creditados (pago)</th><th>Cortesia</th><th>Gmail / robô</th><th></th><th></th><th></th><th></th></tr>
+                  <tr><th>Usuário</th><th>Cadastro / acesso</th><th>Plano</th><th>Dias</th><th>Pagou</th><th>Envios</th><th>Gmail / robô</th><th></th><th></th><th></th></tr>
                 </thead>
                 <tbody id="tbl-usuarios">
                   <tr><td colspan="10"><div class="spin"></div></td></tr>
@@ -560,6 +586,7 @@ tbody tr:hover{background:var(--glass2)}
               </table>
             </div>
             <div class="empty" id="usr-empty" style="display:none"><i class="ti ti-user-off"></i>Nenhum usuário encontrado.</div>
+            <div id="usr-mais" style="text-align:center;margin-top:10px;display:none"><button class="btn btn-sm" onclick="usrMostrarMais()"><i class="ti ti-chevron-down"></i> Mostrar mais</button></div>
           </div>
         </div>
       </div>
@@ -584,10 +611,15 @@ tbody tr:hover{background:var(--glass2)}
                 <option value="cancelado">Cancelados</option>
                 <option value="">Todos</option>
               </select>
+              <select id="pend-periodo" aria-label="Período" onchange="renderPendentes(STATE.pendentes)" style="width:auto"><option value="0">Qualquer data</option><option value="7">Últimos 7 dias</option><option value="30">Últimos 30 dias</option><option value="90">Últimos 90 dias</option></select>
+              <select id="pend-plano" aria-label="Plano" onchange="renderPendentes(STATE.pendentes)" style="width:auto"><option value="">Todos os planos</option><option value="vip">Manual</option><option value="vipro">Turbo</option><option value="doublepro">Máximo</option></select>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--t2);white-space:nowrap"><input type="checkbox" id="pend-alerta" style="width:auto" onchange="renderPendentes(STATE.pendentes)"> só com alerta</label>
               <button class="btn btn-sm" onclick="carregarPendentes()"><i class="ti ti-refresh"></i> Atualizar lista</button>
+              <button class="btn btn-sm btn-primary" onclick="abrirModalRegularizar()" title="Cliente pagou por fora (PIX direto, sem passar pelo site)? Registre aqui com a data do pagamento"><i class="ti ti-file-plus"></i> Registrar pagamento feito por fora</button>
             </div>
           </div>
           <div class="panel-body">
+            <div id="pend-count" style="font-size:12.5px;color:var(--t2);margin-bottom:10px"></div>
             <div class="tbl-wrap">
               <table>
                 <thead>
@@ -599,6 +631,7 @@ tbody tr:hover{background:var(--glass2)}
               </table>
             </div>
             <div class="empty" id="pend-empty" style="display:none"><i class="ti ti-check"></i>Nenhum pedido nesta lista.</div>
+            <div id="pend-mais" style="text-align:center;margin-top:10px;display:none"><button class="btn btn-sm" onclick="pendMostrarMais()"><i class="ti ti-chevron-down"></i> Mostrar mais</button></div>
           </div>
         </div>
       </div>
@@ -947,6 +980,46 @@ tbody tr:hover{background:var(--glass2)}
   </div>
 </div>
 
+<!-- 🎁 v972: dias de presente com motivo (rota /api/admin/vip/gift-days existia sem tela) -->
+<div class="modal-bg" id="modal-gift">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-head"><div class="modal-title"><i class="ti ti-gift" style="color:var(--purple)"></i> Dar dias grátis</div><button class="modal-close" onclick="fecharModal('modal-gift')"><i class="ti ti-x"></i></button></div>
+    <form id="form-gift" onsubmit="salvarGift(event)">
+      <div class="modal-body">
+        <div class="hint" style="margin-bottom:10px">Para <b id="gf-quem" style="color:#fff"></b>. Cortesia: nunca conta como pagamento; fica no extrato e na auditoria.</div>
+        <input type="hidden" id="gf-email">
+        <div class="field"><label for="gf-dias">Dias *</label><input type="number" id="gf-dias" min="1" max="365" value="7" required></div>
+        <div class="field"><label for="gf-motivo">Motivo *</label><input type="text" id="gf-motivo" maxlength="200" required placeholder="Ex.: compensação pelo robô parado em 10/10"></div>
+      </div>
+      <div class="modal-foot"><button type="button" class="btn" onclick="fecharModal('modal-gift')">Cancelar</button><button type="submit" class="btn btn-primary" id="gf-submit"><i class="ti ti-check"></i> Dar dias</button></div>
+    </form>
+  </div>
+</div>
+
+<!-- 🧾 v971: pagamento feito POR FORA do site (PIX direto) — pedido retroativo em nome do cliente -->
+<div class="modal-bg" id="modal-regularizar">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title"><i class="ti ti-file-plus" style="color:var(--blue)"></i> Registrar pagamento feito por fora</div><button class="modal-close" onclick="fecharModal('modal-regularizar')"><i class="ti ti-x"></i></button></div>
+    <form id="form-regularizar" onsubmit="salvarRegularizar(event)">
+      <div class="modal-body">
+        <div class="hint" style="margin-bottom:12px">Cria o pedido em nome do cliente, com a data real do PIX, e já aprova: o plano ativa na hora e a entrada vai pro caixa (recebedor padrão). Fica tudo na trilha como pedido retroativo.</div>
+        <div class="field"><label for="rg-email">E-mail ou usuário do cliente *</label><input type="text" id="rg-email" required placeholder="cliente@gmail.com ou usuário"></div>
+        <div class="field" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div><label for="rg-plano">Plano *</label><select id="rg-plano"><option value="vip">Manual</option><option value="vipro" selected>Turbo</option><option value="doublepro">Máximo</option></select></div>
+          <div><label for="rg-dias">Dias *</label><input type="number" id="rg-dias" min="1" max="365" value="30" required></div>
+        </div>
+        <div class="field" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div><label for="rg-valor">Valor pago (R$) *</label><input type="number" id="rg-valor" min="0.01" step="0.01" required></div>
+          <div><label for="rg-pagoem">Data do PIX *</label><input type="date" id="rg-pagoem" required></div>
+        </div>
+        <div class="field"><label for="rg-nota">Nota (opcional)</label><input type="text" id="rg-nota" maxlength="200" placeholder="Ex.: pagou direto no PIX do Diego em 10/10"></div>
+        <div class="field"><label for="rg-comprovante">Comprovante (opcional)</label><input type="file" id="rg-comprovante" accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf" onchange="previewArquivo(this,'rg-preview','rg-filename')"><div class="file-name" id="rg-filename"></div><img class="img-preview" id="rg-preview" alt="Pré-visualização"></div>
+      </div>
+      <div class="modal-foot"><button type="button" class="btn" onclick="fecharModal('modal-regularizar')">Cancelar</button><button type="submit" class="btn btn-primary" id="rg-submit"><i class="ti ti-check"></i> Criar e aprovar</button></div>
+    </form>
+  </div>
+</div>
+
 <!-- 💼 v970: visualizador de comprovante DENTRO do painel (nunca mais pop-up bloqueado) -->
 <div class="modal-bg" id="modal-anexo">
   <div class="modal" style="max-width:860px">
@@ -1208,7 +1281,7 @@ var TITULOS={
   pagantes:{t:"Pagantes",s:"Quem pagou, quanto, quando e até quando o plano vale"},
   conferencia:{t:"Conferência",s:"Pedido × caixa × comprovante lido — e as divergências"},
   dre:{t:"DRE &amp; Fechamento",s:"Resultado mês a mês, exportações pro contador e meses congelados"},
-  usuarios:{t:"Usuários por Dias de VIP",s:"Todos os usuários, ordenados por dias restantes"},
+  usuarios:{t:"Usuários",s:"Quem é, quando entrou, quanto pagou, o que enviou e se o Gmail e o robô estão vivos"},
   pendentes:{t:"Pedidos",s:"Pendentes, aprovados e cancelados — com quem aprovou e por quê"},
   planilhas:{t:"Planilhas & Robôs",s:"Coleta e enriquecimento do DOL — 100% manual, clique quando sair temporada nova"},
   notificacoes:{t:"Notificações por e-mail",s:"A conta Google que envia os códigos e avisos do sistema"}
@@ -1269,42 +1342,81 @@ function renderVisaoGeral(dash){
 function renderUsuarios(lista){
   STATE.dash=STATE.dash||{};
   STATE.dash.usuarios=lista;
-  var termo=(document.getElementById("usr-search").value||"").trim().toLowerCase();
-  if(termo){filtrarUsuarios();}
-  else{renderLinhasUsuarios(lista);}
+  filtrarUsuarios(); // 👤 v972: filtro/ordem/paginação sempre passam pelo mesmo caminho
 }
 
 function renderLinhasUsuarios(lista){
   var tbody=document.getElementById("tbl-usuarios");
   var empty=document.getElementById("usr-empty");
+  // 👤 v972: filtro por grupo + ordenação + paginação (lista já veio filtrada pelo texto)
+  var filtro=(document.getElementById("usr-filtro")||{}).value||"";
+  var ordem=(document.getElementById("usr-sort")||{}).value||"dias";
+  var agora=Date.now();
+  lista=(lista||[]).filter(function(u){
+    var dl=u.daysLeft,teve=(u.manualExpires||0)>0||(u.autoExpires||0)>0;
+    switch(filtro){
+      case "pagantes":return (u.totalPago||0)>0;
+      case "ativos":return dl!==null&&dl!==undefined&&dl>0&&!u.isAdmin;
+      case "vencendo":return dl!==null&&dl!==undefined&&dl>0&&dl<=3;
+      case "vencidos":return teve&&(dl===null||dl===undefined||dl<=0)&&!u.isAdmin;
+      case "semgmail":return !u.gmailConectado&&!u.isAdmin;
+      case "gmailcaiu":return !!u.gmailCaiu;
+      case "roboparado":return !!(u.robo&&!u.robo.ativo)&&dl>0;
+      case "cortesia":return /code|trial|admin|gift/.test(String(u.origem||""))||(u.diasCreditadosCortesia||0)>0;
+      case "suspeita":return !!u.suspeita;
+      case "admin":return !!u.isAdmin;
+      case "sumidos":return (u.totalPago||0)>0&&(!u.lastSeenAt||u.lastSeenAt<agora-7*86400000);
+      case "novos":return (u.createdAt||0)>agora-7*86400000;
+      default:return true;
+    }
+  });
+  var _n=function(v){return v===null||v===undefined?-1e15:v;};
+  lista.sort(function(a,b){
+    switch(ordem){
+      case "cadastro":return (b.createdAt||0)-(a.createdAt||0);
+      case "acesso":return (b.lastSeenAt||0)-(a.lastSeenAt||0);
+      case "pago":return (b.totalPago||0)-(a.totalPago||0);
+      case "envhoje":return (b.envHoje||0)-(a.envHoje||0);
+      case "envtotal":return (b.envTotal||0)-(a.envTotal||0);
+      case "nome":return String(a.nome||"").localeCompare(String(b.nome||""),"pt-BR");
+      default:{var da=a.daysLeft,db=b.daysLeft;if((da===null||da===undefined)&&(db===null||db===undefined))return 0;if(da===null||da===undefined)return 1;if(db===null||db===undefined)return -1;return db-da;}
+    }
+  });
+  var cnt=document.getElementById("usr-count");
+  if(cnt)cnt.textContent=lista.length+" usuário(s)"+(filtro?" nesse filtro":"")+" · "+lista.filter(function(u){return (u.totalPago||0)>0;}).length+" já pagaram · "+fmtMoney(lista.reduce(function(a,u){return a+(u.totalPago||0);},0))+" no total";
+  var mais=document.getElementById("usr-mais");
   if(!lista||!lista.length){
     tbody.innerHTML="";
     empty.style.display="block";
+    if(mais)mais.style.display="none";
     return;
   }
   empty.style.display="none";
+  if(mais)mais.style.display=lista.length>USR_LIMIT?"block":"none";
+  lista=lista.slice(0,USR_LIMIT);
   var html="";
   for(var i=0;i<lista.length;i++){
     var u=lista[i];
     var temDias=(u.daysLeft!==null&&u.daysLeft!==undefined);
-    // Auditoria 10/09/2026: daysLeft é Math.ceil((expira-agora)/dia), sem
-    // Math.max(0,...) — plano vencido (caso normal, não erro) chegava
-    // negativo aqui e virava "-5 dias" na tela, ilegível. "Vencido" deixa
-    // claro sem mudar nada no servidor (mesmo daysLeft que já chegava).
     var dias=!temDias?"—":(u.daysLeft<=0?"Vencido":(u.daysLeft+" dia"+(u.daysLeft===1?"":"s")));
     var creditados=u.diasCreditadosPagos!=null?u.diasCreditadosPagos:0;
     var cortesia=u.diasCreditadosCortesia!=null?u.diasCreditadosCortesia:0;
+    var waDig=String(u.telefone||"").replace(/\D/g,"");
+    var wa=waDig.length>=10?'<a href="https://wa.me/'+esc(waDig.length<=11?("55"+waDig):waDig)+'" target="_blank" rel="noopener" style="color:var(--green)" title="Chamar no WhatsApp"><i class="ti ti-brand-whatsapp"></i> '+esc(u.telefone)+'</a>':'';
+    var local=[u.city,u.country].filter(Boolean).join(", ");
+    var sumido=(u.totalPago||0)>0&&(!u.lastSeenAt||u.lastSeenAt<Date.now()-7*86400000);
     html+='<tr>'
-      +'<td><div class="cell-main">'+esc(u.nome||u.email)+'</div><div class="cell-sub">'+esc(u.email)+'</div>'+((u.emailContato&&u.emailContato!==u.email)?('<div class="cell-sub">📧 '+esc(u.emailContato)+'</div>'):'')+((u.pediuSenhaSemEmail&&(Date.now()-u.pediuSenhaSemEmail)<14*86400000)?'<div class="cell-sub"><span class="badge amber" title="Essa conta não tem e-mail cadastrado e a pessoa pediu pra recuperar a senha — defina uma senha nova no botão 🔑 (ela vai chamar no WhatsApp)">🔑 pediu senha nova (sem e-mail)</span></div>':'')+'</td>'
-      +'<td><span class="badge blue">'+esc(NOME_PLANO_ADM[u.plano]||u.plano||"free")+'</span></td>'
-      +'<td>'+esc(dias)+'</td>'
-      +'<td>'+esc(creditados)+' dia'+((creditados===1)?"":"s")+'</td>'
-      +'<td>'+(cortesia>0?('<span class="badge gray">'+esc(cortesia)+' dia'+((cortesia===1)?"":"s")+'</span>'):'—')+'</td>'
+      +'<td><div class="cell-main">'+esc(u.nome||u.email)+(u.isAdmin?' <span class="badge amber">admin</span>':'')+'</div><div class="cell-sub">'+esc(u.email)+'</div>'+((u.emailContato&&u.emailContato!==u.email)?('<div class="cell-sub">📧 '+esc(u.emailContato)+'</div>'):'')+(wa?'<div class="cell-sub">'+wa+'</div>':'')+(local?'<div class="cell-sub">📍 '+esc(local)+'</div>':'')+'</td>'
+      +'<td><div class="cell-sub">cadastro '+esc(fmtDia(u.createdAt))+'</div><div class="cell-sub"'+(sumido?' style="color:var(--amber)"':'')+'>visto '+esc(u.lastSeenAt?_plAgo(u.lastSeenAt):"nunca")+(sumido?' ⚠️':'')+'</div></td>'
+      +'<td><span class="badge blue">'+esc(NOME_PLANO_ADM[u.plano]||u.plano||"free")+'</span>'+(u.origem?'<div class="cell-sub">'+esc(u.origem)+'</div>':'')+'</td>'
+      +'<td>'+esc(dias)+'<div class="cell-sub">'+esc(creditados)+'d pago'+(cortesia>0?' · '+esc(cortesia)+'d cortesia':'')+'</div></td>'
+      +'<td>'+((u.totalPago||0)>0?'<div class="cell-main">'+esc(fmtMoney(u.totalPago))+'</div><div class="cell-sub">'+esc(u.pagamentosN)+'× · último '+esc(fmtDia(u.ultimoPagamento))+'</div>':'<span class="cell-sub">nunca pagou</span>')+'</td>'
+      +'<td><div class="cell-main">'+esc(u.envHoje||0)+' hoje</div><div class="cell-sub">'+esc(u.envTotal||0)+' no total</div></td>'
       +'<td>'+celulaGmailRobo(u)+'</td>'
       +'<td>'+(u.suspeita?('<button class="warn-flag" data-email="'+esc(u.email||"")+'" title="Ver motivo da suspeita" onclick="abrirDivergencia(this.dataset.email)"><i class="ti ti-alert-triangle"></i></button>'):'')+'</td>'
-      +'<td><button class="key-flag" data-email="'+esc(u.email||"")+'" title="Definir/redefinir senha (conta antiga sem senha ou senha esquecida)" onclick="definirSenhaUsuario(this.dataset.email)"><i class="ti ti-key"></i></button></td>'
-      +'<td><button class="btn btn-sm" data-email="'+esc(u.email||"")+'" title="Conceder, estender, definir vencimento ou revogar o plano" onclick="abrirVipModal(this.dataset.email)"><i class="ti ti-star"></i> Plano</button></td>'
-      +'<td><button class="btn btn-sm" data-email="'+esc(u.email||"")+'" title="Detalhe completo: plano, pedidos, dias creditados, uso do robô, sinais de risco" onclick="abrirDetalheUsuario(this.dataset.email)"><i class="ti ti-file-search"></i> Detalhe</button></td>'
+      +'<td><button class="key-flag" data-email="'+esc(u.email||"")+'" title="Definir/redefinir senha (conta antiga sem senha ou senha esquecida)" onclick="definirSenhaUsuario(this.dataset.email)"><i class="ti ti-key"></i></button>'+(u.pediuSenhaSemEmail?'<div class="cell-sub" style="color:var(--amber)" title="Pediu recuperação de senha mas a conta não tem e-mail — defina a senha pela chave">🔑 pediu senha nova (sem e-mail)</div>':'')+'</td>'
+      +'<td><div class="row-actions"><button class="btn btn-sm" data-email="'+esc(u.email||"")+'" title="Conceder, estender, definir vencimento ou revogar o plano" onclick="abrirVipModal(this.dataset.email)"><i class="ti ti-star"></i> Plano</button>'
+      +'<button class="btn btn-sm btn-primary" data-email="'+esc(u.email||"")+'" title="Ficha completa" onclick="abrirDetalheUsuario(this.dataset.email)"><i class="ti ti-id"></i> Ficha</button></div></td>'
       +'</tr>';
   }
   tbody.innerHTML=html;
@@ -1467,7 +1579,7 @@ async function vipRevogar(){
 function filtrarUsuarios(){
   var termo=(document.getElementById("usr-search").value||"").trim().toLowerCase();
   var todos=(STATE.dash&&STATE.dash.usuarios)||[];
-  if(!termo){renderLinhasUsuarios(todos);return;}
+  if(!termo){renderLinhasUsuarios(todos.slice());return;}
   // v965: nome, USUÁRIO (chave da conta), E-MAIL CADASTRADO e TELEFONE (só dígitos, com ou sem DDI/máscara) —
   // o cliente manda "meu e-mail é X" ou o número no WhatsApp e o painel precisa achar a conta.
   // Gmail: pro Google "joao.silva+x@gmail.com" = "joaosilva@gmail.com" — compara pela forma normalizada.
@@ -1585,6 +1697,7 @@ function _pendStatusSel(){
 }
 
 async function carregarPendentes(){
+  PEND_LIMIT=60;
   var tbody=document.getElementById("tbl-pendentes");
   tbody.innerHTML='<tr><td colspan="7"><div class="spin"></div></td></tr>';
   document.getElementById("pend-empty").style.display="none";
@@ -1639,9 +1752,26 @@ function renderPendentes(lista){
         ||String(pd.id||"").toLowerCase().indexOf(termo)>=0;
     });
   }
+  // 🧾 v971: período, plano e "só com alerta" (repetido / divergente / trocou comprovante / provisório)
+  if(lista&&lista.length){
+    var _per=parseInt((document.getElementById("pend-periodo")||{}).value||"0",10)||0;
+    var _pl=(document.getElementById("pend-plano")||{}).value||"";
+    var _soAl=!!((document.getElementById("pend-alerta")||{}).checked);
+    var _corte=_per?Date.now()-_per*86400000:0;
+    lista=lista.filter(function(pd){
+      if(_corte&&(pd.createdAt||0)<_corte)return false;
+      if(_pl&&String(pd.plano||"")!==_pl)return false;
+      if(_soAl&&!_pendTemAlerta(pd))return false;
+      return true;
+    });
+  }
+  var _totalFiltrado=(lista||[]).length;
+  var _cnt=document.getElementById("pend-count");
+  if(_cnt)_cnt.textContent=_totalFiltrado?(_totalFiltrado+" pedido(s) · "+fmtMoney((lista||[]).reduce(function(a,x){return a+(parseFloat(x.valorTotal)||0);},0))+" · "+(lista||[]).filter(_pendTemAlerta).length+" com alerta"):"";
   if(!lista||!lista.length){
     tbody.innerHTML="";
     empty.style.display="block";
+    document.getElementById("pend-mais").style.display="none";
     return;
   }
   empty.style.display="none";
@@ -1662,6 +1792,8 @@ function renderPendentes(lista){
       return pa!==pb?pa-pb:a.i-b.i;
     }).map(function(x){return x.pd;});
   }
+  document.getElementById("pend-mais").style.display=ordenada.length>PEND_LIMIT?"block":"none";
+  ordenada=ordenada.slice(0,PEND_LIMIT);
   var html="";
   for(var i=0;i<ordenada.length;i++){
     var pd=ordenada[i];
@@ -1679,6 +1811,8 @@ function renderPendentes(lista){
       if(pc.instituicaoLida)precheckHtml+='<div class="cell-sub">'+esc(pc.instituicaoLida)+'</div>';
       if(pc.dataLida)precheckHtml+='<div class="cell-sub">'+esc(pc.dataLida)+(pc.horaLida?(" "+esc(pc.horaLida)):"")+'</div>';
       if(pc.transacaoIdLida)precheckHtml+='<div class="cell-sub">TX '+esc(String(pc.transacaoIdLida).slice(0,24))+'</div>';
+      // 🧾 v971: o RECEBEDOR lido diz se o PIX caiu na conta certa (a do Diego)
+      if(pc.recebedorLido)precheckHtml+='<div class="cell-sub">para: '+esc(pc.recebedorLido)+'</div>';
     }
     // Quem aprovou/cancelou, quando e por quê — a rota sempre devolveu, a
     // tela é que descartava.
@@ -1692,9 +1826,19 @@ function renderPendentes(lista){
     // Selo de ativação provisória — o admin precisa saber, olhando a lista,
     // que ESTE usuário já está usando o plano antes de decidir aprovar ou
     // rejeitar (comprovante falso = clicar Cancelar aqui remove o acesso).
-    var provisorioBadge=(pd.autoAtivado&&statusPd==="pendente")
-      ?'<div class="cell-sub"><span class="badge amber"><i class="ti ti-bolt"></i> já ativo (provisório) — revisar</span></div>'
-      :'';
+    var provisorioBadge="";
+    if(pd.autoAtivado&&statusPd==="pendente"){
+      // 🧾 v971: há quanto tempo está ativo sem confirmação e quando o provisório VENCE
+      var _hAt=pd.autoAtivadoEm?Math.floor((Date.now()-pd.autoAtivadoEm)/3600000):null;
+      var _venc=pd.provisorioExpiraEm?(pd.provisorioExpiraEm-Date.now()):null;
+      var _vencTxt=_venc===null?"":(_venc<=0?" · provisório VENCIDO":(" · vence em "+(_venc<86400000?Math.ceil(_venc/3600000)+"h":Math.ceil(_venc/86400000)+"d")));
+      provisorioBadge='<div class="cell-sub"><span class="badge '+(_venc!==null&&_venc<=0?"red":"amber")+'"><i class="ti ti-bolt"></i> já ativo (provisório)'+(_hAt!==null?(" há "+_hAt+"h"):"")+esc(_vencTxt)+' — revisar</span></div>';
+    }
+    if(pd.comprovanteRepetido){
+      var _rp=pd.comprovanteRepetido;
+      provisorioBadge+='<div class="cell-sub"><button class="badge red" style="cursor:pointer" data-id="'+esc(_rp.pedidoId)+'" onclick="detalhesPedido(this.dataset.id)" title="Abrir o outro pedido"><i class="ti ti-copy"></i> mesmo comprovante do pedido '+esc(_dnPedidoCurto(_rp.pedidoId))+(_rp.mesmoUsuario?" (mesmo usuário)":" de "+esc(_rp.email||""))+(_rp.n>1?" +"+esc(_rp.n-1):"")+'</button></div>';
+    }
+    if(pd.comprovanteReenviadoEm)provisorioBadge+='<div class="cell-sub"><span class="badge amber" title="O cliente trocou a foto do comprovante depois de enviar"><i class="ti ti-refresh"></i> trocou o comprovante '+esc(fmtData(pd.comprovanteReenviadoEm))+'</span></div>';
     var comprovanteBtn=pd.comprovante
       ?('<button class="btn btn-sm" onclick="verComprovante(\''+esc(pd.id)+'\')"><i class="ti ti-eye"></i> Ver</button>')
       :'<span class="badge gray">sem anexo</span>';
@@ -1843,13 +1987,9 @@ async function cancelarPedido(id){
   var avisoProvisorio=pd&&pd.autoAtivado
     ?"⚠️ Este usuário JÁ ESTÁ USANDO o plano agora (ativação provisória automática) — cancelar aqui retira o plano dele imediatamente.\n\n"
     :"";
-  var motivo=prompt(avisoProvisorio+"Motivo do cancelamento.\n\nO usuário vê este texto em \"Meus pedidos\" quando abrir o site — o sistema NÃO manda aviso automático pra ele:");
-  if(motivo===null)return;
-  motivo=motivo.trim();
-  if(motivo.length<3){
-    toast("Digite um motivo com pelo menos 3 caracteres.","err");
-    return;
-  }
+  // 🧾 v971: motivo pelo modal da casa (pedirMotivo) — a caixa nativa do navegador sumiu
+  var motivo=await pedirMotivo("Cancelar pedido",avisoProvisorio+"O usuário vê este motivo em \"Meus pedidos\" quando abrir o site — o sistema NÃO manda aviso automático pra ele.");
+  if(!motivo)return;
   try{
     await api("/api/pedido/"+encodeURIComponent(id),{method:"PATCH",body:{status:"cancelado",notaAdmin:motivo}});
     toast(pd&&pd.autoAtivado?"Pedido rejeitado — plano retirado do usuário.":"Pedido cancelado.","ok");
@@ -1940,102 +2080,75 @@ async function abrirDetalheUsuario(email){
 }
 function renderDetalheUsuario(d,jour){
   var u=d.usuario||{},pl=d.plano||{},rec=d.reconciliacao||{},uso=d.uso||{},risco=d.risco||{},auth=d.auth||{};
-  var pedidos=d.pedidos||[],creditos=d.creditos||[],auditoria=d.auditoria||[];
-  var html='<div style="max-height:64vh;overflow:auto;font-size:12.5px">';
-
-  html+='<p style="margin-bottom:10px"><b style="color:#fff;font-size:14px">'+esc(u.name||u.email)+'</b><br>'
-    +'<span style="color:var(--t2)">'+esc(u.email)+'</span>'
-    +(u.whatsapp?(' · '+esc(u.whatsapp)):'')+(u.country?(' · '+esc(u.country)):'')
-    +(u.isAdmin?' <span class="badge amber">admin</span>':'')+'</p>';
-
-  // Sinais de risco no topo — é a pergunta que o admin veio responder.
+  var pedidos=d.pedidos||[],creditos=d.creditos||[],auditoria=d.auditoria||[],gifts=d.giftHistory||[];
+  var waDig=String(u.whatsapp||"").replace(/\D/g,"");
+  var html='<div style="max-height:72vh;overflow:auto;font-size:12.5px" id="ficha-root">';
+  // Cabeçalho + ações
+  html+='<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;margin-bottom:10px"><div style="flex:1;min-width:220px"><b style="color:#fff;font-size:15px">'+esc(u.name||u.email)+'</b>'+(u.isAdmin?' <span class="badge amber">admin</span>':'')
+    +'<div style="color:var(--t2)">'+esc(u.email)+(u.language&&u.language!=="pt"?' · idioma '+esc(u.language):'')+'</div>'
+    +(u.whatsapp?'<div>'+(waDig.length>=10?'<a href="https://wa.me/'+esc(waDig.length<=11?("55"+waDig):waDig)+'" target="_blank" rel="noopener" style="color:var(--green)"><i class="ti ti-brand-whatsapp"></i> '+esc(u.whatsapp)+'</a>':esc(u.whatsapp))+(u.country?' · '+esc(u.country):'')+'</div>':'')
+    +'<div style="color:var(--t3)">cadastro '+esc(fmtData(u.createdAt))+'</div></div>'
+    +'<div class="row-actions"><button class="btn btn-sm" data-email="'+esc(u.email)+'" onclick="abrirVipModal(this.dataset.email)"><i class="ti ti-star"></i> Plano</button><button class="btn btn-sm" data-email="'+esc(u.email)+'" onclick="abrirGift(this.dataset.email)"><i class="ti ti-gift"></i> Dar dias grátis</button><button class="btn btn-sm" data-email="'+esc(u.email)+'" onclick="fichaEnvios(this.dataset.email)"><i class="ti ti-send"></i> Envios &amp; logs</button></div></div>';
+  // Sinais de risco
   var alertas=[];
   if((rec.duplicacoes||[]).length)alertas.push((rec.duplicacoes.length)+' concessão(ões) duplicada(s) em ≤15min pro MESMO plano final');
   if((rec.comprovantesReusados||[]).length)alertas.push('comprovante reusado em pedido de OUTRO usuário: '+rec.comprovantesReusados.map(function(c){return esc(c.email);}).join(", "));
   if((risco.gmailsBloqueados||[]).length)alertas.push(risco.gmailsBloqueados.length+' Gmail(s) extra bloqueado(s)');
-  if(auth.rtInvalid)alertas.push('refresh token inválido (robô parado por queda de autenticação)');
+  if(auth.rtInvalid)alertas.push('Gmail CAIU (Google derrubou a autorização'+(auth.rtInvalidAt?' em '+esc(fmtData(auth.rtInvalidAt)):'')+') — o robô não envia até reconectar');
   if(alertas.length){
     html+='<div style="background:var(--redg);border:1px solid var(--redb);border-radius:8px;padding:10px 12px;margin-bottom:10px;color:var(--red)"><b><i class="ti ti-alert-triangle"></i> Sinais de risco</b><ul style="margin:6px 0 0 18px;padding:0">'
       +alertas.map(function(a){return '<li>'+a+'</li>';}).join("")+'</ul></div>';
   }
-
-  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">'
+  var lim=pl.limites||{},le=pl.limitesEfetivos||{};
+  html+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:10px">'
     +'<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 11px">'
       +'<div style="color:var(--t3);font-size:11px">PLANO</div>'
-      +'<div style="font-weight:700">'+esc(NOME_PLANO_ADM[pl.atual]||pl.atual||"free")+'</div>'
-      +'<div style="color:var(--t2);margin-top:4px">Manual: '+(pl.manual&&pl.manual.ativo?('ativo · '+esc(pl.manual.diasRestantes)+'d'):'inativo')+'</div>'
-      +'<div style="color:var(--t2)">Auto: '+(pl.auto&&pl.auto.ativo?('ativo · '+esc(pl.auto.diasRestantes)+'d'):'inativo')+'</div>'
-      +(pl.source?('<div style="color:var(--t3);margin-top:4px">origem: '+esc(pl.source)+'</div>'):'')
+      +'<div style="font-weight:700">'+esc(NOME_PLANO_ADM[pl.atual]||pl.atual||"free")+(pl.source?' <span class="cell-sub">('+esc(pl.source)+')</span>':'')+'</div>'
+      +'<div style="color:var(--t2);margin-top:4px">Manual: '+(pl.manual&&pl.manual.ativo?('ativo · '+esc(pl.manual.diasRestantes)+'d · vence '+esc(fmtDia(pl.manual.expira))):'inativo')+'</div>'
+      +'<div style="color:var(--t2)">Automático: '+(pl.auto&&pl.auto.ativo?('ativo · '+esc(pl.auto.diasRestantes)+'d · vence '+esc(fmtDia(pl.auto.expira))):'inativo')+'</div>'
+      +'<div style="color:var(--t3);margin-top:4px">Limites: '+esc(le.manual!=null?le.manual:"?")+' manual · '+esc(le.auto!=null?le.auto:"?")+' auto por dia'+(lim&&(lim.manual!=null)?' (carimbo '+esc(lim.manual)+'/'+esc(lim.auto)+')':' (tabela)')+'</div>'
+      +(pl.ativadoPor?'<div style="color:var(--t3)">ativado por '+esc(pl.ativadoPor)+(pl.ativadoEm?' em '+esc(fmtData(pl.ativadoEm)):'')+'</div>':'')
+      +(pl.usedCode?'<div style="color:var(--t3)">código '+esc(pl.usedCode)+(pl.codeNote?' · '+esc(pl.codeNote):'')+'</div>':'')
     +'</div>'
     +'<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 11px">'
-      +'<div style="color:var(--t3);font-size:11px">USO DO ROBÔ</div>'
-      +'<div>Manual hoje: '+esc(uso.todayManual||0)+' / '+esc(uso.manualLimit||0)+'</div>'
-      +'<div>Automático hoje: '+esc(uso.todayAuto||0)+' / '+esc(uso.autoLimit||0)+'</div>'
-      +'<div style="color:var(--t2);margin-top:4px">Job: '+(uso.autoJobStatus?(esc(uso.autoJobStatus.status||"—")+(uso.autoJobStatus.active?"":" (parado)")):'nunca ligado')+'</div>'
-      +'<div style="color:var(--t3)">Currículos: '+esc(uso.cvs||0)+' · Perfis: '+esc(uso.perfisCurriculo||0)+'</div>'
+      +'<div style="color:var(--t3);font-size:11px">DINHEIRO</div>'
+      +'<div style="font-weight:700;color:#fff">'+esc(fmtMoney(rec.totalPagoHistorico||0))+' pagos</div>'
+      +'<div style="color:var(--t2)">'+esc(rec.pedidosPagosCount||0)+' pedido(s) pago(s) · '+esc(rec.diasPagosLedger!=null?rec.diasPagosLedger:(rec.totalPago||0))+' dias pagos · '+esc(rec.totalGratis||0)+' dias cortesia</div>'
+      +(rec.esperadoVsReal?'<div style="color:var(--t3)">'+esc(rec.esperadoVsReal)+'</div>':'')
     +'</div>'
-  +'</div>';
-
-  html+='<div style="color:var(--t3);font-size:11px;margin-bottom:4px">EXTRATO DE DIAS (últimos '+Math.min(creditos.length,8)+' de '+creditos.length+')</div>';
-  if(!creditos.length){
-    html+='<div style="color:var(--t3);margin-bottom:10px">Nenhum crédito registrado.</div>';
-  }else{
-    html+='<table style="width:100%;border-collapse:collapse;margin-bottom:10px"><tbody>';
-    creditos.slice(0,8).forEach(function(c){
-      html+='<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px;white-space:nowrap">'+esc(fmtData(c.quando))+'</td>'
-        +'<td style="padding:4px 6px">'+esc(c.dias||0)+'d ('+esc(c.tipo||"?")+')</td>'
-        +'<td style="padding:4px 6px;color:var(--t2)">'+esc(c.motivo||c.origem||"")+'</td></tr>';
-    });
-    html+='</tbody></table>';
+    +'<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 11px">'
+      +'<div style="color:var(--t3);font-size:11px">USO</div>'
+      +'<div>Hoje: '+esc(uso.todayManual||0)+' manual · '+esc(uso.todayAuto||0)+' auto</div>'
+      +'<div style="color:var(--t2)">Total enviado: '+esc(uso.totalHistorico||0)+(uso.ultimoEnvio?' · último '+esc(fmtData(uso.ultimoEnvio.quando))+' ('+esc(uso.ultimoEnvio.empresa||"")+')':'')+'</div>'
+      +'<div style="color:var(--t2);margin-top:4px">Robô: '+(uso.autoJobStatus?(esc(uso.autoJobStatus.status||"—")+(uso.autoJobStatus.active?" · fila "+esc(uso.autoJobStatus.queueSize||0):" (parado)")):'nunca ligado')+'</div>'
+      +'<div style="color:var(--t3)">Currículos: '+esc(uso.cvs||0)+' · Perfis de vaga: '+esc(uso.perfisCurriculo||0)+'</div>'
+    +'</div>'
+    +'<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 11px">'
+      +'<div style="color:var(--t3);font-size:11px">GMAIL DE ENVIO</div>'
+      +'<div>'+(auth.temRefreshToken?(auth.rtInvalid?'<span class="badge red">caiu</span>':'<span class="badge green">conectado</span>'):'<span class="badge gray">nunca conectou</span>')+(auth.lastConsentAt?' <span class="cell-sub">último consentimento '+esc(fmtData(auth.lastConsentAt))+'</span>':'')+'</div>'
+      +((auth.senders||[]).length?'<div style="color:var(--t2);margin-top:4px">Extras: '+auth.senders.map(function(se){return esc(se.email)+(se.blocked?' <span class="badge red">bloqueado</span>':se.tokenExpired?' <span class="badge amber">reconectar</span>':se.active===false?' <span class="badge gray">inativo</span>':' <span class="badge green">ok</span>');}).join(", ")+'</div>':'')
+    +'</div></div>';
+  html+='<div id="ficha-envios"></div>';
+  function tabela(titulo,rows,rowFn,lim2){
+    var h='<div style="color:var(--t3);font-size:11px;margin:8px 0 4px">'+titulo+' ('+rows.length+')</div>';
+    if(!rows.length)return h+'<div style="color:var(--t3);margin-bottom:6px">Nada registrado.</div>';
+    h+='<table style="width:100%;border-collapse:collapse;margin-bottom:4px"><tbody>'+rows.slice(0,lim2).map(rowFn).join("")+'</tbody>';
+    if(rows.length>lim2)h+='<tbody class="ficha-mais" style="display:none">'+rows.slice(lim2).map(rowFn).join("")+'</tbody>';
+    h+='</table>';
+    if(rows.length>lim2)h+='<button class="btn btn-sm" style="margin-bottom:8px" onclick="this.previousElementSibling.querySelector(\'.ficha-mais\').style.display=\'\';this.remove()">ver todos ('+rows.length+')</button>';
+    return h;
   }
-
-  html+='<div style="color:var(--t3);font-size:11px;margin-bottom:4px">PEDIDOS ('+pedidos.length+')</div>';
-  if(!pedidos.length){
-    html+='<div style="color:var(--t3);margin-bottom:10px">Nenhum pedido.</div>';
-  }else{
-    html+='<table style="width:100%;border-collapse:collapse;margin-bottom:10px"><tbody>';
-    pedidos.slice(0,8).forEach(function(p){
-      html+='<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px;white-space:nowrap">'+esc(fmtData(p.createdAt))+'</td>'
-        +'<td style="padding:4px 6px">'+esc(p.plano||"?")+' · '+esc(fmtMoney(p.valorTotal))+'</td>'
-        +'<td style="padding:4px 6px"><span class="badge '+(p.status==="cancelado"?"red":(p.status==="pendente"?"amber":"green"))+'">'+esc(p.status||"?")+'</span></td>'
-        +'<td style="padding:4px 6px">'+(p.temComprovante?'<button class="btn btn-sm" onclick="verComprovante(\''+esc(p.id)+'\')"><i class="ti ti-eye"></i></button>':'')+'</td></tr>';
-    });
-    html+='</tbody></table>';
-  }
-
-  html+='<div style="color:var(--t3);font-size:11px;margin-bottom:4px">AÇÕES DO ADMIN SOBRE ESTE USUÁRIO ('+auditoria.length+')</div>';
-  if(!auditoria.length){
-    html+='<div style="color:var(--t3)">Nenhuma ação registrada.</div>';
-  }else{
-    html+='<table style="width:100%;border-collapse:collapse"><tbody>';
-    auditoria.slice(0,8).forEach(function(a){
-      html+='<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px;white-space:nowrap">'+esc(fmtData(a.ts))+'</td>'
-        +'<td style="padding:4px 6px">'+esc(a.admin||"—")+'</td><td style="padding:4px 6px">'+esc(a.action||"—")+'</td>'
-        +'<td style="padding:4px 6px;color:var(--t2)">'+esc(a.detail||"")+(a.reverted?' (revertida)':'')+'</td></tr>';
-    });
-    html+='</tbody></table>';
-  }
-
+  var tdS='style="padding:4px 6px;border-bottom:1px solid var(--border)"';
+  html+=tabela('EXTRATO DE DIAS',creditos,function(c){return '<tr><td '+tdS+' style="white-space:nowrap">'+esc(fmtData(c.quando))+'</td><td '+tdS+'>'+esc(c.dias||0)+'d ('+esc(c.tipo||"?")+')</td><td '+tdS+' style="color:var(--t2)">'+esc(c.motivo||c.origem||"")+(c.por?' · '+esc(c.por):'')+'</td></tr>';},8);
+  if(gifts.length)html+=tabela('PRESENTES DE DIAS (cortesia)',gifts,function(g){return '<tr><td '+tdS+'>'+esc(fmtData(g.quando))+'</td><td '+tdS+'>'+esc(g.dias||0)+'d</td><td '+tdS+' style="color:var(--t2)">'+esc(g.motivo||"")+(g.por||g.admin?' · '+esc(g.por||g.admin):'')+'</td></tr>';},8);
+  html+=tabela('PEDIDOS',pedidos,function(p){return '<tr><td '+tdS+' style="white-space:nowrap">'+esc(fmtData(p.createdAt))+'</td><td '+tdS+'>'+esc(NOME_PLANO_ADM[p.plano]||p.plano||"?")+' · '+esc(fmtMoney(p.valorTotal))+(p.valorOriginal&&p.valorOriginal!==p.valorTotal?' <span class="cell-sub">(era '+esc(fmtMoney(p.valorOriginal))+')</span>':'')+'</td><td '+tdS+'>'+_badgeStatusPedido(p.status)+(p.ativadoPor?'<div class="cell-sub">'+esc(p.ativadoPor)+'</div>':'')+'</td><td '+tdS+'>'+(p.temComprovante?'<button class="btn btn-sm" data-id="'+esc(p.id)+'" onclick="verAnexo(\'pedido\',this.dataset.id)"><i class="ti ti-paperclip"></i></button>':'')+'<button class="btn btn-sm" data-id="'+esc(p.id)+'" onclick="detalhesPedido(this.dataset.id)"><i class="ti ti-info-circle"></i></button></td></tr>';},8);
+  html+=tabela('AÇÕES DO ADMIN SOBRE ESTE USUÁRIO',auditoria,function(a){return '<tr><td '+tdS+' style="white-space:nowrap">'+esc(fmtData(a.ts))+'</td><td '+tdS+'>'+esc(a.admin||"—")+'</td><td '+tdS+'>'+esc(a.action||"—")+'</td><td '+tdS+' style="color:var(--t2)">'+esc(a.detail||"")+(a.reverted?' (revertida)':'')+'</td></tr>';},8);
+  var tl=auth.timeline||[];
+  if(tl.length)html+=tabela('AUTENTICAÇÃO DO GMAIL (linha do tempo)',tl,function(ev){return '<tr><td '+tdS+' style="white-space:nowrap">'+esc(fmtData(ev.em||ev.ts))+'</td><td '+tdS+'>'+esc(ev.tipo||ev.action||"—")+'</td><td '+tdS+' style="color:var(--t2)">'+esc(ev.detalhe||ev.detail||ev.erro||"")+'</td></tr>';},6);
   var eventos=(jour&&jour.journey)||[];
-  html+='<div style="color:var(--t3);font-size:11px;margin-bottom:4px">JORNADA — o que aconteceu com essa conta ('+(jour?(jour.total||0):"—")+')</div>';
-  if(!jour){
-    html+='<div style="color:var(--t3)">Não foi possível carregar a jornada.</div>';
-  }else if(!eventos.length){
-    html+='<div style="color:var(--t3)">Nenhum evento registrado ainda.</div>';
-  }else{
-    html+='<table style="width:100%;border-collapse:collapse"><tbody>';
-    eventos.slice(0,10).forEach(function(ev){
-      var falhou=ev.ok===false;
-      html+='<tr style="border-bottom:1px solid var(--border)'+(falhou?';color:var(--red)':'')+'">'
-        +'<td style="padding:4px 6px;white-space:nowrap">'+esc(fmtData(ev.ts))+'</td>'
-        +'<td style="padding:4px 6px">'+(falhou?'<i class="ti ti-alert-triangle"></i> ':'')+esc(ev.action||"—")+'</td>'
-        +'<td style="padding:4px 6px;color:'+(falhou?"var(--red)":"var(--t2)")+'">'+esc(ev.detail||ev.error||"")+'</td></tr>';
-    });
-    html+='</tbody></table>';
-  }
-
+  html+=tabela('JORNADA — o que aconteceu com essa conta',eventos,function(ev){var f=ev.ok===false;return '<tr'+(f?' style="color:var(--red)"':'')+'><td '+tdS+' style="white-space:nowrap">'+esc(fmtData(ev.ts))+'</td><td '+tdS+'>'+(f?'<i class="ti ti-alert-triangle"></i> ':'')+esc(ev.action||"—")+'</td><td '+tdS+' style="color:'+(f?"var(--red)":"var(--t2)")+'">'+esc(ev.detail||ev.error||"")+'</td></tr>';},10);
   html+='</div>';
-  abrirModalInfo("🔍 Detalhe — "+(u.name||u.email),html);
+  abrirModalInfo("🔍 Ficha — "+(u.name||u.email),html);
 }
 
 async function reverterAuditoria(id){
@@ -2900,6 +3013,77 @@ async function salvarRepasse(ev){
     var ativa=(document.querySelector(".view.active")||{}).id||"";
     if(ativa==="view-socios")carregarSocios();else if(ativa==="view-caixa"){DIN.abaCaixa="repasses";carregarCaixa();}else carregarDono();
   }catch(e){toast(e.message,"err");}finally{btn.disabled=false;}
+}
+
+/* ── 🧾 v971: PEDIDOS — alertas, paginação e pagamento feito por fora ──── */
+var PEND_LIMIT=60;
+function pendMostrarMais(){PEND_LIMIT+=60;renderPendentes(STATE.pendentes);}
+function _pendTemAlerta(pd){
+  var v=String((pd.preCheck||{}).veredito||"");
+  return !!(pd.comprovanteRepetido||pd.comprovanteReenviadoEm||(pd.autoAtivado&&String(pd.status||"")==="pendente")||/DIVERG|ILEG|ERRO/.test(v));
+}
+function abrirModalRegularizar(){
+  document.getElementById("form-regularizar").reset();
+  document.getElementById("rg-preview").style.display="none";document.getElementById("rg-filename").textContent="";
+  document.getElementById("rg-pagoem").value=new Date().toISOString().slice(0,10);
+  abrirModal("modal-regularizar");
+}
+async function salvarRegularizar(ev){
+  ev.preventDefault();
+  var email=document.getElementById("rg-email").value.trim(),plano=document.getElementById("rg-plano").value;
+  var dias=parseInt(document.getElementById("rg-dias").value,10)||0,valor=parseFloat(document.getElementById("rg-valor").value)||0;
+  var pagoEm=document.getElementById("rg-pagoem").value,nota=document.getElementById("rg-nota").value.trim();
+  if(!email||!(dias>0)||!(valor>0)||!pagoEm){toast("Preencha cliente, plano, dias, valor e data do PIX.","err");return;}
+  var body={userEmail:email,plano:plano,dias:dias,valorTotal:valor,pagoEm:new Date(pagoEm+"T12:00:00").toISOString(),consentimento:true,notaAdmin:nota||"Pagamento feito por fora (registrado pelo admin)"};
+  var f=document.getElementById("rg-comprovante").files[0];
+  if(f){if(f.size>8*1024*1024){toast("Máximo 8MB.","err");return;}var lido=await arquivoParaBase64(f);body.comprovante=lido.base64;body.comprovanteType=lido.mime;}
+  if(!confirm("Criar o pedido de "+email+" ("+(NOME_PLANO_ADM[plano]||plano)+" · "+dias+" dias · "+fmtMoney(valor)+", pago em "+new Date(pagoEm+"T12:00:00").toLocaleDateString("pt-BR")+") e APROVAR agora?\n\nO plano ativa na hora e a entrada vai pro caixa."))return;
+  var btn=document.getElementById("rg-submit");btn.disabled=true;
+  try{
+    var r=await api("/api/pedido",{method:"POST",body:body});
+    var pid=r.pedidoId||(r.pedido&&r.pedido.id);
+    if(!pid)throw new Error("o servidor não devolveu o número do pedido");
+    if(r.duplicado){toast("Esse cliente já tem um pedido deste plano aprovado há poucos dias — nada foi criado.","err");return;}
+    await aprovarPedido(pid,{});
+    fecharModal("modal-regularizar");
+    DIN.socios=null;
+  }catch(e){toast(e.message,"err");}finally{btn.disabled=false;}
+}
+
+/* ── 👤 v972: USUÁRIOS — paginação, envios & logs, presente de dias ──── */
+var USR_LIMIT=100;
+function usrMostrarMais(){USR_LIMIT+=100;filtrarUsuarios();}
+async function fichaEnvios(email){
+  var box=document.getElementById("ficha-envios");if(!box)return;
+  box.innerHTML='<div class="spin"></div>';
+  try{
+    var d=await api("/api/admin/user-detail/"+encodeURIComponent(email));
+    var hist=d.history||[],logs=d.logs||[],pdfs=d.pdfDiag||[],prof=(d.user&&d.user.profiles)||[];
+    var h='<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 11px;margin-bottom:8px">'
+      +'<div style="color:var(--t3);font-size:11px">CURRÍCULOS NO DISCO</div>'+(pdfs.length?pdfs.map(function(c){return '<div>'+(c.onDisk?'<span class="badge green">ok</span>':'<span class="badge red">SUMIU do disco</span>')+' '+esc(c.name||("cv "+c.idx))+' <span class="cell-sub">'+esc(c.cvType||"")+' · '+esc(c.size?Math.round(c.size/1024)+" KB":"")+'</span></div>';}).join(""):'<div class="cell-sub">nenhum PDF</div>')
+      +'<div style="color:var(--t3);font-size:11px;margin-top:6px">PERFIS DE VAGA</div>'+(prof.length?prof.map(function(p){return '<div>'+esc(p.name||p.nome||"perfil")+' <span class="cell-sub">'+esc(p.visa||p.visaType||"")+(p.state?' · '+esc(Array.isArray(p.state)?p.state.join(", "):p.state):'')+(p.subjects?' · '+esc(p.subjects.length)+' assunto(s)':'')+(p.bodies?' · '+esc(p.bodies.length)+' corpo(s)':'')+(p.active===false?' · inativo':'')+'</span></div>';}).join(""):'<div class="cell-sub">nenhum perfil</div>')
+      +'<div class="cell-sub" style="margin-top:6px">Hoje: '+esc(d.todayManual||0)+' manual · '+esc(d.todayAuto||0)+' auto · '+esc(d.histCount||0)+' no histórico · '+esc(d.sentSet||0)+' empregadores já contatados</div></div>';
+    var tdS='style="padding:4px 6px;border-bottom:1px solid var(--border)"';
+    h+='<div style="color:var(--t3);font-size:11px;margin:8px 0 4px">ÚLTIMOS ENVIOS ('+hist.length+' de '+esc(d.histCount||0)+')</div>';
+    h+=hist.length?'<table style="width:100%;border-collapse:collapse"><tbody>'+hist.map(function(x){return '<tr><td '+tdS+' style="white-space:nowrap">'+esc(x.sentAt?fmtData(x.sentAt):(x.date||x.dateStr||""))+'</td><td '+tdS+'><b>'+esc(x.company||"")+'</b> <span class="cell-sub">'+esc(x.job||"")+(x.state?' · '+esc(x.state):'')+'</span></td><td '+tdS+' class="cell-sub">'+esc(x.to||"")+'</td><td '+tdS+'><span class="badge '+(x.type==="auto"?"purple":"blue")+'">'+esc(x.type||"manual")+'</span>'+(x.profileUsed?'<div class="cell-sub">'+esc(x.profileUsed)+'</div>':'')+'</td></tr>';}).join("")+'</tbody></table>':'<div class="cell-sub">nenhum envio ainda</div>';
+    var erros=logs.filter(function(l){return /erro|fail|falh|bloq|429|401|403/i.test(String(l.status||"")+" "+String(l.jobTitle||l.msg||""));});
+    h+='<div style="color:var(--t3);font-size:11px;margin:8px 0 4px">LOGS ('+logs.length+' · '+erros.length+' com erro)</div>';
+    h+=logs.length?'<details'+(erros.length?' open':'')+'><summary style="cursor:pointer;color:var(--t2)">ver logs</summary><table style="width:100%;border-collapse:collapse"><tbody>'+logs.slice(0,120).map(function(l){var e=/erro|fail|falh|bloq|429|401|403/i.test(String(l.status||"")+" "+String(l.jobTitle||l.msg||""));return '<tr'+(e?' style="color:var(--red)"':'')+'><td '+tdS+' style="white-space:nowrap">'+esc(fmtData(l.ts||l.time||l.at))+'</td><td '+tdS+'>'+esc(l.status||"")+'</td><td '+tdS+' style="color:'+(e?"var(--red)":"var(--t2)")+'">'+esc(l.jobTitle||l.msg||"")+(l.company?' — '+esc(l.company):'')+'</td></tr>';}).join("")+'</tbody></table></details>':'<div class="cell-sub">sem logs</div>';
+    box.innerHTML=h;
+  }catch(e){box.innerHTML='<div class="empty">Erro: '+esc(e.message)+'</div>';}
+}
+function abrirGift(email){
+  document.getElementById("gf-email").value=email;document.getElementById("gf-dias").value="7";document.getElementById("gf-motivo").value="";
+  document.getElementById("gf-quem").textContent=email;
+  abrirModal("modal-gift");
+}
+async function salvarGift(ev){
+  ev.preventDefault();
+  var email=document.getElementById("gf-email").value,dias=parseInt(document.getElementById("gf-dias").value,10)||0,motivo=document.getElementById("gf-motivo").value.trim();
+  if(!(dias>0)||motivo.length<3){toast("Informe os dias e um motivo (mínimo 3 letras).","err");return;}
+  var btn=document.getElementById("gf-submit");btn.disabled=true;
+  try{await api("/api/admin/vip/gift-days",{method:"POST",body:{email:email,dias:dias,motivo:motivo}});toast(dias+" dia(s) de presente pra "+email+".","ok");fecharModal("modal-gift");carregarDashboard(false);abrirDetalheUsuario(email);}
+  catch(e){toast(e.message,"err");}finally{btn.disabled=false;}
 }
 
 /* ── PAGANTES ────────────────────────────────────────────────────────── */

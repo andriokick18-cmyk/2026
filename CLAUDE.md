@@ -4254,3 +4254,34 @@ mês a mês, fechar mês, fechar antigos, 3 CSVs). **Visualizador de comprovante
 `verComprovante` virou atalho; o pop-up morreu. `pedirMotivo()` substitui prompt().
 Fases seguintes (tarefas): F2 comprovantes/pedidos · F3 usuários/ficha · F4 operação (sem
 alertas). Segurança e alertas ficam pra depois POR ORDEM do dono.
+
+## 🧾 v971 — Pedidos & comprovantes (Fase 2 da lista de 100 do admin, 15/10/2026)
+
+A lista de Pedidos passou a dizer o que antes só aparecia ao clicar Aprovar: `/api/pedidos`
+(admin) carrega `comprovanteRepetido` (mesmo arquivo OU mesma transação PIX em outro pedido não
+cancelado — de qualquer usuário — apontando o outro pedido) e `provisorioExpiraEm`
+(autoAtivadoEm + AUTO_ATIVA_DIAS); a tela mostra selos de repetido (clicável → o outro pedido),
+"trocou o comprovante" (comprovanteReenviadoEm), provisório com "há Xh · vence em Y" (vermelho
+se venceu) e o RECEBEDOR lido pela IA (diz se o PIX caiu na conta certa). Filtros de período,
+plano e "só com alerta"; contador com R$; paginação de 60 em 60 ("Mostrar mais"); cancelar usa
+`pedirMotivo()` (o prompt() do navegador morreu). **Registrar pagamento feito por fora**
+(modal-regularizar → POST /api/pedido com userEmail/pagoEm/valorTotal + aprovação): admin agora
+grava o valor REAL pago (fora da tabela, carimbado na auditoria) — antes a tabela vencia em
+silêncio. Usuário comum continua preso à tabela. 3 checks.
+
+## 👤 v972 — Usuários & ficha (Fase 3 da lista de 100 do admin, 15/10/2026)
+
+`/api/admin/contabilidade` devolve por usuário: `createdAt`, `lastSeenAt`, `country/city`, `origem`
+(vip.source), `totalPago`/`pagamentosN`/`ultimoPagamento` (R$ do livro-caixa, valor efetivo,
+anulado fora) e `envHoje`/`envTotal`. Tabela de Usuários: colunas cadastro/último acesso (pagante
+sumido há 7+ dias ganha ⚠️), plano+origem, dias (pago/cortesia), R$ pago, envios, Gmail/robô,
+WhatsApp clicável, país/cidade; filtro por grupo (já pagaram, ativos, vencendo 3d, vencidos,
+sumidos, Gmail caiu, sem Gmail, robô parado, suspeita, cortesia, novos 7d, admins), ordenação
+(dias, cadastro, acesso, pago, envios, nome), paginação de 100 com contador. Ficha
+(`renderDetalheUsuario`, modal de 900px): o que o servidor já devolvia e a tela descartava —
+limites efetivos + carimbo, origem/ativado por/código, R$ pagos históricos, vencimentos, último
+envio, Gmail (conectado/caiu/nunca, último consentimento, extras com estado), presentes
+(giftHistory), linha do tempo de autenticação, e TODAS as listas com "ver todos" (nada mais
+cortado em 8). Botões: 🎁 Dar dias grátis (modal → /api/admin/vip/gift-days com motivo) e 📨
+Envios & logs (carrega /api/admin/user-detail sob demanda: PDFs no disco, perfis de vaga,
+últimos 100 envios, logs com erros em vermelho). 2 checks.

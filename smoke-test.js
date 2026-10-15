@@ -7012,6 +7012,57 @@ async function drillAdminSettingsLegado() {
       !(socP5b?.entradas?.semDono?.itens || []).some((i) => i.id === avSem.json?.id) &&
       _r57.temComprovante === true && /^[0-9a-f]{64}$/.test(_r57.comprovanteHash || "") && !("comprovante" in _r57),
       JSON.stringify({ r91: _r91 && ("recebidoPor" in _r91), hash: (_r57?.comprovanteHash || "").slice(0, 12), semDonoN: socP5b?.entradas?.semDono?.n }));
+    // 🧾 v971 (F2 da lista de 100 do admin): a LISTA de pedidos do admin carrega
+    // os alertas que antes só apareciam ao clicar Aprovar — comprovante REPETIDO
+    // (mesmo arquivo em outro pedido, de outro usuário) e o vencimento do
+    // provisório; e o admin registra pagamento feito POR FORA com o valor REAL.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "rep971@test.com", name: "Rep 971" });
+    const _rep971 = await req2("POST", "/api/pedido", { plano: "vipro", dias: 30, consentimento: true, userName: "Rep 971", userWhatsapp: "11 9", userCity: "SP", comprovante: Buffer.from("comp-mc5-e-p5").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "andrio.usa2026@gmail.com", name: "Dono", isAdmin: true });
+    const _lst971 = (await get("/api/pedidos")).json;
+    const _pRep = (_lst971?.pedidos || []).find((x) => x.id === _rep971.json?.pedidoId);
+    const _pAuto = (_lst971?.pedidos || []).find((x) => x.autoAtivado && x.autoAtivadoEm);
+    check("🧾 v971: /api/pedidos (admin) marca comprovanteRepetido apontando o OUTRO pedido (mc5p5, de outro usuário) e provisorioExpiraEm = autoAtivadoEm + 3 dias",
+      _pRep && _pRep.comprovanteRepetido && _pRep.comprovanteRepetido.pedidoId === mc5p5.json?.pedidoId && _pRep.comprovanteRepetido.mesmoUsuario === false &&
+      (!_pAuto || _pAuto.provisorioExpiraEm === _pAuto.autoAtivadoEm + 3 * 86400_000),
+      JSON.stringify({ rep: _pRep?.comprovanteRepetido, auto: _pAuto && { a: _pAuto.autoAtivadoEm, e: _pAuto.provisorioExpiraEm } }).slice(0, 240));
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "regula971@test.com", name: "Regula 971" });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "andrio.usa2026@gmail.com", name: "Dono", isAdmin: true });
+    const _reg971 = await req2("POST", "/api/pedido", { userEmail: "regula971@test.com", plano: "vip", dias: 30, valorTotal: 77, pagoEm: Date.now() - 5 * 86400_000, consentimento: true, notaAdmin: "pagou por fora" });
+    const _regAp = await req2("PATCH", "/api/pedido/" + _reg971.json?.pedidoId, { status: "ativo" }); // a tela cria E aprova
+    const _regPed = ((await get("/api/pedidos")).json?.pedidos || []).find((x) => x.id === _reg971.json?.pedidoId);
+    const _regCx = ((await get("/api/admin/financeiro")).json?.pagamentos || []).find((x) => x.pedidoId === _reg971.json?.pedidoId);
+    check("🧾 v971: 'Registrar pagamento feito por fora' — admin cria pedido em nome do cliente com o valor REAL pago (R$77, fora da tabela) e a data do PIX, aprova, e o caixa recebe R$77 na data do PIX pro recebedor padrão; usuário comum continua preso à tabela",
+      _reg971.json?.ok === true && _regAp.json?.ok === true && _regPed && _regPed.userEmail === "regula971@test.com" && _regPed.valorTotal === 77 && _regPed.criadoPor === "andrio.usa2026@gmail.com" && _regPed.status === "ativo" &&
+      _regCx && _regCx.valor === 77 && _regCx.recebidoPor === "diego" && Math.abs(Date.parse(_regCx.dataPagamento) - (Date.now() - 5 * 86400_000)) < 120_000,
+      JSON.stringify({ r: _reg971.json, ap: _regAp.status, v: _regPed?.valorTotal, cx: _regCx && { v: _regCx.valor, rp: _regCx.recebidoPor, d: _regCx.dataPagamento } }).slice(0, 260));
+    const _adm971 = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
+    const _cancFn = (_adm971.match(/async function cancelarPedido\(id\)\{[\s\S]*?\n\}/) || [""])[0];
+    check("🧾 v971 (estrutural): Pedidos tem filtros de período/plano/'só com alerta', paginação 'Mostrar mais', modal de pagamento por fora, selo de repetido/trocou comprovante/provisório com vencimento, recebedor lido, e cancelar usa o modal de motivo (nunca mais prompt())",
+      ["pend-periodo", "pend-plano", "pend-alerta", "pend-mais", "pend-count", "modal-regularizar", "rg-pagoem"].every((id) => _adm971.includes('id="' + id + '"')) &&
+      _adm971.includes("comprovanteRepetido") && _adm971.includes("comprovanteReenviadoEm") && _adm971.includes("provisorioExpiraEm") && _adm971.includes("pc.recebedorLido") &&
+      /function _pendTemAlerta\(pd\)/.test(_adm971) && /async function salvarRegularizar\(ev\)/.test(_adm971) &&
+      _cancFn.length > 50 && /pedirMotivo\(/.test(_cancFn) && !/prompt\(/.test(_cancFn),
+      "faltou peça da F2 (pedidos) no admin.html");
+    // 👤 v972 (F3 da lista de 100): a lista de usuários carrega cadastro, último
+    // acesso, país/cidade, origem do plano, R$ pago (livro-caixa, anulado fora) e
+    // envios; a ficha mostra TUDO que o servidor já devolvia e ganhou Envios &
+    // logs + Dar dias grátis.
+    const _contab972 = (await get("/api/admin/contabilidade")).json;
+    const _uReg = (_contab972?.usuarios || []).find((x) => x.email === "regula971@test.com");
+    const _uRep = (_contab972?.usuarios || []).find((x) => x.email === "rep971@test.com");
+    check("👤 v972: /api/admin/contabilidade devolve por usuário createdAt, lastSeenAt, country, origem, totalPago (R$ do caixa), pagamentosN, ultimoPagamento, envHoje e envTotal — regula971 (pagou R$77 por fora) aparece com totalPago 77 e 1 pagamento",
+      _uReg && _uReg.totalPago === 77 && _uReg.pagamentosN === 1 && _uReg.ultimoPagamento > 0 && typeof _uReg.createdAt === "number" && "lastSeenAt" in _uReg && "country" in _uReg && "origem" in _uReg && typeof _uReg.envHoje === "number" && typeof _uReg.envTotal === "number" &&
+      _uRep && _uRep.totalPago === 0 && _uRep.pagamentosN === 0,
+      JSON.stringify({ reg: _uReg && { t: _uReg.totalPago, n: _uReg.pagamentosN, u: _uReg.ultimoPagamento, c: _uReg.createdAt }, rep: _uRep && _uRep.totalPago }).slice(0, 220));
+    const _adm972 = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
+    check("👤 v972 (estrutural): Usuários tem filtro por grupo (pagantes/vencendo/sumidos/Gmail caiu/robô parado…), ordenação, paginação e contador; a ficha mostra limites efetivos, presentes, linha do tempo do Gmail, 'ver todos', botão Envios & logs (user-detail) e Dar dias grátis (gift-days) — e o modal da ficha ficou largo",
+      ["usr-filtro", "usr-sort", "usr-mais", "usr-count", "modal-gift", "gf-motivo", "ficha-envios"].every((id) => _adm972.includes('id="' + id + '"')) &&
+      ['value="sumidos"', 'value="gmailcaiu"', 'value="roboparado"', 'value="vencendo"'].every((t) => _adm972.includes(t)) &&
+      /async function fichaEnvios\(email\)/.test(_adm972) && _adm972.includes('"/api/admin/user-detail/"') && _adm972.includes('"/api/admin/vip/gift-days"') &&
+      ["limitesEfetivos", "giftHistory", "auth.timeline", "ficha-mais", "totalPagoHistorico", "lastSeenAt", "totalPago"].every((t) => _adm972.includes(t)) &&
+      _adm972.includes("#modal-info .modal{max-width:900px}"),
+      "faltou peça da F3 (usuários) no admin.html");
     const gUsd = await req2("POST", "/api/admin/financeiro", { action: "add_gasto", gasto: { moeda: "USD", valorUSD: 10, cambio: 5, valor: 1, recorrente: true, categoria: "hospedagem", descricao: "Render (teste P5)", pagoPor: "empresa", dataGasto: new Date(Date.now() - 32 * 24 * 3600 * 1000).toISOString() } });
     const _gU = ((await get("/api/admin/financeiro")).json?.gastos || []).find((x) => x.id === gUsd.json?.id);
     const rec1 = await req2("POST", "/api/admin/financeiro", { action: "rodar_recorrentes" });
