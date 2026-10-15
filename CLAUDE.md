@@ -4355,3 +4355,18 @@ bloco J de segurança adiado pelo dono, rotas consumidas só pela suíte, links 
 superadas por fonte única). A lista SÓ PODE DIMINUIR: exceção que ganhou tela ou foi removida
 tem que sair da lista (o check acusa exceção obsoleta). Foi assim que ~50 rotas ficaram anos
 sem botão — nunca mais. 3 checks.
+
+## 🧾 v976 — PIX antigo, quanto pagou a cada sócio, gráfico do DRE (Fase 7, 15/10/2026)
+
+Itens 57, 79 e 40 da lista de 100. (57) `_parseDataLida` (server.js) lê a data que o OCR
+devolve como texto livre (DD/MM/AAAA, AAAA-MM-DD, DD/MM/AA; ano fora de 2020–2100 = null —
+nunca chuta); `/api/pedidos` admin carrega `comprovanteAntigoDias` (≥3 dias entre a data
+lida e `createdAt`, senão null) + `comprovanteDataLida`; a lista de Pedidos mostra o selo
+vermelho "comprovante de N dias ANTES do pedido" e o filtro "só com alerta" inclui o sinal.
+É SINAL, nunca bloqueio — o humano confere o extrato. Gancho de teste ganhou o 4º grupo:
+`TESTE_COMPROVANTE:<valor>[:<tx>[:<pagador>[:<DD/MM/AAAA>]]]`. (79) `/api/admin/financeiro-
+usuario/:email` devolve `porRecebedor {diego, andrio, semDono, n}` pela MESMA régua do
+acerto (`_finValorEfetivo` + `_finDonoDe`, anulado/ajuste fora) — a ficha mostra "ao Diego
+R$ · ao Andrio R$". (40) aba DRE ganhou "Evolução" — SVG puro de 12 meses (receita verde,
+gastos vermelho, resultado azul / prejuízo âmbar, rótulo em k, tooltip com o valor) montado
+SÓ dos números do `/api/admin/dre` — a tela não calcula nada (13n). 3 checks.

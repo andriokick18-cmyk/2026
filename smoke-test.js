@@ -7193,6 +7193,32 @@ async function drillAdminSettingsLegado() {
     check("🧭 item 100 da lista de 100: TODA rota GET /api/admin/* tem tela — nenhuma rota nova sem botão (lista de exceções documentada, só pode diminuir: exceção que ganhou tela ou sumiu precisa sair da lista)",
       _rotasAdminGet.length >= 30 && _novasSemTela.length === 0 && _allowObsoleto.length === 0,
       JSON.stringify({ total: _rotasAdminGet.length, semTela: _semTela.length, novasSemTela: _novasSemTela, exceçõesObsoletas: _allowObsoleto }).slice(0, 400));
+    // 🧾 v976 (F7 — itens 57, 79 e 40 da lista de 100): PIX antigo
+    // reaproveitado (data lida × data do pedido), quanto cada usuário pagou a
+    // cada sócio, e o gráfico mês a mês no DRE.
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "pixvelho976@test.com", name: "Pix Velho 976" });
+    const _pvOld = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Pix Velho", userWhatsapp: "11 99999", userCity: "SP", nota: "TESTE_COMPROVANTE:150:TXVELHO976:Fulano de Tal:01/01/2026", comprovante: Buffer.from("comp-pix-velho-976").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    const _hoje976 = new Date(Date.now() - 3 * 3600_000); const _hojeBR = String(_hoje976.getUTCDate()).padStart(2, "0") + "/" + String(_hoje976.getUTCMonth() + 1).padStart(2, "0") + "/" + _hoje976.getUTCFullYear();
+    const _pvNew = await req2("POST", "/api/pedido", { plano: "vip", dias: 30, consentimento: true, userName: "Pix Velho", userWhatsapp: "11 99999", userCity: "SP", nota: "TESTE_COMPROVANTE:150:TXNOVO976:Fulano de Tal:" + _hojeBR, comprovante: Buffer.from("comp-pix-novo-976").toString("base64"), comprovanteType: "image/jpeg", pagoEm: Date.now() });
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", name: "Smoke", isAdmin: true });
+    const _peds976 = (await get("/api/pedidos")).json?.pedidos || [];
+    const _pOld = _peds976.find((x) => x.id === _pvOld.json?.pedidoId), _pNew = _peds976.find((x) => x.id === _pvNew.json?.pedidoId);
+    check("🧾 v976: PIX ANTIGO reaproveitado — pedido cujo comprovante tem data lida 01/01/2026 (meses antes do pedido) chega à lista com comprovanteAntigoDias (≥ 280) e a data lida; comprovante de HOJE não é marcado (null); o pedido com o sinal continua pendente (sinal, nunca bloqueio)",
+      _pOld && _pOld.comprovanteAntigoDias >= 280 && _pOld.comprovanteDataLida === "01/01/2026" && _pNew && _pNew.comprovanteAntigoDias === null && _pNew.comprovanteDataLida === _hojeBR,
+      JSON.stringify({ old: _pOld && { d: _pOld.comprovanteAntigoDias, dl: _pOld.comprovanteDataLida, st: _pOld.status }, nw: _pNew && { d: _pNew.comprovanteAntigoDias, dl: _pNew.comprovanteDataLida } }));
+    await req2("PATCH", "/api/pedido/" + _pvNew.json?.pedidoId, { status: "cancelado", notaAdmin: "limpeza v976" });
+    await req2("PATCH", "/api/pedido/" + _pvOld.json?.pedidoId, { status: "cancelado", notaAdmin: "limpeza v976" });
+    const _fuReg = (await get("/api/admin/financeiro-usuario/regula971@test.com")).json;
+    check("💼 v976: a ficha do usuário diz quanto ele pagou a CADA sócio pela régua do acerto (fonte única _finDonoDe/_finValorEfetivo) — o R$77 registrado por fora caiu no Diego (recebedor padrão), Andrio R$0, nada sem dono",
+      _fuReg && _fuReg.porRecebedor && _fuReg.porRecebedor.diego === 77 && _fuReg.porRecebedor.andrio === 0 && _fuReg.porRecebedor.semDono === 0 && _fuReg.porRecebedor.n === 1,
+      JSON.stringify(_fuReg && _fuReg.porRecebedor));
+    const _srv976 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+    const _adm976 = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
+    check("🧾 v976 (estrutural): _parseDataLida nunca chuta ano (só DD/MM/AAAA, AAAA-MM-DD, DD/MM/AA entre 2020 e 2100); o selo de PIX antigo entra no filtro 'só com alerta'; a ficha mostra 'ao Diego / ao Andrio'; o DRE tem o gráfico SVG de 12 meses com receita, gastos e resultado (prejuízo em outra cor) sem calcular número nenhum",
+      /function _parseDataLida\(str\)/.test(_srv976) && /y<2020\|\|y>2100/.test(_srv976) && _srv976.includes("comprovanteAntigoDias:_antigoDias(pd)") &&
+      /comprovanteRepetido\|\|pd\.comprovanteAntigoDias\|\|/.test(_adm976) && _adm976.includes("dias ANTES do pedido") && _adm976.includes("ao Diego ") && _adm976.includes("ao Andrio ") &&
+      _adm976.includes('id="dre-chart"') && /function renderDreChart\(meses\)/.test(_adm976) && _adm976.includes("renderDreChart(d.meses||[])") && _adm976.includes("(prejuízo)") && !/Math\.(round|floor)\([^)]*receita[^)]*\+/.test((_adm976.match(/function renderDreChart[\s\S]*?\n\}/) || [""])[0]),
+      "faltou peça da F7 no server.js/admin.html");
     const gUsd = await req2("POST", "/api/admin/financeiro", { action: "add_gasto", gasto: { moeda: "USD", valorUSD: 10, cambio: 5, valor: 1, recorrente: true, categoria: "hospedagem", descricao: "Render (teste P5)", pagoPor: "empresa", dataGasto: new Date(Date.now() - 32 * 24 * 3600 * 1000).toISOString() } });
     const _gU = ((await get("/api/admin/financeiro")).json?.gastos || []).find((x) => x.id === gUsd.json?.id);
     const rec1 = await req2("POST", "/api/admin/financeiro", { action: "rodar_recorrentes" });

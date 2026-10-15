@@ -801,6 +801,16 @@ function _recebedorPadrao(){
   const r=String((DB_ADMIN_SETTINGS&&DB_ADMIN_SETTINGS.recebedorPadrao)||"").trim().toLowerCase();
   return (r==="andrio"||r==="diego")?r:null;
 }
+// 🧾 v976: data lida pelo OCR (texto livre) → timestamp UTC do DIA (sem hora),
+// ou null quando não dá pra ler com segurança. Nunca chuta ano/mês.
+function _parseDataLida(str){
+  const t=String(str||"").trim();if(!t)return null;
+  let m=t.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if(m){const ts=Date.UTC(+m[1],+m[2]-1,+m[3]);return isNaN(ts)?null:ts;}
+  m=t.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if(m){let y=+m[3];if(m[3].length===2)y+=2000;const ts=Date.UTC(y,+m[2]-1,+m[1]);return (isNaN(ts)||y<2020||y>2100)?null:ts;}
+  return null;
+}
 function _finValorEfetivo(p,pedById){
   let v=parseFloat(p.valor)||0;
   const _ped=p.pedidoId?pedById[p.pedidoId]:null;
@@ -11547,6 +11557,16 @@ filtrar();
         if(_tx.length>=6)(_repIdx.tx[_tx]=_repIdx.tx[_tx]||[]).push(x);
       }
     }
+    // 🧾 v976 (item 57 da lista de 100): PIX ANTIGO reaproveitado — a data que
+    // o OCR leu no comprovante vem como texto livre (DD/MM/AAAA, AAAA-MM-DD,
+    // DD/MM/AA, com ou sem hora). Se o comprovante é de 3+ dias ANTES do
+    // pedido, a lista marca. Sinal, nunca bloqueio — o humano decide vendo.
+    const _antigoDias=(pd)=>{
+      const ts=_parseDataLida(pd.preCheck&&pd.preCheck.dataLida);
+      if(!ts||!pd.createdAt)return null;
+      const dias=Math.floor((pd.createdAt-ts)/86400_000);
+      return dias>=3?dias:null;
+    };
     const _repetidoDe=(pd)=>{
       const outros=[...((pd.comprovanteHash&&_repIdx.hash[pd.comprovanteHash])||[]),...(((String(pd.preCheck?.transacaoIdLida||"").trim().length>=6)&&_repIdx.tx[String(pd.preCheck.transacaoIdLida).trim()])||[])]
         .filter(x=>x.id!==pd.id);
@@ -11559,6 +11579,7 @@ filtrar();
         return {...pd,comprovante:temComprovante(pd),ehAdmin:isAdminEmail(pd.userEmail||""),
           contaNome:_cu.name||"",contaWhatsapp:_cu.whatsapp||_cu.phone||"",
           comprovanteRepetido:_repetidoDe(pd),
+          comprovanteAntigoDias:_antigoDias(pd),comprovanteDataLida:(pd.preCheck&&pd.preCheck.dataLida)||null,
           provisorioExpiraEm:(pd.autoAtivado&&pd.autoAtivadoEm)?(pd.autoAtivadoEm+AUTO_ATIVA_DIAS*86400_000):null};})
       :list.map(_pedidoVisaoUsuario);
     return json(res,200,{ok:true,pedidos:slim,total:list.length});
@@ -14289,6 +14310,16 @@ if(pathname.startsWith("/api/admin/financeiro-usuario/")&&req.method==="GET"){tr
     .sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   const totalPagoHistorico=pedidos.filter(p=>["pago","ativo"].includes(p.status)).reduce((s2,p)=>s2+(p.valorTotal||0),0);
 
+  // 💼 v976 (item 79): quanto ESTE usuário pagou a cada sócio — mesma régua do
+  // acerto (_finValorEfetivo + _finDonoDe, fonte única 13n), anulado/ajuste fora.
+  const porRecebedor={diego:0,andrio:0,semDono:0,n:0};
+  try{
+    const _pedById={};for(const ped of (DB_PEDIDOS||[])){if(ped&&ped.id)_pedById[ped.id]=ped;}
+    const _pags=(DB_FINANCEIRO.pagamentos||[]).filter(p=>p&&String(p.email||"").toLowerCase()===email&&p.tipo!=="ajuste"&&!p.anuladoPor);
+    const _byId={};for(const p of (DB_FINANCEIRO.pagamentos||[])){if(p&&p.id)_byId[p.id]=p;}
+    for(const p of _pags){const v=_finValorEfetivo(p,_pedById);if(!(v>0))continue;const {dono}=_finDonoDe(p,_byId,0);porRecebedor.n++;if(dono==="diego")porRecebedor.diego+=v;else if(dono==="andrio")porRecebedor.andrio+=v;else porRecebedor.semDono+=v;}
+    for(const k of ["diego","andrio","semDono"])porRecebedor[k]=Math.round(porRecebedor[k]*100)/100;
+  }catch(_){}
   // 🚨 Comprovante reutilizado — mesmo hash em pedido de OUTRO usuário.
   const hashesDoUsuario=new Set(pedidos.map(p=>p.comprovanteHash).filter(Boolean));
   const comprovantesReusados=hashesDoUsuario.size?DB_PEDIDOS.filter(pd=>
@@ -14314,7 +14345,7 @@ if(pathname.startsWith("/api/admin/financeiro-usuario/")&&req.method==="GET"){tr
   // Sinais de risco.
   const gmailsBloqueados=(u.senderEmails||[]).filter(se=>se.blocked).map(se=>({email:se.email,motivo:se.blockedReason||null}));
 
-  return json(res,200,{ok:true,
+  return json(res,200,{ok:true,porRecebedor,
     usuario:{email:u.email,name:u.name||u.email,createdAt:u.created_at||null,
       isAdmin:!!u.isAdmin,whatsapp:u.whatsapp||u.phone||"",country:u.country||"",language:u.language||"pt"},
     plano:{
@@ -15999,11 +16030,12 @@ async function preCheckComprovante(pedido, opts){
   }
   if(process.env.TEST_LOGIN_TOKEN){
     // Gancho estendido (2.0-P2): TESTE_COMPROVANTE:<valor>[:<idTransacao>[:<pagador>]]
-    const m=String(pedido.nota||"").match(/^TESTE_COMPROVANTE:(\d+(?:\.\d+)?)(?::([A-Za-z0-9-]+))?(?::(.+))?$/);
+    // v976: 4º grupo opcional = data lida (DD/MM/AAAA) — prova do sinal de PIX antigo
+    const m=String(pedido.nota||"").match(/^TESTE_COMPROVANTE:(\d+(?:\.\d+)?)(?::([A-Za-z0-9-]+))?(?::([^:]+))?(?::(\d{2}\/\d{2}\/\d{4}))?$/);
     if(m){
       const lido=parseFloat(m[1]);
       const bate=Math.abs(lido-(pedido.valorTotal||0))<0.01;
-      const pc={veredito:bate?"CONFERE":"DIVERGENCIA",valorLido:lido,dataLida:null,horaLida:null,
+      const pc={veredito:bate?"CONFERE":"DIVERGENCIA",valorLido:lido,dataLida:m[4]||null,horaLida:null,
         pagadorLido:m[3]||null,recebedorLido:null,instituicaoLida:null,transacaoIdLida:m[2]||null,
         bateComEsperado:bate,resumo:`(teste) leu R$${lido}`,alertas:[],precoEsperado:null,valorInformado:pedido.valorTotal||0};
       setPedidoPreCheck(pedido.id,pc);
