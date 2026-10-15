@@ -1027,6 +1027,16 @@ function _avisoRegrasPlanos(){
   }catch(e){}
 }
 setInterval(_avisoRegrasPlanos,7000);
+// v984: texto antigo que tinha curinga {…} foi limpo pelo servidor — avisa a pessoa (1x por sessão, até ela salvar o perfil)
+function _avisoCuringas(){
+  try{
+    if(!U||!U.curingasNotice)return;
+    if(sessionStorage.getItem('h2b_cur'))return;
+    sessionStorage.setItem('h2b_cur','1');
+    toast(U.curingasNotice,'r');
+  }catch(e){}
+}
+setInterval(_avisoCuringas,9000);
 // Initialize UI after DOM ready
 document.addEventListener('DOMContentLoaded', function(){updateThemeUI();});
 

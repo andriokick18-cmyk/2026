@@ -4539,3 +4539,24 @@ iniciar o automático e /api/send.
 As 5 capturas de tela do editor (landing e tutorial) foram refeitas no Chromium sem os botões e ganharam `?v=983` na
 URL (o servidor cacheia /tut-img por 7 dias). Achado de passagem: uma linha do app.js tinha um comentário no meio que
 engolia o preenchimento de telefone e cidade nas configurações (corrigido). 4 checks + 2 fixtures. sw v203.
+
+## 🧹 v984 — Correções da revisão independente do v983 (15/10/2026)
+
+Revisão de 3 lentes (dados/envio, o que sobrou no site, regressão de UI) com verificadores céticos; entrou só o que foi
+reproduzido. (1) **Lista com buraco**: item 100% curinga (ex.: assunto só `{nome}`) virava `""` e ficava no rodízio —
+o automático sorteava o buraco, caía na trava "assunto em branco" e a vaga já tinha saído da fila (queimava vaga).
+Agora a migração tira os vazios e os repetidos das listas (só quando algum item tinha `{…}`), `subject`/`body`
+principais seguem o 1º item que sobrou, e o POOL de envio e o `/api/auto/start` só aceitam item que sobra depois de
+`limpaCuringas` (`_txtUtil`). (2) **Originais**: `curingas_originais_v983.json` nunca mais sobrescreve o 1º original
+(mescla por chave), grava atômico (tmp+rename) e, se o arquivo existir mas estiver corrompido, vai de lado em vez de ser
+zerado; listas são guardadas INTEIRAS (`perfil[id].subjects`). (3) **Aviso ao usuário**: quem perdeu texto de verdade
+(curinga que não é `{vaga}`, ou item que sumiu) ganha `curingasAviso` → `/api/status.curingasNotice` → toast 1x por
+sessão até salvar o perfil (salvar apaga a flag); quem só teve `{vaga}`→`work` não recebe aviso. (4) **Imagens públicas**:
+`/como-usar` (data-URI) e `landing-6-perfil-editor.jpg` ainda mostravam o editor antigo com botões/exemplo/preview —
+refeitas no Chromium; as 7 versões aposentadas ficam barradas por IMPRESSÃO DIGITAL no smoke (qualquer volta das
+imagens velhas quebra a suíte). **Sempre que mexer no editor de perfil, re-fotografe landing-6/7/8/16/17, t07-editor e a
+1ª imagem do /como-usar.** As funções novas do boot são declarações (içadas): `const` depois do ponto onde o boot roda
+dá TDZ. **Decisões mantidas**: `limpaCuringas` apaga qualquer `{algo}` (regra escrita do dono — não restringir a lista
+fechada sem ordem); capturas com textos fictícios de uma usuária de exemplo continuam (é texto DA pessoa, não sugestão do
+sistema). Visto de passagem e NÃO corrigido (fora do escopo): nome do remetente cai em "H2BApply" se a conta não tem
+nome (`POST /api/settings` aceita `name` vazio). 6 checks + 2 fixtures. sw v204.

@@ -260,6 +260,18 @@ users["curingas983@test.com"] = {
       subject: "Application for {vaga} – {nome}", body: "Dear {empresa}, my name is {nome} and I want the {vaga} job." },
   ],
 };
+// 🧹 v984: itens 100% curinga viram VAZIOS — têm que SAIR da lista (senão o rodízio sorteia "buraco" e o automático queima vaga),
+// repetidos somem, o 1º original fica guardado inteiro e o usuário recebe aviso no app até salvar o perfil.
+users["curingas984@test.com"] = {
+  name: "Curingas 984",
+  profiles: [
+    { id: "pc984", name: "Perfil H-2B", visaType: "h2b", active: true,
+      subjects: ["{nome}", "Titulo bom", "Apply {vaga}", "{empresa}", "Titulo bom"],
+      emailBodies: ["{nome}", "Corpo ok", "Dear {empresa}"], subject: "{nome}", body: "{nome}" },
+  ],
+};
+users["curingas984ok@test.com"] = { name: "So Vaga", profiles: [
+  { id: "pc984b", name: "Perfil H-2B", visaType: "h2b", active: true, subjects: ["Apply {vaga}", "Dois", "Tres"], emailBodies: ["a", "b", "c"] } ] };
 // v43-PERF: 1.500 usuários sintéticos, cada um com refresh_token/access_token
 // (o mesmo formato de quem conectou Google de verdade) — estressa o MESMO
 // laço de criptografia (AES-256-GCM sobre todos os usuários) que travava o
@@ -2641,7 +2653,7 @@ async function drillAdminSettingsLegado() {
       JSON.stringify({ s: curPr.subjects, b: curPr.emailBodies, st: curU.settings.body }));
     check("🧹 v983: texto SEM curinga não é tocado (nem espaço duplo) e os ORIGINAIS ficam guardados em curingas_originais_v983.json pra desfazer",
       curPr.subjects[1] === "Titulo escrito pelo usuario" && curPr.emailBodies[1] === "Corpo   sem   curinga fica igual" &&
-      _orig983["curingas983@test.com"]?.["perfil[pc983].subjects[0]"] === "Application for {vaga} – {nome}" && _orig983["curingas983@test.com"]?.["settings.body"]?.includes("{empresa}"),
+      _orig983["curingas983@test.com"]?.["perfil[pc983].subjects"]?.[0] === "Application for {vaga} – {nome}" && _orig983["curingas983@test.com"]?.["settings.body"]?.includes("{empresa}"),
       JSON.stringify(Object.keys(_orig983["curingas983@test.com"] || {})));
 
     // Disco
@@ -7439,6 +7451,48 @@ async function drillAdminSettingsLegado() {
       _sv983.status === 200 && JSON.stringify(_pf983.subjects) === JSON.stringify(["Oi work", "Dois", "Tres"]) &&
       JSON.stringify(_pf983.emailBodies) === JSON.stringify(["Corpo work", "Corpo dois", "Corpo tres"]),
       JSON.stringify({ s: _sv983.status, subj: _pf983.subjects, body: _pf983.emailBodies }));
+    // 🧹 v984: achados CONFIRMADOS da revisão independente do v983 (3 lentes + verificadores céticos).
+    const _c984 = JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"))["curingas984@test.com"].profiles[0];
+    const _c984b = JSON.parse(fs.readFileSync(path.join(DATA, "users.json"), "utf8"))["curingas984ok@test.com"];
+    const _orig984 = (() => { try { return JSON.parse(fs.readFileSync(path.join(DATA, "curingas_originais_v983.json"), "utf8")); } catch { return {}; } })();
+    check("🧹 v984: a migração tira da lista os itens que ficaram VAZIOS e os repetidos (['{nome}','Titulo bom','Apply {vaga}','{empresa}','Titulo bom'] → ['Titulo bom','Apply work']), mantém assunto/corpo principais no 1º item que sobrou e guarda a lista ORIGINAL inteira",
+      JSON.stringify(_c984.subjects) === JSON.stringify(["Titulo bom", "Apply work"]) && JSON.stringify(_c984.emailBodies) === JSON.stringify(["Corpo ok", "Dear"]) &&
+      _c984.subject === "Titulo bom" && _c984.body === "Corpo ok" &&
+      JSON.stringify(_orig984["curingas984@test.com"]?.["perfil[pc984].subjects"]) === JSON.stringify(["{nome}", "Titulo bom", "Apply {vaga}", "{empresa}", "Titulo bom"]),
+      JSON.stringify({ s: _c984.subjects, b: _c984.emailBodies, o: Object.keys(_orig984["curingas984@test.com"] || {}) }));
+    const _stC = async (email) => { await req2("POST", "/api/test/login", { token: TEST_TOKEN, email, name: "X" }); return (await get("/api/status")).json || {}; };
+    const _st984 = await _stC("curingas984@test.com"), _st984ok = await _stC("curingas984ok@test.com");
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "curingas984@test.com", name: "X" });
+    const _cvA984 = await req2("POST", "/api/cv/upload", { base64: Buffer.from("%PDF-1.4 " + "cur984 ".repeat(300)).toString("base64"), name: "CV_Cur984.pdf", cvType: "resume" });
+    await req2("POST", "/api/profiles/save", { name: "P", visaType: "h2b", resumeIdx: _cvA984.json?.cv?.idx, subjects: ["Um", "Dois", "Tres"], emailBodies: ["a", "b", "c"] });
+    const _st984depois = (await get("/api/status")).json || {};
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    check("🧹 v984: quem perdeu texto na limpeza recebe AVISO no app (curingasNotice) até salvar o perfil; quem só teve {vaga}→work NÃO recebe aviso; salvar o perfil apaga o aviso",
+      /entre chaves/.test(String(_st984.curingasNotice || "")) && !_st984ok.curingasNotice && !_st984depois.curingasNotice && JSON.stringify(_c984b.profiles[0].subjects) === JSON.stringify(["Apply work", "Dois", "Tres"]),
+      JSON.stringify({ aviso: !!_st984.curingasNotice, semAviso: !!_st984ok.curingasNotice, depois: !!_st984depois.curingasNotice }));
+    // envio automático REAL: lista com itens vazios nunca queima vaga — só o item que sobra é usado
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "pool984@test.com", name: "Pool", refreshToken: "rt-pool984", plan: "doublepro", vip: { active: true, plan: "doublepro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 } });
+    const _cvP984 = await req2("POST", "/api/cv/upload", { base64: Buffer.from("%PDF-1.4 " + "pool984 ".repeat(300)).toString("base64"), name: "CV_Pool984.pdf", cvType: "resume" });
+    GOOGLE.limpar();
+    const _stP984 = await req2("POST", "/api/auto/start", { queue: [{ to: "rh@pool984-test.com", title: "Farmworker", company: "Empresa Pool984", category: "farm", state: "FL" }], resumeIdx: _cvP984.json?.cv?.idx, subjects: ["{nome}", "Unico titulo bom", "{empresa}"], emailBodies: ["{nome}", "Unico corpo bom", "{vaga}"] });
+    const _okP984 = await (async () => { const t0 = Date.now(); while (Date.now() - t0 < 15_000) { if (GOOGLE.envios.some((e) => e.para === "rh@pool984-test.com")) return true; await new Promise((r) => setTimeout(r, 50)); } return false; })();
+    const _envP984 = GOOGLE.envios.find((e) => e.para === "rh@pool984-test.com");
+    await req2("POST", "/api/auto/stop", {});
+    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    check("🧹 v984: envio automático com título/corpo que são 100% curinga NÃO envia vazio nem queima a vaga — o rodízio só usa o que sobra ('Unico titulo bom')",
+      _stP984.status === 200 && _okP984 === true && _envP984?.assunto === "Unico titulo bom", JSON.stringify({ st: _stP984.status, ok: _okP984, assunto: _envP984?.assunto }));
+    // imagens PÚBLICAS do editor nunca voltam à versão antiga (com botões {vaga}/exemplo/preview)
+    const _sha984 = (b) => require("crypto").createHash("sha256").update(b).digest("hex");
+    const _aposentadas984 = new Set(["6c21577c6a718541b4cd040cf6daf37c28c70bfc11568a09d9ce0b09b2277aed", "1be6ef669d51242681d1e9b84b2e0265a2eea2a696316812f336da95452634f4", "5380c23a4d2bb1f7b0d8277e5b86537d7a1e9140bee55c9702ae40c900cda0e0", "35401217d976211acc95b00476018c32f5fecd3efab72f4875c6067207e3e182", "b20cbfb90b45741aaf73a47e36ad4c9139d0c3c880732fefc047605e28f5885f", "36385eb374e8599a2417de92f4fc62759233f9204867a608043f3e9318e9ade0", "86f3d6cd5be0cb23221a4defe4a887bc5dbec7f90b93d1d81092390af135b0eb"]);
+    const _imgsVelhas984 = fs.readdirSync(path.join(__dirname, "tutorial-img")).filter((f) => _aposentadas984.has(_sha984(fs.readFileSync(path.join(__dirname, "tutorial-img", f)))));
+    const _cuHtml984 = fs.readFileSync(path.join(__dirname, "como-usar.html"), "utf8");
+    const _cuVelhas984 = [..._cuHtml984.matchAll(/src="data:image\/jpeg;base64,([A-Za-z0-9+\/=]+)"/g)].filter((m) => _aposentadas984.has(_sha984(Buffer.from(m[1], "base64")))).length;
+    check("🧹 v984: nenhuma imagem pública (landing, tutorial, /como-usar) volta a mostrar o editor ANTIGO com botões de variável, exemplo e preview — a captura foi refeita e as versões aposentadas ficam barradas por impressão digital",
+      _imgsVelhas984.length === 0 && _cuVelhas984 === 0 && /landing-6-perfil-editor\.jpg\?v=984/.test(_idx983),
+      JSON.stringify({ arquivos: _imgsVelhas984, comoUsar: _cuVelhas984 }));
+    check("🧹 v984 (estrutural): o arquivo de originais NUNCA sobrescreve o 1º original e é gravado atômico; o pool de envio filtra itens vazios; as funções do boot são declarações içadas (sem TDZ)",
+      /if\(!\(k in ant\[em\]\)\)ant\[em\]\[k\]=v;/.test(_srv982) && /fs\.renameSync\(tmp,f\)/.test(_srv982) && /\.filter\(_txtUtil\)/.test(_srv982) && /function _txtUtil\(x\)\{/.test(_srv982) && /function _curingaNaoVaga\(t\)\{/.test(_srv982),
+      "faltou peça do v984");
     check("📚 v981: o fragmento do app segue noindex (conteúdo duplicado fora do Google), tópico inexistente — inclusive o quiz, que é interativo e fica só no app — dá 404 noindex, e a home e o hub /vagas-h2b linkam /aprenda por <a href>",
       /noindex/.test(String(_apFrag.headers["x-robots-tag"] || "")) && _apQuiz.status === 404 && /noindex/.test(String(_apQuiz.headers["x-robots-tag"] || "")) &&
       (await req2("GET", "/")).body.includes('href="/aprenda"') && (await req2("GET", "/vagas-h2b")).body.includes('href="/aprenda"'),

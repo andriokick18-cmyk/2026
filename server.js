@@ -1804,36 +1804,54 @@ function limpaCuringas(txt){
       .replace(/[ \t]{2,}/g," ").replace(/^[ \t]+/,"").replace(/[ \t]+$/,""); // fecha o buraco dos curingas apagados
   }).join("\n");
 }
+// Texto que sobrou algo depois de limpar? (entrada 100% curinga vira vazia e NÃO pode ficar no pool de envio)
+function _txtUtil(x){return !!limpaCuringas(String(x==null?"":x)).trim();} // função (içada): o boot a usa antes desta linha ser avaliada
+// Tinha algum curinga que NÃO é {vaga} (esse some de verdade; {vaga}→work não muda o sentido do texto)?
+function _curingaNaoVaga(t){return /\{\s*[A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_ ]{0,30}\}/.test(String(t).replace(/\{\s*(vaga|job|job_title|title|cargo|position)\s*\}/gi,"work"));}
 // Migração IDEMPOTENTE do boot: reescreve só o que tem curinga; guarda os ORIGINAIS num arquivo (desfazer manual) e loga.
+// Listas (subjects[]/emailBodies[]) só são mexidas se algum item tinha curinga: itens que ficam VAZIOS saem e repetidos
+// somem (senão o rodízio sortearia "buraco" e o automático queimaria vaga). O 1º original de cada campo NUNCA é sobrescrito.
 function _limparCuringasUsuarios(users){
-  const orig={};let nUsers=0,nCampos=0;
-  const fix=(o,k,bk)=>{
-    if(!o||typeof o[k]!=="string")return;
-    const nv=limpaCuringas(o[k]);if(nv===o[k])return;
-    (orig[bk.email]=orig[bk.email]||{})[bk.rot]=o[k];o[k]=nv;nCampos++;
+  const orig={},avisar=new Set();let nUsers=0,nCampos=0;
+  const guarda=(email,rot,val)=>{(orig[email]=orig[email]||{});if(!(rot in orig[email]))orig[email][rot]=val;};
+  const fixStr=(o,k,email,rot)=>{
+    if(!o||typeof o[k]!=="string")return false;
+    const nv=limpaCuringas(o[k]);if(nv===o[k])return false;
+    guarda(email,rot,o[k]);if(_curingaNaoVaga(o[k]))avisar.add(email);o[k]=nv;nCampos++;return true;
+  };
+  const fixLista=(pr,f,email)=>{
+    const arr=pr[f];if(!Array.isArray(arr)||!arr.some(x=>typeof x==="string"&&x.includes("{")))return false;
+    const limpo=[];for(const x of arr){const t=limpaCuringas(String(x==null?"":x)).trim();if(t&&!limpo.includes(t))limpo.push(t);}
+    guarda(email,`perfil[${pr.id}].${f}`,arr);
+    if(limpo.length<arr.length||arr.some(_curingaNaoVaga))avisar.add(email);
+    pr[f]=limpo;nCampos++;return true;
   };
   for(const email of Object.keys(users||{})){
     const u=users[email];if(!u)continue;
     const antes=nCampos;
-    if(u.settings)for(const f of ["subject","body","followupSubject","followupBody"])fix(u.settings,f,{email,rot:"settings."+f});
+    if(u.settings)for(const f of ["subject","body","followupSubject","followupBody"])fixStr(u.settings,f,email,"settings."+f);
     for(const pr of (u.profiles||[])){
       if(!pr)continue;
-      for(const f of ["subject","body"])fix(pr,f,{email,rot:`perfil[${pr.id}].${f}`});
-      for(const f of ["subjects","emailBodies"])if(Array.isArray(pr[f]))pr[f].forEach((_,i)=>fix(pr[f],i,{email,rot:`perfil[${pr.id}].${f}[${i}]`}));
+      const mexeuS=fixLista(pr,"subjects",email),mexeuB=fixLista(pr,"emailBodies",email);
+      for(const f of ["subject","body"])fixStr(pr,f,email,`perfil[${pr.id}].${f}`);
+      if(mexeuS)pr.subject=pr.subjects[0]||"";   // assunto/corpo "principais" seguem o 1º item que sobrou
+      if(mexeuB)pr.body=pr.emailBodies[0]||"";
     }
-    if(nCampos>antes)nUsers++;
+    if(nCampos>antes){nUsers++;if(avisar.has(email))u.curingasAviso=true;}
   }
   if(nCampos>0){
     try{
       const f=path.join(DATA_DIR,"curingas_originais_v983.json");
-      let ant={};try{ant=JSON.parse(fs.readFileSync(f,"utf8"));}catch{}
-      for(const [em,c] of Object.entries(orig))ant[em]={...(ant[em]||{}),...c}; // nunca sobrescreve o 1º original de um campo
-      fs.writeFileSync(f,JSON.stringify(ant));
+      let ant={};
+      try{ant=JSON.parse(fs.readFileSync(f,"utf8"));}
+      catch(e){if(e.code!=="ENOENT"){try{fs.renameSync(f,f.replace(/\.json$/,`.corrompido-${Date.now()}.json`));}catch{}}ant={};} // arquivo ruim vai de lado, nunca é zerado
+      for(const [em,c] of Object.entries(orig)){ant[em]=ant[em]||{};for(const [k,v] of Object.entries(c))if(!(k in ant[em]))ant[em][k]=v;} // nunca sobrescreve o 1º original
+      const tmp=f+".tmp";fs.writeFileSync(tmp,JSON.stringify(ant));fs.renameSync(tmp,f);
     }catch(e){console.warn("[curingas] não gravou o arquivo de originais:",e.message);}
     persist(USERS_FILE,users); // grava já (como o _wipeCannedDefaults): o boot não pode depender do próximo save pra o texto limpo valer
-    console.log(`[curingas] 🧹 v983: ${nCampos} texto(s) de ${nUsers} usuário(s) limpos ({vaga}→work, demais apagados). Originais em curingas_originais_v983.json`);
+    console.log(`[curingas] 🧹 v983: ${nCampos} texto(s) de ${nUsers} usuário(s) limpos ({vaga}→work, demais apagados; ${avisar.size} com aviso no app). Originais em curingas_originais_v983.json`);
   }
-  return {users:nUsers,campos:nCampos};
+  return {users:nUsers,campos:nCampos,avisados:avisar.size};
 }
 function _wipeCannedDefaults(users){
   let touched=0;
@@ -6474,8 +6492,10 @@ async function _doAutoSendInner(email) {
     }
 
     // ── Assunto (rotação, novo objeto a cada envio) ────────
-    const subjectPool = (selectedProfile?.subjects?.length) ? [...selectedProfile.subjects]
-                      : (job.subjects?.length)              ? [...job.subjects]
+    // v984: o pool só tem itens que SOBRAM depois de limpar curinga (entrada 100% "{nome}" viraria "" e queimaria a vaga)
+    const _subjP=(selectedProfile?.subjects||[]).filter(_txtUtil), _subjJ=(job.subjects||[]).filter(_txtUtil);
+    const subjectPool = _subjP.length ? [..._subjP]
+                      : _subjJ.length ? [..._subjJ]
                       : null;
     // v22 (ORDEM DO DONO): sem assunto do usuário → NÃO inventa um (genSubject
     // removido). O envio é pulado logo abaixo com erro claro mandando
@@ -6487,8 +6507,9 @@ async function _doAutoSendInner(email) {
     }
 
     // ── Corpo (rotação, novo objeto a cada envio) ──────────
-    const bodyPool = (selectedProfile?.emailBodies?.length) ? [...selectedProfile.emailBodies]
-                   : (job.emailBodies?.length)              ? [...job.emailBodies]
+    const _bodyP=(selectedProfile?.emailBodies||[]).filter(_txtUtil), _bodyJ=(job.emailBodies||[]).filter(_txtUtil);
+    const bodyPool = _bodyP.length ? [..._bodyP]
+                   : _bodyJ.length ? [..._bodyJ]
                    : null;
     let rawBody, newBodyIdx;
     if (bodyPool && bodyPool.length) {
@@ -12596,6 +12617,7 @@ filtrar();
     // planGateMsg). null quando não há provisório vencendo com pedido pendente.
     const _provPend = _provisorioPendente(p);
     return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,newPurchasesBlocked:NEW_PURCHASES_BLOCKED&&!isAdminVip(p),planRulesNotice:_prNotice,
+      curingasNotice:p.curingasAviso?"Seus títulos e textos de e-mail tinham campos entre chaves, como {vaga} ou {nome}, que não existem mais. O sistema apagou esses campos (e trocou {vaga} pela palavra work). Abra Perfil, confira os seus títulos e textos e reescreva o que faltar.":null,
       provisorioPendente:_provPend?{pedidoId:_provPend.pedidoId,ref:_provPend.ref}:null,manualCdOff:p.manualCdOff===true,gmailNeedsReconnect:!!(p.refresh_token&&p.rtInvalid),gmailConnected,gmailEmail,emailContato:p.emailContato||null,emailVerificado:!!p.emailVerificadoEm,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",estado:p.estado||p.state||"",language:p.language||"pt",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||null}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,aprendaProgresso:p.aprendaProgresso||[],adminMessage:p.adminMessage||null,profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.gmailConnectedAt||p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===(gmailEmail||s.user_email)||x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||300),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
   }
 
@@ -13603,7 +13625,7 @@ filtrar();
     if(prf.resumeIdx==null&&prf.coverIdx==null)
       return json(res,400,{error:"Anexe pelo menos um currículo ou uma carta de apresentação a este perfil."});
     prfs=[...prfs.filter(pr=>(pr.visaType||"h2b")!==visaType),prf]; // preserva o perfil do OUTRO tipo
-    setUser(s.user_email,{profiles:prfs});return json(res,200,{ok:true,profile:prf});}catch(e){return json(res,500,{error:e.message});}}
+    setUser(s.user_email,{profiles:prfs,curingasAviso:false});return json(res,200,{ok:true,profile:prf});}catch(e){return json(res,500,{error:e.message});}} // salvar o perfil = a pessoa já conferiu: apaga o aviso do v984
   // v21: liga/desliga perfil SEM passar pela validação de conteúdo do save.
   // Antes o front reenviava o perfil inteiro pro /api/profiles/save só pra
   // mudar active — e perfil legado com <3 assuntos nem DESATIVAR conseguia
@@ -13952,7 +13974,7 @@ filtrar();
         if (!jobSenders.length) jobSenders = null;
       }
       // mode removido — sempre 24/7
-const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,filteredCount:queue.length,profileId:jobProfileId,resumeIdx:jobResumeIdx,coverIdx:jobCoverIdx,bodyTemplate:limpaCuringas(d.bodyTemplate||p.settings?.body||""),subjects:Array.isArray(d.subjects)&&d.subjects.length?d.subjects.map(x=>limpaCuringas(String(x))):null,emailBodies:Array.isArray(d.emailBodies)&&d.emailBodies.length?d.emailBodies.map(x=>limpaCuringas(String(x))):null,status:"starting",lastSentAt:null,finishedAt:null,source:d.source||"manual",category:d.category||"all",filters:d.filtros||d.filters||{},queueFingerprint,rotState:{lastSubjIdx:-1,lastBodyIdx:-1},senders:jobSenders,lockedAutoLimit:getAutoLimit(p)};
+const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,filteredCount:queue.length,profileId:jobProfileId,resumeIdx:jobResumeIdx,coverIdx:jobCoverIdx,bodyTemplate:limpaCuringas(d.bodyTemplate||p.settings?.body||""),subjects:Array.isArray(d.subjects)&&d.subjects.filter(_txtUtil).length?d.subjects.filter(_txtUtil).map(x=>limpaCuringas(String(x))):null,emailBodies:Array.isArray(d.emailBodies)&&d.emailBodies.filter(_txtUtil).length?d.emailBodies.filter(_txtUtil).map(x=>limpaCuringas(String(x))):null,status:"starting",lastSentAt:null,finishedAt:null,source:d.source||"manual",category:d.category||"all",filters:d.filtros||d.filters||{},queueFingerprint,rotState:{lastSubjIdx:-1,lastBodyIdx:-1},senders:jobSenders,lockedAutoLimit:getAutoLimit(p)};
       setAutoJob(s.user_email,job);
       autoStats.set(s.user_email,{sent:0,failed:0,skipped:0,startedAt:Date.now()});
       addLog(s.user_email,{status:"sistema",jobTitle:`Envio automático iniciado: ${queue.length} vagas${skippedAlreadySent>0?` (${skippedAlreadySent} já enviadas foram puladas)`:""}`,company:`Fonte: ${d.source||"manual"} | Categoria: ${d.category||"all"}`,source:d.source||"manual",category:d.category||"all"});
