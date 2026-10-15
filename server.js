@@ -514,6 +514,12 @@ let DB_ADMIN_SETTINGS = { emailNotificationsEnabled: false,
   // 💼 MC4-P1 (dono, 28/08/2026): divisão societária do LUCRO — padrão 50/50,
   // editável na seção "Sócios & Acerto" da aba 🧠 (computeSocios usa isto).
   sociosSplit: { andrio: 50, diego: 50 },
+  // 💼 v970 (dono, 15/10/2026 — "só quem recebe pagamentos é o Diego, depois
+  // ele repassa pra mim"): TODA entrada sem dono explícito pertence ao
+  // recebedor padrão. Antes o motor derivava da TRILHA de quem APROVOU o
+  // pedido — Andrio aprovando um PIX que caiu na conta do Diego creditava o
+  // Andrio em silêncio. "" desliga (volta a cair em "sem dono").
+  recebedorPadrao: "diego",
 }; // v9: trial = 1d VIP Manual apenas (sem auto)
 // v57/v171 (ORDEM DO DONO): SER admin continua vindo do e-mail (ADMIN_EMAIL/
 // ADMIN_EMAIL_2/isAdminEmail — a rota já exige sessão de admin antes de
@@ -788,6 +794,11 @@ function computeEntradasJanelas(){
 // 💼 MC4-P3: a régua de VALOR e de DONO de cada lançamento virou helper de
 // módulo — compartilhada por computeSocios (acerto) e computeDreMensal (DRE
 // mensal). Mudar aqui muda as duas telas juntas — nunca duas verdades (13n).
+// 💼 v970: recebedor padrão válido ('andrio'|'diego') ou null quando desligado.
+function _recebedorPadrao(){
+  const r=String((DB_ADMIN_SETTINGS&&DB_ADMIN_SETTINGS.recebedorPadrao)||"").trim().toLowerCase();
+  return (r==="andrio"||r==="diego")?r:null;
+}
 function _finValorEfetivo(p,pedById){
   let v=parseFloat(p.valor)||0;
   const _ped=p.pedidoId?pedById[p.pedidoId]:null;
@@ -796,11 +807,14 @@ function _finValorEfetivo(p,pedById){
 }
 function _finDonoDe(p,byId,depth){
   const r=String(p.recebidoPor||"").trim().toLowerCase();
-  if(r==="andrio"||r==="diego")return {dono:r,modo:"explicito"};
+  if(r==="andrio"||r==="diego")return {dono:r,modo:p.recebidoPorPadrao?"padrao":"explicito"}; // 💼 v970: carimbo do padrão continua "padrao" no CSV/acerto
   if(p.tipo==="ajuste"&&p.ajustaPagamentoId&&depth<2){
     const alvo=byId[p.ajustaPagamentoId];
     if(alvo){const h=_finDonoDe(alvo,byId,depth+1);if(h.dono)return {dono:h.dono,modo:"herdado"};}
   }
+  // 💼 v970: recebedor PADRÃO vence a trilha — quem aprovou ≠ quem recebeu.
+  const _pad=_recebedorPadrao();
+  if(_pad)return {dono:_pad,modo:"padrao"};
   for(const em of [p.ativadoPorEmail,p.lancadoPorEmail,p.confirmadoPor,p.porEmail]){
     if(em&&isAdminEmail(em))return {dono:editorFromEmail(em)==="diego"?"diego":"andrio",modo:"derivado"};
   }
@@ -811,7 +825,7 @@ function computeSocios(){
   const _pedById={};for(const ped of (DB_PEDIDOS||[])){if(ped&&ped.id)_pedById[ped.id]=ped;}
   const pags=(DB_FINANCEIRO.pagamentos||[]).filter(p=>p&&!naoEhReceita(p.email));
   const _byId={};for(const p of pags){if(p.id)_byId[p.id]=p;}
-  const S=()=>({recebido:0,n:0,derivado:0,derivadoValor:0,gastosPagos:0,repassou:0,recebeuRepasse:0,posicao:0,direito:0,acerto:0});
+  const S=()=>({recebido:0,n:0,derivado:0,derivadoValor:0,padrao:0,padraoValor:0,gastosPagos:0,repassou:0,recebeuRepasse:0,posicao:0,direito:0,acerto:0});
   const socios={andrio:S(),diego:S()};
   const semDono={total:0,n:0,itens:[]};
   let liquidoContabil=0,anuladosN=0,anuladosValor=0;
@@ -823,6 +837,7 @@ function computeSocios(){
     if(dono){
       socios[dono].recebido+=v;socios[dono].n++;
       if(modo==="derivado"||modo==="herdado"){socios[dono].derivado++;socios[dono].derivadoValor+=v;}
+      else if(modo==="padrao"){socios[dono].padrao++;socios[dono].padraoValor+=v;}
     }else{
       semDono.total+=v;semDono.n++;
       if(semDono.itens.length<50)semDono.itens.push({id:p.id||null,email:p.email||null,nome:p.nome||null,valor:v,quando:p.dataPagamento||p.data||null,tipo:p.tipo||null,anulado:!!p.anuladoPor});
@@ -836,7 +851,13 @@ function computeSocios(){
     gastos.total+=gv;gastos.n++;
     const quem=["andrio","diego"].includes(String(g.pagoPor||"").toLowerCase())?String(g.pagoPor).toLowerCase():"empresa";
     gastos.porPagador[quem]+=gv;
-    if(quem!=="empresa")socios[quem].gastosPagos+=gv;
+    // 💼 v970: gasto "da empresa" sai da conta onde o dinheiro da empresa ESTÁ —
+    // a do recebedor padrão (Diego). Sem isso o "deve repassar" de um não
+    // espelhava o "tem a receber" do outro (a diferença era exatamente os
+    // gastos da empresa, que ninguém pagava). Com o padrão desligado, volta a
+    // regra antiga (sai só do lucro).
+    const _bolso=quem!=="empresa"?quem:_recebedorPadrao();
+    if(_bolso)socios[_bolso].gastosPagos+=gv;
   }
   // REPASSES: dinheiro que um sócio JÁ passou pro outro — muda só a POSIÇÃO
   // (quanto cada um efetivamente embolsou), nunca a receita nem o lucro.
@@ -857,7 +878,7 @@ function computeSocios(){
   socios.diego.direito=_round(lucroDistribuivel-socios.andrio.direito); // fecha o centavo — a soma dos direitos é SEMPRE o lucro exato
   for(const k of ["andrio","diego"]){
     const so=socios[k];
-    so.recebido=_round(so.recebido);so.derivadoValor=_round(so.derivadoValor);
+    so.recebido=_round(so.recebido);so.derivadoValor=_round(so.derivadoValor);so.padraoValor=_round(so.padraoValor);
     so.gastosPagos=_round(so.gastosPagos);so.repassou=_round(so.repassou);so.recebeuRepasse=_round(so.recebeuRepasse);
     so.posicao=_round(so.recebido-so.gastosPagos-so.repassou+so.recebeuRepasse);
     so.acerto=_round(so.direito-so.posicao);
@@ -867,6 +888,8 @@ function computeSocios(){
   if(semDono.n)avisos.push(`⚠️ ${semDono.n} entrada(s) SEM DONO somando R$ ${_round(semDono.total).toFixed(2)} — atribua abaixo pra o acerto ficar exato.`);
   const _der=socios.andrio.derivado+socios.diego.derivado;
   if(_der)avisos.push(`ℹ️ ${_der} entrada(s) atribuídas pela TRILHA de quem aprovou/lançou (não havia recebidoPor explícito) — confira e marque explicitamente se alguma estiver errada.`);
+  const _padN=socios.andrio.padrao+socios.diego.padrao,_padQuem=_recebedorPadrao();
+  if(_padN)avisos.push(`ℹ️ ${_padN} entrada(s) sem dono marcado foram atribuídas ao recebedor padrão (${_padQuem==="diego"?"Diego":"Andrio"}) — é a regra da casa: todo PIX cai na conta dele. Marque outro dono só na exceção.`);
   if(anuladosN)avisos.push(`ℹ️ ${anuladosN} lançamento(s) anulados (com par de AJUSTE −) continuam no extrato — cada par soma zero, ninguém é cobrado por eles.`);
   return {
     liquidoContabil:_round(liquidoContabil),
@@ -874,12 +897,13 @@ function computeSocios(){
     gastos:{n:gastos.n,total:_round(gastos.total),porPagador:{andrio:_round(gastos.porPagador.andrio),diego:_round(gastos.porPagador.diego),empresa:_round(gastos.porPagador.empresa)}},
     repasses:{n:repasses.n,andrioParaDiego:_round(repasses.andrioParaDiego),diegoParaAndrio:_round(repasses.diegoParaAndrio)},
     split:{andrio:spA,diego:spD},
+    recebedorPadrao:_recebedorPadrao(),
     lucroDistribuivel,
     socios,
     formula:"líquido contábil (caixa sem admins, pedido corrigido vence) = R$ "+_round(liquidoContabil).toFixed(2)
       +" · lucro distribuível = líquido − gastos (R$ "+_round(gastos.total).toFixed(2)+") = R$ "+lucroDistribuivel.toFixed(2)
       +" · direito de cada sócio = lucro × sua fração do split ("+spA+"/"+spD+")"
-      +" · posição = o que já recebeu − gastos que pagou do bolso − repasses que fez + repasses que recebeu"
+      +" · posição = o que já recebeu − gastos que saíram da conta dele (do bolso"+(_recebedorPadrao()?" e os da empresa, que saem da conta do recebedor padrão":"")+") − repasses que fez + repasses que recebeu"
       +" · TEM A RECEBER = direito − posição (negativo = deve repassar ao outro)",
     avisos,
     checagem:{canonicoTotal:_round(canonicoTotal),delta:_round(liquidoContabil-canonicoTotal)}
@@ -10205,6 +10229,21 @@ filtrar();
     if(!(adm?.isAdmin||isAdminEmail(_sessAdminEmail(s))))return json(res,403,{error:"Só admin."});
     try{return json(res,200,{ok:true,...computeSocios()});}catch(e){return json(res,500,{error:e.message});}
   }
+  // 💼 v970: recebedor padrão de toda entrada ('diego' por ordem do dono; '' desliga)
+  if(pathname==="/api/admin/socios/recebedor"&&req.method==="POST"){
+    const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
+    if(!(adm?.isAdmin||isAdminEmail(_sessAdminEmail(s))))return json(res,403,{error:"Só admin."});
+    try{
+      const d=JSON.parse(await readBody(req)||"{}");
+      const r=String(d.recebedorPadrao||"").trim().toLowerCase();
+      if(!["andrio","diego",""].includes(r))return json(res,400,{error:"recebedorPadrao inválido — use 'andrio', 'diego' ou vazio pra desligar."});
+      const antes=DB_ADMIN_SETTINGS.recebedorPadrao||"";
+      DB_ADMIN_SETTINGS.recebedorPadrao=r;
+      persist(ADMIN_SETTINGS_FILE,DB_ADMIN_SETTINGS);
+      logAdminAction(s.user_email,"socios_recebedor","(config)",{recebedorPadrao:antes},{recebedorPadrao:r},`Recebedor padrão de entradas → ${r||"(desligado: sem dono)"}`);
+      return json(res,200,{ok:true,recebedorPadrao:r});
+    }catch(e){return json(res,500,{error:e.message});}
+  }
   if(pathname==="/api/admin/socios/split"&&req.method==="POST"){
     const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
     if(!(adm?.isAdmin||isAdminEmail(_sessAdminEmail(s))))return json(res,403,{error:"Só admin."});
@@ -10633,7 +10672,7 @@ filtrar();
         // qualquer coisa (inclusive vazio) virava 'andrio' na marra e o acerto
         // creditava dinheiro pro sócio errado sem ninguém perceber.
         const _rpEnum=String(pg.recebidoPor||"").toLowerCase();
-        if(_rpEnum==='andrio'||_rpEnum==='diego'){ pg.recebidoPor=_rpEnum; } else { delete pg.recebidoPor; }
+        if(_rpEnum==='andrio'||_rpEnum==='diego'){ pg.recebidoPor=_rpEnum; } else { delete pg.recebidoPor; if(_recebedorPadrao()){ pg.recebidoPor=_recebedorPadrao(); pg.recebidoPorPadrao=true; } } // 💼 v970
         if(!pg.id) pg.id='fin_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6);
         if(!pg.criadoEm) pg.criadoEm=Date.now();
         // Quem LANÇOU vem da sessão — não pode ser forjado pelo corpo (mesmo padrão do gasto).
@@ -10821,6 +10860,7 @@ filtrar();
         const ALLOWED=['valor','desconto','dataPagamento','dataGasto','data','nota','descricao','categoria','plano','email','nome','pagoPor','recebidoPor','moeda','valorUSD','cambio','fonte'];
         for(const k of ALLOWED){ if(d.changes&&d.changes[k]!==undefined){ alvo[k]=['valor','desconto','valorUSD','cambio'].includes(k)?(parseFloat(d.changes[k])||0):d.changes[k]; } }
         if(alvo.recebidoPor==="")delete alvo.recebidoPor;
+        if(d.changes&&d.changes.recebidoPor!==undefined)delete alvo.recebidoPorPadrao; // 💼 v970: marcado à mão deixa de ser "padrão"
         // Moeda: gasto/entrada pode ser em DÓLAR — o valor em R$ é derivado do câmbio
         if(String(alvo.moeda||'').toUpperCase()==='USD'&&alvo.valorUSD>0){
           if(!(alvo.cambio>0))alvo.cambio=5.17; // câmbio padrão editável
@@ -10855,6 +10895,16 @@ filtrar();
         return json(res,200,{ok:true});
       }
       // ── Consultar trilha de alterações ──
+      // 💼 v970: ANULAR entrada do caixa = a função única do cancelamento
+      // (original preservado + par de AJUSTE −). Excluir de verdade continua
+      // existindo pra erro de digitação, mas a tela oferece anular primeiro.
+      if(d.action==='anular_pagamento' && d.id){
+        if(!d.motivo||String(d.motivo).trim().length<3) return json(res,400,{error:"Informe o motivo da anulação (obrigatório para o histórico)."});
+        try{
+          const n=_anularNoCaixa(String(d.id),false,_sessAdminEmail(s),"ANUL-"+Date.now().toString(36).toUpperCase(),String(d.motivo).slice(0,200));
+          return json(res,200,{ok:true,anulados:n});
+        }catch(e){return json(res,404,{error:e.message});}
+      }
       if(d.action==='get_alteracoes'){
         return json(res,200,{ok:true,alteracoes:(DB_FINANCEIRO.alteracoes||[]).slice(-200).reverse()});
       }
@@ -11776,7 +11826,8 @@ filtrar();
             // da trilha (ativadoPorEmail) e conta como "derivado", em vez de
             // carimbar um sócio na marra sem ninguém ter dito quem recebeu.
             ...((["andrio","diego"].includes((d.recebidoPor||"").toLowerCase()))
-              ?{recebidoPor:(d.recebidoPor||"").toLowerCase()}:{}),
+              ?{recebidoPor:(d.recebidoPor||"").toLowerCase()}
+              :(_recebedorPadrao()?{recebidoPor:_recebedorPadrao(),recebidoPorPadrao:true}:{})), // 💼 v970
             whatsapp:pd.userWhatsapp||""
           });
           _persistFinConferido("aprovação do pedido #"+pd.id.slice(-8).toUpperCase()); // MC5-P6: gravação conferida
@@ -14085,7 +14136,7 @@ if(pathname==="/api/admin/contabilidade/pagamento"&&req.method==="POST"){
       tipo="avulsa";
     } else { tipo="cliente"; }
     const _rpEnum=String(pg.recebidoPor||"").toLowerCase();
-    const recebidoPor=(_rpEnum==="andrio"||_rpEnum==="diego")?_rpEnum:undefined;
+    const recebidoPor=(_rpEnum==="andrio"||_rpEnum==="diego")?_rpEnum:(_recebedorPadrao()||undefined); // 💼 v970
     const _hashCompP=(b64)=>{try{return crypto.createHash("sha256").update(String(b64).replace(/^data:[^;]+;base64,/,"")).digest("hex");}catch(e){return null;}};
     let comprovante=null,comprovanteType=null;
     if(pg.comprovante&&typeof pg.comprovante==="string"){

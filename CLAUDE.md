@@ -4222,3 +4222,35 @@ implementar tudo. As 5 viraram regra DESTE repo — manual completo em
 5. **Playwright (auto-revisão)**: entrega que muda tela TERMINA com o Claude abrindo a tela
    no Chromium (script no scratchpad, padrão insta-check/), fotografando 1280+360px e
    conferindo por medida o que afirmou (§5). O print é prova; produção quem confirma é o dono.
+
+## 💼 v970 — Painel de DINHEIRO (Fase 1 da "lista de 100 coisas do admin", dono 15/10/2026)
+
+Dono: "hoje eu não consigo saber nada sobre os usuários, nem ver os comprovantes e nem saber sobre
+pagamento para mim e para o Diego, que é 50/50". Inventário real (6 leitores) achou o padrão:
+~83 rotas /api/admin/* no servidor e só 5 telas — acerto, livro-caixa, DRE, pagantes e conferência
+existiam prontos no servidor sem NENHUM botão. Esta fase liga as telas de dinheiro.
+
+**Regra da casa (ordem do dono, 15/10/2026): "só quem recebe pagamentos é o Diego, depois ele
+repassa pra mim."** → `DB_ADMIN_SETTINGS.recebedorPadrao = "diego"` (rota POST
+/api/admin/socios/recebedor; '' desliga). `_finDonoDe` passou a atribuir entrada sem dono marcado
+ao recebedor padrão (modo "padrao") ANTES da trilha de quem aprovou — Andrio aprovando um PIX que
+caiu na conta do Diego creditava o Andrio em silêncio. Aprovação de pedido e add_pagamento
+carimbam `recebidoPor` + `recebidoPorPadrao:true` (auditável). Gasto "empresa" sai da conta do
+recebedor padrão (é onde o dinheiro da empresa está) — por isso o "deve repassar" de um ESPELHA
+o "tem a receber" do outro (antes a diferença era exatamente os gastos da empresa). Com o padrão
+desligado, tudo volta ao comportamento antigo (sem dono / só do lucro).
+
+**Telas novas no admin.html** (seção DINHEIRO da sidebar; carregam ao abrir, nunca no boot):
+Visão do Dono (hoje/7d/30d/total, gastos e líquido 30d, R$ na mesa, vencendo 7d, card do acerto)
+· Livro-caixa (entradas/gastos/repasses com busca, período, anulados; editar com motivo, ANULAR
+entrada = `anular_pagamento` → `_anularNoCaixa` com par de AJUSTE −, excluir gasto/repasse com
+motivo, anexar comprovante depois, trilha "quem mexeu no caixa" via get_alteracoes; gasto aceita
+Empresa/USD/recorrente — a rota rica add_gasto já sabia) · Sócios 50/50 (cards Diego/Andrio com a
+conta aberta, fórmula, recebedor padrão, split, entradas sem dono com atribuição em 1 clique,
+registrar repasse com comprovante) · Pagantes (/api/admin/pagantes) · Conferência
+(/api/admin/conferencia + divergências nomeadas + CSV filtrado) · DRE & Fechamento (executivo,
+mês a mês, fechar mês, fechar antigos, 3 CSVs). **Visualizador de comprovante DENTRO do painel**
+(`verAnexo(tipo,id)`: pedido/gasto/pagamento/repasse, zoom, download, leitura da IA no rodapé) —
+`verComprovante` virou atalho; o pop-up morreu. `pedirMotivo()` substitui prompt().
+Fases seguintes (tarefas): F2 comprovantes/pedidos · F3 usuários/ficha · F4 operação (sem
+alertas). Segurança e alertas ficam pra depois POR ORDEM do dono.

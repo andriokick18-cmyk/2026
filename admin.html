@@ -283,8 +283,14 @@ tbody tr:hover{background:var(--glass2)}
       </div>
     </div>
     <nav class="sb-nav">
-      <div class="sb-section">Contabilidade</div>
-      <button class="sb-item active" data-view="overview" onclick="switchTab('overview')"><i class="ti ti-layout-dashboard"></i> Visão Geral</button>
+      <div class="sb-section">Dinheiro</div>
+      <button class="sb-item active" data-view="overview" onclick="switchTab('overview')"><i class="ti ti-layout-dashboard"></i> Visão do Dono</button>
+      <button class="sb-item" data-view="caixa" onclick="switchTab('caixa')"><i class="ti ti-book"></i> Livro-caixa</button>
+      <button class="sb-item" data-view="socios" onclick="switchTab('socios')"><i class="ti ti-users-group"></i> Sócios 50/50</button>
+      <button class="sb-item" data-view="pagantes" onclick="switchTab('pagantes')"><i class="ti ti-credit-card"></i> Pagantes</button>
+      <button class="sb-item" data-view="conferencia" onclick="switchTab('conferencia')"><i class="ti ti-list-check"></i> Conferência</button>
+      <button class="sb-item" data-view="dre" onclick="switchTab('dre')"><i class="ti ti-report-analytics"></i> DRE &amp; Fechamento</button>
+      <div class="sb-section">Clientes</div>
       <button class="sb-item" data-view="usuarios" onclick="switchTab('usuarios')"><i class="ti ti-users"></i> Usuários</button>
       <button class="sb-item" data-view="pendentes" onclick="switchTab('pendentes')"><i class="ti ti-hourglass"></i> Pedidos Pendentes <span class="pill" id="pill-pendentes" style="display:none">0</span></button>
       <div class="sb-section">Vagas</div>
@@ -323,8 +329,8 @@ tbody tr:hover{background:var(--glass2)}
     <div class="topbar">
       <button class="hamburger" onclick="toggleSidebar(true)"><i class="ti ti-menu-2"></i></button>
       <div>
-        <div class="tb-title" id="tb-title">Visão Geral</div>
-        <div class="tb-sub" id="tb-sub">Números exatos, direto do servidor</div>
+        <div class="tb-title" id="tb-title">Visão do Dono</div>
+        <div class="tb-sub" id="tb-sub">Entradas hoje / 7d / 30d, o que está na mesa e o acerto entre os sócios</div>
       </div>
       <div class="tb-right">
         <button class="btn btn-icon" title="Atualizar" onclick="atualizarTudo()"><i class="ti ti-refresh" id="refresh-ic"></i></button>
@@ -334,6 +340,21 @@ tbody tr:hover{background:var(--glass2)}
     <div class="content">
 
       <div class="view active" id="view-overview">
+        <!-- 💼 v970: Visão do Dono — janelas canônicas (fonte única dono-resumo) -->
+        <div class="stat-grid" id="dono-grid">
+          <div class="stat-card green"><div class="ic"><i class="ti ti-sun"></i></div><div class="lbl">Hoje</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card green"><div class="ic"><i class="ti ti-calendar-week"></i></div><div class="lbl">7 dias</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card green"><div class="ic"><i class="ti ti-calendar-month"></i></div><div class="lbl">30 dias</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card blue"><div class="ic"><i class="ti ti-cash-banknote"></i></div><div class="lbl">Total</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card red"><div class="ic"><i class="ti ti-receipt-2"></i></div><div class="lbl">Gastos 30d</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card purple"><div class="ic"><i class="ti ti-scale"></i></div><div class="lbl">Líquido 30d</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card amber"><div class="ic"><i class="ti ti-hourglass"></i></div><div class="lbl">Na mesa (pendentes)</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card amber"><div class="ic"><i class="ti ti-calendar-event"></i></div><div class="lbl">Vencendo em 7 dias</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
+          <div class="panel"><div class="panel-head"><div class="panel-title"><i class="ti ti-users-group"></i>Acerto entre os sócios</div></div><div class="panel-body" id="dono-socios"><div class="spin"></div></div></div>
+          <div class="panel"><div class="panel-head"><div class="panel-title"><i class="ti ti-calendar-event"></i>Renovações da semana</div></div><div class="panel-body" id="dono-vencendo" style="font-size:13px"><div class="spin"></div></div></div>
+        </div>
         <div class="stat-grid" id="stat-grid">
           <div class="stat-card blue"><div class="ic"><i class="ti ti-cash-banknote"></i></div><div class="lbl">Total Recebido</div><div class="val skel">&nbsp;</div></div>
           <div class="stat-card amber"><div class="ic"><i class="ti ti-user"></i></div><div class="lbl">Gastos Andrio</div><div class="val skel">&nbsp;</div></div>
@@ -359,6 +380,144 @@ tbody tr:hover{background:var(--glass2)}
           <div class="panel-body" style="font-size:13px;color:var(--t2);line-height:1.7">
             Todos os valores acima vêm direto de <code style="color:var(--cyan)">GET /api/admin/contabilidade</code> — nada é recalculado no navegador. "Total Recebido" já exclui contas de admin/teste. Um usuário marcado com ⚠️ na aba Usuários tem mais dias de VIP restantes do que dias creditados como "pago" no histórico dele — vale conferir com calma antes de agir.
           </div>
+        </div>
+      </div>
+
+      <!-- ══════════ 💼 v970 — DINHEIRO (Fase 1): Livro-caixa ══════════ -->
+      <div class="view" id="view-caixa">
+        <div class="stat-grid" id="cx-grid">
+          <div class="stat-card green"><div class="ic"><i class="ti ti-arrow-down-left"></i></div><div class="lbl">Entradas (líquido)</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card red"><div class="ic"><i class="ti ti-arrow-up-right"></i></div><div class="lbl">Gastos</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card purple"><div class="ic"><i class="ti ti-arrows-exchange"></i></div><div class="lbl">Repasses Diego → Andrio</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card blue"><div class="ic"><i class="ti ti-scale"></i></div><div class="lbl">Resultado (entradas − gastos)</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title"><i class="ti ti-book"></i>Livro-caixa</div>
+            <div class="panel-actions">
+              <button class="btn btn-green btn-sm" onclick="abrirModalPagamento()"><i class="ti ti-plus"></i> Entrada</button>
+              <button class="btn btn-red btn-sm" onclick="abrirModalGasto()"><i class="ti ti-minus"></i> Gasto</button>
+              <button class="btn btn-sm" onclick="abrirModalRepasse()"><i class="ti ti-arrows-exchange"></i> Repasse</button>
+              <a class="btn btn-sm" href="/api/admin/financeiro/exportar" target="_blank" rel="noopener"><i class="ti ti-download"></i> CSV</a>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+              <div class="radio-row" id="cx-abas" style="flex:0 0 auto">
+                <label class="radio-opt checked"><input type="radio" name="cx-aba" value="pagamentos" checked onchange="setAbaCaixa(this.value,this)"> Entradas</label>
+                <label class="radio-opt"><input type="radio" name="cx-aba" value="gastos" onchange="setAbaCaixa(this.value,this)"> Gastos</label>
+                <label class="radio-opt"><input type="radio" name="cx-aba" value="repasses" onchange="setAbaCaixa(this.value,this)"> Repasses</label>
+              </div>
+              <div class="search-wrap"><i class="ti ti-search"></i><input type="search" id="cx-busca" placeholder="Nome, e-mail, nota, categoria, nº do pedido…" oninput="renderCaixa()"></div>
+              <select id="cx-periodo" onchange="renderCaixa()" style="width:auto">
+                <option value="30">Últimos 30 dias</option>
+                <option value="90" selected>Últimos 90 dias</option>
+                <option value="365">Último ano</option>
+                <option value="0">Tudo</option>
+              </select>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--t2)"><input type="checkbox" id="cx-anulados" onchange="renderCaixa()" style="width:auto"> mostrar anulados/ajustes</label>
+            </div>
+            <div id="cx-resumo" style="font-size:12.5px;color:var(--t2);margin-bottom:10px"></div>
+            <div class="tbl-wrap"><table><thead id="cx-thead"></thead><tbody id="cx-tbody"></tbody></table></div>
+            <div class="empty" id="cx-empty" style="display:none">Nenhum lançamento nesse filtro.</div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title"><i class="ti ti-history"></i>Quem mexeu no caixa</div><div class="panel-actions"><button class="btn btn-sm" onclick="carregarAlteracoesCaixa()"><i class="ti ti-refresh"></i> Ver últimas 200</button></div></div>
+          <div class="panel-body" id="cx-alteracoes" style="font-size:12.5px;color:var(--t2)">Clique em "Ver últimas 200" pra abrir a trilha de edições, exclusões e anulações do caixa (quem, quando, de quanto pra quanto, motivo).</div>
+        </div>
+      </div>
+
+      <!-- ══════════ 💼 v970 — Sócios 50/50 ══════════ -->
+      <div class="view" id="view-socios">
+        <div id="soc-body"><div class="spin"></div></div>
+      </div>
+
+      <!-- ══════════ 💼 v970 — Pagantes ══════════ -->
+      <div class="view" id="view-pagantes">
+        <div class="stat-grid" id="pg-grid">
+          <div class="stat-card blue"><div class="ic"><i class="ti ti-users"></i></div><div class="lbl">Pagantes (já pagaram)</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card green"><div class="ic"><i class="ti ti-circle-check"></i></div><div class="lbl">Com plano ativo</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card amber"><div class="ic"><i class="ti ti-hourglass"></i></div><div class="lbl">Vencendo em 3 dias</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card red"><div class="ic"><i class="ti ti-calendar-x"></i></div><div class="lbl">Vencidos</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title"><i class="ti ti-credit-card"></i>Quem pagou, quanto, quando e até quando vale</div>
+            <div class="panel-actions">
+              <div class="search-wrap"><i class="ti ti-search"></i><input type="search" id="pg-busca" placeholder="Nome, e-mail, WhatsApp…" oninput="renderPagantes()"></div>
+              <select id="pg-filtro" onchange="renderPagantes()" style="width:auto">
+                <option value="">Todos</option>
+                <option value="ativo">Ativos</option>
+                <option value="vencendo">Vencendo (≤3 dias)</option>
+                <option value="vencido">Vencidos</option>
+                <option value="semana">Vencem em 7 dias</option>
+              </select>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="tbl-wrap"><table>
+              <thead><tr><th>Cliente</th><th>Plano</th><th>Status</th><th>Vence</th><th>Último pagamento</th><th>Total pago</th><th>Pagamentos</th><th></th></tr></thead>
+              <tbody id="pg-tbody"></tbody></table></div>
+            <div class="empty" id="pg-empty" style="display:none">Nenhum pagante nesse filtro.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════ 💼 v970 — Conferência ══════════ -->
+      <div class="view" id="view-conferencia">
+        <div class="stat-grid" id="cf-grid">
+          <div class="stat-card blue"><div class="ic"><i class="ti ti-list-check"></i></div><div class="lbl">Pagamentos conferidos</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card green"><div class="ic"><i class="ti ti-cash"></i></div><div class="lbl">Valor total</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card red"><div class="ic"><i class="ti ti-alert-triangle"></i></div><div class="lbl">Divergências</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+        </div>
+        <div class="panel" id="cf-div-panel" style="display:none">
+          <div class="panel-head"><div class="panel-title"><i class="ti ti-alert-triangle" style="color:var(--red)"></i>Divergências — dinheiro que não bate</div></div>
+          <div class="panel-body" id="cf-divergencias"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title"><i class="ti ti-receipt"></i>Todos os pagamentos desde o 1º — pedido × caixa × comprovante lido</div>
+            <div class="panel-actions">
+              <div class="search-wrap"><i class="ti ti-search"></i><input type="search" id="cf-busca" placeholder="Nome, e-mail, pedido, pagador, transação, valor…" oninput="renderConferencia()"></div>
+              <select id="cf-status" onchange="renderConferencia()" style="width:auto"><option value="">Todos os status</option><option value="ativo">aprovado</option><option value="pago">pago</option><option value="pendente">pendente</option><option value="cancelado">cancelado</option></select>
+              <a class="btn btn-sm" id="cf-csv" href="/api/admin/conferencia/exportar" target="_blank" rel="noopener"><i class="ti ti-download"></i> CSV</a>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div id="cf-count" style="font-size:12.5px;color:var(--t2);margin-bottom:10px"></div>
+            <div class="tbl-wrap"><table>
+              <thead><tr><th>Quando</th><th>Cliente</th><th>Tipo</th><th>Plano</th><th>Valor</th><th>Status</th><th>Comprovante lido</th><th></th></tr></thead>
+              <tbody id="cf-tbody"></tbody></table></div>
+            <div class="empty" id="cf-empty" style="display:none">Nada nesse filtro.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════ 💼 v970 — DRE mensal & Fechamento ══════════ -->
+      <div class="view" id="view-dre">
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title"><i class="ti ti-report-analytics"></i>Relatório executivo</div>
+            <div class="panel-actions">
+              <a class="btn btn-sm" href="/api/admin/dre?fmt=csv" target="_blank" rel="noopener"><i class="ti ti-download"></i> DRE em CSV</a>
+              <a class="btn btn-sm" href="/api/admin/financeiro/exportar" target="_blank" rel="noopener"><i class="ti ti-download"></i> Livro-caixa em CSV</a>
+              <a class="btn btn-sm" href="/api/admin/conferencia/exportar" target="_blank" rel="noopener"><i class="ti ti-download"></i> Conferência em CSV</a>
+            </div>
+          </div>
+          <div class="panel-body"><pre id="dre-exec" style="white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.6;color:var(--t2);margin:0">Carregando…</pre></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title"><i class="ti ti-calendar-stats"></i>DRE mês a mês</div></div>
+          <div class="panel-body">
+            <div class="tbl-wrap"><table>
+              <thead><tr><th>Mês</th><th>Receita</th><th>Gastos</th><th>Resultado</th><th>Diego recebeu</th><th>Andrio recebeu</th><th>Sem dono</th><th>Por plano</th><th>Fechamento</th></tr></thead>
+              <tbody id="dre-tbody"></tbody></table></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title"><i class="ti ti-lock"></i>Meses fechados (congelados)</div><div class="panel-actions"><button class="btn btn-sm" onclick="fecharMesesAntigos()"><i class="ti ti-lock"></i> Fechar todos os meses antigos</button></div></div>
+          <div class="panel-body" id="dre-fech" style="font-size:13px;color:var(--t2)">Carregando…</div>
         </div>
       </div>
 
@@ -684,15 +843,22 @@ tbody tr:hover{background:var(--glass2)}
       <div class="modal-body">
         <div class="field">
           <label for="gs-valor">Valor (R$) *</label>
-          <input type="number" id="gs-valor" min="0.01" step="0.01" placeholder="0,00" required>
+          <input type="number" id="gs-valor" min="0" step="0.01" placeholder="0,00 (ou marque dólar abaixo)">
         </div>
         <div class="field">
           <label>Pago por *</label>
           <div class="radio-row" id="gs-pagopor-row">
             <label class="radio-opt"><input type="radio" name="gs-pagopor" value="andrio" required onchange="marcarRadio('gs-pagopor-row',this)"> Andrio</label>
             <label class="radio-opt"><input type="radio" name="gs-pagopor" value="diego" onchange="marcarRadio('gs-pagopor-row',this)"> Diego</label>
+            <label class="radio-opt"><input type="radio" name="gs-pagopor" value="empresa" onchange="marcarRadio('gs-pagopor-row',this)"> Empresa</label>
           </div>
+          <div class="hint">Andrio/Diego = pagou do próprio bolso e recebe de volta no acerto · Empresa = saiu da conta onde o dinheiro da empresa fica (a do Diego, recebedor padrão).</div>
         </div>
+        <div class="field" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+          <label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="gs-usd" style="width:auto" onchange="document.getElementById('gs-usd-row').style.display=this.checked?'flex':'none'"> Gasto em dólar</label>
+          <label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="gs-recorrente" style="width:auto"> 🔁 Recorrente (todo mês, ex.: Render)</label>
+        </div>
+        <div class="field" id="gs-usd-row" style="display:none;gap:10px"><input type="number" id="gs-valor-usd" min="0.01" step="0.01" placeholder="US$"><input type="number" id="gs-cambio" min="0.01" step="0.01" placeholder="câmbio (5,17)"></div>
         <div class="field">
           <label for="gs-categoria">Categoria</label>
           <input type="text" id="gs-categoria" list="gs-categoria-list" placeholder="Ex.: Anúncios, Servidor, Google Workspace…" maxlength="40">
@@ -759,7 +925,7 @@ tbody tr:hover{background:var(--glass2)}
           <div class="radio-row" id="pg-recebidopor-row">
             <label class="radio-opt"><input type="radio" name="pg-recebidopor" value="andrio" onchange="marcarRadio('pg-recebidopor-row',this)"> Andrio</label>
             <label class="radio-opt"><input type="radio" name="pg-recebidopor" value="diego" onchange="marcarRadio('pg-recebidopor-row',this)"> Diego</label>
-            <label class="radio-opt checked"><input type="radio" name="pg-recebidopor" value="" checked onchange="marcarRadio('pg-recebidopor-row',this)"> Sem definir</label>
+            <label class="radio-opt checked"><input type="radio" name="pg-recebidopor" value="" checked onchange="marcarRadio('pg-recebidopor-row',this)"> Padrão da casa (Diego)</label>
           </div>
         </div>
         <div class="field">
@@ -777,6 +943,70 @@ tbody tr:hover{background:var(--glass2)}
         <button type="button" class="btn" onclick="fecharModal('modal-pagamento')">Cancelar</button>
         <button type="submit" class="btn btn-green" id="pg-submit"><i class="ti ti-check"></i> Salvar pagamento</button>
       </div>
+    </form>
+  </div>
+</div>
+
+<!-- 💼 v970: visualizador de comprovante DENTRO do painel (nunca mais pop-up bloqueado) -->
+<div class="modal-bg" id="modal-anexo">
+  <div class="modal" style="max-width:860px">
+    <div class="modal-head"><div class="modal-title"><i class="ti ti-paperclip" style="color:var(--blue)"></i> <span id="anexo-title">Comprovante</span></div>
+      <a class="btn btn-sm" id="anexo-download" download="comprovante" style="margin-left:auto"><i class="ti ti-download"></i> Baixar</a>
+      <button class="btn btn-sm" id="anexo-zoom" onclick="anexoZoom()" title="Ampliar / reduzir"><i class="ti ti-zoom-in"></i> Zoom</button>
+      <button class="modal-close" onclick="fecharModal('modal-anexo')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body" id="anexo-body" style="text-align:center;max-height:75vh;overflow:auto;background:#0b0f1e"></div>
+    <div class="modal-foot" id="anexo-foot" style="justify-content:flex-start;font-size:12.5px;color:var(--t2)"></div>
+  </div>
+</div>
+
+<!-- 💼 v970: motivo obrigatório (substitui prompt() do navegador) -->
+<div class="modal-bg" id="modal-motivo">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-head"><div class="modal-title" id="motivo-title">Motivo</div><button class="modal-close" onclick="fecharModal('modal-motivo')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body">
+      <div id="motivo-texto" style="font-size:13px;color:var(--t2);margin-bottom:10px"></div>
+      <div class="field"><label for="motivo-input">Motivo (fica no histórico) *</label><input type="text" id="motivo-input" maxlength="200" placeholder="Ex.: valor digitado errado"></div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" onclick="fecharModal('modal-motivo')">Cancelar</button><button type="button" class="btn btn-primary" id="motivo-ok">Confirmar</button></div>
+  </div>
+</div>
+
+<!-- 💼 v970: editar lançamento (entrada ou gasto) com motivo -->
+<div class="modal-bg" id="modal-lanc">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title"><i class="ti ti-pencil" style="color:var(--amber)"></i> <span id="lanc-title">Editar lançamento</span></div><button class="modal-close" onclick="fecharModal('modal-lanc')"><i class="ti ti-x"></i></button></div>
+    <form id="form-lanc" onsubmit="salvarEditarLanc(event)">
+      <div class="modal-body">
+        <div class="field"><label for="lc-valor">Valor (R$) *</label><input type="number" id="lc-valor" min="0.01" step="0.01" required></div>
+        <div class="field"><label for="lc-data">Data</label><input type="date" id="lc-data"></div>
+        <div class="field" id="lc-dono-field"><label for="lc-dono">Dono do dinheiro</label><select id="lc-dono"></select></div>
+        <div class="field" id="lc-cat-field"><label for="lc-cat">Categoria</label><input type="text" id="lc-cat" maxlength="40" list="gs-categoria-list"></div>
+        <div class="field"><label for="lc-nota">Nota / descrição</label><textarea id="lc-nota" maxlength="300"></textarea></div>
+        <div class="field"><label for="lc-motivo">Motivo da edição (fica no histórico) *</label><input type="text" id="lc-motivo" maxlength="200" required placeholder="Ex.: cliente pagou R$ 150, não R$ 100"></div>
+      </div>
+      <div class="modal-foot"><button type="button" class="btn" onclick="fecharModal('modal-lanc')">Cancelar</button><button type="submit" class="btn btn-primary" id="lc-submit"><i class="ti ti-check"></i> Salvar</button></div>
+    </form>
+  </div>
+</div>
+
+<!-- 💼 v970: repasse entre sócios (Diego → Andrio é o caminho normal da casa) -->
+<div class="modal-bg" id="modal-repasse">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title"><i class="ti ti-arrows-exchange" style="color:var(--purple)"></i> Registrar repasse</div><button class="modal-close" onclick="fecharModal('modal-repasse')"><i class="ti ti-x"></i></button></div>
+    <form id="form-repasse" onsubmit="salvarRepasse(event)">
+      <div class="modal-body">
+        <div class="field"><label>Quem passou o dinheiro</label>
+          <div class="radio-row" id="rp-de-row">
+            <label class="radio-opt checked"><input type="radio" name="rp-de" value="diego" checked onchange="marcarRadio('rp-de-row',this)"> Diego → Andrio</label>
+            <label class="radio-opt"><input type="radio" name="rp-de" value="andrio" onchange="marcarRadio('rp-de-row',this)"> Andrio → Diego</label>
+          </div>
+        </div>
+        <div class="field"><label for="rp-valor">Valor (R$) *</label><input type="number" id="rp-valor" min="0.01" step="0.01" required><div class="hint" id="rp-sugestao"></div></div>
+        <div class="field"><label for="rp-data">Data</label><input type="date" id="rp-data"></div>
+        <div class="field"><label for="rp-nota">Nota</label><input type="text" id="rp-nota" maxlength="200" placeholder="Ex.: acerto de setembro"></div>
+        <div class="field"><label for="rp-comprovante">Comprovante do PIX (opcional)</label><input type="file" id="rp-comprovante" accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf" onchange="previewArquivo(this,'rp-preview','rp-filename')"><div class="file-name" id="rp-filename"></div><img class="img-preview" id="rp-preview" alt="Pré-visualização"></div>
+      </div>
+      <div class="modal-foot"><button type="button" class="btn" onclick="fecharModal('modal-repasse')">Cancelar</button><button type="submit" class="btn btn-primary" id="rp-submit"><i class="ti ti-check"></i> Registrar</button></div>
     </form>
   </div>
 </div>
@@ -949,6 +1179,7 @@ async function carregarDashboard(ehBoot){
     STATE.dash=dash;
     renderVisaoGeral(dash);
     renderUsuarios(dash.usuarios||[]);
+    if(ehBoot)carregarDono(); // 💼 v970
     return true;
   }catch(e){
     if(e.status===401){mostrarLogin();return false;}
@@ -971,7 +1202,12 @@ async function atualizarTudo(){
 /* ═══════════════════ SIDEBAR / TABS ═══════════════════ */
 
 var TITULOS={
-  overview:{t:"Visão Geral",s:"Números exatos, direto do servidor"},
+  overview:{t:"Visão do Dono",s:"Entradas hoje / 7d / 30d, o que está na mesa e o acerto entre os sócios"},
+  caixa:{t:"Livro-caixa",s:"Toda entrada, gasto e repasse — com comprovante, dono e trilha de quem mexeu"},
+  socios:{t:"Sócios 50/50",s:"Todo PIX cai na conta do Diego; aqui está quanto ele deve repassar ao Andrio"},
+  pagantes:{t:"Pagantes",s:"Quem pagou, quanto, quando e até quando o plano vale"},
+  conferencia:{t:"Conferência",s:"Pedido × caixa × comprovante lido — e as divergências"},
+  dre:{t:"DRE &amp; Fechamento",s:"Resultado mês a mês, exportações pro contador e meses congelados"},
   usuarios:{t:"Usuários por Dias de VIP",s:"Todos os usuários, ordenados por dias restantes"},
   pendentes:{t:"Pedidos",s:"Pendentes, aprovados e cancelados — com quem aprovou e por quê"},
   planilhas:{t:"Planilhas & Robôs",s:"Coleta e enriquecimento do DOL — 100% manual, clique quando sair temporada nova"},
@@ -986,7 +1222,7 @@ function switchTab(nome){
   var btn=document.querySelector('.sb-item[data-view="'+nome+'"]');
   if(btn)btn.classList.add("active");
   var tit=TITULOS[nome]||{t:"",s:""};
-  document.getElementById("tb-title").textContent=tit.t;
+  document.getElementById("tb-title").textContent=String(tit.t).replace("&amp;","&");
   document.getElementById("tb-sub").textContent=tit.s;
   toggleSidebar(false);
   if(nome==="planilhas")loadPlanilhas();else _plStop();
@@ -994,6 +1230,13 @@ function switchTab(nome){
   // 🩺 v188 LOTE 6: o vigia é lido quando a aba abre (nunca no boot — o
   // relatório vive em memória do servidor e a varredura sozinha já roda).
   if(nome==="usuarios")carregarSentinela();
+  // 💼 v970: telas de dinheiro carregam ao abrir (nunca no boot)
+  if(nome==="overview")carregarDono();
+  if(nome==="caixa")carregarCaixa();
+  if(nome==="socios")carregarSocios();
+  if(nome==="pagantes")carregarPagantes();
+  if(nome==="conferencia")carregarConferencia();
+  if(nome==="dre")carregarDre();
 }
 
 function toggleSidebar(abrir){
@@ -1483,53 +1726,9 @@ function renderPendentes(lista){
   tbody.innerHTML=html;
 }
 
-async function verComprovante(id){
-  var win=window.open("","_blank");
-  if(win){
-    win.document.title="Carregando…";
-    win.document.body.textContent="Carregando comprovante…";
-    win.document.body.style.cssText="margin:0;background:#111;color:#94a3b8;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh";
-  }
-  try{
-    var d=await api("/api/pedido/"+encodeURIComponent(id));
-    var pd=d.pedido||{};
-    if(!pd.comprovante){
-      toast("Este pedido não tem comprovante anexado.","err");
-      if(win)win.close();
-      return;
-    }
-    if(!win){
-      toast("Seu navegador bloqueou a janela — permita pop-ups para ver o comprovante.","err");
-      return;
-    }
-    // NUNCA usar document.write() com o base64/mime concatenados em string —
-    // isso interpretaria o conteúdo do comprovante como HTML (XSS). Montamos
-    // o elemento via DOM e atribuímos .src como propriedade (não passa pelo
-    // parser de HTML), então o conteúdo do comprovante nunca pode quebrar o
-    // atributo nem injetar marcação, seja lá o que o backend tiver salvo ali.
-    var mime=(typeof pd.comprovanteType==="string"&&/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(pd.comprovanteType))?pd.comprovanteType:"image/jpeg";
-    var dataUrl="data:"+mime+";base64,"+pd.comprovante;
-    win.document.title="Comprovante";
-    win.document.body.innerHTML="";
-    win.document.body.style.cssText="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh";
-    if(mime==="application/pdf"){
-      var embed=win.document.createElement("embed");
-      embed.type="application/pdf";
-      embed.style.cssText="width:100%;height:100vh";
-      embed.src=dataUrl;
-      win.document.body.appendChild(embed);
-    }else{
-      var img=win.document.createElement("img");
-      img.style.cssText="max-width:100%;max-height:100vh";
-      img.alt="Comprovante";
-      img.src=dataUrl;
-      win.document.body.appendChild(img);
-    }
-  }catch(e){
-    if(win)win.close();
-    toast("Erro ao abrir comprovante: "+e.message,"err");
-  }
-}
+// 💼 v970: o comprovante abre DENTRO do painel (modal com zoom e download) —
+// o pop-up era bloqueado pelo navegador e não tinha zoom nem download.
+async function verComprovante(id){ return verAnexo("pedido",id); }
 
 // ℹ️ v188 LOTE 6: GET /api/pedido/:id SEMPRE devolveu, junto com o pedido, um
 // retrato do VIP atual do usuário (plano, vencimentos, extrato de dias) — e o
@@ -1922,7 +2121,7 @@ function abrirModalPagamento(){
 async function salvarGasto(ev){
   ev.preventDefault();
   var valor=parseFloat(document.getElementById("gs-valor").value);
-  if(!(valor>0)){toast("Informe um valor de gasto válido.","err");return;}
+  if(!(valor>0)&&!document.getElementById("gs-usd").checked){toast("Informe um valor de gasto válido.","err");return;}
   var pagoPorInput=document.querySelector('#gs-pagopor-row input[name="gs-pagopor"]:checked');
   if(!pagoPorInput){toast("Selecione quem pagou este gasto.","err");return;}
   var pagoPor=pagoPorInput.value;
@@ -1931,6 +2130,9 @@ async function salvarGasto(ev){
   var dataGasto=document.getElementById("gs-data").value;
   var body={valor:valor,pagoPor:pagoPor,categoria:categoria,descricao:descricao};
   if(dataGasto)body.dataGasto=new Date(dataGasto+"T12:00:00").toISOString();
+  // 💼 v970: USD + recorrente (a rota rica /api/admin/financeiro add_gasto já sabia; a tela não oferecia)
+  if(document.getElementById("gs-recorrente").checked)body.recorrente=true;
+  if(document.getElementById("gs-usd").checked){var _usd=parseFloat(document.getElementById("gs-valor-usd").value)||0;if(!(_usd>0)){toast("Informe o valor em dólar.","err");return;}body.moeda="USD";body.valorUSD=_usd;var _cb=parseFloat(document.getElementById("gs-cambio").value);if(_cb>0)body.cambio=_cb;}
   var file=document.getElementById("gs-comprovante").files[0];
   if(file){
     if(file.size>8*1024*1024){toast("O comprovante deve ter no máximo 8MB.","err");return;}
@@ -1943,11 +2145,12 @@ async function salvarGasto(ev){
   var btn=document.getElementById("gs-submit");
   btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2 ti-spin-anim"></i> Salvando…';
   try{
-    await api("/api/admin/contabilidade/gasto",{method:"POST",body:body});
+    await api("/api/admin/financeiro",{method:"POST",body:{action:"add_gasto",gasto:body}});
     toast("Gasto lançado com sucesso.","ok");
     fecharModal("modal-gasto");
     limparFormGasto();
-    carregarDashboard(false);
+    carregarDashboard(false);DIN.socios=null;
+    if((document.querySelector(".view.active")||{}).id==="view-caixa"){DIN.abaCaixa="gastos";carregarCaixa();}else carregarDono();
   }catch(e){
     toast("Erro ao salvar gasto: "+e.message,"err");
   }finally{
@@ -1989,7 +2192,8 @@ async function salvarPagamento(ev){
     toast("Pagamento lançado com sucesso.","ok");
     fecharModal("modal-pagamento");
     limparFormPagamento();
-    carregarDashboard(false);
+    carregarDashboard(false);DIN.socios=null;
+    if((document.querySelector(".view.active")||{}).id==="view-caixa")carregarCaixa();else carregarDono();
   }catch(e){
     toast("Erro ao salvar pagamento: "+e.message,"err");
   }finally{
@@ -2372,6 +2576,420 @@ async function notifToggleAvisos(el){
   try{var d=await api("/api/admin/notificacoes/config",{method:"POST",body:{avisoPedidos:!!el.checked}});toast(d.avisoPedidos?"Avisos de compra LIGADOS.":"Avisos de compra desligados.","ok");}
   catch(e){toast(e.message,"err");}
   loadNotificacoes();
+}
+</script>
+<script>
+"use strict";
+/* ═══════════════════════════════════════════════════════════════════════
+   💼 v970 — DINHEIRO (Fase 1 da lista de 100 coisas do admin, dono 15/10/2026)
+   Regra da casa: TODO PIX cai na conta do Diego (recebedor padrão) e ele
+   repassa ao Andrio. Nenhum número é calculado aqui — tudo vem das fontes
+   únicas do servidor (dono-resumo, socios, financeiro, pagantes,
+   conferencia, dre, fechamentos). A tela só mostra e aciona.
+   ═══════════════════════════════════════════════════════════════════════ */
+var DIN={dono:null,socios:null,caixa:null,pagantes:null,conf:null,dre:null,fech:null,abaCaixa:"pagamentos"};
+function _dnNome(k){k=String(k||"").toLowerCase();return k==="diego"?"Diego":k==="andrio"?"Andrio":k==="empresa"?"Empresa":"—";}
+function fmtDia(ts){if(!ts)return"—";var d=new Date(ts);if(isNaN(d.getTime()))return"—";return d.toLocaleDateString("pt-BR");}
+function _dnTs(x){if(!x)return 0;if(typeof x==="number")return x;var t=Date.parse(x);return isNaN(t)?0:t;}
+function _dnVal(v){var n=typeof v==="number"?v:parseFloat(String(v||"").replace(/[^0-9,.-]/g,"").replace(",","."));return isNaN(n)?0:n;}
+function _setCard(gridId,i,val,sub){
+  var cards=document.querySelectorAll("#"+gridId+" .stat-card");var c=cards[i];if(!c)return;
+  var v=c.querySelector(".val");v.classList.remove("skel");v.textContent=val;
+  var s=c.querySelector(".sub");if(s)s.textContent=sub||"";
+}
+function _dnPedidoCurto(id){return id?("#"+String(id).slice(-8).toUpperCase()):"";}
+
+/* ── motivo obrigatório (Promise) — substitui prompt() ───────────────── */
+function pedirMotivo(titulo,texto){
+  return new Promise(function(resolve){
+    document.getElementById("motivo-title").textContent=titulo||"Motivo";
+    document.getElementById("motivo-texto").textContent=texto||"";
+    var inp=document.getElementById("motivo-input");inp.value="";
+    var ok=document.getElementById("motivo-ok");
+    var done=false;
+    function fim(v){if(done)return;done=true;fecharModal("modal-motivo");ok.onclick=null;resolve(v);}
+    ok.onclick=function(){var v=inp.value.trim();if(v.length<3){toast("Escreva o motivo (mínimo 3 letras).","err");return;}fim(v);};
+    inp.onkeydown=function(e){if(e.key==="Enter"){e.preventDefault();ok.onclick();}};
+    document.getElementById("modal-motivo").addEventListener("click",function h(e){if(e.target&&e.target.id==="modal-motivo"){e.currentTarget.removeEventListener("click",h);fim(null);}});
+    abrirModal("modal-motivo");setTimeout(function(){inp.focus();},50);
+  });
+}
+
+/* ── visualizador de anexo DENTRO do painel ──────────────────────────── */
+var _anexoZoomOn=false;
+function anexoZoom(){
+  _anexoZoomOn=!_anexoZoomOn;
+  var img=document.querySelector("#anexo-body img");if(!img)return;
+  img.style.maxWidth=_anexoZoomOn?"none":"100%";img.style.width=_anexoZoomOn?"160%":"auto";
+}
+async function verAnexo(tipo,id,titulo){
+  var body=document.getElementById("anexo-body"),foot=document.getElementById("anexo-foot");
+  body.innerHTML='<div class="spin" style="margin:30px auto"></div>';foot.textContent="";
+  document.getElementById("anexo-title").textContent=titulo||("Comprovante "+(tipo==="pedido"?_dnPedidoCurto(id):""));
+  _anexoZoomOn=false;abrirModal("modal-anexo");
+  try{
+    var rota=tipo==="pedido"?"/api/pedido/":tipo==="gasto"?"/api/admin/gasto/":tipo==="repasse"?"/api/admin/repasse/":"/api/admin/pagamento/";
+    var d=await api(rota+encodeURIComponent(id));
+    var o=d.pedido||d.gasto||d.repasse||d.pagamento||{};
+    var dataUrl=null,mime="image/jpeg";
+    if(o.comprovante&&typeof o.comprovante==="string"){
+      mime=(typeof o.comprovanteType==="string"&&/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(o.comprovanteType))?o.comprovanteType:"image/jpeg";
+      dataUrl=/^data:/.test(o.comprovante)?o.comprovante:("data:"+mime+";base64,"+o.comprovante);
+    }else if(o.img&&typeof o.img==="string"&&/^data:/.test(o.img)){dataUrl=o.img;mime=(o.img.match(/^data:([^;]+)/)||[])[1]||"image/jpeg";}
+    body.innerHTML="";
+    if(!dataUrl){body.innerHTML='<div class="empty">Este registro não tem comprovante anexado.</div>';return;}
+    var el;
+    if(mime==="application/pdf"){el=document.createElement("embed");el.type="application/pdf";el.style.cssText="width:100%;height:70vh";}
+    else{el=document.createElement("img");el.alt="Comprovante";el.style.cssText="max-width:100%;max-height:70vh;cursor:zoom-in";el.onclick=anexoZoom;}
+    el.src=dataUrl;body.appendChild(el);
+    var dl=document.getElementById("anexo-download");dl.href=dataUrl;dl.download="comprovante-"+String(id).slice(-8)+(mime==="application/pdf"?".pdf":mime==="image/png"?".png":".jpg");
+    var pc=o.preCheck||{};
+    var partes=[];
+    if(o.comprovanteHash)partes.push("hash "+String(o.comprovanteHash).slice(0,12)+"…");
+    if(pc.veredito)partes.push("IA: "+pc.veredito+(pc.valorLido!=null?" · lido "+fmtMoney(pc.valorLido):""));
+    if(pc.pagadorLido)partes.push("pagador: "+pc.pagadorLido);
+    if(pc.recebedorLido)partes.push("recebedor: "+pc.recebedorLido);
+    if(pc.transacaoLida)partes.push("transação: "+pc.transacaoLida);
+    if(o.comprovanteReenviadoEm)partes.push("⚠️ comprovante TROCADO pelo cliente em "+fmtData(o.comprovanteReenviadoEm));
+    foot.textContent=partes.join(" · ");
+  }catch(e){body.innerHTML='<div class="empty">Erro ao abrir: '+esc(e.message)+'</div>';}
+}
+
+/* ── VISÃO DO DONO ───────────────────────────────────────────────────── */
+async function carregarDono(){
+  try{
+    var r=await api("/api/admin/dono-resumo");DIN.dono=r;
+    var e=r.entradas||{};
+    _setCard("dono-grid",0,fmtMoney(e.hoje),"entrou hoje");
+    _setCard("dono-grid",1,fmtMoney(e.dias7),"últimos 7 dias");
+    _setCard("dono-grid",2,fmtMoney(e.dias30),"últimos 30 dias · ticket médio "+fmtMoney(e.ticketMedio30));
+    _setCard("dono-grid",3,fmtMoney(e.total),"desde o começo · "+(r.pagantes||0)+" pagante(s)");
+    _setCard("dono-grid",4,fmtMoney(r.gastos30),"gastos nos últimos 30 dias");
+    _setCard("dono-grid",5,fmtMoney(r.liquido30),"entradas 30d − gastos 30d");
+    _setCard("dono-grid",6,fmtMoney((r.pendentes||{}).valor),((r.pendentes||{}).qtd||0)+" pedido(s) esperando decisão");
+    _setCard("dono-grid",7,String(r.vencendoQtd||0),"planos vencendo em 7 dias · "+((r.novos||{}).dias7||0)+" cadastros novos (7d)");
+    var v=r.vencendo7d||[];var box=document.getElementById("dono-vencendo");
+    box.innerHTML=v.length?v.map(function(x){return '<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)"><span><b>'+esc(x.nome)+'</b> <span class="cell-sub">'+esc(x.email)+'</span></span><span><span class="badge blue">'+esc(NOME_PLANO_ADM[x.plano]||x.plano)+'</span> <span class="badge amber">'+esc(x.diasRestantes)+'d</span></span></div>';}).join(""):'<div class="cell-sub">Ninguém vence nos próximos 7 dias.</div>';
+  }catch(e){toast("Visão do Dono: "+e.message,"err");}
+  try{
+    var s=await api("/api/admin/socios");DIN.socios=s;
+    var a=s.socios.andrio,dg=s.socios.diego;
+    var box2=document.getElementById("dono-socios");
+    var quemDeve=dg.acerto<-0.004?"Diego deve repassar ao Andrio":(a.acerto<-0.004?"Andrio deve repassar ao Diego":"Acerto zerado");
+    var valor=Math.abs(Math.min(dg.acerto,a.acerto));
+    box2.innerHTML='<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center"><div><div class="lbl" style="font-size:11.5px;color:var(--t2);font-weight:700;text-transform:uppercase">'+esc(quemDeve)+'</div><div style="font-family:Sora,sans-serif;font-size:26px;font-weight:800;color:'+(valor>0.004?"var(--amber)":"var(--green)")+'">'+esc(fmtMoney(valor))+'</div></div>'
+      +'<div class="cell-sub" style="flex:1;min-width:220px;line-height:1.6">Lucro distribuível <b>'+esc(fmtMoney(s.lucroDistribuivel))+'</b> (entradas '+esc(fmtMoney(s.liquidoContabil))+' − gastos '+esc(fmtMoney(s.gastos.total))+') · direito de cada um pelo split '+esc(s.split.andrio)+'/'+esc(s.split.diego)+' · Diego já repassou <b>'+esc(fmtMoney(s.repasses.diegoParaAndrio))+'</b></div>'
+      +'<button class="btn btn-sm" onclick="switchTab(\'socios\')"><i class="ti ti-arrow-right"></i> Ver conta aberta</button></div>';
+  }catch(e){}
+}
+
+/* ── SÓCIOS 50/50 ────────────────────────────────────────────────────── */
+async function carregarSocios(){
+  var box=document.getElementById("soc-body");box.innerHTML='<div class="spin"></div>';
+  try{var s=await api("/api/admin/socios");DIN.socios=s;renderSocios(s);}
+  catch(e){box.innerHTML='<div class="empty">Erro: '+esc(e.message)+'</div>';}
+}
+function _socCard(nome,so,corDest){
+  var deve=so.acerto<-0.004,recebe=so.acerto>0.004;
+  var linha=function(l,v,b){return '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="color:var(--t2)">'+l+'</span><span style="font-weight:'+(b?800:600)+';color:#fff">'+esc(v)+'</span></div>';};
+  return '<div class="panel" style="margin-bottom:0"><div class="panel-head"><div class="panel-title"><i class="ti ti-user" style="color:'+corDest+'"></i>'+esc(nome)+'</div></div><div class="panel-body">'
+    +'<div style="text-align:center;padding:6px 0 12px"><div style="font-size:11.5px;font-weight:700;text-transform:uppercase;color:var(--t2)">'+(recebe?"TEM A RECEBER":deve?"DEVE REPASSAR":"ACERTO ZERADO")+'</div><div style="font-family:Sora,sans-serif;font-size:30px;font-weight:800;color:'+(recebe?"var(--green)":deve?"var(--amber)":"#fff")+'">'+esc(fmtMoney(Math.abs(so.acerto)))+'</div></div>'
+    +linha("Recebeu de clientes",fmtMoney(so.recebido)+" ("+so.n+" lançamento"+(so.n===1?"":"s")+")")
+    +linha("− Gastos que saíram da conta dele",fmtMoney(so.gastosPagos))
+    +linha("− Repasses que fez",fmtMoney(so.repassou))
+    +linha("+ Repasses que recebeu",fmtMoney(so.recebeuRepasse))
+    +linha("= Posição (o que embolsou)",fmtMoney(so.posicao),true)
+    +linha("Direito (sua parte do lucro)",fmtMoney(so.direito),true)
+    +(so.padrao?'<div class="cell-sub" style="margin-top:8px">'+esc(so.padrao)+' entrada(s) atribuídas por ser o recebedor padrão ('+esc(fmtMoney(so.padraoValor))+').</div>':"")
+    +(so.derivado?'<div class="cell-sub" style="margin-top:4px">'+esc(so.derivado)+' atribuída(s) pela trilha de quem aprovou ('+esc(fmtMoney(so.derivadoValor))+') — confira.</div>':"")
+    +'</div></div>';
+}
+function renderSocios(s){
+  var box=document.getElementById("soc-body");
+  var a=s.socios.andrio,dg=s.socios.diego;
+  var sem=s.entradas.semDono||{n:0,total:0,itens:[]};
+  var html='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-bottom:18px">'+_socCard("Diego",dg,"var(--purple)")+_socCard("Andrio",a,"var(--blue)")+'</div>';
+  html+='<div class="panel"><div class="panel-head"><div class="panel-title"><i class="ti ti-math-function"></i>Como a conta é feita</div><div class="panel-actions"><button class="btn btn-sm btn-primary" onclick="abrirModalRepasse()"><i class="ti ti-arrows-exchange"></i> Registrar repasse</button></div></div><div class="panel-body" style="font-size:13px;line-height:1.7;color:var(--t2)">'
+    +'<div>Entradas líquidas (caixa sem admins, pedido corrigido vence): <b style="color:#fff">'+esc(fmtMoney(s.liquidoContabil))+'</b></div>'
+    +'<div>− Gastos da empresa (todos, de quem quer que tenha pago): <b style="color:#fff">'+esc(fmtMoney(s.gastos.total))+'</b> (Andrio pagou '+esc(fmtMoney(s.gastos.porPagador.andrio))+' · Diego '+esc(fmtMoney(s.gastos.porPagador.diego))+' · empresa '+esc(fmtMoney(s.gastos.porPagador.empresa))+')</div>'
+    +'<div>= Lucro distribuível: <b style="color:#fff">'+esc(fmtMoney(s.lucroDistribuivel))+'</b> → direito Andrio '+esc(s.split.andrio)+'% = '+esc(fmtMoney(a.direito))+' · Diego '+esc(s.split.diego)+'% = '+esc(fmtMoney(dg.direito))+'</div>'
+    +'<div>Repasses já feitos: Diego → Andrio <b style="color:#fff">'+esc(fmtMoney(s.repasses.diegoParaAndrio))+'</b> · Andrio → Diego '+esc(fmtMoney(s.repasses.andrioParaDiego))+'</div>'
+    +'<div style="margin-top:6px;font-size:12px">'+esc(s.formula)+'</div>'
+    +(s.avisos&&s.avisos.length?'<div style="margin-top:10px">'+s.avisos.map(function(x){return '<div class="badge amber" style="display:block;margin-top:4px;white-space:normal">'+esc(x)+'</div>';}).join("")+'</div>':"")
+    +'</div></div>';
+  html+='<div class="panel"><div class="panel-head"><div class="panel-title"><i class="ti ti-settings"></i>Regras</div></div><div class="panel-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px">'
+    +'<div><div class="field"><label for="soc-recebedor">Quem recebe os PIX dos clientes (recebedor padrão)</label><select id="soc-recebedor"><option value="diego"'+(s.recebedorPadrao==="diego"?" selected":"")+'>Diego (regra da casa)</option><option value="andrio"'+(s.recebedorPadrao==="andrio"?" selected":"")+'>Andrio</option><option value=""'+(!s.recebedorPadrao?" selected":"")+'>Ninguém — cada entrada precisa ser marcada</option></select><div class="hint">Toda entrada sem dono marcado conta pra essa pessoa. Marque outro dono só na exceção (editar lançamento).</div></div><button class="btn btn-sm" onclick="salvarRecebedor()"><i class="ti ti-check"></i> Salvar</button></div>'
+    +'<div><div class="field"><label for="soc-split-a">Divisão do lucro (%)</label><div style="display:flex;gap:8px;align-items:center"><span>Andrio</span><input type="number" id="soc-split-a" min="0" max="100" step="1" value="'+esc(s.split.andrio)+'" style="width:80px"><span>Diego</span><input type="number" id="soc-split-d" min="0" max="100" step="1" value="'+esc(s.split.diego)+'" style="width:80px"></div><div class="hint">Padrão 50/50. Mudar aqui muda o direito dos dois na hora (fica na auditoria).</div></div><button class="btn btn-sm" onclick="salvarSplit()"><i class="ti ti-check"></i> Salvar</button></div>'
+    +'</div></div>';
+  if(sem.n){
+    html+='<div class="panel"><div class="panel-head"><div class="panel-title"><i class="ti ti-help-circle" style="color:var(--amber)"></i>'+esc(sem.n)+' entrada(s) sem dono — '+esc(fmtMoney(sem.total))+'</div></div><div class="panel-body"><div class="tbl-wrap"><table><thead><tr><th>Quando</th><th>Cliente</th><th>Valor</th><th>Atribuir a</th></tr></thead><tbody>'
+      +sem.itens.map(function(i){return '<tr><td>'+esc(fmtDia(i.quando))+'</td><td><div class="cell-main">'+esc(i.nome||i.email||"—")+'</div><div class="cell-sub">'+esc(i.email||"")+(i.anulado?" · anulado":"")+'</div></td><td>'+esc(fmtMoney(i.valor))+'</td><td class="row-actions"><button class="btn btn-sm" data-id="'+esc(i.id)+'" onclick="atribuirDono(this.dataset.id,\'diego\')">Diego</button><button class="btn btn-sm" data-id="'+esc(i.id)+'" onclick="atribuirDono(this.dataset.id,\'andrio\')">Andrio</button></td></tr>';}).join("")
+      +'</tbody></table></div></div></div>';
+  }
+  box.innerHTML=html;
+}
+async function salvarRecebedor(){
+  var v=document.getElementById("soc-recebedor").value;
+  try{await api("/api/admin/socios/recebedor",{method:"POST",body:{recebedorPadrao:v}});toast("Recebedor padrão salvo.","ok");carregarSocios();}
+  catch(e){toast(e.message,"err");}
+}
+async function salvarSplit(){
+  var a=parseFloat(document.getElementById("soc-split-a").value),d=parseFloat(document.getElementById("soc-split-d").value);
+  if(!confirm("Mudar a divisão do lucro pra Andrio "+a+"% · Diego "+d+"%?"))return;
+  try{await api("/api/admin/socios/split",{method:"POST",body:{andrio:a,diego:d}});toast("Divisão salva.","ok");carregarSocios();}
+  catch(e){toast(e.message,"err");}
+}
+async function atribuirDono(id,quem){
+  try{await api("/api/admin/financeiro",{method:"POST",body:{action:"edit_pagamento",id:id,motivo:"Atribuição de dono (Sócios)",changes:{recebidoPor:quem}}});toast("Atribuído a "+_dnNome(quem)+".","ok");carregarSocios();}
+  catch(e){toast(e.message,"err");}
+}
+
+/* ── LIVRO-CAIXA ─────────────────────────────────────────────────────── */
+async function carregarCaixa(){
+  try{var r=await api("/api/admin/financeiro");DIN.caixa=r;renderCaixa();
+    var s=await api("/api/admin/socios");DIN.socios=s; // sempre fresco — os cards do caixa mudam a cada lançamento
+    _setCard("cx-grid",0,fmtMoney(s.liquidoContabil),(s.entradas.anulados.n?s.entradas.anulados.n+" anulado(s) já descontados":"caixa sem admins"));
+    _setCard("cx-grid",1,fmtMoney(s.gastos.total),s.gastos.n+" gasto(s)");
+    _setCard("cx-grid",2,fmtMoney(s.repasses.diegoParaAndrio),(s.repasses.andrioParaDiego?"Andrio → Diego "+fmtMoney(s.repasses.andrioParaDiego):s.repasses.n+" repasse(s)"));
+    _setCard("cx-grid",3,fmtMoney(s.lucroDistribuivel),"lucro distribuível entre os sócios");
+  }catch(e){toast("Livro-caixa: "+e.message,"err");}
+}
+function setAbaCaixa(aba,input){DIN.abaCaixa=aba;if(input)marcarRadio("cx-abas",input);renderCaixa();}
+function _cxDataDe(x,aba){return aba==="gastos"?(_dnTs(x.dataGasto)||_dnTs(x.data)||x.criadoEm||0):aba==="repasses"?(_dnTs(x.dataRepasse)||x.criadoEm||0):(_dnTs(x.dataPagamento)||_dnTs(x.data)||x.criadoEm||0);}
+function renderCaixa(){
+  if(!DIN.caixa)return;
+  var aba=DIN.abaCaixa,lista=(DIN.caixa[aba]||[]).slice();
+  var q=(document.getElementById("cx-busca").value||"").trim().toLowerCase();
+  var per=parseInt(document.getElementById("cx-periodo").value,10)||0;
+  var mostrarAnul=document.getElementById("cx-anulados").checked;
+  var corte=per?Date.now()-per*86400000:0;
+  var pedById={};
+  lista=lista.filter(function(x){
+    if(corte&&_cxDataDe(x,aba)<corte)return false;
+    if(aba==="pagamentos"&&!mostrarAnul&&(x.anuladoPor||x.tipo==="ajuste"))return false;
+    if(q){var blob=[x.nome,x.email,x.nota,x.descricao,x.categoria,x.pedidoId,x.plano,x.de,x.para,x.motivo].join(" ").toLowerCase();if(blob.indexOf(q)<0)return false;}
+    return true;
+  }).sort(function(a,b){return _cxDataDe(b,aba)-_cxDataDe(a,aba);});
+  var tbody=document.getElementById("cx-tbody"),thead=document.getElementById("cx-thead"),empty=document.getElementById("cx-empty");
+  var total=0;lista.forEach(function(x){total+=_dnVal(x.valor);});
+  document.getElementById("cx-resumo").textContent=lista.length+" lançamento(s) · soma "+fmtMoney(total)+(aba==="pagamentos"&&!mostrarAnul?" · anulados e ajustes escondidos":"");
+  if(!lista.length){tbody.innerHTML="";empty.style.display="block";return;}
+  empty.style.display="none";
+  var html="";
+  if(aba==="pagamentos"){
+    thead.innerHTML='<tr><th>Data</th><th>Cliente</th><th>Valor</th><th>Recebeu</th><th>Origem</th><th>Lançado por</th><th></th></tr>';
+    lista.forEach(function(x){
+      var anul=!!x.anuladoPor,aj=x.tipo==="ajuste";
+      var dono=x.recebidoPor?_dnNome(x.recebidoPor)+(x.recebidoPorPadrao?" (padrão)":""):(DIN.socios&&DIN.socios.recebedorPadrao?_dnNome(DIN.socios.recebedorPadrao)+" (padrão)":"sem dono");
+      html+='<tr'+(anul||aj?' style="opacity:.6"':'')+'><td>'+esc(fmtDia(_cxDataDe(x,aba)))+'</td>'
+        +'<td><div class="cell-main">'+esc(x.nome||x.email||"(avulsa)")+'</div><div class="cell-sub">'+esc(x.email||"")+(x.nota||x.descricao?" · "+esc(x.nota||x.descricao):"")+(aj?" · AJUSTE: "+esc(x.motivo||""):"")+'</div></td>'
+        +'<td style="font-weight:700;color:'+(_dnVal(x.valor)<0?"var(--red)":"#fff")+'">'+esc(fmtMoney(x.valor))+(anul?' <span class="badge red">anulado</span>':'')+(aj?' <span class="badge gray">ajuste</span>':'')+'</td>'
+        +'<td><span class="badge '+(String(x.recebidoPor||(DIN.socios||{}).recebedorPadrao||"")==="diego"?"purple":String(x.recebidoPor||"")==="andrio"?"blue":"gray")+'">'+esc(dono)+'</span></td>'
+        +'<td>'+(x.pedidoId?'<button class="btn btn-sm" data-id="'+esc(x.pedidoId)+'" onclick="verAnexo(\'pedido\',this.dataset.id)" title="Ver comprovante do pedido"><i class="ti ti-paperclip"></i> '+esc(_dnPedidoCurto(x.pedidoId))+'</button>':(x.temComprovante||x.comprovanteHash?'<button class="btn btn-sm" data-id="'+esc(x.id)+'" onclick="verAnexo(\'pagamento\',this.dataset.id)"><i class="ti ti-paperclip"></i> anexo</button>':'<span class="cell-sub">'+esc(x.tipo||"manual")+'</span>'))+'</td>'
+        +'<td class="cell-sub">'+esc(x.lancadoPor||x.ativadoPor||x.por||"—")+'</td>'
+        +'<td class="row-actions">'+(aj||anul?'':'<button class="btn btn-sm" data-id="'+esc(x.id)+'" onclick="abrirEditarLanc(\'pagamento\',this.dataset.id)" title="Editar valor, data, dono, nota"><i class="ti ti-pencil"></i></button><button class="btn btn-sm" data-id="'+esc(x.id)+'" onclick="anularLanc(this.dataset.id)" title="Anular (fica no histórico com um ajuste negativo)"><i class="ti ti-ban"></i></button>')+'</td></tr>';
+    });
+  }else if(aba==="gastos"){
+    thead.innerHTML='<tr><th>Data</th><th>Descrição</th><th>Valor</th><th>Pagou</th><th>Categoria</th><th>Comprovante</th><th></th></tr>';
+    lista.forEach(function(x){
+      html+='<tr><td>'+esc(fmtDia(_cxDataDe(x,aba)))+'</td>'
+        +'<td><div class="cell-main">'+esc(x.descricao||x.nota||x.categoria||"gasto")+'</div><div class="cell-sub">'+(x.recorrente?'🔁 recorrente · ':'')+(x.moeda==="USD"?'US$ '+esc(x.valorUSD)+' × '+esc(x.cambio)+' · ':'')+'lançado por '+esc(x.lancadoPor||"—")+'</div></td>'
+        +'<td style="font-weight:700;color:#fff">'+esc(fmtMoney(x.valor))+'</td>'
+        +'<td><span class="badge '+(x.pagoPor==="diego"?"purple":x.pagoPor==="andrio"?"blue":"gray")+'">'+esc(_dnNome(x.pagoPor||"empresa"))+'</span></td>'
+        +'<td>'+esc(x.categoria||"—")+'</td>'
+        +'<td>'+((x.temComprovante||x.comprovanteHash||x.img)?'<button class="btn btn-sm" data-id="'+esc(x.id)+'" onclick="verAnexo(\'gasto\',this.dataset.id)"><i class="ti ti-paperclip"></i> ver</button>':'<button class="btn btn-sm" data-id="'+esc(x.id)+'" onclick="anexarComprovante(\'gasto\',this.dataset.id)" title="Anexar comprovante agora"><i class="ti ti-upload"></i> anexar</button>')+'</td>'
+        +'<td class="row-actions"><button class="btn btn-sm" data-id="'+esc(x.id)+'" onclick="abrirEditarLanc(\'gasto\',this.dataset.id)"><i class="ti ti-pencil"></i></button><button class="btn btn-sm btn-red" data-id="'+esc(x.id)+'" onclick="excluirLanc(\'gasto\',this.dataset.id)" title="Excluir (com motivo)"><i class="ti ti-trash"></i></button></td></tr>';
+    });
+  }else{
+    thead.innerHTML='<tr><th>Data</th><th>De → Para</th><th>Valor</th><th>Nota</th><th>Comprovante</th><th></th></tr>';
+    lista.forEach(function(x){
+      html+='<tr><td>'+esc(fmtDia(_cxDataDe(x,aba)))+'</td><td><b>'+esc(_dnNome(x.de))+' → '+esc(_dnNome(x.para))+'</b><div class="cell-sub">lançado por '+esc(x.lancadoPor||"—")+'</div></td>'
+        +'<td style="font-weight:700;color:#fff">'+esc(fmtMoney(x.valor))+'</td><td class="cell-sub">'+esc(x.nota||"—")+'</td>'
+        +'<td>'+((x.temComprovante||x.comprovanteHash)?'<button class="btn btn-sm" data-id="'+esc(x.id)+'" onclick="verAnexo(\'repasse\',this.dataset.id)"><i class="ti ti-paperclip"></i> ver</button>':'—')+'</td>'
+        +'<td class="row-actions"><button class="btn btn-sm btn-red" data-id="'+esc(x.id)+'" onclick="excluirLanc(\'repasse\',this.dataset.id)" title="Excluir (com motivo)"><i class="ti ti-trash"></i></button></td></tr>';
+    });
+  }
+  tbody.innerHTML=html;
+}
+async function carregarAlteracoesCaixa(){
+  var box=document.getElementById("cx-alteracoes");box.innerHTML='<div class="spin"></div>';
+  try{
+    var r=await api("/api/admin/financeiro",{method:"POST",body:{action:"get_alteracoes"}});
+    var l=r.alteracoes||[];
+    if(!l.length){box.innerHTML='<div class="cell-sub">Ninguém editou, excluiu ou anulou nada ainda.</div>';return;}
+    box.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Quando</th><th>Quem</th><th>O quê</th><th>Antes → Depois</th><th>Motivo</th></tr></thead><tbody>'+l.map(function(a){
+      var ant=a.antes||{},dep=a.depois||{};
+      var diff=[];["valor","dataPagamento","dataGasto","recebidoPor","pagoPor","nota","descricao","categoria"].forEach(function(k){if(ant[k]!==dep[k]&&(ant[k]!==undefined||dep[k]!==undefined))diff.push(k+": "+(ant[k]==null?"—":ant[k])+" → "+(dep[k]==null?"—":dep[k]));});
+      return '<tr><td>'+esc(fmtData(a.em))+'</td><td>'+esc(a.por||a.porEmail||"—")+'</td><td><span class="badge gray">'+esc(a.tipo)+'</span> <span class="cell-sub">'+esc((ant.nome||ant.email||ant.descricao||ant.id||dep.id||""))+'</span></td><td class="cell-sub">'+esc(diff.join(" · ")||(a.tipo.indexOf("excluir")===0?"removido: "+fmtMoney(ant.valor):""))+'</td><td class="cell-sub">'+esc(a.motivo||"—")+'</td></tr>';
+    }).join("")+'</tbody></table></div>';
+  }catch(e){box.innerHTML='<div class="empty">Erro: '+esc(e.message)+'</div>';}
+}
+var _lancEdit=null;
+function abrirEditarLanc(tipo,id){
+  var arr=tipo==="gasto"?(DIN.caixa.gastos||[]):(DIN.caixa.pagamentos||[]);
+  var x=arr.filter(function(a){return a.id===id;})[0];if(!x){toast("Lançamento não encontrado.","err");return;}
+  _lancEdit={tipo:tipo,id:id};
+  document.getElementById("lanc-title").textContent=tipo==="gasto"?"Editar gasto":"Editar entrada";
+  document.getElementById("lc-valor").value=_dnVal(x.valor);
+  var dt=_cxDataDe(x,tipo==="gasto"?"gastos":"pagamentos");document.getElementById("lc-data").value=dt?new Date(dt).toISOString().slice(0,10):"";
+  var sel=document.getElementById("lc-dono");
+  sel.innerHTML=tipo==="gasto"?'<option value="empresa">Empresa</option><option value="diego">Diego (do bolso)</option><option value="andrio">Andrio (do bolso)</option>':'<option value="">Padrão da casa</option><option value="diego">Diego</option><option value="andrio">Andrio</option>';
+  sel.value=tipo==="gasto"?(x.pagoPor||"empresa"):(x.recebidoPorPadrao?"":(x.recebidoPor||""));
+  document.getElementById("lc-cat-field").style.display=tipo==="gasto"?"":"none";
+  document.getElementById("lc-cat").value=x.categoria||"";
+  document.getElementById("lc-nota").value=x.descricao||x.nota||"";
+  document.getElementById("lc-motivo").value="";
+  abrirModal("modal-lanc");
+}
+async function salvarEditarLanc(ev){
+  ev.preventDefault();if(!_lancEdit)return;
+  var tipo=_lancEdit.tipo,ch={valor:parseFloat(document.getElementById("lc-valor").value)||0};
+  var dt=document.getElementById("lc-data").value;if(dt)ch[tipo==="gasto"?"dataGasto":"dataPagamento"]=new Date(dt+"T12:00:00").toISOString();
+  var dono=document.getElementById("lc-dono").value;
+  if(tipo==="gasto"){ch.pagoPor=dono;ch.categoria=document.getElementById("lc-cat").value.trim()||"Geral";ch.descricao=document.getElementById("lc-nota").value.trim();}
+  else{ch.recebidoPor=dono;ch.nota=document.getElementById("lc-nota").value.trim();}
+  var motivo=document.getElementById("lc-motivo").value.trim();
+  var btn=document.getElementById("lc-submit");btn.disabled=true;
+  try{await api("/api/admin/financeiro",{method:"POST",body:{action:tipo==="gasto"?"edit_gasto":"edit_pagamento",id:_lancEdit.id,motivo:motivo,changes:ch}});toast("Lançamento atualizado.","ok");fecharModal("modal-lanc");DIN.socios=null;carregarCaixa();}
+  catch(e){toast(e.message,"err");}finally{btn.disabled=false;}
+}
+async function anularLanc(id){
+  var motivo=await pedirMotivo("Anular entrada","O lançamento continua no histórico e entra um ajuste negativo do mesmo valor — o caixa nunca apaga.");
+  if(!motivo)return;
+  try{await api("/api/admin/financeiro",{method:"POST",body:{action:"anular_pagamento",id:id,motivo:motivo}});toast("Entrada anulada (par de ajuste criado).","ok");DIN.socios=null;carregarCaixa();}
+  catch(e){toast(e.message,"err");}
+}
+async function excluirLanc(tipo,id){
+  var motivo=await pedirMotivo("Excluir "+tipo,"Use só pra erro de digitação. A exclusão fica registrada em 'Quem mexeu no caixa'.");
+  if(!motivo)return;
+  try{await api("/api/admin/financeiro",{method:"POST",body:{action:"delete_"+tipo,id:id,motivo:motivo}});toast("Excluído.","ok");DIN.socios=null;carregarCaixa();}
+  catch(e){toast(e.message,"err");}
+}
+function anexarComprovante(tipo,id){
+  var inp=document.createElement("input");inp.type="file";inp.accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf";
+  inp.onchange=async function(){
+    var f=inp.files&&inp.files[0];if(!f)return;
+    if(f.size>8*1024*1024){toast("Máximo 8MB.","err");return;}
+    try{var lido=await arquivoParaBase64(f);
+      await api("/api/admin/financeiro",{method:"POST",body:{action:"attach_comprovante",tipo:tipo,id:id,comprovante:lido.base64,comprovanteType:lido.mime}});
+      toast("Comprovante anexado.","ok");carregarCaixa();
+    }catch(e){toast(e.message,"err");}
+  };
+  inp.click();
+}
+function abrirModalRepasse(){
+  document.getElementById("form-repasse").reset();
+  document.getElementById("rp-preview").style.display="none";document.getElementById("rp-filename").textContent="";
+  var s=DIN.socios,sug=document.getElementById("rp-sugestao");
+  if(s&&s.socios){var dg=s.socios.diego,a=s.socios.andrio;
+    if(dg.acerto<-0.004){sug.textContent="Pelo acerto atual, o Diego deve repassar "+fmtMoney(Math.abs(dg.acerto))+" ao Andrio.";document.getElementById("rp-valor").value=Math.abs(dg.acerto).toFixed(2);}
+    else if(a.acerto<-0.004){sug.textContent="Pelo acerto atual, o Andrio deve repassar "+fmtMoney(Math.abs(a.acerto))+" ao Diego.";}
+    else sug.textContent="Acerto zerado hoje.";
+  }else sug.textContent="";
+  abrirModal("modal-repasse");
+}
+async function salvarRepasse(ev){
+  ev.preventDefault();
+  var de=(document.querySelector('#rp-de-row input[name="rp-de"]:checked')||{}).value||"diego";
+  var body={de:de,valor:parseFloat(document.getElementById("rp-valor").value)||0,nota:document.getElementById("rp-nota").value.trim()};
+  var dt=document.getElementById("rp-data").value;if(dt)body.dataRepasse=new Date(dt+"T12:00:00").toISOString();
+  var f=document.getElementById("rp-comprovante").files[0];
+  if(f){if(f.size>8*1024*1024){toast("Máximo 8MB.","err");return;}var lido=await arquivoParaBase64(f);body.comprovante=lido.base64;body.comprovanteType=lido.mime;}
+  var btn=document.getElementById("rp-submit");btn.disabled=true;
+  try{await api("/api/admin/financeiro",{method:"POST",body:{action:"add_repasse",repasse:body}});toast("Repasse registrado.","ok");fecharModal("modal-repasse");DIN.socios=null;
+    var ativa=(document.querySelector(".view.active")||{}).id||"";
+    if(ativa==="view-socios")carregarSocios();else if(ativa==="view-caixa"){DIN.abaCaixa="repasses";carregarCaixa();}else carregarDono();
+  }catch(e){toast(e.message,"err");}finally{btn.disabled=false;}
+}
+
+/* ── PAGANTES ────────────────────────────────────────────────────────── */
+async function carregarPagantes(){
+  try{var r=await api("/api/admin/pagantes");DIN.pagantes=r;
+    var sm=r.summary||{};
+    _setCard("pg-grid",0,String(sm.totalPagantes||0),"receita total "+fmtMoney(sm.receitaTotal));
+    _setCard("pg-grid",1,String(sm.ativos||0),"receita do mês "+fmtMoney(sm.receitaMes));
+    _setCard("pg-grid",2,String(sm.vencendo||0),"hora de lembrar de renovar");
+    _setCard("pg-grid",3,String(sm.vencidos||0),(sm.semData||0)+" sem data de vencimento");
+    renderPagantes();
+  }catch(e){toast("Pagantes: "+e.message,"err");}
+}
+function renderPagantes(){
+  if(!DIN.pagantes)return;
+  var rows=(DIN.pagantes.rows||[]).slice(),q=(document.getElementById("pg-busca").value||"").trim().toLowerCase(),f=document.getElementById("pg-filtro").value;
+  rows=rows.filter(function(r){
+    if(f==="semana")return r.daysLeft!==null&&r.daysLeft>0&&r.daysLeft<=7;
+    if(f&&r.status!==f)return false;
+    if(q&&[r.name,r.email,r.whatsapp].join(" ").toLowerCase().indexOf(q)<0)return false;
+    return true;
+  });
+  var tb=document.getElementById("pg-tbody"),empty=document.getElementById("pg-empty");
+  if(!rows.length){tb.innerHTML="";empty.style.display="block";return;}empty.style.display="none";
+  tb.innerHTML=rows.map(function(r){
+    var st=r.status==="vencido"?'<span class="badge red">vencido</span>':r.status==="vencendo"?'<span class="badge amber">vence em '+esc(r.daysLeft)+'d</span>':r.status==="ativo"?'<span class="badge green">ativo · '+esc(r.daysLeft)+'d</span>':'<span class="badge gray">sem data</span>';
+    var wa=r.whatsapp?'<a class="btn btn-sm" href="https://wa.me/'+esc(String(r.whatsapp).replace(/\D/g,""))+'" target="_blank" rel="noopener" title="Chamar no WhatsApp"><i class="ti ti-brand-whatsapp"></i></a>':'';
+    return '<tr><td><div class="cell-main">'+esc(r.name)+'</div><div class="cell-sub">'+esc(r.email)+'</div></td><td><span class="badge blue">'+esc(NOME_PLANO_ADM[r.plan]||r.planLabel||r.plan)+'</span><div class="cell-sub">'+esc(r.source)+'</div></td><td>'+st+'</td><td>'+esc(fmtDia(r.nextExpiry))+'</td><td>'+esc(fmtMoney(r.lastPaymentValor))+'<div class="cell-sub">'+esc(fmtDia(r.lastPaymentDate))+'</div></td><td style="font-weight:700;color:#fff">'+esc(fmtMoney(r.totalPago))+'</td><td>'+esc(r.pedidosCount)+'</td><td class="row-actions">'+wa+'<button class="btn btn-sm" data-email="'+esc(r.email)+'" onclick="abrirDetalheUsuario(this.dataset.email)"><i class="ti ti-id"></i> Ficha</button></td></tr>';
+  }).join("");
+}
+
+/* ── CONFERÊNCIA ─────────────────────────────────────────────────────── */
+async function carregarConferencia(){
+  try{var r=await api("/api/admin/conferencia");DIN.conf=r;
+    var rs=r.resumo||{};
+    _setCard("cf-grid",0,String((r.rows||[]).length),"pedidos + entradas manuais");
+    _setCard("cf-grid",1,fmtMoney(rs.valorTotal!=null?rs.valorTotal:(r.rows||[]).reduce(function(a,x){return a+(_dnVal(x.valor));},0)),"soma de tudo que consta");
+    _setCard("cf-grid",2,String((r.divergencias||[]).length),"pedido × caixa × plano");
+    var dv=r.divergencias||[],dp=document.getElementById("cf-div-panel"),db=document.getElementById("cf-divergencias");
+    var nomes={vip_sem_pedido:"VIP ativo sem pedido pago",pedido_sem_caixa:"Pedido aprovado sem entrada no caixa",caixa_orfao:"Entrada no caixa sem pedido",caixa_cancelado:"Entrada no caixa de pedido CANCELADO",valor_diverge:"Valor do caixa ≠ valor do pedido",concessoes_duplicadas:"Dias concedidos 2x em poucos minutos"};
+    if(dv.length){dp.style.display="";db.innerHTML=dv.map(function(d){return '<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px"><span class="badge red" style="white-space:nowrap">'+esc(nomes[d.tipo]||d.tipo)+'</span><span><b>'+esc(d.nome||d.email)+'</b> <span class="cell-sub">'+esc(d.email||"")+(d.pedidoId?" · pedido "+esc(_dnPedidoCurto(d.pedidoId)):"")+(d.detalhe?" · "+esc(d.detalhe):"")+(d.valor!=null?" · "+esc(fmtMoney(d.valor)):"")+'</span></span><button class="btn btn-sm" style="margin-left:auto" data-email="'+esc(d.email||"")+'" onclick="abrirDetalheUsuario(this.dataset.email)">Ficha</button></div>';}).join("");}
+    else{dp.style.display="none";}
+    renderConferencia();
+  }catch(e){toast("Conferência: "+e.message,"err");}
+}
+function renderConferencia(){
+  if(!DIN.conf)return;
+  var q=(document.getElementById("cf-busca").value||"").trim().toLowerCase(),st=document.getElementById("cf-status").value;
+  var rows=(DIN.conf.rows||[]).filter(function(r){
+    if(st&&String(r.status||"")!==st)return false;
+    if(q&&[r.nome,r.email,r.id,r.pedidoId,r.plano,r.comprovantePagador,r.comprovanteTransacao,r.valor,r.codigo].join(" ").toLowerCase().indexOf(q)<0)return false;
+    return true;
+  });
+  var tot=rows.reduce(function(a,x){return a+_dnVal(x.valor);},0);
+  document.getElementById("cf-count").textContent=rows.length+" de "+(DIN.conf.rows||[]).length+" · "+fmtMoney(tot);
+  document.getElementById("cf-csv").href="/api/admin/conferencia/exportar?q="+encodeURIComponent(q)+"&status="+encodeURIComponent(st);
+  var tb=document.getElementById("cf-tbody"),empty=document.getElementById("cf-empty");
+  if(!rows.length){tb.innerHTML="";empty.style.display="block";return;}empty.style.display="none";
+  tb.innerHTML=rows.map(function(r){
+    var lido=r.comprovanteVeredito||(r.preCheck&&r.preCheck.veredito)||"";
+    var lidoHtml=lido?('<span class="badge '+(lido==="CONFERE"?"green":/DIVERG|ILEG|ERRO/.test(lido)?"red":"gray")+'">'+esc(lido)+'</span>'+(r.comprovanteValorLido!=null?'<div class="cell-sub">lido '+esc(fmtMoney(r.comprovanteValorLido))+'</div>':'')):(r.temComprovante?'<span class="badge gray">sem leitura</span>':'<span class="cell-sub">sem comprovante</span>');
+    return '<tr><td>'+esc(fmtDia(r.em))+'</td><td><div class="cell-main">'+esc(r.nome||r.email)+'</div><div class="cell-sub">'+esc(r.email||"")+'</div></td><td><span class="badge gray">'+esc(r.tipo)+'</span>'+(r.id&&r.tipo==="pedido"?'<div class="cell-sub">'+esc(_dnPedidoCurto(r.id))+'</div>':'')+'</td><td>'+esc(NOME_PLANO_ADM[r.plano]||r.plano||"—")+'</td><td style="font-weight:700;color:#fff">'+esc(fmtMoney(r.valor))+'</td><td>'+_badgeStatusPedido(r.status)+'</td><td>'+lidoHtml+'</td><td class="row-actions">'+(r.tipo==="pedido"&&r.temComprovante?'<button class="btn btn-sm" data-id="'+esc(r.id)+'" onclick="verAnexo(\'pedido\',this.dataset.id)"><i class="ti ti-paperclip"></i></button>':'')+'<button class="btn btn-sm" data-email="'+esc(r.email||"")+'" onclick="abrirDetalheUsuario(this.dataset.email)"><i class="ti ti-id"></i></button></td></tr>';
+  }).join("");
+}
+
+/* ── DRE & FECHAMENTO ────────────────────────────────────────────────── */
+async function carregarDre(){
+  try{var d=await api("/api/admin/dre");DIN.dre=d;
+    document.getElementById("dre-exec").textContent=(d.executivo&&d.executivo.texto)||(Array.isArray(d.executivo)?d.executivo.join("\n"):String(d.executivo||""));
+    var f=await api("/api/admin/fechamentos");DIN.fech=f;
+    var fechPor={};(f.fechamentos||[]).forEach(function(x){fechPor[x.mes]=x;});
+    var tb=document.getElementById("dre-tbody");
+    tb.innerHTML=(d.meses||[]).slice().reverse().map(function(m){
+      var fe=fechPor[m.mes];
+      var pl=Object.keys(m.porPlano||{}).map(function(k){return esc(NOME_PLANO_ADM[k]||k)+" "+esc(fmtMoney(m.porPlano[k]));}).join(" · ");
+      return '<tr><td><b>'+esc(m.mes)+'</b></td><td>'+esc(fmtMoney(m.receita))+'</td><td>'+esc(fmtMoney(m.gastos))+'</td><td style="font-weight:700;color:'+(m.resultado<0?"var(--red)":"var(--green)")+'">'+esc(fmtMoney(m.resultado))+'</td><td>'+esc(fmtMoney(m.porSocio.diego))+'</td><td>'+esc(fmtMoney(m.porSocio.andrio))+'</td><td>'+esc(fmtMoney(m.porSocio.semDono))+'</td><td class="cell-sub">'+(pl||"—")+'</td><td>'+(fe?('<span class="badge '+(fe.divergencia&&fe.divergencia.divergente?"red":"green")+'">'+(fe.divergencia&&fe.divergencia.divergente?"⚠️ divergente":"✅ fechado")+'</span>'):'<button class="btn btn-sm" data-mes="'+esc(m.mes)+'" onclick="fecharMes(this.dataset.mes)"><i class="ti ti-lock"></i> Fechar</button>')+'</td></tr>';
+    }).join("")||'<tr><td colspan="9" class="empty">Nenhum movimento ainda.</td></tr>';
+    var fb=document.getElementById("dre-fech");
+    fb.innerHTML=(f.fechamentos||[]).length?(f.fechamentos.map(function(x){var dv=x.divergencia||{};var dre=x.dre||{};return '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)"><b style="color:#fff">'+esc(x.mes)+'</b><span>receita '+esc(fmtMoney(dre.receita))+' · gastos '+esc(fmtMoney(dre.gastos))+' · resultado '+esc(fmtMoney(dre.resultado))+'</span><span class="cell-sub">fechado em '+esc(fmtDia(x.fechadoEm))+' por '+esc(x.por||"—")+'</span>'+(dv.divergente?'<span class="badge red">⚠️ mexeram depois: receita Δ '+esc(fmtMoney(dv.receita))+' · gastos Δ '+esc(fmtMoney(dv.gastos))+'</span>':'<span class="badge green">íntegro</span>')+'</div>';}).join("")):'<div class="cell-sub">Nenhum mês fechado ainda. Meses abertos: '+esc((f.mesesAbertos||[]).join(", ")||"—")+'</div>';
+  }catch(e){toast("DRE: "+e.message,"err");}
+}
+async function fecharMes(mes){
+  if(!confirm("Fechar o mês "+mes+"? O DRE dele fica CONGELADO (imutável). Se alguém lançar dinheiro nesse mês depois, aparece como divergência."))return;
+  try{await api("/api/admin/fechamento",{method:"POST",body:{mes:mes}});toast("Mês "+mes+" fechado.","ok");carregarDre();}
+  catch(e){toast(e.message,"err");}
+}
+async function fecharMesesAntigos(){
+  if(!confirm("Fechar TODOS os meses antigos ainda abertos (nunca o mês atual)?"))return;
+  try{var r=await api("/api/admin/fechamento/auto",{method:"POST",body:{ignorarDia3:true}});toast("Fechados: "+((r.fechados||[]).length||0)+".","ok");carregarDre();}
+  catch(e){toast(e.message,"err");}
 }
 </script>
 </body>

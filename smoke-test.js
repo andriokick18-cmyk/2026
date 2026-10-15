@@ -5751,9 +5751,22 @@ async function drillAdminSettingsLegado() {
       soc1.repasses?.diegoParaAndrio === 50 && soc1.socios?.diego?.repassou === 50 && soc1.socios?.andrio?.recebeuRepasse === 50,
       JSON.stringify({ g: soc1?.gastos, r: soc1?.repasses }).slice(0, 200));
     const _sdAntes = soc1?.entradas?.semDono;
-    check("💼 MC4-P1: entrada sem recebidoPor e sem trilha de admin (favulso1, R$77) cai no SEM DONO — o motor NUNCA chuta o dono do dinheiro",
-      _sdAntes && _sdAntes.n >= 1 && (_sdAntes.itens || []).some((i) => i.id === "favulso1" && i.valor === 77),
-      JSON.stringify(_sdAntes).slice(0, 200));
+    // 💼 v970 (dono, 15/10/2026 — "só quem recebe pagamentos é o Diego"): entrada
+    // sem dono marcado vai pro RECEBEDOR PADRÃO (Diego), contada à parte como
+    // "padrao" — nunca mais pela trilha de quem APROVOU (Andrio aprovando um PIX
+    // que caiu na conta do Diego creditava o Andrio). Desligando o padrão, volta
+    // a cair em SEM DONO (o motor continua sem chutar).
+    check("💼 v970: entrada sem recebidoPor (favulso1, R$77) vai pro recebedor PADRÃO Diego, contada como 'padrao' (não 'derivado'), e a API declara recebedorPadrao='diego'",
+      soc1?.recebedorPadrao === "diego" && !(_sdAntes?.itens || []).some((i) => i.id === "favulso1") && soc1?.socios?.diego?.padrao >= 1 && soc1.socios.diego.padraoValor >= 77,
+      JSON.stringify({ padrao: soc1?.recebedorPadrao, diego: soc1?.socios?.diego, semDono: _sdAntes }).slice(0, 300));
+    const _recOff = await req2("POST", "/api/admin/socios/recebedor", { recebedorPadrao: "" });
+    const _socOff = (await get("/api/admin/socios")).json;
+    const _recBad = await req2("POST", "/api/admin/socios/recebedor", { recebedorPadrao: "fulano" });
+    const _recOn = await req2("POST", "/api/admin/socios/recebedor", { recebedorPadrao: "diego" });
+    check("💼 v970: recebedor padrão DESLIGADO → favulso1 volta pro SEM DONO (nunca chuta pela trilha); valor inválido = 400; religado = diego",
+      _recOff.json?.ok === true && (_socOff?.entradas?.semDono?.itens || []).some((i) => i.id === "favulso1" && i.valor === 77) && _socOff.recebedorPadrao === null &&
+      _recBad.status === 400 && _recOn.json?.recebedorPadrao === "diego",
+      JSON.stringify({ off: _socOff?.entradas?.semDono, bad: _recBad.status }).slice(0, 300));
     const _sA = soc1?.socios?.andrio, _sD = soc1?.socios?.diego;
     const _okMat = (s) => Math.abs(s.posicao - (s.recebido - s.gastosPagos - s.repassou + s.recebeuRepasse)) < 0.011 && Math.abs(s.acerto - (s.direito - s.posicao)) < 0.011;
     check("💼 MC4-P1: a matemática declarada FECHA — posição e acerto batem com a fórmula nos 2 sócios e direito(A)+direito(D) = lucro distribuível exato (centavo fechado)",
@@ -5764,10 +5777,12 @@ async function drillAdminSettingsLegado() {
       _atrBad.status === 400, (_atrBad.body || "").slice(0, 120));
     const _atrOk = await req2("POST", "/api/admin/financeiro", { action: "edit_pagamento", id: "favulso1", motivo: "Atribuição de dono (Sócios & Acerto)", changes: { recebidoPor: "diego" } });
     const soc2 = (await get("/api/admin/socios")).json;
-    check("💼 MC4-P1: atribuir favulso1 ao Diego em 1 clique (rota de edição EXISTENTE, com trilha) tira do SEM DONO e soma EXATOS R$77 no recebido dele",
+    // 💼 v970: favulso1 JÁ estava com o Diego pelo padrão — marcar à mão não muda o
+    // recebido dele (os R$77 já eram dele), só troca o modo "padrao" → "explicito".
+    check("💼 MC4-P1+v970: atribuir favulso1 ao Diego em 1 clique (rota de edição EXISTENTE, com trilha) mantém o recebido dele (já era dele pelo padrão) e sai da conta de 'padrão' (virou marcado à mão)",
       _atrOk.json?.ok === true && !(soc2?.entradas?.semDono?.itens || []).some((i) => i.id === "favulso1") &&
-      Math.abs(soc2?.socios?.diego?.recebido - (_sD.recebido + 77)) < 0.011 && soc2?.checagem?.delta === 0,
-      JSON.stringify({ antes: _sD?.recebido, depois: soc2?.socios?.diego?.recebido }).slice(0, 160));
+      Math.abs(soc2?.socios?.diego?.recebido - _sD.recebido) < 0.011 && soc2?.socios?.diego?.padrao === _sD.padrao - 1 && soc2?.checagem?.delta === 0,
+      JSON.stringify({ antes: _sD?.recebido, depois: soc2?.socios?.diego?.recebido, padraoAntes: _sD?.padrao, padraoDepois: soc2?.socios?.diego?.padrao }).slice(0, 200));
     const _sp70 = await req2("POST", "/api/admin/socios/split", { andrio: 70, diego: 30 });
     const soc3 = (await get("/api/admin/socios")).json;
     check("💼 MC4-P1: split 70/30 salvo muda o DIREITO na hora (Andrio = 70% do lucro) e split inválido (negativo) é recusado com 400",
@@ -5776,6 +5791,27 @@ async function drillAdminSettingsLegado() {
       (await req2("POST", "/api/admin/socios/split", { andrio: -5, diego: 105 })).status === 400,
       JSON.stringify({ split: soc3?.split, dirA: soc3?.socios?.andrio?.direito, lucro: soc3?.lucroDistribuivel }).slice(0, 160));
     await req2("POST", "/api/admin/socios/split", { andrio: 50, diego: 50 });
+    // 💼 v970: ANULAR entrada pela tela do Livro-caixa = original preservado + par de AJUSTE −
+    const _anAdd = await req2("POST", "/api/admin/financeiro", { action: "add_pagamento", pagamento: { valor: 33, email: "anula@test.com", nome: "Anula Teste", nota: "entrada pra anular" } });
+    const _anId = _anAdd.json?.pagamento?.id || _anAdd.json?.id || ((await get("/api/admin/financeiro")).json.pagamentos.find((x) => x.email === "anula@test.com") || {}).id;
+    const _canAntes = (await get("/api/admin/socios")).json.liquidoContabil;
+    const _anSem = await req2("POST", "/api/admin/financeiro", { action: "anular_pagamento", id: _anId });
+    const _anOk = await req2("POST", "/api/admin/financeiro", { action: "anular_pagamento", id: _anId, motivo: "lançado em duplicidade" });
+    const _finDep = (await get("/api/admin/financeiro")).json;
+    const _orig = (_finDep.pagamentos || []).find((x) => x.id === _anId), _par = (_finDep.pagamentos || []).find((x) => x.tipo === "ajuste" && x.ajustaPagamentoId === _anId);
+    const _canDepois = (await get("/api/admin/socios")).json.liquidoContabil;
+    const _anDup = await req2("POST", "/api/admin/financeiro", { action: "anular_pagamento", id: _anId, motivo: "de novo" });
+    check("💼 v970: anular_pagamento exige motivo (400), preserva o original marcado anuladoPor, cria o par de AJUSTE −33 com o mesmo dono (Diego, padrão), o líquido cai EXATOS R$33 e anular 2x é recusado",
+      _anSem.status === 400 && _anOk.json?.ok === true && _orig?.anuladoPor && _par && _par.valor === -33 && Math.abs(_canAntes - _canDepois - 33) < 0.011 && _anDup.status === 404 &&
+      _orig.recebidoPor === "diego" && _orig.recebidoPorPadrao === true,
+      JSON.stringify({ sem: _anSem.status, ok: _anOk.json, orig: _orig && { anul: !!_orig.anuladoPor, rp: _orig.recebidoPor, pad: _orig.recebidoPorPadrao }, par: _par && _par.valor, delta: _canAntes - _canDepois, dup: _anDup.status }).slice(0, 320));
+    const _admV970 = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
+    check("💼 v970 (estrutural): o painel tem as telas de dinheiro (Livro-caixa, Sócios, Pagantes, Conferência, DRE) ligadas às rotas que antes não tinham tela, o visualizador de comprovante interno substituiu o pop-up, e o gasto aceita Empresa/USD/recorrente",
+      ["view-caixa", "view-socios", "view-pagantes", "view-conferencia", "view-dre", "modal-anexo", "modal-repasse", "modal-lanc", "modal-motivo", "dono-grid"].every((id) => _admV970.includes('id="' + id + '"')) &&
+      ["/api/admin/dono-resumo", "/api/admin/socios", "/api/admin/socios/recebedor", "/api/admin/socios/split", "/api/admin/pagantes", "/api/admin/conferencia", "/api/admin/dre", "/api/admin/fechamentos", "/api/admin/fechamento", "/api/admin/fechamento/auto", "/api/admin/financeiro/exportar", "/api/admin/dre?fmt=csv", "/api/admin/conferencia/exportar"].every((r) => _admV970.includes('"' + r + '"') || _admV970.includes("'" + r + "'") || _admV970.includes('href="' + r + '"')) &&
+      /async function verComprovante\(id\)\{ return verAnexo\("pedido",id\); \}/.test(_admV970) && !/window\.open\(""/.test(_admV970) &&
+      ['action:"anular_pagamento"', 'action:"add_repasse"', 'action:"attach_comprovante"', 'action:"get_alteracoes"', 'action:"add_gasto"', 'value="empresa"', 'id="gs-usd"', 'id="gs-recorrente"'].every((t) => _admV970.includes(t)),
+      "faltou peça da Fase 1 do painel de dinheiro");
     // Nesta reconstrução o admin.html é enxuto (3 abas: Visão Geral/Usuários/
     // Pedidos Pendentes) — não existe painel "🧠 Sócios & Acerto" na UI; a
     // API (/api/admin/socios + computeSocios) é a parte real e já foi
@@ -6957,10 +6993,13 @@ async function drillAdminSettingsLegado() {
     const _rowP5 = (finP5?.pagamentos || []).find((x) => x.pedidoId === mc5p5.json?.pedidoId);
     const _csvP5 = (await _getBufA("/api/admin/financeiro/exportar")).buf.toString("utf8");
     const _linP5 = _csvP5.split("\n").find((l) => l.includes(String(mc5p5.json?.pedidoId || "").slice(-8).toUpperCase()));
-    check("💼 MC5-P5: aprovação SEM 'quem recebeu' não carimba mais um sócio na marra — o caixa nasce SEM recebidoPor e o dono sai da TRILHA (ativadoPorEmail do admin real → 'derivado', auditável no CSV)",
-      mc5Ap5.json?.ok === true && _rowP5 && !("recebidoPor" in _rowP5) &&
+    // 💼 v970: aprovação SEM 'quem recebeu' carimba o RECEBEDOR PADRÃO (Diego) com
+    // recebidoPorPadrao:true — nunca mais quem aprovou (Andrio aprovando um PIX da
+    // conta do Diego creditava o Andrio). O CSV mostra o modo "padrao", auditável.
+    check("💼 MC5-P5+v970: aprovação SEM 'quem recebeu' → caixa nasce com o recebedor PADRÃO (diego, recebidoPorPadrao:true), nunca com quem aprovou (Andrio) — CSV mostra ';diego;padrao'",
+      mc5Ap5.json?.ok === true && _rowP5 && _rowP5.recebidoPor === "diego" && _rowP5.recebidoPorPadrao === true &&
       _rowP5.ativadoPorEmail === "andrio.usa2026@gmail.com" &&
-      !!_linP5 && _linP5.includes(";andrio;derivado"),
+      !!_linP5 && _linP5.includes(";diego;padrao"),
       JSON.stringify({ ap: mc5Ap5.status, rp: _rowP5 && ("recebidoPor" in _rowP5), csv: (_linP5 || "").slice(0, 90) }));
     const avSem = await req2("POST", "/api/admin/financeiro", { action: "add_pagamento", pagamento: { valor: 91, nota: "entrada teste sem dono (P5)" } });
     const avCom = await req2("POST", "/api/admin/financeiro", { action: "add_pagamento", pagamento: { valor: 57, nota: "entrada com comprovante (P5)", recebidoPor: "empresa", comprovante: Buffer.from("comp-avulsa-57").toString("base64"), comprovanteType: "image/png" } });
@@ -6968,9 +7007,9 @@ async function drillAdminSettingsLegado() {
     const _r91 = (finP5b?.pagamentos || []).find((x) => x.id === avSem.json?.id);
     const _r57 = (finP5b?.pagamentos || []).find((x) => x.id === avCom.json?.id);
     const socP5b = (await get("/api/admin/socios")).json;
-    check("💼 MC5-P5: entrada manual sem dono (ou com dono FORA do enum) nasce SEM recebidoPor e cai honestamente em 'sem dono' no Acerto (antes qualquer coisa virava 'andrio' na marra) — e comprovante de entrada ganha fingerprint SHA-256 sem base64 na lista",
-      _r91 && !("recebidoPor" in _r91) && _r57 && !("recebidoPor" in _r57) &&
-      (socP5b?.entradas?.semDono?.itens || []).some((i) => i.id === avSem.json?.id) &&
+    check("💼 MC5-P5+v970: entrada manual sem dono (ou com dono FORA do enum) nasce com o recebedor PADRÃO (diego, recebidoPorPadrao) — nunca 'andrio' na marra, nunca 'empresa' — e comprovante de entrada ganha fingerprint SHA-256 sem base64 na lista",
+      _r91 && _r91.recebidoPor === "diego" && _r91.recebidoPorPadrao === true && _r57 && _r57.recebidoPor === "diego" && _r57.recebidoPorPadrao === true &&
+      !(socP5b?.entradas?.semDono?.itens || []).some((i) => i.id === avSem.json?.id) &&
       _r57.temComprovante === true && /^[0-9a-f]{64}$/.test(_r57.comprovanteHash || "") && !("comprovante" in _r57),
       JSON.stringify({ r91: _r91 && ("recebidoPor" in _r91), hash: (_r57?.comprovanteHash || "").slice(0, 12), semDonoN: socP5b?.entradas?.semDono?.n }));
     const gUsd = await req2("POST", "/api/admin/financeiro", { action: "add_gasto", gasto: { moeda: "USD", valorUSD: 10, cambio: 5, valor: 1, recorrente: true, categoria: "hospedagem", descricao: "Render (teste P5)", pagoPor: "empresa", dataGasto: new Date(Date.now() - 32 * 24 * 3600 * 1000).toISOString() } });
@@ -8104,9 +8143,9 @@ async function drillAdminSettingsLegado() {
       const _admL9 = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
       const _admLabels = [..._admL9.matchAll(/<label\b([^>]*)>([\s\S]*?)<\/label>/g)];
       const _admSemAssoc = _admLabels.filter(([, attrs, inner]) => !/\bfor="/.test(attrs) && !/<(input|select|textarea)\b/.test(inner));
-      check("🦯 v283: admin.html — todo <label> agora tem for= (associação explícita) ou envolve o próprio campo (checkbox/radio) — só os 2 labels de GRUPO de radio ('Pago por'/'Recebido por', sem 1 campo único pra apontar) ficam de fora, registrados",
-        _admLabels.length >= 33 && _admSemAssoc.length === 2 &&
-        _admSemAssoc.every(([full]) => /Pago por|Recebido por/.test(full)) &&
+      check("🦯 v283: admin.html — todo <label> agora tem for= (associação explícita) ou envolve o próprio campo (checkbox/radio) — só os 3 labels de GRUPO de radio ('Pago por'/'Recebido por'/'Quem passou o dinheiro', sem 1 campo único pra apontar) ficam de fora, registrados",
+        _admLabels.length >= 33 && _admSemAssoc.length === 3 &&
+        _admSemAssoc.every(([full]) => /Pago por|Recebido por|Quem passou o dinheiro/.test(full)) && // v970: 3º grupo de radio (repasse)
         _admL9.includes('<select id="pend-status" aria-label="Filtrar por status"'),
         `total=${_admLabels.length} sem-associação=${JSON.stringify(_admSemAssoc.map(([f]) => f))}`);
       // 🦯 v284 (achado de auditoria contínua — Alta): as 5 estrelas de
@@ -8704,9 +8743,10 @@ async function drillAdminSettingsLegado() {
       const _dDiego = (_socDepois?.socios?.diego?.recebido || 0) - (_socAntes?.socios?.diego?.recebido || 0);
       const _dDerDiego = (_socDepois?.socios?.diego?.derivado || 0) - (_socAntes?.socios?.diego?.derivado || 0);
       const _dSemDono = (_socDepois?.entradas?.semDono?.n || 0) - (_socAntes?.entradas?.semDono?.n || 0);
-      check("🔐 v183-L1: o R$150 aprovado pelo Diego entra no acerto COMO DELE (modo derivado da trilha) — e a fila de 'entradas sem dono' NÃO cresceu (era pra lá que todo dinheiro aprovado pelo painel ia)",
-        _dDiego === 150 && _dDerDiego === 1 && _dSemDono === 0,
-        JSON.stringify({ deltaRecebidoDiego: _dDiego, deltaDerivado: _dDerDiego, deltaSemDono: _dSemDono }));
+      const _dPadDiego = (_socDepois?.socios?.diego?.padrao || 0) - (_socAntes?.socios?.diego?.padrao || 0);
+      check("🔐 v183-L1+v970: o R$150 aprovado pelo Diego entra no acerto COMO DELE (recebedor padrão, modo 'padrao') — e a fila de 'entradas sem dono' NÃO cresceu",
+        _dDiego === 150 && _dPadDiego === 1 && _dDerDiego === 0 && _dSemDono === 0,
+        JSON.stringify({ deltaRecebidoDiego: _dDiego, deltaPadrao: _dPadDiego, deltaDerivado: _dDerDiego, deltaSemDono: _dSemDono }));
       const _banL1 = await get("/api/admin/banned-emails");
       const _sentL1 = await req2("POST", "/api/admin/health-sentinel/run", {});
       check("🔐 v183-L1: as guardas de 'admin hardcoded' reconhecem a sessão do painel por username — /api/admin/banned-emails e /api/admin/health-sentinel/run respondem 200, não 403 (o painel do Diego levava 403 nas duas)",
