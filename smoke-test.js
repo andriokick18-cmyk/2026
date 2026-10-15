@@ -1557,7 +1557,7 @@ async function drillAdminSettingsLegado() {
       check("🧱 v175: (estrutural) cadastro com verificação por código no front (agEnviarCodigo/agConfirmarCodigo, 1 só WhatsApp, sem campo telefone), 'Esqueci minha senha', janela pós-cadastro no lugar do wizard antigo, aviso do e-mail cadastrado no modal do Gmail, editor 3+3 e aba Notificações no admin",
         _app.includes("function agEnviarCodigo(") && _app.includes("function agConfirmarCodigo(") && _app.includes("function agRecRedefinir(") && !_app.includes('id="ag-s-tel"') && _app.includes("function checkShowCvPrompt(") && !_app.includes("function showOnboarding(") && !_app.includes("function obSavePersonal(") &&
         _idx.includes('id="cv-prompt-overlay"') && !_idx.includes('id="onboarding-overlay"') && _idx.includes('id="gwm-email-block"') && _idx.includes("③ Título do e-mail (assunto)") && _idx.includes("NÃO é obrigatória") && !_idx.includes('id="pe-subjects-empty"') &&
-        _app.includes("function _pePad(") && _adm.includes('data-view="notificacoes"') && _adm.includes("/oauth/notif-connect") && _srv.includes('sessions["__notif__"+_st]') && _srv.includes("login_hint") && _srv.includes("_hintCS=p.emailContato||resolveSendGmail(p)"),
+        _app.includes("function _pePad(") && _adm.includes('v:"notificacoes"') && _adm.includes("/oauth/notif-connect") && _srv.includes('sessions["__notif__"+_st]') && _srv.includes("login_hint") && _srv.includes("_hintCS=p.emailContato||resolveSendGmail(p)"),
         "estrutura do v175 incompleta");
       // 🔐 v176: bootstrap de e-mail admin — presente no servidor (isAdminEmail
       // ANTES do NOTIF.conectada(), token via NOTIF.tokenVerificado, log +
@@ -7131,7 +7131,7 @@ async function drillAdminSettingsLegado() {
       Array.isArray(_crash974?.crashes) && typeof _crash974?.bootAt === "number" &&
       /DB_CRASHES\.unshift/.test(_pge974) && /persist\(CRASH_FILE, DB_CRASHES\)/.test(_pge974) && /DB_CRASHES\.length>200/.test(_pge974) && /DB_CRASHES = load\(CRASH_FILE, \[\]\)/.test(_srv974) &&
       _rsRota.length > 200 && /criarBackupCompleto\(\)/.test(_rsRota) && /congelarGravacoes\(/.test(_rsRota) && /storagePersist\(path\.join\(DATA_DIR,f\),data\)/.test(_rsRota) && /process\.exit\(0\)/.test(_rsRota) && _rsRota.indexOf("criarBackupCompleto()") < _rsRota.indexOf("congelarGravacoes(") && _rsRota.indexOf("congelarGravacoes(") < _rsRota.indexOf("storagePersist(path.join(DATA_DIR,f),data)") &&
-      _adm974.includes('data-view="sistema"') && ["view-sistema", "sis-grid", "sis-backups", "sis-crashes", "sis-resumo", "modal-restaurar", "rs-confirma", "rs-plano"].every((id) => _adm974.includes('id="' + id + '"')) &&
+      _adm974.includes('v:"sistema"') && ["view-sistema", "sis-grid", "sis-backups", "sis-crashes", "sis-resumo", "modal-restaurar", "rs-confirma", "rs-plano"].every((id) => _adm974.includes('id="' + id + '"')) &&
       ["carregarSistema", "criarBackup", "verPlanoRestauro", "abrirRestaurar", "restaurarBackupConfirmar", "rodarResumoOntem"].every((f) => new RegExp("async function " + f + "\\(").test(_adm974)) &&
       _adm974.includes('"/api/admin/backup/restaurar"') && _adm974.includes("dryRun:true") && _adm974.includes("confirmar:dig") && /if\(nome==="sistema"\)carregarSistema\(\);/.test(_adm974),
       "faltou peça da F5 (backups) — " + JSON.stringify({ cr: Array.isArray(_crash974?.crashes), pge: _pge974.length, rota: _rsRota.length }));
@@ -7219,6 +7219,22 @@ async function drillAdminSettingsLegado() {
       /comprovanteRepetido\|\|pd\.comprovanteAntigoDias\|\|/.test(_adm976) && _adm976.includes("dias ANTES do pedido") && _adm976.includes("ao Diego ") && _adm976.includes("ao Andrio ") &&
       _adm976.includes('id="dre-chart"') && /function renderDreChart\(meses\)/.test(_adm976) && _adm976.includes("renderDreChart(d.meses||[])") && _adm976.includes("(prejuízo)") && !/Math\.(round|floor)\([^)]*receita[^)]*\+/.test((_adm976.match(/function renderDreChart[\s\S]*?\n\}/) || [""])[0]),
       "faltou peça da F7 no server.js/admin.html");
+    // 🧭 v977 (dono, 15/10/2026 — "ficou muitas abas, resuma tudo que puder, quero o mais importante"):
+    // menu do admin de 14 -> 9 botões; as telas parentes viraram SUB-ABAS dentro da tela-mãe (regra 14).
+    // Guarda permanente: o menu nunca passa de 10 botões e NENHUMA view fica órfã (sem botão nem sub-aba).
+    const _adm977 = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
+    const _nav977 = (_adm977.match(/<nav class="sb-nav">[\s\S]*?<\/nav>/) || [""])[0];
+    const _botoes977 = [..._nav977.matchAll(/<button class="sb-item[^"]*" data-view="([a-z]+)"/g)].map((m) => m[1]);
+    const _sub977 = [...((_adm977.match(/var SUBABAS=\{[\s\S]*?\n\};/) || [""])[0]).matchAll(/\{v:"([a-z]+)"/g)].map((m) => m[1]);
+    const _views977 = [..._adm977.matchAll(/<div class="view(?: active)?" id="view-([a-z]+)"/g)].map((m) => m[1]);
+    const _orfas977 = _views977.filter((v) => !_botoes977.includes(v) && !_sub977.includes(v));
+    check("🧭 v977: o menu do admin tem no máximo 10 botões (regra 14 — o secundário mora DENTRO da tela-mãe), toda view tem botão OU sub-aba (nenhuma tela órfã), o botão do pai fica aceso nas telas-filhas e a barra de sub-abas é desenhada pela switchTab",
+      _botoes977.length >= 7 && _botoes977.length <= 10 && _orfas977.length === 0 && _views977.length >= 12 &&
+      ["overview", "caixa", "pagantes", "usuarios", "pendentes", "operacao", "planilhas"].every((v) => _botoes977.includes(v)) &&
+      ["socios", "conferencia", "dre", "sistema", "notificacoes"].every((v) => _sub977.includes(v) && !_botoes977.includes(v)) &&
+      /var PAI_ABA=\{socios:"caixa",conferencia:"caixa",dre:"caixa",sistema:"operacao",notificacoes:"operacao"\}/.test(_adm977) &&
+      _adm977.includes('(PAI_ABA[nome]||nome)') && _adm977.includes("_renderSubtabs(nome);") && _adm977.includes('id="pill-notif"') && _adm977.includes('id="pill-operacao"'),
+      JSON.stringify({ botoes: _botoes977, sub: _sub977, orfas: _orfas977, views: _views977.length }));
     const gUsd = await req2("POST", "/api/admin/financeiro", { action: "add_gasto", gasto: { moeda: "USD", valorUSD: 10, cambio: 5, valor: 1, recorrente: true, categoria: "hospedagem", descricao: "Render (teste P5)", pagoPor: "empresa", dataGasto: new Date(Date.now() - 32 * 24 * 3600 * 1000).toISOString() } });
     const _gU = ((await get("/api/admin/financeiro")).json?.gastos || []).find((x) => x.id === gUsd.json?.id);
     const rec1 = await req2("POST", "/api/admin/financeiro", { action: "rodar_recorrentes" });

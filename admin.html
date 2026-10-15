@@ -52,6 +52,13 @@ a{color:inherit;text-decoration:none}
 .sb-item:hover{background:var(--glass2);color:var(--text)}
 .sb-item.active{background:var(--blueg);color:var(--blue);border:1px solid var(--blueb)}
 .sb-item i{font-size:17px;flex-shrink:0;width:17px;text-align:center}
+/* v977: sub-abas — o que é parente mora DENTRO da tela-mãe (regra 14), não no menu */
+.subtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;padding:5px;background:var(--glass);border:1px solid var(--border2);border-radius:10px;width:fit-content;max-width:100%}
+.subtab{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:7px;font-size:13px;font-weight:700;color:var(--t2);background:none;border:1px solid transparent;cursor:pointer;white-space:nowrap}
+.subtab:hover{color:var(--text);background:var(--glass2)}
+.subtab.active{background:var(--blueg);color:var(--blue);border-color:var(--blueb)}
+.subtab i{font-size:15px}
+@media(max-width:600px){.subtabs{width:100%;overflow-x:auto;flex-wrap:nowrap}}
 .sb-item .pill{margin-left:auto;background:var(--redg);color:var(--red);border:1px solid var(--redb);font-size:11px;font-weight:800;padding:1px 7px;border-radius:99px;min-width:20px;text-align:center}
 .sb-foot{padding:10px 8px;border-top:1px solid var(--border)}
 .sb-user{display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:8px}
@@ -286,21 +293,14 @@ tbody tr:hover{background:var(--glass2)}
     <nav class="sb-nav">
       <div class="sb-section">Dinheiro</div>
       <button class="sb-item active" data-view="overview" onclick="switchTab('overview')"><i class="ti ti-layout-dashboard"></i> Visão do Dono</button>
-      <button class="sb-item" data-view="caixa" onclick="switchTab('caixa')"><i class="ti ti-book"></i> Livro-caixa</button>
-      <button class="sb-item" data-view="socios" onclick="switchTab('socios')"><i class="ti ti-users-group"></i> Sócios 50/50</button>
+      <button class="sb-item" data-view="caixa" onclick="switchTab('caixa')"><i class="ti ti-book"></i> Caixa &amp; Sócios</button>
       <button class="sb-item" data-view="pagantes" onclick="switchTab('pagantes')"><i class="ti ti-credit-card"></i> Pagantes</button>
-      <button class="sb-item" data-view="conferencia" onclick="switchTab('conferencia')"><i class="ti ti-list-check"></i> Conferência</button>
-      <button class="sb-item" data-view="dre" onclick="switchTab('dre')"><i class="ti ti-report-analytics"></i> DRE &amp; Fechamento</button>
       <div class="sb-section">Clientes</div>
       <button class="sb-item" data-view="usuarios" onclick="switchTab('usuarios')"><i class="ti ti-users"></i> Usuários</button>
       <button class="sb-item" data-view="pendentes" onclick="switchTab('pendentes')"><i class="ti ti-hourglass"></i> Pedidos Pendentes <span class="pill" id="pill-pendentes" style="display:none">0</span></button>
-      <div class="sb-section">Operação</div>
-      <button class="sb-item" data-view="operacao" onclick="switchTab('operacao')"><i class="ti ti-activity"></i> Robôs &amp; Envios <span class="pill" id="pill-operacao" style="display:none;background:var(--red)">0</span></button>
-      <div class="sb-section">Vagas</div>
-      <button class="sb-item" data-view="planilhas" onclick="switchTab('planilhas')"><i class="ti ti-table-import"></i> Planilhas &amp; Robôs</button>
       <div class="sb-section">Sistema</div>
-      <button class="sb-item" data-view="sistema" onclick="switchTab('sistema')"><i class="ti ti-database"></i> Backups &amp; Saúde</button>
-      <button class="sb-item" data-view="notificacoes" onclick="switchTab('notificacoes')"><i class="ti ti-mail-forward"></i> Notificações <span class="pill" id="pill-notif" style="display:none;background:var(--red)">!</span></button>
+      <button class="sb-item" data-view="operacao" onclick="switchTab('operacao')"><i class="ti ti-activity"></i> Operação <span class="pill" id="pill-operacao" style="display:none;background:var(--red)">0</span><span class="pill" id="pill-notif" style="display:none;background:var(--red)" title="O e-mail do sistema precisa de atenção">!</span></button>
+      <button class="sb-item" data-view="planilhas" onclick="switchTab('planilhas')"><i class="ti ti-table-import"></i> Planilhas de vagas</button>
       <!-- 🩺 achado de auditoria contínua: /admin-reviews (moderação de avaliações
            reais, POST /api/reviews → status pending → só aprovada aqui aparece na
            landing/JSON-LD) existia há ~150 releases sem NENHUM link na sidebar —
@@ -1410,18 +1410,40 @@ var TITULOS={
   usuarios:{t:"Usuários",s:"Quem é, quando entrou, quanto pagou, o que enviou e se o Gmail e o robô estão vivos"},
   pendentes:{t:"Pedidos",s:"Pendentes, aprovados e cancelados — com quem aprovou e por quê"},
   operacao:{t:"Robôs & Envios",s:"Quem está online, quem está enviando, quem travou e por quê — com o botão pra consertar"},
-  planilhas:{t:"Planilhas & Robôs",s:"Coleta e enriquecimento do DOL — 100% manual, clique quando sair temporada nova"},
+  planilhas:{t:"Planilhas de vagas",s:"Coleta e enriquecimento do DOL — 100% manual, clique quando sair temporada nova"},
   sistema:{t:"Backups &amp; Saúde",s:"Cópias de segurança (criar, ver, restaurar), erros graves do servidor e o resumo de ontem"},
   notificacoes:{t:"Notificações por e-mail",s:"A conta Google que envia os códigos e avisos do sistema"}
 };
 
+/* v977: 14 abas -> 9. Cada tela-filha continua sendo uma view própria (mesmos ids, mesmos
+   carregadores) — só o MENU encolheu: o botão do pai fica aceso e uma barra de sub-abas
+   no topo da view leva às irmãs. */
+var PAI_ABA={socios:"caixa",conferencia:"caixa",dre:"caixa",sistema:"operacao",notificacoes:"operacao"};
+var SUBABAS={
+  caixa:[{v:"caixa",t:"Livro-caixa",i:"ti-book"},{v:"socios",t:"Sócios 50/50",i:"ti-users-group"},{v:"conferencia",t:"Conferência",i:"ti-list-check"},{v:"dre",t:"DRE & Fechamento",i:"ti-report-analytics"}],
+  operacao:[{v:"operacao",t:"Robôs & Envios",i:"ti-activity"},{v:"sistema",t:"Backups & Saúde",i:"ti-database"},{v:"notificacoes",t:"Notificações",i:"ti-mail-forward"}]
+};
+function _renderSubtabs(nome){
+  document.querySelectorAll(".subtabs").forEach(function(x){x.remove();});
+  var abas=SUBABAS[PAI_ABA[nome]||nome];if(!abas)return;
+  var view=document.getElementById("view-"+nome);if(!view)return;
+  var bar=document.createElement("div");bar.className="subtabs";bar.setAttribute("role","tablist");
+  abas.forEach(function(a){
+    var b=document.createElement("button");b.type="button";b.className="subtab"+(a.v===nome?" active":"");
+    b.setAttribute("role","tab");b.setAttribute("aria-selected",a.v===nome?"true":"false");
+    b.innerHTML='<i class="ti '+a.i+'"></i> '+esc(a.t);
+    b.onclick=function(){switchTab(a.v);};bar.appendChild(b);
+  });
+  view.insertBefore(bar,view.firstChild);
+}
 function switchTab(nome){
   document.querySelectorAll(".view").forEach(function(v){v.classList.remove("active");});
   var view=document.getElementById("view-"+nome);
   if(view)view.classList.add("active");
   document.querySelectorAll(".sb-item").forEach(function(b){b.classList.remove("active");});
-  var btn=document.querySelector('.sb-item[data-view="'+nome+'"]');
+  var btn=document.querySelector('.sb-item[data-view="'+(PAI_ABA[nome]||nome)+'"]');
   if(btn)btn.classList.add("active");
+  _renderSubtabs(nome);
   var tit=TITULOS[nome]||{t:"",s:""};
   document.getElementById("tb-title").textContent=String(tit.t).replace("&amp;","&");
   document.getElementById("tb-sub").textContent=tit.s;

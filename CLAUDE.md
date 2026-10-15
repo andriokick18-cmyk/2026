@@ -4370,3 +4370,20 @@ acerto (`_finValorEfetivo` + `_finDonoDe`, anulado/ajuste fora) — a ficha most
 R$ · ao Andrio R$". (40) aba DRE ganhou "Evolução" — SVG puro de 12 meses (receita verde,
 gastos vermelho, resultado azul / prejuízo âmbar, rótulo em k, tooltip com o valor) montado
 SÓ dos números do `/api/admin/dre` — a tela não calcula nada (13n). 3 checks.
+
+## 🧭 v977 — Menu do admin enxuto: 14 → 9 botões (dono, 15/10/2026 — "ficou muitas abas, resuma tudo que puder, quero o mais importante")
+
+Aplicação da regra 14 ("antes de criar aba nova, perguntar: isso merece menu ou mora dentro de
+algo?") — as fases v970–v976 tinham criado uma aba por assunto. Agora o menu tem 9 botões:
+**Dinheiro** (Visão do Dono · Caixa & Sócios · Pagantes), **Clientes** (Usuários · Pedidos
+Pendentes), **Sistema** (Operação · Planilhas de vagas · Avaliações · Auditoria). As telas
+parentes viraram SUB-ABAS dentro da tela-mãe: Caixa & Sócios = Livro-caixa | Sócios 50/50 |
+Conferência | DRE & Fechamento; Operação = Robôs & Envios | Backups & Saúde | Notificações.
+Cada filha continua sendo uma `view-X` própria (mesmos ids, mesmos carregadores,
+`switchTab('socios')` continua funcionando de qualquer lugar) — só o MENU encolheu: o botão do
+pai fica aceso (`PAI_ABA`) e `_renderSubtabs` desenha a barra no topo da view (`SUBABAS`). O
+vigia de robôs parados fica em Operação; o pill vermelho de "e-mail do sistema precisa de
+atenção" (`pill-notif`) e o de robôs com problema (`pill-operacao`) ficam no botão Operação.
+"Planilhas & Robôs" virou "Planilhas de vagas" (a palavra Robôs aparecia em 2 menus). **Guarda
+permanente no smoke**: o menu nunca passa de 10 botões e NENHUMA view fica órfã (sem botão nem
+sub-aba) — tela nova entra como sub-aba da mãe ou justifica o botão. 1 check.
