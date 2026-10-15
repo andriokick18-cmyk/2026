@@ -7484,8 +7484,10 @@ const server=http.createServer(async(req,res)=>{
   // 📖 v160 — conteúdo da Central de Tutoriais: fragmento HTML carregado sob
   // demanda pela aba Tutorial (o index fica ~33KB mais leve; o conteúdo só
   // desce quando a pessoa abre a aba).
-  if(pathname==="/tutorial-conteudo")return serveHtml("tutorial-conteudo.html");
-  if(pathname==="/aprenda-conteudo")return serveHtml("aprenda-conteudo.html");
+  // 🔎 v978 (SEO): fragmentos HTML sem <title>/canonical que o app carrega por fetch — públicos, mas NUNCA
+  // devem virar "documento fraco" no índice competindo com as páginas reais (X-Robots-Tag não afeta o fetch do app).
+  if(pathname==="/tutorial-conteudo"){res.setHeader("X-Robots-Tag","noindex, nofollow");return serveHtml("tutorial-conteudo.html");}
+  if(pathname==="/aprenda-conteudo"){res.setHeader("X-Robots-Tag","noindex, nofollow");return serveHtml("aprenda-conteudo.html");}
   // 📖 v160 — prints da Central de Tutoriais (aba Tutorial do app): arquivos
   // reais em /tutorial-img (nunca base64 no HTML — 29 fotos embutidas
   // deixariam o index com muitos MB; assim carregam lazy, só ao abrir cada
@@ -7576,7 +7578,7 @@ const server=http.createServer(async(req,res)=>{
   // dificultando indexação/descoberta pelo Google) ──────────────────────────
   if(pathname==="/robots.txt"){
     res.writeHead(200,{"Content-Type":"text/plain; charset=utf-8","Cache-Control":"public, max-age=3600"});
-    return res.end("User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /admin-reviews\nDisallow: /ad\nDisallow: /api/\nDisallow: /diagnostico\n\nSitemap: https://h2bapply.com/sitemap.xml\n");
+    return res.end("User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /admin-reviews\nDisallow: /ad\nAllow: /api/public-wage-stats\nDisallow: /api/\nDisallow: /diagnostico\n\nSitemap: https://h2bapply.com/sitemap.xml\n");
   }
   if(pathname==="/sitemap.xml"){
     const _pages=[

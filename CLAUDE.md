@@ -4387,3 +4387,29 @@ atenção" (`pill-notif`) e o de robôs com problema (`pill-operacao`) ficam no 
 "Planilhas & Robôs" virou "Planilhas de vagas" (a palavra Robôs aparecia em 2 menus). **Guarda
 permanente no smoke**: o menu nunca passa de 10 botões e NENHUMA view fica órfã (sem botão nem
 sub-aba) — tela nova entra como sub-aba da mãe ou justifica o botão. 1 check.
+
+## 🔎 v978 — SEO: a home passa a falar "H-2B", "H2B Apply" e linka tudo (dono, 15/10/2026 — "hoje quando pesquiso h2b ou h2b apply no Google nosso site não aparece")
+
+Auditoria de 7 lentes independentes (rastreio, renderização, on-page, velocidade, SERP real,
+dono/domínio, conteúdo) + síntese + verificação adversarial das correções. **Conclusões
+honestas, valem pra sempre**: (1) tecnicamente NADA bloqueia o Googlebot (103 URLs amostradas
+dão 200, canonical correto, sem noindex, sem rate limit por UA) — o problema é DESCOBERTA e
+RELEVÂNCIA; (2) ninguém consegue olhar o Google daqui (proxy 403), então "está indexado?" só o
+Search Console responde — passo do DONO; (3) "h2b" sozinho é de dol.gov/uscis.gov (não é
+alvo realista); alvo real = marca ("h2bapply"/"h2b apply") + cauda em português ("h2b é
+golpe", "quanto ganha h2b", "vagas h2b texas"); (4) o domínio só aponta pra este servidor
+desde 19-20/09/2026 — é novo. **O que o v978 muda**: H1 da home "Vagas H-2B e H-2A nos Estados
+Unidos" (antes "Trabalhe nos Estados Unidos", sem palavra-chave), kicker VISÍVEL "H2BApply (H2B
+Apply) — vagas H-2B e H-2A para brasileiros" (a grafia com espaço não existia em lugar nenhum;
+NUNCA esconder texto — o Google pune), 2 H2 com H-2B/H-2A, JSON-LD `WebSite` (alternateName
+"H2B Apply") e `Organization` (sameAs só o Instagram oficial — nunca perfis pessoais, nunca
+aggregateRating próprio) como blocos SEPARADOS: o `id="ld-software-app"` fica intacto porque o
+app.js injeta as avaliações nele; seção "Tudo sobre H-2B e H-2A, em português" (`#guias-h2b`)
+com links `<a href>` REAIS pros 6 guias + 6 estados + /como-usar, e 3 links novos no rodapé —
+do HTML estático a home alcançava só ~13 URLs (guias de custo/empresas eram ilhas, estados
+só por JS); robots.txt libera SÓ `/api/public-wage-stats` (a página "quanto ganha" monta as
+tabelas por esse fetch — bloqueado, o Google via "Carregando…"); `/aprenda-conteudo` e
+`/tutorial-conteudo` (fragmentos sem título/canonical) saem com `X-Robots-Tag: noindex`.
+**Regra**: link novo na home/rodapé só pra URL que responde 200 (a guarda faz BFS estático e
+falha com link quebrado). 3 checks. sw bump. Próximos passos do plano (v979+): páginas de vaga
+honestas + sitemap em índice, hub /vagas-h2b, SSR de /quanto-ganha-h2b, performance.

@@ -396,13 +396,14 @@ fs.writeFileSync(path.join(DATA, "backup.json"), JSON.stringify({
 const TEST_TOKEN = "smoke-" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 let COOKIE = ""; // jar de 1 cookie (sessão de teste)
 
-const req2 = (method, p, payload) => new Promise((resolve, reject) => {
+const req2 = (method, p, payload, extraHeaders) => new Promise((resolve, reject) => {
   const body = payload ? JSON.stringify(payload) : null;
   const r = http.request(BASE + p, {
     method,
     headers: {
       ...(body ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) } : {}),
       ...(COOKIE ? { Cookie: COOKIE } : {}),
+      ...(extraHeaders || {}),
     },
   }, (res) => {
     const sc = res.headers["set-cookie"];
@@ -2445,7 +2446,7 @@ async function drillAdminSettingsLegado() {
       // continuam provando isso por família e por regra mista), então o teto
       // sobe junto com margem, em vez de travar crescimento real do produto.
       check("🧹 v203-L21: o CSS do index.html encolheu de verdade e as regras VIVAS continuam lá (a poda foi por seletor, nunca por bloco inteiro)",
-        _estilos21.length < 145_000 &&
+        _estilos21.length < 147_000 && // v978: +1,2KB do bloco de guias da home (SEO) — crescimento real do produto, teto sobe com margem de propósito
         [".jcard", ".btn", ".view", ".sidebar", ".bottom-nav", ".tpl-var", ".profile-card", ".cv-slot", ".chip", ".banner"].every((c) => _estilos21.includes(c)),
         `tamanho do CSS inline: ${_estilos21.length}`);
 
@@ -7235,6 +7236,48 @@ async function drillAdminSettingsLegado() {
       /var PAI_ABA=\{socios:"caixa",conferencia:"caixa",dre:"caixa",sistema:"operacao",notificacoes:"operacao"\}/.test(_adm977) &&
       _adm977.includes('(PAI_ABA[nome]||nome)') && _adm977.includes("_renderSubtabs(nome);") && _adm977.includes('id="pill-notif"') && _adm977.includes('id="pill-operacao"'),
       JSON.stringify({ botoes: _botoes977, sub: _sub977, orfas: _orfas977, views: _views977.length }));
+    // 🔎 v978 (SEO — dono, 15/10/2026: "quando pesquiso h2b ou h2b apply nosso site não aparece"). A auditoria de
+    // 7 lentes achou que a home (a) não tinha H-2B no H1/H2, (b) nunca escrevia "H2B Apply" com espaço, (c) não tinha
+    // WebSite/Organization e (d) alcançava só ~13 URLs por link HTML. Guarda permanente de cada ponto.
+    const _gbot = { "User-Agent": "Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)" };
+    const _home978 = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+    const _h1s978 = [..._home978.matchAll(/<h1[^>]*>([\s\S]*?)<\/h1>/g)].map((m) => m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
+    const _h2s978 = [..._home978.matchAll(/<h2[^>]*>([\s\S]*?)<\/h2>/g)].map((m) => m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
+    const _semScript978 = _home978.replace(/<script[\s\S]*?<\/script>/g, "").replace(/<style[\s\S]*?<\/style>/g, "").replace(/<!--[\s\S]*?-->/g, "").replace(/<title>[\s\S]*?<\/title>/g, "");
+    const _ld978 = {};
+    for (const m of _home978.matchAll(/<script type="application\/ld\+json"[^>]*id="([^"]+)">\s*(\{[\s\S]*?\})\s*<\/script>/g)) { try { _ld978[m[1]] = JSON.parse(m[2]); } catch { _ld978[m[1]] = "JSON-INVALIDO"; } }
+    check("🔎 v978: a home tem UM H1 com a palavra-chave (H-2B + Estados Unidos), ≥2 H2 com H-2B/H-2A, a marca 'H2B Apply' (com espaço) em TEXTO VISÍVEL (nunca escondido), e 3 JSON-LD válidos — SoftwareApplication (id ld-software-app, que o app.js usa pra injetar avaliações), WebSite com alternateName 'H2B Apply' e Organization com sameAs só do Instagram oficial, sem aggregateRating/review de autopromoção",
+      _h1s978.length === 1 && /H-2B/.test(_h1s978[0]) && /Estados Unidos/.test(_h1s978[0]) &&
+      _h2s978.filter((t) => /H-?2[AB]/i.test(t)).length >= 2 && /H2B Apply/.test(_semScript978) &&
+      _ld978["ld-software-app"] && _ld978["ld-software-app"]["@type"] === "SoftwareApplication" &&
+      _ld978["ld-website"] && _ld978["ld-website"]["@type"] === "WebSite" && (_ld978["ld-website"].alternateName || []).includes("H2B Apply") &&
+      _ld978["ld-organization"] && _ld978["ld-organization"]["@type"] === "Organization" && JSON.stringify(_ld978["ld-organization"].sameAs) === JSON.stringify(["https://www.instagram.com/h2bapply/"]) &&
+      !("aggregateRating" in _ld978["ld-organization"]) && !("review" in _ld978["ld-organization"]) && !("aggregateRating" in _ld978["ld-website"]) &&
+      !/display:\s*none[^>]*>[^<]*H2B Apply/.test(_home978),
+      JSON.stringify({ h1: _h1s978, h2: _h2s978.filter((t) => /H-?2[AB]/i.test(t)).length, spaced: /H2B Apply/.test(_semScript978), ld: Object.keys(_ld978) }).slice(0, 300));
+    // BFS estático (sem JS) a partir de / como Googlebot: o que o Google alcança por LINK HTML em até 2 cliques
+    const _alvo978 = new Set(["/guia", "/h2b-e-golpe", "/h2bapply-funciona", "/quanto-ganha-h2b", "/quanto-custa-o-visto-h2b", "/empresas-que-patrocinam-visto-h2b", "/como-usar"]);
+    const _vistos978 = new Map([["/", 0]]); const _fila978 = ["/"]; const _quebrados978 = []; let _fetches978 = 0;
+    while (_fila978.length && _fetches978 < 60) {
+      const u = _fila978.shift(); const dep = _vistos978.get(u); if (dep >= 2) continue;
+      const r = await req2("GET", u, undefined, _gbot); _fetches978++;
+      if (r.status !== 200) { _quebrados978.push(u + ":" + r.status); continue; }
+      for (const m of String(r.body || "").matchAll(/<a\s[^>]*href="(\/[^"#?]*)"/g)) {
+        const h = m[1].replace(/\/$/, "") || "/";
+        if (/^\/(api|oauth|admin|ad|diagnostico|img|vendor|tut-img|aprenda|tutorial)/.test(h) || /\.(png|jpg|jpeg|webp|svg|css|js|xml|json|ico|txt)$/.test(h)) continue;
+        if (!_vistos978.has(h)) { _vistos978.set(h, dep + 1); _fila978.push(h); }
+      }
+    }
+    const _alcancados978 = [..._vistos978.keys()];
+    check("🔎 v978: do HTML estático da home (sem JS, UA Googlebot) o rastreio por <a href> alcança em até 2 cliques TODOS os guias (/guia, /h2b-e-golpe, /h2bapply-funciona, /quanto-ganha-h2b, /quanto-custa-o-visto-h2b, /empresas-que-patrocinam-visto-h2b, /como-usar) e páginas de estado /vagas-h2b/<estado> — e nenhum link interno encontrado devolve erro (antes só ~13 URLs e os guias de custo/empresas eram ilhas)",
+      [..._alvo978].every((u) => _alcancados978.includes(u)) && _alcancados978.filter((u) => u.startsWith("/vagas-h2b/")).length >= 5 && _quebrados978.length === 0 && _alcancados978.length >= 14,
+      JSON.stringify({ alcancados: _alcancados978.length, faltam: [..._alvo978].filter((u) => !_alcancados978.includes(u)), estados: _alcancados978.filter((u) => u.startsWith("/vagas-h2b/")).length, quebrados: _quebrados978 }).slice(0, 360));
+    const _robots978 = (await req2("GET", "/robots.txt")).body || "";
+    const _fragA = await req2("GET", "/aprenda-conteudo"), _fragT = await req2("GET", "/tutorial-conteudo");
+    check("🔎 v978: robots.txt libera SÓ /api/public-wage-stats (a página 'quanto ganha H2B' monta as tabelas por esse fetch — bloqueado, o Google via 'Carregando…') e continua bloqueando o resto de /api/, o admin e o diagnóstico; os fragmentos /aprenda-conteudo e /tutorial-conteudo (HTML sem <title>/canonical que o app carrega por fetch) saem com X-Robots-Tag noindex e o app continua carregando",
+      /Allow: \/api\/public-wage-stats\n/.test(_robots978) && /Disallow: \/api\/\n/.test(_robots978) && /Disallow: \/admin\n/.test(_robots978) && /Disallow: \/diagnostico\n/.test(_robots978) && /Sitemap: https:\/\/h2bapply\.com\/sitemap\.xml/.test(_robots978) &&
+      _fragA.status === 200 && /noindex/.test(String(_fragA.headers?.["x-robots-tag"] || "")) && _fragT.status === 200 && /noindex/.test(String(_fragT.headers?.["x-robots-tag"] || "")) && (_fragA.body || "").length > 50000,
+      JSON.stringify({ aprenda: _fragA.headers?.["x-robots-tag"], tutorial: _fragT.headers?.["x-robots-tag"], tam: (_fragA.body || "").length }));
     const gUsd = await req2("POST", "/api/admin/financeiro", { action: "add_gasto", gasto: { moeda: "USD", valorUSD: 10, cambio: 5, valor: 1, recorrente: true, categoria: "hospedagem", descricao: "Render (teste P5)", pagoPor: "empresa", dataGasto: new Date(Date.now() - 32 * 24 * 3600 * 1000).toISOString() } });
     const _gU = ((await get("/api/admin/financeiro")).json?.gastos || []).find((x) => x.id === gUsd.json?.id);
     const rec1 = await req2("POST", "/api/admin/financeiro", { action: "rodar_recorrentes" });
