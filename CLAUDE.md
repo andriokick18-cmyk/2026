@@ -4444,3 +4444,29 @@ saem comprimidos (`_sendXmlCompressed`, application/xml; 3,3 MB → ~25 KB). 7 c
 foram reescritos (fixtures com número de caso válido: 990001 indexável, 990002 hostil/XSS, 990003
 quinzenal, 990004 em análise, 990005 H-2A) — o intento (escape, 404 de morta/vencida, rascunho
 nunca público, quinzenal sem baseSalary) foi mantido.
+
+## 🔎 v980 — SEO: hub /vagas-h2b, páginas de estado/área com dado real e "quanto ganha" renderizado no servidor (15/10/2026)
+
+Continuação do v978/v979 (mesma auditoria de 7 lentes). **Problemas**: `/vagas-h2b` era um 302 (não
+existia página-pai que distribuísse link pros ~70 estados/áreas); as páginas de estado/área tinham
+~346 palavras, 64% de repetição entre si e nenhum caminho de link até as vagas; `/quanto-ganha-h2b`
+chegava ao Google como "Carregando dados ao vivo…" (as tabelas só nasciam de um fetch). **O que
+mudou**: (1) **hub `/vagas-h2b` (200)** = `renderHubPage`: tabela de TODOS os estados e áreas que têm
+página (mesmo corte do sitemap, `MIN_JOBS_*=20`) + "como usar esta lista" + links dos guias; **invariante
+guardada no smoke: os links do hub = exatamente as páginas `/vagas-h2b/*` do `sitemap-conteudo.xml`, e
+todos respondem 200** (nunca link pra 404); (2) estado/área ganharam seções derivadas SÓ das planilhas
+(`_seoAgrega`/`_seoBlocosDados`): split H-2B × H-2A, mediana × média, **10 empregadores** (por
+trabalhadores `wk` pedidos — nunca por nº de linhas), cargos mais comuns, cidades (só H-2A — a H-2B não
+informa cidade, a página diz isso), **até 20 vagas H-2A recentes com link pra `/vaga/<caso>` (só as
+`_vagaIndexavel`)** — o caminho de LINK HTML que faltava até as páginas de vaga — e "Veja também"
+(outros estados/áreas + hub); Tennessee foi de ~346 pra ~1.050 palavras; e-mail de empregador NUNCA
+aparece; todo texto de planilha sai escapado; (3) texto honesto: nada de "vagas certificadas pelo DOL"
+nem "calculados ao vivo" nas páginas agregadas (a H-2A nem tem status; são "vagas das planilhas do
+DOL"); (4) estado/área inexistente ou abaixo do corte = **404 `noindex` com corpo útil** (links pro hub),
+nunca mais 302; `/vagas-h2b/categoria` → 302 pro hub; (5) `_servirQuantoGanha`: o HTML sai com os
+números (`st-avg/min/max/count`) e as tabelas (14 áreas, 12 estados, com links) JÁ renderizados; o fetch
+do app continua como atualização; GA injetado como nas outras páginas; (6) CSS compartilhado em
+`_SEO_CSS` (cópia exata do tema escuro; hub e 404 usam `_seoPaginaBase`); (7) o hub entra no
+`sitemap-conteudo.xml` (prioridade 0.9), no rodapé das 4 páginas dinâmicas e no bloco de guias da home.
+**Regra**: dado novo numa página SEO só se vier das planilhas (nunca inventar número, nunca afirmar
+"certificada" sem status Certified). 8 checks. sw bump (index.html).

@@ -227,6 +227,7 @@ footer a{color:var(--blue);font-weight:600}
         <thead><tr><th>Estado</th><th>Vagas</th><th>Média/hora</th></tr></thead>
         <tbody><tr><td colspan="3" style="text-align:center;color:var(--t4);padding:20px">Carregando dados ao vivo...</td></tr></tbody>
       </table>
+      <div style="text-align:center;margin-top:14px"><a href="/vagas-h2b" style="color:var(--navy);font-weight:700;text-decoration:underline">Ver todos os estados e áreas com vagas →</a></div>
     </div>
   </section>
 
@@ -331,7 +332,7 @@ fetch('/api/public-wage-stats').then(r => r.ok ? r.json() : null).then(d => {
   set('st-max', fmtUsd(d.overall.max));
   set('st-count', fmtN(d.overall.count));
   const upd = document.getElementById('updated-note');
-  if (upd) upd.textContent = 'Calculado ao vivo a partir de ' + fmtN(d.overall.count) + ' vagas certificadas pelo DOL, atualizado agora mesmo.';
+  if (upd) upd.textContent = 'Calculado a partir de ' + fmtN(d.overall.count) + ' vagas das planilhas públicas do DOL.';
 
   const fillTable = (tbodySelector, rows, linkFn) => {
     const tbody = document.querySelector(tbodySelector + ' tbody');

@@ -7278,6 +7278,61 @@ async function drillAdminSettingsLegado() {
       /Allow: \/api\/public-wage-stats\n/.test(_robots978) && /Disallow: \/api\/\n/.test(_robots978) && /Disallow: \/admin\n/.test(_robots978) && /Disallow: \/diagnostico\n/.test(_robots978) && /Sitemap: https:\/\/h2bapply\.com\/sitemap\.xml/.test(_robots978) &&
       _fragA.status === 200 && /noindex/.test(String(_fragA.headers?.["x-robots-tag"] || "")) && _fragT.status === 200 && /noindex/.test(String(_fragT.headers?.["x-robots-tag"] || "")) && (_fragA.body || "").length > 50000,
       JSON.stringify({ aprenda: _fragA.headers?.["x-robots-tag"], tutorial: _fragT.headers?.["x-robots-tag"], tam: (_fragA.body || "").length }));
+    // 🔎 v980 (SEO — auditoria de 7 lentes): /vagas-h2b virou HUB de verdade (era 302), as páginas de estado/área
+    // ganharam dado REAL (empregadores, cargos, visto, vagas H-2A com link) e /quanto-ganha-h2b sai com as tabelas
+    // já no HTML. Guardas: hub = sitemap = o que existe (nunca link pra 404), conteúdo mínimo, sem e-mail, texto honesto.
+    const _hub = await req2("GET", "/vagas-h2b");
+    const _smCont = await req2("GET", "/sitemap-conteudo.xml");
+    const _smPaths980 = [...String(_smCont.body).matchAll(/<loc>https:\/\/h2bapply\.com(\/vagas-h2b\/[^<]+)<\/loc>/g)].map((m) => m[1]).sort();
+    const _hubLinks980 = [...new Set([...String(_hub.body).matchAll(/href="(\/vagas-h2b\/[^"]+)"/g)].map((m) => m[1]))].sort();
+    const _hubH1s = [...String(_hub.body).matchAll(/<h1[^>]*>([\s\S]*?)<\/h1>/g)].length;
+    check("🔎 v980: /vagas-h2b é um HUB de verdade (200, canonical próprio, um H1 com 'Vagas H-2B', no sitemap) e linka — por <a href> — EXATAMENTE as mesmas páginas de estado e área que o sitemap lista (nunca um link pra 404, nunca uma página esquecida)",
+      _hub.status === 200 && _hub.body.includes('<link rel="canonical" href="https://h2bapply.com/vagas-h2b">') && _hubH1s === 1 && /<h1[^>]*>[^<]*Vagas H-2B/.test(_hub.body) &&
+      _hub.body.includes('<meta name="robots" content="index, follow">') && String(_smCont.body).includes("<loc>https://h2bapply.com/vagas-h2b</loc>") &&
+      _smPaths980.length >= 20 && JSON.stringify(_smPaths980) === JSON.stringify(_hubLinks980),
+      JSON.stringify({ st: _hub.status, h1: _hubH1s, sitemap: _smPaths980.length, hub: _hubLinks980.length, soNoSitemap: _smPaths980.filter((u) => !_hubLinks980.includes(u)).slice(0, 3), soNoHub: _hubLinks980.filter((u) => !_smPaths980.includes(u)).slice(0, 3) }));
+    const _quebradosHub = [];
+    for (const u of _hubLinks980) { const r = await get(u); if (r.status !== 200) _quebradosHub.push(u + ":" + r.status); }
+    check("🔎 v980: todo link que o hub oferece responde 200 (estados e áreas, sem exceção)", _quebradosHub.length === 0 && _hubLinks980.length >= 20, JSON.stringify(_quebradosHub.slice(0, 5)));
+    const _tn = await req2("GET", "/vagas-h2b/tennessee");
+    const _txtTn = String(_tn.body).replace(/<(script|style)[\s\S]*?<\/\1>/g, "").replace(/<[^>]+>/g, " ");
+    const _empTn = (String(_tn.body).match(/<section class="section" id="empregadores">[\s\S]*?<\/section>/) || [""])[0];
+    const _jobLinksTn = [...new Set([...String(_tn.body).matchAll(/href="(\/vaga\/[^"]+)"/g)].map((m) => m[1]))];
+    const _jobSample = [];
+    for (const u of _jobLinksTn.slice(0, 3)) { const r = await get(u); _jobSample.push(r.status + " " + ((r.body.match(/<meta name="robots" content="([^"]+)"/) || [])[1] || "")); }
+    check("🔎v980: a página de estado ganhou conteúdo REAL — ≥700 palavras visíveis (eram ~346, 64% repetidas entre estados), seções de visto/mediana, 10 empregadores com vagas e trabalhadores, cargos mais comuns, cidades, vagas H-2A recentes com LINK pra página da vaga (todas indexáveis, 200) e 'Veja também' com o hub",
+      _tn.status === 200 && _txtTn.split(/\s+/).filter(Boolean).length >= 700 &&
+      ["h2b-ou-h2a", "empregadores", "cargos", "vagas-recentes", "veja-tambem"].every((id) => _tn.body.includes(`id="${id}"`)) &&
+      (_empTn.match(/<tr><td class="lbl">/g) || []).length === 10 && _jobLinksTn.length >= 5 &&
+      _jobSample.length === 3 && _jobSample.every((x) => x === "200 index, follow") && _tn.body.includes('href="/vagas-h2b"'),
+      JSON.stringify({ palavras: _txtTn.split(/\s+/).filter(Boolean).length, emp: (_empTn.match(/<tr><td class="lbl">/g) || []).length, vagas: _jobLinksTn.length, amostra: _jobSample }));
+    const _emailsTn = (String(_tn.body).match(/[\w.+-]+@[\w-]+\.[\w.]+/g) || []).filter((m) => !/@h2bapply\.com$/i.test(m));
+    const _tabelaTn = (String(_tn.body).match(/<tbody>[\s\S]*?<\/tbody>/g) || []).join("");
+    check("🔎 v980: nenhum e-mail de empregador vaza nas páginas de estado, todo texto vindo da planilha sai escapado (& vira &amp;) e a página não chama mais de 'certificadas' nem de 'ao vivo' o que são apenas linhas das planilhas do DOL",
+      _emailsTn.length === 0 && !/&(?!amp;|lt;|gt;|quot;|#39;)/.test(_tabelaTn) && !/vagas certificadas|certificadas pelo|calculados ao vivo|calculadas ao vivo/i.test(_tn.body) &&
+      /vagas H-2B e H-2A das planilhas do DOL em Tennessee/.test(_tn.body),
+      JSON.stringify({ emails: _emailsTn.slice(0, 3) }));
+    const _cat = await req2("GET", "/vagas-h2b/categoria/landscape");
+    const _e404a = await req2("GET", "/vagas-h2b/zzz-nao-existe");
+    const _e404b = await req2("GET", "/vagas-h2b/categoria/zzz-nao-existe");
+    const _catRaiz = await req2("GET", "/vagas-h2b/categoria");
+    check("🔎 v980: a página de ÁREA também ganhou empregadores/cargos/visto/'Veja também'; estado ou área que não existe (ou abaixo do corte de 20 vagas) devolve 404 'noindex' com corpo útil e link pro hub — nunca mais 302 (o 302 dizia 'movida' pro Google e escondia o erro); /vagas-h2b/categoria vai pro hub",
+      _cat.status === 200 && ["h2b-ou-h2a", "empregadores", "cargos", "veja-tambem"].every((id) => _cat.body.includes(`id="${id}"`)) && _cat.body.includes('href="/vagas-h2b"') &&
+      _e404a.status === 404 && /noindex/.test(String(_e404a.headers["x-robots-tag"] || "")) && _e404a.body.includes('href="/vagas-h2b"') &&
+      _e404b.status === 404 && /noindex/.test(String(_e404b.headers["x-robots-tag"] || "")) &&
+      _catRaiz.status === 302 && _catRaiz.headers.location === "/vagas-h2b",
+      JSON.stringify({ cat: _cat.status, a: _e404a.status, b: _e404b.status, raiz: [_catRaiz.status, _catRaiz.headers.location] }));
+    const _qg = await req2("GET", "/quanto-ganha-h2b");
+    check("🔎 v980: /quanto-ganha-h2b sai do servidor com as tabelas e os números JÁ NO HTML (sem JS) — antes chegava ao Google como 'Carregando dados ao vivo…' porque o fetch a /api/public-wage-stats era bloqueado — com os links dos estados/áreas, o link pro hub e o CTA /?cadastro=1 intactos; o fetch do app segue como atualização",
+      _qg.status === 200 && /text\/html/.test(String(_qg.headers["content-type"] || "")) && !_qg.body.includes("Carregando dados ao vivo") &&
+      (_qg.body.match(/href="\/vagas-h2b\//g) || []).length >= 20 && /id="st-avg">US\$ /.test(_qg.body) && /id="st-count">[\d.]+</.test(_qg.body) &&
+      _qg.body.includes('href="/vagas-h2b"') && _qg.body.includes('href="/?cadastro=1"') && _qg.body.includes("fetch('/api/public-wage-stats')") && !/vagas certificadas pelo DOL, atualizado agora mesmo/.test(_qg.body),
+      JSON.stringify({ st: _qg.status, links: (_qg.body.match(/href="\/vagas-h2b\//g) || []).length, carregando: _qg.body.includes("Carregando dados ao vivo") }));
+    const _srv980 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+    check("🔎 v980 (estrutural): o CSS compartilhado das páginas SEO é o tema escuro de sempre, as 3 páginas dinâmicas antigas (estado, área, vaga) e o hub linkam /vagas-h2b no rodapé, e a rota do quanto-ganha usa o SSR",
+      /const _SEO_CSS=`[\s\S]*--bg:#0d0f1a[\s\S]*`;/.test(_srv980) && (_srv980.match(/<a href="\/vagas-h2b">Vagas por Estado<\/a>/g) || []).length >= 4 &&
+      /return _servirQuantoGanha\(req,res\)/.test(_srv980) && /function renderHubPage\(stats\)/.test(_srv980),
+      "faltou peça da v980 no server.js");
     const gUsd = await req2("POST", "/api/admin/financeiro", { action: "add_gasto", gasto: { moeda: "USD", valorUSD: 10, cambio: 5, valor: 1, recorrente: true, categoria: "hospedagem", descricao: "Render (teste P5)", pagoPor: "empresa", dataGasto: new Date(Date.now() - 32 * 24 * 3600 * 1000).toISOString() } });
     const _gU = ((await get("/api/admin/financeiro")).json?.gastos || []).find((x) => x.id === gUsd.json?.id);
     const rec1 = await req2("POST", "/api/admin/financeiro", { action: "rodar_recorrentes" });

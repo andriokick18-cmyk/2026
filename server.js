@@ -3931,6 +3931,262 @@ function computeWageStats(){
   return{overall,byCategoryAll,byStateAll,topCategoriesByState,topStatesByCategory};
 }
 
+// 🔎 v980 (SEO — auditoria de 7 lentes, 15/10/2026): as ~70 páginas de estado/área tinham ~346 palavras, 64% de
+// repetição entre si e NENHUM caminho de link até as vagas; /vagas-h2b era um 302 (não existia hub) e a página
+// "quanto ganha" chegava ao Google como casca ("Carregando…"). Tudo abaixo é derivado SÓ do que as planilhas
+// do DOL já têm (nunca inventa número): empregador, trabalhadores pedidos (wk), cargo, cidade (H-2A), visto.
+const _SEO_CSS=`*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}body{font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.6}
+a{color:inherit;text-decoration:none}
+.star-bg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.star-bg::before{content:"";position:absolute;inset:0;background:
+  radial-gradient(ellipse 900px 600px at 15% 30%,rgba(59,130,246,.1) 0%,transparent 70%),
+  radial-gradient(ellipse 700px 500px at 85% 70%,rgba(139,92,246,.08) 0%,transparent 70%),
+  radial-gradient(ellipse 500px 400px at 50% 0%,rgba(16,185,129,.04) 0%,transparent 60%)}
+:root{--bg:#0d0f1a;--surface:#161928;--sf2:#1c1f35;--sf4:#2a2f55;--border:rgba(139,92,246,.18);--text:#e8eaf6;--t2:#a5a8cc;--t3:#7c7fb5;--t4:#4c4f82;--blue:#3b82f6;--bluel:rgba(59,130,246,.18);--blueb:rgba(59,130,246,.38);--green:#10b981;--greenl:rgba(16,185,129,.16);--navy:#e8eaf6;--r:10px;--rl:14px;--rxl:20px}
+.top-bar{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:58px;background:rgba(13,15,26,.85);backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
+.logo-row{display:flex;align-items:center;gap:10px;font-family:'Sora',sans-serif;font-weight:800;font-size:17px;color:var(--navy)}
+.logo-row img{width:36px;height:36px;border-radius:10px}
+.btn-login{display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#3b82f6,#7c3aed);color:#fff;font-weight:700;font-size:13px;padding:9px 18px;border-radius:10px;border:none;box-shadow:0 4px 15px rgba(59,130,246,.3)}
+.hero{background:linear-gradient(160deg,#052e1c,#065f46,#0d7a4f,#10b981);color:#fff;padding:48px 20px 36px;text-align:center}
+.hero-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;margin-bottom:18px}
+.hero h1{font-family:'Sora',sans-serif;font-size:clamp(22px,4.8vw,34px);font-weight:800;line-height:1.26;margin-bottom:12px;max-width:680px;margin-left:auto;margin-right:auto}
+.hero-sub{font-size:14.5px;opacity:.9;max-width:540px;margin:0 auto 22px;line-height:1.7}
+.btn-hero{display:inline-flex;align-items:center;gap:8px;padding:13px 24px;border-radius:12px;font-weight:700;font-size:14px;background:#fff;color:#065f46;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;max-width:820px;margin:0 auto;padding:28px 20px 4px}
+.stat-card{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--rl);padding:16px 14px;text-align:center;box-shadow:0 2px 10px rgba(99,102,241,.06)}
+.stat-n{font-family:'Sora',sans-serif;font-size:22px;font-weight:800;color:var(--green)}
+.stat-lbl{font-size:11.5px;font-weight:600;color:var(--t3);margin-top:3px}
+.content{max-width:820px;margin:0 auto;padding:24px 20px 56px}
+.section{margin:36px 0 0}
+.section-head{margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid var(--sf4)}
+.section-head h2{font-family:'Sora',sans-serif;font-size:19px;font-weight:800;color:var(--navy)}
+.section-head p{font-size:12px;color:var(--t3);margin-top:2px}
+.card{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--rl);padding:18px 20px;box-shadow:0 2px 10px rgba(99,102,241,.04)}
+.card p{font-size:13.5px;color:var(--t2);line-height:1.75;margin-bottom:10px}
+.card p:last-child{margin-bottom:0}
+.wage-table{width:100%;border-collapse:collapse;font-size:13.5px}
+.wage-table th{text-align:left;font-size:10.5px;text-transform:uppercase;color:var(--t3);font-weight:700;padding:8px 8px;border-bottom:2px solid var(--sf4)}
+.wage-table td{padding:9px 8px;border-bottom:1px solid var(--border);color:var(--t2)}
+.wage-table tr:last-child td{border-bottom:none}
+.wage-table .wg{font-weight:800;color:var(--green);font-family:'Sora',sans-serif}
+.wage-table .lbl{font-weight:700;color:var(--navy)}
+.wage-table .lbl a{color:var(--navy)}
+.wage-table .lbl a:hover{color:var(--green);text-decoration:underline}
+.wage-table .cnt{color:var(--t3);font-size:12px}
+.warn-box{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:var(--r);margin:12px 0;font-size:12.5px;line-height:1.65;background:var(--bluel);border:1.5px solid var(--blueb);color:#93c5fd}
+.cta-section{background:linear-gradient(160deg,#0a0520,#1e1b4b,#4c1d95,#7c3aed);color:#fff;border-radius:var(--rxl);padding:34px 24px;text-align:center;margin:40px 0 28px}
+.cta-section h3{font-family:'Sora',sans-serif;font-size:20px;font-weight:800;margin-bottom:8px}
+.cta-section p{font-size:13.5px;opacity:.82;margin-bottom:20px;max-width:440px;margin-left:auto;margin-right:auto}
+.cta-btn-row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.btn-cta-white{display:inline-flex;align-items:center;gap:8px;background:#fff;color:#1e1b4b;font-weight:700;font-size:13.5px;padding:12px 22px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.2)}
+.btn-cta-outline{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.12);color:#fff;font-weight:700;font-size:13.5px;padding:12px 22px;border-radius:12px;border:1.5px solid rgba(255,255,255,.35)}
+footer{background:var(--surface);border-top:1px solid var(--border);text-align:center;padding:22px 20px;font-size:12px;color:var(--t3)}
+footer a{color:var(--blue);font-weight:600}
+`;
+function _seoFmtN(n){return Number(n).toLocaleString("pt-BR");}
+function _seoFmtUsd(n){return "US$ "+Number(n).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});}
+// A fonte do DOL manda muito título/empregador em CAIXA ALTA — só normaliza o que está TODO em maiúsculas.
+function _seoTitulo(x){
+  const t=String(x==null?"":x).trim();
+  return (t&&t===t.toUpperCase()&&/[A-Z]/.test(t))?t.toLowerCase().replace(/\b[\w']+/g,w=>w.charAt(0).toUpperCase()+w.slice(1)):t;
+}
+// Mesma base de linhas do computeWageStats (salário por hora válido) — contagens batem com o resto do site.
+function _seoLinhasHorarias(){return getAllSheets().filter(r=>r&&r.wunit==="h"&&r.w&&parseFloat(r.w)>0&&parseFloat(r.w)<=100);}
+function _seoAgrega(rows){
+  const emp=new Map(),cargo=new Map(),cid=new Map();let h2a=0,h2b=0;const ws=[];
+  for(const r of rows){
+    const visa=FILTROS.visaDaLinha(r)||"H-2B";
+    if(visa==="H-2A")h2a++;else h2b++;
+    ws.push(parseFloat(r.w));
+    const nk=String(r.n||"").trim().toUpperCase();
+    if(nk){
+      if(!emp.has(nk))emp.set(nk,{nome:String(r.n).trim(),vagas:0,trab:0,visa:new Set()});
+      const g=emp.get(nk);g.vagas++;g.trab+=Number(r.wk)||0;g.visa.add(visa);
+    }
+    const ck=String(r.t||"").trim().toLowerCase();
+    if(ck){if(!cargo.has(ck))cargo.set(ck,{nome:String(r.t).trim(),n:0});cargo.get(ck).n++;}
+    const city=String(r.ci||"").trim();
+    if(city){const ky=city.toUpperCase();if(!cid.has(ky))cid.set(ky,{nome:city,n:0});cid.get(ky).n++;}
+  }
+  ws.sort((a,b)=>a-b);
+  const mediana=ws.length?(ws.length%2?ws[(ws.length-1)/2]:(ws[ws.length/2-1]+ws[ws.length/2])/2):0;
+  const porN=m=>[...m.values()].sort((a,b)=>b.n-a.n||String(a.nome).localeCompare(String(b.nome)));
+  return{
+    h2a,h2b,mediana:+mediana.toFixed(2),
+    empregadores:[...emp.values()].sort((a,b)=>b.trab-a.trab||b.vagas-a.vagas||a.nome.localeCompare(b.nome)).slice(0,10),
+    cargos:porN(cargo).slice(0,8),cidades:porN(cid).slice(0,8)
+  };
+}
+// Vagas H-2A recentes COM página indexável (_vagaIndexavel — a mesma régua do sitemap): é o caminho de LINK HTML
+// que faltava até as páginas /vaga/ (antes só o sitemap levava lá). Mais novas primeiro, pelo protocolo no DOL.
+function _seoVagasAbertas(filtroFn,limite){
+  const fontes=[SHEET_JAN,SHEET_JUL,SHEET_H2A,...Object.entries(SHEET_EXTRAS).filter(([k])=>DB_SHEETS_META[k]?.published===true).map(([,arr])=>arr)];
+  const vistos=new Set(),out=[];
+  for(const arr of fontes){
+    if(!Array.isArray(arr))continue;
+    for(const r of arr){
+      if(!r||!r.c||vistos.has(r.c)||!filtroFn(r)||!_vagaIndexavel(r))continue;
+      vistos.add(r.c);out.push(r);
+    }
+  }
+  out.sort((a,b)=>String(_vagaDataProtocolo(b.c)||"").localeCompare(String(_vagaDataProtocolo(a.c)||""))||(Number(b.wk)||0)-(Number(a.wk)||0));
+  return out.slice(0,limite);
+}
+function _seoBlocosDados(o){
+  const {nome,agg,abertas,outrosEstados,outrasAreas,total,avgWage,ehEstado}=o;
+  const e=_escHtml,fN=_seoFmtN,fU=_seoFmtUsd;
+  const de=ehEstado?`em ${e(nome)}`:`de ${e(nome)}`;
+  const fmtBR=iso=>/^\d{4}-\d{2}-\d{2}$/.test(String(iso||""))?String(iso).split("-").reverse().join("/"):"";
+  let h=`<style>.wage-table td{overflow-wrap:anywhere}.wage-table td.lbl .cnt{margin-top:2px;font-weight:500}@media(max-width:520px){.wage-table td{padding:8px 5px;font-size:12.5px}.wage-table th{padding:8px 5px;font-size:9.5px;letter-spacing:0}}</style>`;
+  h+=`<section class="section" id="h2b-ou-h2a"><div class="section-head"><h2>H-2B ou H-2A: o que aparece nas vagas ${de}</h2><p>Quantas são de trabalho não agrícola (H-2B) e quantas são agrícolas (H-2A)</p></div><div class="card"><p>Das ${fN(total)} vagas ${de} com salário por hora informado nas planilhas públicas do DOL, <strong>${fN(agg.h2b)} são H-2B</strong> (trabalho temporário não agrícola, como paisagismo, hotelaria e construção) e <strong>${fN(agg.h2a)} são H-2A</strong> (trabalho temporário agrícola). A mediana do salário é <strong>${fU(agg.mediana)}/hora</strong>, contra a média de ${fU(avgWage)}/hora — a mediana é a metade do meio da lista e sofre menos com valores extremos.</p></div></section>`;
+  if(agg.empregadores.length){
+    h+=`<section class="section" id="empregadores"><div class="section-head"><h2>Empregadores com mais vagas ${de}</h2><p>Ordenados pelo número de trabalhadores solicitados nas planilhas do DOL</p></div><div class="card"><table class="wage-table"><thead><tr><th>Empregador</th><th>Vagas</th><th>Trabalhadores</th></tr></thead><tbody>${agg.empregadores.map(x=>`<tr><td class="lbl">${e(_seoTitulo(x.nome))}<div class="cnt">${[...x.visa].sort().join(" / ")}</div></td><td class="cnt">${fN(x.vagas)}</td><td class="cnt">${fN(x.trab)}</td></tr>`).join("")}</tbody></table></div><div class="warn-box"><i class="ti ti-shield-check"></i><div>São dados públicos do Departamento do Trabalho dos EUA. Antes de qualquer contato, confira o aviso oficial da vaga no site do DOL — e lembre: nenhum empregador pode cobrar taxa de recrutamento do trabalhador no H-2B/H-2A.</div></div></section>`;
+  }
+  if(agg.cargos.length){
+    h+=`<section class="section" id="cargos"><div class="section-head"><h2>Cargos mais comuns ${de}</h2><p>Os títulos de vaga que mais se repetem nas planilhas</p></div><div class="card"><p>${agg.cargos.map(x=>`<strong>${e(_seoTitulo(x.nome))}</strong> (${fN(x.n)})`).join(" · ")}</p>${ehEstado&&agg.cidades.length?`<p><strong>Cidades com vagas H-2A listadas:</strong> ${agg.cidades.map(x=>`${e(_seoTitulo(x.nome))} (${fN(x.n)})`).join(" · ")}. As planilhas H-2B não informam a cidade.</p>`:""}</div></section>`;
+  }
+  if(abertas.length){
+    h+=`<section class="section" id="vagas-recentes"><div class="section-head"><h2>Vagas H-2A recentes ${de}</h2><p>Mais novas primeiro, pela data de protocolo no DOL — cada link abre a página da vaga com o aviso oficial</p></div><div class="card"><table class="wage-table"><thead><tr><th>Vaga</th><th>Período</th><th>Salário</th></tr></thead><tbody>${abertas.map(r=>`<tr><td class="lbl"><a href="/vaga/${encodeURIComponent(r.c)}">${e(_seoTitulo(r.t))}</a><div class="cnt">${e(_seoTitulo(r.n))}${r.ci?" · "+e(_seoTitulo(r.ci)):""}</div></td><td class="cnt">${e(fmtBR(r.d))}${r.d&&r.de?" a ":""}${e(fmtBR(r.de))}</td><td class="wg">${r.w?fU(r.w)+"/h":"—"}</td></tr>`).join("")}</tbody></table></div></section>`;
+  }
+  h+=`<section class="section" id="veja-tambem"><div class="section-head"><h2>Veja também</h2><p>Outras vagas H-2B e H-2A por estado e por área</p></div><div class="card">`;
+  if(outrosEstados.length)h+=`<p><strong>Outros estados:</strong> ${outrosEstados.map(s=>`<a href="/vagas-h2b/${s.slug}" style="text-decoration:underline">${e(_seoTitulo(s.key))}</a>`).join(" · ")}</p>`;
+  if(outrasAreas.length)h+=`<p><strong>Outras áreas:</strong> ${outrasAreas.map(c=>`<a href="/vagas-h2b/categoria/${c.key}" style="text-decoration:underline">${e(c.label)}</a>`).join(" · ")}</p>`;
+  h+=`<p><a href="/vagas-h2b" style="text-decoration:underline"><strong>Todas as vagas por estado e por área</strong></a> · <a href="/quanto-ganha-h2b" style="text-decoration:underline">Quanto ganha um trabalhador H-2B</a> · <a href="/guia" style="text-decoration:underline">Guia do visto H-2B</a> · <a href="/h2b-e-golpe" style="text-decoration:underline">H-2B é golpe?</a></p></div></section>`;
+  return h;
+}
+function _seoPaginaBase(o){
+  const e=_escHtml;
+  const ld={"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":o.migalhas.map((m,i)=>({"@type":"ListItem","position":i+1,"name":m[0],"item":m[1]}))};
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d0f1a">
+<title>${e(o.title)}</title>
+<meta name="description" content="${e(o.desc)}">
+<meta name="author" content="H2BApply">
+<meta name="robots" content="${o.noindex?"noindex, follow":"index, follow"}">
+${o.canonical?`<link rel="canonical" href="${o.canonical}">
+<meta property="og:url" content="${o.canonical}">`:""}
+<meta property="og:title" content="${e(o.title)}">
+<meta property="og:description" content="${e(o.desc)}">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://h2bapply.com/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${e(o.title)}">
+<meta name="twitter:description" content="${e(o.desc)}">
+<meta name="twitter:image" content="https://h2bapply.com/og-image.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=4">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=4">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&family=Sora:wght@700;800&display=swap" rel="stylesheet">
+<link rel="preload" as="style" href="/vendor/tabler-icons.min.css" onload="this.onload=null;this.rel='stylesheet'" onerror="this.onerror=null;this.href='/vendor/tabler-icons.min.css';this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="/vendor/tabler-icons.min.css"></noscript>
+<style>
+${_SEO_CSS}</style>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXXXXXXXXX');</script>
+</head>
+<body>
+<div class="star-bg"></div>
+<header class="top-bar">
+  <a href="/" class="logo-row"><img src="/apple-touch-icon.png?v=4" alt="H2BApply logo"><span>H2BApply</span></a>
+  <a href="/?cadastro=1" class="btn-login" onclick="gtag('event','sign_up_intent',{method:'password',source:'${o.fonte}-nav'})"><i class="ti ti-rocket"></i> Começar grátis</a>
+</header>
+<section class="hero">
+  <div class="hero-badge"><i class="ti ti-map-pin"></i> ${e(o.badge)}</div>
+  <h1>${e(o.h1)}</h1>
+  <p class="hero-sub">${e(o.sub)}</p>
+  <a href="/?cadastro=1" class="btn-hero" onclick="gtag('event','sign_up_intent',{method:'password',source:'${o.fonte}-hero'})"><i class="ti ti-rocket"></i> Criar conta grátis</a>
+</section>
+${o.statsHtml||""}
+<main class="content">
+${o.bodyHtml}
+  <div class="cta-section">
+    <h3>${e(o.ctaTitulo)}</h3>
+    <p>Cadastro grátis, sem cartão (usuário e senha). Com um plano ativo, o H2BApply envia suas candidaturas pelo seu próprio Gmail.</p>
+    <div class="cta-btn-row">
+      <a href="/?cadastro=1" class="btn-cta-white" onclick="gtag('event','sign_up_intent',{method:'password',source:'${o.fonte}-cta'})"><i class="ti ti-rocket"></i> Criar conta grátis</a>
+      <a href="/quanto-ganha-h2b" class="btn-cta-outline"><i class="ti ti-chart-bar"></i> Ver salários por estado</a>
+    </div>
+  </div>
+</main>
+<footer>
+  <div style="margin-bottom:8px"><a href="/">H2BApply</a> · <a href="/guia">Guia H-2B/H-2A</a> · <a href="/vagas-h2b">Vagas por Estado</a> · <a href="/h2b-e-golpe">H2B é Golpe?</a> · <a href="/quanto-ganha-h2b">Quanto Ganha?</a> · <a href="/privacidade">Privacidade</a> · <a href="/termos">Termos</a></div>
+  <div>Dados calculados a partir de planilhas públicas do Departamento do Trabalho dos EUA. Conteúdo educativo, não é aconselhamento jurídico.</div>
+</footer>
+<script type="application/ld+json">
+${JSON.stringify(ld)}
+</script>
+</body>
+</html>`;
+}
+// Hub /vagas-h2b — a página natural para "vagas h2b" / "vagas h2b para brasileiros" e o ponto que distribui
+// link para TODOS os estados e áreas que têm página própria (mesmo corte do sitemap: nunca linka um 404).
+function renderHubPage(stats){
+  const {overall,byStateAll,byCategoryAll}=stats;
+  const e=_escHtml,fN=_seoFmtN,fU=_seoFmtUsd;
+  const estados=byStateAll.filter(s=>s.count>=MIN_JOBS_FOR_STATE_PAGE);
+  const areas=byCategoryAll.filter(c=>c.count>=MIN_JOBS_FOR_CATEGORY_PAGE);
+  const agg=_seoAgrega(_seoLinhasHorarias());
+  const linhaEstado=s=>`<tr><td class="lbl"><a href="/vagas-h2b/${s.slug}">${e(_seoTitulo(s.key))}</a></td><td class="cnt">${fN(s.count)}</td><td class="wg">${fU(s.avgWage)}/h</td></tr>`;
+  const linhaArea=c=>`<tr><td class="lbl"><a href="/vagas-h2b/categoria/${c.key}">${e(c.label)}</a></td><td class="cnt">${fN(c.count)}</td><td class="wg">${fU(c.avgWage)}/h</td></tr>`;
+  const stats3=`<div class="stats-row"><div class="stat-card"><div class="stat-n">${fN(overall.count)}</div><div class="stat-lbl">Vagas analisadas</div></div><div class="stat-card"><div class="stat-n">${fN(agg.h2b)} / ${fN(agg.h2a)}</div><div class="stat-lbl">H-2B / H-2A</div></div><div class="stat-card"><div class="stat-n">${fU(overall.avg)}</div><div class="stat-lbl">Salário médio/hora</div></div></div>`;
+  const body=`  <section class="section" id="por-estado"><div class="section-head"><h2>Vagas H-2B e H-2A por estado</h2><p>${fN(estados.length)} estados com vagas suficientes para ter página própria — clique para ver empregadores, cargos e salários</p></div><div class="card"><table class="wage-table"><thead><tr><th>Estado</th><th>Vagas</th><th>Média/hora</th></tr></thead><tbody>${estados.map(linhaEstado).join("")}</tbody></table></div></section>
+  <section class="section" id="por-area"><div class="section-head"><h2>Vagas H-2B e H-2A por área de trabalho</h2><p>${fN(areas.length)} áreas, da mais procurada à menos</p></div><div class="card"><table class="wage-table"><thead><tr><th>Área</th><th>Vagas</th><th>Média/hora</th></tr></thead><tbody>${areas.map(linhaArea).join("")}</tbody></table></div></section>
+  <section class="section" id="como-usar-lista"><div class="section-head"><h2>Como usar esta lista</h2><p>De onde vêm os números e o que fazer com eles</p></div><div class="card">
+    <p>Esta lista reúne as vagas H-2B (trabalho temporário não agrícola) e H-2A (trabalho temporário agrícola) das planilhas públicas do Departamento do Trabalho dos EUA (DOL), organizadas por estado e por área. A contagem considera as vagas que informam salário por hora; o salário de cada vaga é o valor mínimo exigido pelo DOL e pode variar por empregador e função.</p>
+    <p>Ver a lista é grátis. Para se candidatar, o H2BApply envia o currículo e os textos que <strong>você mesmo escreve</strong> direto aos empregadores, pelo seu próprio Gmail — o cadastro é grátis e o envio exige um plano. Nenhuma vaga garante emprego nem visto, e nenhum empregador pode cobrar taxa de recrutamento do trabalhador.</p>
+    <p>Antes de começar, leia: <a href="/guia" style="text-decoration:underline">o guia do visto H-2B</a>, <a href="/quanto-custa-o-visto-h2b" style="text-decoration:underline">quanto custa o visto</a>, <a href="/quanto-ganha-h2b" style="text-decoration:underline">quanto ganha um trabalhador</a>, <a href="/empresas-que-patrocinam-visto-h2b" style="text-decoration:underline">como achar empresas que patrocinam</a> e <a href="/h2b-e-golpe" style="text-decoration:underline">como se proteger de golpes</a>.</p>
+  </div></section>`;
+  return _seoPaginaBase({
+    title:"Vagas H-2B e H-2A para brasileiros: por estado e área | H2BApply",
+    desc:_cortaTexto(`${fN(overall.count)} vagas H-2B e H-2A das planilhas públicas do DOL, organizadas por ${estados.length} estados e ${areas.length} áreas, com o salário médio de cada uma. Cadastro grátis no H2BApply.`,158),
+    canonical:"https://h2bapply.com/vagas-h2b",
+    h1:"Vagas H-2B e H-2A para brasileiros: veja por estado e por área",
+    badge:"Vagas H-2B e H-2A",
+    sub:`${fN(overall.count)} vagas das planilhas públicas do Departamento do Trabalho dos EUA (DOL), organizadas por ${estados.length} estados e ${areas.length} áreas — com salário médio, empregadores e cargos de cada lugar.`,
+    statsHtml:stats3,bodyHtml:body,ctaTitulo:"Quer se candidatar a essas vagas? 🇺🇸",fonte:"vagas-h2b-hub",
+    migalhas:[["H2BApply","https://h2bapply.com/"],["Vagas H-2B e H-2A por estado e área","https://h2bapply.com/vagas-h2b"]]
+  });
+}
+function _renderSeoNaoEncontrada(titulo,msg,stats){
+  const e=_escHtml;
+  const estados=(stats&&stats.byStateAll||[]).filter(s=>s.count>=MIN_JOBS_FOR_STATE_PAGE).slice(0,12);
+  const body=`  <section class="section"><div class="section-head"><h2>${e(titulo)}</h2><p>${e(msg)}</p></div><div class="card"><p><a href="/vagas-h2b" style="text-decoration:underline"><strong>Ver todas as vagas por estado e por área</strong></a></p>${estados.length?`<p>Estados com mais vagas: ${estados.map(s=>`<a href="/vagas-h2b/${s.slug}" style="text-decoration:underline">${e(_seoTitulo(s.key))}</a>`).join(" · ")}</p>`:""}</div></section>`;
+  return _seoPaginaBase({title:titulo+" — H2BApply",desc:msg,canonical:null,noindex:true,h1:titulo,badge:"Página não encontrada",sub:msg,bodyHtml:body,ctaTitulo:"Procurando vagas H-2B e H-2A? 🇺🇸",fonte:"vagas-h2b-404",migalhas:[["H2BApply","https://h2bapply.com/"]]});
+}
+// /quanto-ganha-h2b com os números JÁ NO HTML (antes as tabelas só nasciam do fetch a /api/public-wage-stats —
+// que o robots.txt bloqueava — e o Google via "Carregando dados ao vivo…"). O fetch do app continua como
+// atualização; o HTML estático agora carrega o mesmo conteúdo e os links dos estados/áreas.
+function _servirQuantoGanha(req,res){
+  let html;
+  try{html=fs.readFileSync(path.join(__dirname,"quanto-ganha-h2b.html"),"utf8");}
+  catch{return serveHtml("quanto-ganha-h2b.html");}
+  try{
+    const {overall,byCategoryAll,byStateAll}=computeWageStats();
+    const fU=_seoFmtUsd,fN=_seoFmtN,e=_escHtml;
+    const lnk=(href,txt)=>`<a href="${href}" style="color:var(--navy);font-weight:700;text-decoration:underline">${e(txt)}</a>`;
+    const catRows=byCategoryAll.slice(0,14).map(c=>`<tr><td class="lbl">${c.count>=MIN_JOBS_FOR_CATEGORY_PAGE?lnk("/vagas-h2b/categoria/"+c.key,c.label):e(c.label)}</td><td class="cnt">${fN(c.count)}</td><td class="wg">${fU(c.avgWage)}/h</td></tr>`).join("");
+    const stRows=byStateAll.slice(0,12).map(s=>`<tr><td class="lbl">${(s.slug&&s.count>=MIN_JOBS_FOR_STATE_PAGE)?lnk("/vagas-h2b/"+s.slug,s.label):e(s.label)}</td><td class="cnt">${fN(s.count)}</td><td class="wg">${fU(s.avgWage)}/h</td></tr>`).join("");
+    const PH='<tbody><tr><td colspan="3" style="text-align:center;color:var(--t4);padding:20px">Carregando dados ao vivo...</td></tr></tbody>';
+    if(html.split(PH).length===3){
+      const k=html.indexOf(PH);
+      html=html.slice(0,k)+`<tbody>${catRows}</tbody>`+html.slice(k+PH.length);
+      const k2=html.indexOf(PH);
+      html=html.slice(0,k2)+`<tbody>${stRows}</tbody>`+html.slice(k2+PH.length);
+    }
+    html=html.replace('id="st-avg">—<',`id="st-avg">${fU(overall.avg)}<`).replace('id="st-min">—<',`id="st-min">${fU(overall.min)}<`).replace('id="st-max">—<',`id="st-max">${fU(overall.max)}<`).replace('id="st-count">—<',`id="st-count">${fN(overall.count)}<`)
+      .replace('Calculado ao vivo a partir dos dados do sistema.',`Calculado a partir de ${fN(overall.count)} vagas das planilhas públicas do DOL.`);
+  }catch(err){console.warn("[quanto-ganha] SSR falhou — serve o HTML com o fetch de sempre:",err.message);}
+  return sendHtmlCompressed(req,res,_injectGaId(Buffer.from(html,"utf8")).toString("utf8"),"public, max-age=1800");
+}
+
 // ── Página dinâmica SEO programático: /vagas-h2b/:estado ────────────────────
 // Uma página por estado (só para estados com volume real de vagas — evita
 // "thin content"), gerada no servidor com números reais e únicos por estado
@@ -4063,7 +4319,7 @@ async function registrarVagasNovasNoRadar(novas,origem){
 }
 
 
-function renderStatePage(entry,topCats,overallCount){
+function renderStatePage(entry,topCats,overallCount,ctx){
   const {key:stateName,count,avgWage,minWage,maxWage}=entry;
   const titleCase=stateName.toLowerCase().replace(/\b\w/g,c=>c.toUpperCase());
   const fmtN=n=>Number(n).toLocaleString("pt-BR");
@@ -4072,6 +4328,12 @@ function renderStatePage(entry,topCats,overallCount){
   // Google a descobrir as páginas novas de /vagas-h2b/categoria/:cat e passa
   // "link juice" entre as duas famílias de página programática).
   const catRows=topCats.map(c=>`<tr><td class="lbl"><a href="/vagas-h2b/categoria/${c.key}">${c.label}</a></td><td class="cnt">${fmtN(c.count)}</td><td class="wg">${fmtUsd(c.avgWage)}/h</td></tr>`).join("");
+  // 🔎 v980: seções com dado REAL (visto, mediana, empregadores, cargos, cidades, vagas H-2A recentes, navegação)
+  const _rowsE=_seoLinhasHorarias().filter(r=>normalizeStateName(r.s)===stateName);
+  const dadosHtml=_seoBlocosDados({nome:titleCase,agg:_seoAgrega(_rowsE),total:count,avgWage,ehEstado:true,
+    abertas:_seoVagasAbertas(r=>normalizeStateName(r.s)===stateName,20),
+    outrosEstados:((ctx&&ctx.byStateAll)||[]).filter(s=>s.count>=MIN_JOBS_FOR_STATE_PAGE&&s.slug!==entry.slug).slice(0,12),
+    outrasAreas:((ctx&&ctx.byCategoryAll)||[]).filter(c=>c.count>=MIN_JOBS_FOR_CATEGORY_PAGE).slice(0,8)});
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -4079,12 +4341,12 @@ function renderStatePage(entry,topCats,overallCount){
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0d0f1a">
 <title>Vagas H-2B e H-2A em ${titleCase}: ${fmtN(count)} Vagas, Salário Médio ${fmtUsd(avgWage)}/h</title>
-<meta name="description" content="${fmtN(count)} vagas H-2B/H-2A certificadas pelo DOL em ${titleCase}, com salário médio de ${fmtUsd(avgWage)}/hora (variando ${fmtUsd(minWage)} a ${fmtUsd(maxWage)}). Dados reais, calculados ao vivo.">
+<meta name="description" content="${fmtN(count)} vagas H-2B e H-2A das planilhas do DOL em ${titleCase}, com salário médio de ${fmtUsd(avgWage)}/hora (variando ${fmtUsd(minWage)} a ${fmtUsd(maxWage)}). Dados reais, com empregadores e cargos.">
 <meta name="author" content="H2BApply">
 <meta name="robots" content="index, follow">
 <link rel="canonical" href="https://h2bapply.com/vagas-h2b/${entry.slug}">
 <meta property="og:title" content="Vagas H-2B e H-2A em ${titleCase}: ${fmtN(count)} Vagas, Salário Médio ${fmtUsd(avgWage)}/h">
-<meta property="og:description" content="${fmtN(count)} vagas H-2B/H-2A certificadas pelo DOL em ${titleCase}, salário médio ${fmtUsd(avgWage)}/hora.">
+<meta property="og:description" content="${fmtN(count)} vagas H-2B e H-2A das planilhas do DOL em ${titleCase}, salário médio ${fmtUsd(avgWage)}/hora.">
 <meta property="og:url" content="https://h2bapply.com/vagas-h2b/${entry.slug}">
 <meta property="og:type" content="article">
 <meta property="og:image" content="https://h2bapply.com/og-image.png">
@@ -4092,7 +4354,7 @@ function renderStatePage(entry,topCats,overallCount){
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Vagas H-2B e H-2A em ${titleCase}: ${fmtN(count)} Vagas, Salário Médio ${fmtUsd(avgWage)}/h">
-<meta name="twitter:description" content="${fmtN(count)} vagas H-2B/H-2A certificadas pelo DOL em ${titleCase}, salário médio ${fmtUsd(avgWage)}/hora.">
+<meta name="twitter:description" content="${fmtN(count)} vagas H-2B e H-2A das planilhas do DOL em ${titleCase}, salário médio ${fmtUsd(avgWage)}/hora.">
 <meta name="twitter:image" content="https://h2bapply.com/og-image.png">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=4">
@@ -4163,7 +4425,7 @@ footer a{color:var(--blue);font-weight:600}
 <section class="hero">
   <div class="hero-badge"><i class="ti ti-map-pin"></i> Vagas em ${titleCase}</div>
   <h1>Vagas H-2B e H-2A em ${titleCase}: quantas tem e quanto pagam</h1>
-  <p class="hero-sub">${fmtN(count)} vagas certificadas pelo Departamento do Trabalho dos EUA (DOL) em ${titleCase}, com salário médio de ${fmtUsd(avgWage)} por hora. Números calculados ao vivo, direto da base de dados do H2BApply.</p>
+  <p class="hero-sub">${fmtN(count)} vagas das planilhas públicas do Departamento do Trabalho dos EUA (DOL) em ${titleCase}, com salário médio de ${fmtUsd(avgWage)} por hora. Números calculados a partir dessas planilhas, com os empregadores e cargos mais comuns.</p>
   <a href="/?cadastro=1" class="btn-hero" onclick="gtag('event','sign_up_intent',{method:'password',source:'vagas-h2b-${entry.slug}-hero'})"><i class="ti ti-rocket"></i> Ver essas vagas grátis</a>
 </section>
 <div class="stats-row">
@@ -4177,7 +4439,7 @@ footer a{color:var(--blue);font-weight:600}
     <div class="card">
       <table class="wage-table"><thead><tr><th>Área</th><th>Vagas</th><th>Média/hora</th></tr></thead><tbody>${catRows}</tbody></table>
     </div>
-    <div class="warn-box"><i class="ti ti-info-circle"></i><div>O salário exibido é a média entre as vagas certificadas em ${titleCase} — o valor exato de cada vaga é definido pelo DOL antes da contratação e pode variar por função e empregador específico.</div></div>
+    <div class="warn-box"><i class="ti ti-info-circle"></i><div>O salário exibido é a média entre as vagas listadas em ${titleCase} — o valor exato de cada vaga é definido pelo DOL antes da contratação e pode variar por função e empregador específico.</div></div>
   </section>
   <section class="section" id="sobre">
     <div class="section-head"><h2>Como se candidatar às vagas de ${titleCase}</h2><p>Nenhuma vaga é vendida — a candidatura é direta ao empregador</p></div>
@@ -4186,6 +4448,7 @@ footer a{color:var(--blue);font-weight:600}
       <p>Quer ver as vagas específicas de ${titleCase} disponíveis agora? Crie uma conta gratuita — leva menos de 1 minuto, com usuário e senha (sem conta do Google).</p>
     </div>
   </section>
+  ${dadosHtml}
   <div class="cta-section">
     <h3>Buscar vagas em ${titleCase} agora 🇺🇸</h3>
     <p>Conta grátis, sem cartão de crédito. O cadastro é usuário e senha e você já pode filtrar vagas por estado, categoria e salário.</p>
@@ -4196,7 +4459,7 @@ footer a{color:var(--blue);font-weight:600}
   </div>
 </main>
 <footer>
-  <div style="margin-bottom:8px"><a href="/">H2BApply</a> · <a href="/guia">Guia H-2B/H-2A</a> · <a href="/h2b-e-golpe">H2B é Golpe?</a> · <a href="/quanto-ganha-h2b">Quanto Ganha?</a> · <a href="/privacidade">Privacidade</a> · <a href="/termos">Termos</a></div>
+  <div style="margin-bottom:8px"><a href="/">H2BApply</a> · <a href="/guia">Guia H-2B/H-2A</a> · <a href="/vagas-h2b">Vagas por Estado</a> · <a href="/h2b-e-golpe">H2B é Golpe?</a> · <a href="/quanto-ganha-h2b">Quanto Ganha?</a> · <a href="/privacidade">Privacidade</a> · <a href="/termos">Termos</a></div>
   <div>Dados calculados a partir de planilhas públicas do Departamento do Trabalho dos EUA. Conteúdo educativo, não é aconselhamento jurídico.</div>
 </footer>
 <!-- v18-SEO: BreadcrumbList — rich result de trilha de navegação no Google.
@@ -4227,7 +4490,7 @@ ${JSON.stringify({
 // já calcula (topStatesByCategory). Cada página lista os estados com mais
 // vagas daquela categoria e o salário médio em cada um.
 const MIN_JOBS_FOR_CATEGORY_PAGE=20; // mesmo corte das páginas de estado — evita "thin content"
-function renderCategoryPage(entry,topStates,overallCount){
+function renderCategoryPage(entry,topStates,overallCount,ctx){
   const {key:catKey,count,avgWage,minWage,maxWage}=entry;
   const fullLabel=CATEGORY_LABELS[catKey]?.label||catKey;
   const labelParts=fullLabel.split(" ");
@@ -4239,6 +4502,12 @@ function renderCategoryPage(entry,topStates,overallCount){
     const stTitle=s.key.toLowerCase().replace(/\b\w/g,c=>c.toUpperCase());
     return `<tr><td class="lbl"><a href="/vagas-h2b/${s.slug}">${stTitle}</a></td><td class="cnt">${fmtN(s.count)}</td><td class="wg">${fmtUsd(s.avgWage)}/h</td></tr>`;
   }).join("");
+  // 🔎 v980: seções com dado REAL desta área (visto, mediana, empregadores, cargos, vagas H-2A recentes, navegação)
+  const _rowsC=_seoLinhasHorarias().filter(r=>(r.k||"other")===catKey);
+  const dadosHtml=_seoBlocosDados({nome:catName,agg:_seoAgrega(_rowsC),total:count,avgWage,ehEstado:false,
+    abertas:_seoVagasAbertas(r=>(r.k||"other")===catKey,20),
+    outrosEstados:topStates.slice(0,12),
+    outrasAreas:((ctx&&ctx.byCategoryAll)||[]).filter(c=>c.count>=MIN_JOBS_FOR_CATEGORY_PAGE&&c.key!==catKey).slice(0,8)});
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -4246,12 +4515,12 @@ function renderCategoryPage(entry,topStates,overallCount){
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0d0f1a">
 <title>Vagas H-2B e H-2A de ${catName}: ${fmtN(count)} Vagas, Salário Médio ${fmtUsd(avgWage)}/h</title>
-<meta name="description" content="${fmtN(count)} vagas H-2B/H-2A certificadas pelo DOL na área de ${catName}, com salário médio de ${fmtUsd(avgWage)}/hora (variando ${fmtUsd(minWage)} a ${fmtUsd(maxWage)}). Dados reais, calculados ao vivo.">
+<meta name="description" content="${fmtN(count)} vagas H-2B e H-2A das planilhas do DOL na área de ${catName}, com salário médio de ${fmtUsd(avgWage)}/hora (variando ${fmtUsd(minWage)} a ${fmtUsd(maxWage)}). Dados reais, com empregadores e cargos.">
 <meta name="author" content="H2BApply">
 <meta name="robots" content="index, follow">
 <link rel="canonical" href="https://h2bapply.com/vagas-h2b/categoria/${catKey}">
 <meta property="og:title" content="Vagas H-2B e H-2A de ${catName}: ${fmtN(count)} Vagas, Salário Médio ${fmtUsd(avgWage)}/h">
-<meta property="og:description" content="${fmtN(count)} vagas H-2B/H-2A certificadas pelo DOL na área de ${catName}, salário médio ${fmtUsd(avgWage)}/hora.">
+<meta property="og:description" content="${fmtN(count)} vagas H-2B e H-2A das planilhas do DOL na área de ${catName}, salário médio ${fmtUsd(avgWage)}/hora.">
 <meta property="og:url" content="https://h2bapply.com/vagas-h2b/categoria/${catKey}">
 <meta property="og:type" content="article">
 <meta property="og:image" content="https://h2bapply.com/og-image.png">
@@ -4259,7 +4528,7 @@ function renderCategoryPage(entry,topStates,overallCount){
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Vagas H-2B e H-2A de ${catName}: ${fmtN(count)} Vagas, Salário Médio ${fmtUsd(avgWage)}/h">
-<meta name="twitter:description" content="${fmtN(count)} vagas H-2B/H-2A certificadas pelo DOL na área de ${catName}, salário médio ${fmtUsd(avgWage)}/hora.">
+<meta name="twitter:description" content="${fmtN(count)} vagas H-2B e H-2A das planilhas do DOL na área de ${catName}, salário médio ${fmtUsd(avgWage)}/hora.">
 <meta name="twitter:image" content="https://h2bapply.com/og-image.png">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=4">
@@ -4330,7 +4599,7 @@ footer a{color:var(--blue);font-weight:600}
 <section class="hero">
   <div class="hero-badge">${catEmoji} Vagas de ${catName}</div>
   <h1>Vagas H-2B e H-2A de ${catName} nos EUA: quantas tem e quanto pagam</h1>
-  <p class="hero-sub">${fmtN(count)} vagas certificadas pelo Departamento do Trabalho dos EUA (DOL) na área de ${catName}, com salário médio de ${fmtUsd(avgWage)} por hora. Números calculados ao vivo, direto da base de dados do H2BApply.</p>
+  <p class="hero-sub">${fmtN(count)} vagas das planilhas públicas do Departamento do Trabalho dos EUA (DOL) na área de ${catName}, com salário médio de ${fmtUsd(avgWage)} por hora. Números calculados a partir dessas planilhas, com os empregadores e cargos mais comuns.</p>
   <a href="/?cadastro=1" class="btn-hero" onclick="gtag('event','sign_up_intent',{method:'password',source:'vagas-h2b-cat-${catKey}-hero'})"><i class="ti ti-rocket"></i> Ver essas vagas grátis</a>
 </section>
 <div class="stats-row">
@@ -4344,7 +4613,7 @@ footer a{color:var(--blue);font-weight:600}
     <div class="card">
       <table class="wage-table"><thead><tr><th>Estado</th><th>Vagas</th><th>Média/hora</th></tr></thead><tbody>${stateRows}</tbody></table>
     </div>
-    <div class="warn-box"><i class="ti ti-info-circle"></i><div>O salário exibido é a média entre as vagas certificadas de ${catName} — o valor exato de cada vaga é definido pelo DOL antes da contratação e pode variar por função e empregador específico.</div></div>
+    <div class="warn-box"><i class="ti ti-info-circle"></i><div>O salário exibido é a média entre as vagas listadas de ${catName} — o valor exato de cada vaga é definido pelo DOL antes da contratação e pode variar por função e empregador específico.</div></div>
   </section>
   <section class="section" id="sobre">
     <div class="section-head"><h2>Como se candidatar às vagas de ${catName}</h2><p>Nenhuma vaga é vendida — a candidatura é direta ao empregador</p></div>
@@ -4353,6 +4622,7 @@ footer a{color:var(--blue);font-weight:600}
       <p>Quer ver as vagas específicas de ${catName} disponíveis agora? Crie uma conta gratuita — leva menos de 1 minuto, com usuário e senha (sem conta do Google).</p>
     </div>
   </section>
+  ${dadosHtml}
   <div class="cta-section">
     <h3>Buscar vagas de ${catName} agora 🇺🇸</h3>
     <p>Conta grátis, sem cartão de crédito. O cadastro é usuário e senha e você já pode filtrar vagas por estado, categoria e salário.</p>
@@ -4363,7 +4633,7 @@ footer a{color:var(--blue);font-weight:600}
   </div>
 </main>
 <footer>
-  <div style="margin-bottom:8px"><a href="/">H2BApply</a> · <a href="/guia">Guia H-2B/H-2A</a> · <a href="/h2b-e-golpe">H2B é Golpe?</a> · <a href="/quanto-ganha-h2b">Quanto Ganha?</a> · <a href="/privacidade">Privacidade</a> · <a href="/termos">Termos</a></div>
+  <div style="margin-bottom:8px"><a href="/">H2BApply</a> · <a href="/guia">Guia H-2B/H-2A</a> · <a href="/vagas-h2b">Vagas por Estado</a> · <a href="/h2b-e-golpe">H2B é Golpe?</a> · <a href="/quanto-ganha-h2b">Quanto Ganha?</a> · <a href="/privacidade">Privacidade</a> · <a href="/termos">Termos</a></div>
   <div>Dados calculados a partir de planilhas públicas do Departamento do Trabalho dos EUA. Conteúdo educativo, não é aconselhamento jurídico.</div>
 </footer>
 <script type="application/ld+json">
@@ -4691,7 +4961,7 @@ footer a{color:var(--blue);font-weight:600}
   </div>
 </main>
 <footer>
-  <div style="margin-bottom:8px"><a href="/">H2BApply</a> · <a href="/guia">Guia H-2B/H-2A</a> · <a href="/h2b-e-golpe">H2B é Golpe?</a> · <a href="/quanto-ganha-h2b">Quanto Ganha?</a> · <a href="/privacidade">Privacidade</a> · <a href="/termos">Termos</a></div>
+  <div style="margin-bottom:8px"><a href="/">H2BApply</a> · <a href="/guia">Guia H-2B/H-2A</a> · <a href="/vagas-h2b">Vagas por Estado</a> · <a href="/h2b-e-golpe">H2B é Golpe?</a> · <a href="/quanto-ganha-h2b">Quanto Ganha?</a> · <a href="/privacidade">Privacidade</a> · <a href="/termos">Termos</a></div>
   <div>${_escHtml(fraseDol.longa)}. Conteúdo educativo, não é aconselhamento jurídico.</div>
 </footer>
 ${jobPosting?`<script type="application/ld+json">
@@ -7588,7 +7858,7 @@ const server=http.createServer(async(req,res)=>{
   }
   if(pathname==="/h2bapply-funciona"||pathname==="/h2bapply-funciona.html")return serveHtml("h2bapply-funciona.html"); // SEO: página "H2BApply funciona?" (como funciona, confiança, preços, FAQ)
   if(pathname==="/h2b-e-golpe"||pathname==="/h2b-e-golpe.html")return serveHtml("h2b-e-golpe.html"); // SEO/confiança: página "H2B é golpe?" — golpes comuns, regra federal anti-taxa-de-recrutamento, como verificar vaga real
-  if(pathname==="/quanto-ganha-h2b"||pathname==="/quanto-ganha-h2b.html")return serveHtml("quanto-ganha-h2b.html"); // SEO: página "quanto ganha quem trabalha H2B/H2A" — médias reais calculadas ao vivo via /api/public-wage-stats
+  if(pathname==="/quanto-ganha-h2b"||pathname==="/quanto-ganha-h2b.html")return _servirQuantoGanha(req,res); // SEO: página "quanto ganha quem trabalha H2B/H2A" — médias reais calculadas ao vivo via /api/public-wage-stats
   // 📄 SEO v340: 2 páginas de conteúdo novas (pedido do dono) — mesmo tema
   // escuro/estrutura de guia.html, arquivo estático servido do mesmo jeito.
   if(pathname==="/empresas-que-patrocinam-visto-h2b"||pathname==="/empresas-que-patrocinam-visto-h2b.html")return serveHtml("empresas-que-patrocinam-visto-h2b.html");
@@ -7597,37 +7867,52 @@ const server=http.createServer(async(req,res)=>{
   // no servidor com números reais (nunca arquivo estático). Estados com poucas vagas
   // (< MIN_JOBS_FOR_STATE_PAGE) não têm página própria pra evitar "thin content";
   // caem de volta pro hub de salários.
-  if(pathname==="/vagas-h2b"||pathname==="/vagas-h2b/"){res.writeHead(302,{"Location":"/quanto-ganha-h2b"});return res.end();}
-  // v18-SEO: SEO programático por CATEGORIA: /vagas-h2b/categoria/landscape, etc.
-  // Checado ANTES da rota genérica por estado abaixo, senão "/vagas-h2b/categoria"
-  // seria lido como se "categoria" fosse o slug de um estado.
-  if(pathname==="/vagas-h2b/categoria"||pathname==="/vagas-h2b/categoria/"){res.writeHead(302,{"Location":"/quanto-ganha-h2b"});return res.end();}
+  // 🔎 v980: /vagas-h2b é um HUB de verdade (200) — antes era um 302 pra /quanto-ganha-h2b e não existia nenhuma
+  // página-pai que distribuísse link pros estados/áreas. Estado/área inexistente ou abaixo do corte = 404 com corpo
+  // útil (links pro hub) — nunca 302: o 302 dizia "movida" pro Google e escondia o erro de rastreio.
+  if(pathname==="/vagas-h2b"||pathname==="/vagas-h2b/"){
+    try{
+      return sendHtmlCompressed(req,res,renderHubPage(computeWageStats()),"public, max-age=1800");
+    }catch(e){
+      console.warn("[vagas-h2b/hub] erro:",e.message);
+      res.writeHead(302,{"Location":"/quanto-ganha-h2b"});return res.end();
+    }
+  }
+  const _seo404=(titulo,msg)=>{
+    let st=null;try{st=computeWageStats();}catch{}
+    res.writeHead(404,{"Content-Type":"text/html; charset=utf-8","X-Robots-Tag":"noindex"});
+    return res.end(_renderSeoNaoEncontrada(titulo,msg,st));
+  };
+  // Checado ANTES da rota genérica por estado abaixo, senão "/vagas-h2b/categoria" seria lido como o slug de um estado.
+  if(pathname==="/vagas-h2b/categoria"||pathname==="/vagas-h2b/categoria/"){res.writeHead(302,{"Location":"/vagas-h2b"});return res.end();}
   if(pathname.startsWith("/vagas-h2b/categoria/")){
     const catKey=pathname.slice("/vagas-h2b/categoria/".length).replace(/\/$/,"").toLowerCase();
     try{
-      const{byCategoryAll,topStatesByCategory,overall}=computeWageStats();
+      const stats=computeWageStats();
+      const{byCategoryAll,byStateAll,topStatesByCategory,overall}=stats;
       const entry=byCategoryAll.find(c=>c.key===catKey);
-      if(!entry||entry.count<MIN_JOBS_FOR_CATEGORY_PAGE){res.writeHead(302,{"Location":"/quanto-ganha-h2b"});return res.end();}
+      if(!entry||entry.count<MIN_JOBS_FOR_CATEGORY_PAGE)return _seo404("Área de trabalho não encontrada","Não temos uma página para essa área de trabalho. Veja todas as áreas e estados com vagas H-2B e H-2A.");
       const topStates=topStatesByCategory.get(entry.key)||[];
-      const html=renderCategoryPage(entry,topStates,overall.count);
+      const html=renderCategoryPage(entry,topStates,overall.count,{byStateAll,byCategoryAll});
       return sendHtmlCompressed(req,res,html,"public, max-age=1800");
     }catch(e){
       console.warn("[vagas-h2b/categoria] erro:",e.message);
-      res.writeHead(302,{"Location":"/quanto-ganha-h2b"});return res.end();
+      res.writeHead(302,{"Location":"/vagas-h2b"});return res.end();
     }
   }
   if(pathname.startsWith("/vagas-h2b/")){
     const slug=pathname.slice("/vagas-h2b/".length).replace(/\/$/,"").toLowerCase();
     try{
-      const{byStateAll,topCategoriesByState,overall}=computeWageStats();
+      const stats=computeWageStats();
+      const{byStateAll,byCategoryAll,topCategoriesByState,overall}=stats;
       const entry=byStateAll.find(s=>s.slug===slug);
-      if(!entry||entry.count<MIN_JOBS_FOR_STATE_PAGE){res.writeHead(302,{"Location":"/quanto-ganha-h2b"});return res.end();}
+      if(!entry||entry.count<MIN_JOBS_FOR_STATE_PAGE)return _seo404("Estado não encontrado","Não temos uma página para esse estado. Veja todos os estados e áreas com vagas H-2B e H-2A.");
       const topCats=topCategoriesByState.get(entry.key)||[];
-      const html=renderStatePage(entry,topCats,overall.count);
+      const html=renderStatePage(entry,topCats,overall.count,{byStateAll,byCategoryAll});
       return sendHtmlCompressed(req,res,html,"public, max-age=1800");
     }catch(e){
       console.warn("[vagas-h2b/state] erro:",e.message);
-      res.writeHead(302,{"Location":"/quanto-ganha-h2b"});return res.end();
+      res.writeHead(302,{"Location":"/vagas-h2b"});return res.end();
     }
   }
   // 📄 SEO v340: página pública individual de vaga (/vaga/:caseNumber) — 1 URL
@@ -7670,6 +7955,7 @@ const server=http.createServer(async(req,res)=>{
       const _pages=[
         {loc:"https://h2bapply.com/",priority:"1.0",changefreq:"daily"},
         {loc:"https://h2bapply.com/guia",priority:"0.9",changefreq:"weekly"},
+        {loc:"https://h2bapply.com/vagas-h2b",priority:"0.9",changefreq:"weekly"},
         {loc:"https://h2bapply.com/h2bapply-funciona",priority:"0.8",changefreq:"weekly"},
         {loc:"https://h2bapply.com/h2b-e-golpe",priority:"0.8",changefreq:"weekly"},
         {loc:"https://h2bapply.com/quanto-ganha-h2b",priority:"0.8",changefreq:"weekly"},
