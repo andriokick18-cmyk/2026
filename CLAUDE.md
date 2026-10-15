@@ -4470,3 +4470,17 @@ do app continua como atualização; GA injetado como nas outras páginas; (6) CS
 `sitemap-conteudo.xml` (prioridade 0.9), no rodapé das 4 páginas dinâmicas e no bloco de guias da home.
 **Regra**: dado novo numa página SEO só se vier das planilhas (nunca inventar número, nunca afirmar
 "certificada" sem status Certified). 8 checks. sw bump (index.html).
+
+## 📚 v981 — Guia público /aprenda (missão SEO, 15/10/2026)
+
+O guia verificado do app (`aprenda-conteudo.html`, que continua **noindex** — o app o carrega por
+fetch) virou 8 páginas PÚBLICAS e indexáveis: `/aprenda` (visão geral), `/aprenda/h2b`, `/h2a`,
+`/h2b-vs-h2a`, `/mito-ou-verdade`, `/checklist`, `/glossario`, `/fontes-oficiais`. **Fonte única**:
+`_aprendaDados()` recorta cada `data-sub` do fragmento (contagem de `<div>` aninhado), limpa o que é
+do app (`onclick`/`oninput`, progresso, cabeçalhos coloridos, busca) e abre os `<details>`; nada do texto
+é copiado — editar o fragmento atualiza o app E o site. Quiz e Histórias ficam só no app (interativos).
+CSS em `aprenda-publico.css` (subconjunto do CSS do app + cartão branco `.apr-wrap` sobre o tema escuro das
+páginas SEO). Data "Conteúdo revisado em" é lida do comentário do próprio fragmento — nunca inventada;
+ao revisar o conteúdo, atualize a data lá. Slug inexistente = 404 noindex com corpo útil (nunca 302).
+No sitemap-conteudo, linkado na home (card em #guias-h2b), no hub /vagas-h2b e no rodapé das páginas SEO.
+`_seoPaginaBase` ganhou `extraCss` e `ldExtra` (JSON-LD Article). 3 checks. sw v201.

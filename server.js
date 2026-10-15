@@ -4088,7 +4088,7 @@ ${o.canonical?`<link rel="canonical" href="${o.canonical}">
 <link rel="preload" as="style" href="/vendor/tabler-icons.min.css" onload="this.onload=null;this.rel='stylesheet'" onerror="this.onerror=null;this.href='/vendor/tabler-icons.min.css';this.rel='stylesheet'">
 <noscript><link rel="stylesheet" href="/vendor/tabler-icons.min.css"></noscript>
 <style>
-${_SEO_CSS}</style>
+${_SEO_CSS}${o.extraCss||""}</style>
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
 <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXXXXXXXXX');</script>
 </head>
@@ -4117,13 +4117,13 @@ ${o.bodyHtml}
   </div>
 </main>
 <footer>
-  <div style="margin-bottom:8px"><a href="/">H2BApply</a> · <a href="/guia">Guia H-2B/H-2A</a> · <a href="/vagas-h2b">Vagas por Estado</a> · <a href="/h2b-e-golpe">H2B é Golpe?</a> · <a href="/quanto-ganha-h2b">Quanto Ganha?</a> · <a href="/privacidade">Privacidade</a> · <a href="/termos">Termos</a></div>
+  <div style="margin-bottom:8px"><a href="/">H2BApply</a> · <a href="/guia">Guia H-2B/H-2A</a> · <a href="/aprenda">Aprenda sobre H-2B e H-2A</a> · <a href="/vagas-h2b">Vagas por Estado</a> · <a href="/h2b-e-golpe">H2B é Golpe?</a> · <a href="/quanto-ganha-h2b">Quanto Ganha?</a> · <a href="/privacidade">Privacidade</a> · <a href="/termos">Termos</a></div>
   <div>Dados calculados a partir de planilhas públicas do Departamento do Trabalho dos EUA. Conteúdo educativo, não é aconselhamento jurídico.</div>
 </footer>
 <script type="application/ld+json">
 ${JSON.stringify(ld)}
 </script>
-</body>
+${o.ldExtra?`<script type="application/ld+json">\n${JSON.stringify(o.ldExtra)}\n</script>\n`:""}</body>
 </html>`;
 }
 // Hub /vagas-h2b — a página natural para "vagas h2b" / "vagas h2b para brasileiros" e o ponto que distribui
@@ -4142,7 +4142,7 @@ function renderHubPage(stats){
   <section class="section" id="como-usar-lista"><div class="section-head"><h2>Como usar esta lista</h2><p>De onde vêm os números e o que fazer com eles</p></div><div class="card">
     <p>Esta lista reúne as vagas H-2B (trabalho temporário não agrícola) e H-2A (trabalho temporário agrícola) das planilhas públicas do Departamento do Trabalho dos EUA (DOL), organizadas por estado e por área. A contagem considera as vagas que informam salário por hora; o salário de cada vaga é o valor mínimo exigido pelo DOL e pode variar por empregador e função.</p>
     <p>Ver a lista é grátis. Para se candidatar, o H2BApply envia o currículo e os textos que <strong>você mesmo escreve</strong> direto aos empregadores, pelo seu próprio Gmail — o cadastro é grátis e o envio exige um plano. Nenhuma vaga garante emprego nem visto, e nenhum empregador pode cobrar taxa de recrutamento do trabalhador.</p>
-    <p>Antes de começar, leia: <a href="/guia" style="text-decoration:underline">o guia do visto H-2B</a>, <a href="/quanto-custa-o-visto-h2b" style="text-decoration:underline">quanto custa o visto</a>, <a href="/quanto-ganha-h2b" style="text-decoration:underline">quanto ganha um trabalhador</a>, <a href="/empresas-que-patrocinam-visto-h2b" style="text-decoration:underline">como achar empresas que patrocinam</a> e <a href="/h2b-e-golpe" style="text-decoration:underline">como se proteger de golpes</a>.</p>
+    <p>Antes de começar, leia: <a href="/guia" style="text-decoration:underline">o guia do visto H-2B</a>, <a href="/aprenda" style="text-decoration:underline">o guia H-2B e H-2A em português</a>, <a href="/quanto-custa-o-visto-h2b" style="text-decoration:underline">quanto custa o visto</a>, <a href="/quanto-ganha-h2b" style="text-decoration:underline">quanto ganha um trabalhador</a>, <a href="/empresas-que-patrocinam-visto-h2b" style="text-decoration:underline">como achar empresas que patrocinam</a> e <a href="/h2b-e-golpe" style="text-decoration:underline">como se proteger de golpes</a>.</p>
   </div></section>`;
   return _seoPaginaBase({
     title:"Vagas H-2B e H-2A para brasileiros: por estado e área | H2BApply",
@@ -4154,6 +4154,76 @@ function renderHubPage(stats){
     statsHtml:stats3,bodyHtml:body,ctaTitulo:"Quer se candidatar a essas vagas? 🇺🇸",fonte:"vagas-h2b-hub",
     migalhas:[["H2BApply","https://h2bapply.com/"],["Vagas H-2B e H-2A por estado e área","https://h2bapply.com/vagas-h2b"]]
   });
+}
+// ── v981: /aprenda/* — o guia verificado do app (aprenda-conteudo.html) como páginas PÚBLICAS e indexáveis ──────────
+// O fragmento do app continua noindex e é a ÚNICA fonte do texto (nada é copiado: se o editorial muda lá, muda aqui).
+// Cada aba do guia vira uma URL própria; quiz e histórias ficam de fora (interativo / só dentro do app).
+const APRENDA_PAGINAS=[
+  {slug:"",sub:"hub",nav:"Visão geral",titulo:"Guia dos vistos H-2B e H-2A em português | H2BApply",h1:"Vistos H-2B e H-2A: o guia em português, com fontes oficiais",badge:"Guia dos vistos",resumo:"O que são os dois vistos, quem participa do processo, seus direitos e como fugir de golpe."},
+  {slug:"h2b",sub:"h2b",nav:"H-2B",titulo:"Visto H-2B: guia completo em português | H2BApply",h1:"Visto H-2B: o guia completo, tópico por tópico",badge:"Guia H-2B",resumo:"Trabalho temporário não agrícola: requisitos, processo, golpes, salário, entrevista e prazos."},
+  {slug:"h2a",sub:"h2a",nav:"H-2A",titulo:"Visto H-2A: guia completo em português | H2BApply",h1:"Visto H-2A: o guia completo do trabalho agrícola temporário",badge:"Guia H-2A",resumo:"Trabalho agrícola nos EUA: moradia, transporte, salário (AEWR), golpes e direitos."},
+  {slug:"h2b-vs-h2a",sub:"comp",nav:"H-2B x H-2A",titulo:"H-2B x H-2A: diferenças, moradia, salário e impostos | H2BApply",h1:"H-2B x H-2A: as diferenças que realmente importam",badge:"Comparação",resumo:"Tabela lado a lado: teto de vistos, moradia, transporte, salário mínimo, imposto e denúncia."},
+  {slug:"mito-ou-verdade",sub:"mitos",nav:"Mito ou verdade",titulo:"Mito ou verdade sobre o visto H-2B e H-2A | H2BApply",h1:"Mito ou verdade: o que dizem do visto H-2B e H-2A",badge:"Mito ou verdade",resumo:"As crenças mais comuns (e mais perigosas) sobre pagar por vaga, aprovação e visto negado."},
+  {slug:"checklist",sub:"check",nav:"Checklist",titulo:"Checklist antes de aceitar uma vaga H-2B ou H-2A | H2BApply",h1:"Checklist: 9 conferências antes de aceitar uma vaga H-2B ou H-2A",badge:"Checklist",resumo:"O que confirmar no site oficial, no contrato e com quem te ofereceu a vaga."},
+  {slug:"glossario",sub:"gloss",nav:"Glossário",titulo:"Glossário H-2B e H-2A: DOL, USCIS, I-129, I-94, AEWR | H2BApply",h1:"Glossário dos vistos H-2B e H-2A em português simples",badge:"Glossário",resumo:"Os termos oficiais (DOL, USCIS, I-129, DS-160, I-94, AEWR…) explicados sem juridiquês."},
+  {slug:"fontes-oficiais",sub:"fontes",nav:"Fontes oficiais",titulo:"Fontes oficiais sobre H-2B e H-2A: USCIS, DOL e State | H2BApply",h1:"Fontes oficiais para confirmar tudo sobre H-2B e H-2A",badge:"Fontes oficiais",resumo:"Os links do governo americano para conferir regras, vagas certificadas, salários e denúncia."}
+];
+let _aprendaCache=null;
+// Recorta <div ...> até o </div> que fecha (contagem de aninhamento) a partir de um índice que aponta pro "<div".
+function _aprendaDivFim(src,ini){
+  const tag=/<(\/?)div\b[^>]*>/g;tag.lastIndex=ini;let d=0,t;
+  while((t=tag.exec(src))){d+=t[1]?-1:1;if(d===0)return t.index+t[0].length;}
+  return -1;
+}
+function _aprendaTiraDiv(html,abertura){
+  const i=html.indexOf(abertura);if(i<0)return html;
+  const f=_aprendaDivFim(html,i);return f<0?html:html.slice(0,i)+html.slice(f);
+}
+function _aprendaLimpa(h){
+  h=_aprendaTiraDiv(h,'<div class="apr-progresso"');
+  h=h.replace(/<div class="apr-guia-header[^"]*"[^>]*>/g,m=>{ // cabeçalho colorido repete o H1 da página: sai
+    return m;
+  });
+  for(let g=0;g<12;g++){const i=h.search(/<div class="apr-guia-header/);if(i<0)break;const f=_aprendaDivFim(h,i);if(f<0)break;h=h.slice(0,i)+h.slice(f);}
+  h=h.replace(/<button class="apr-caminho (apr-caminho-[ab])" onclick="aprendaIr\('(h2b|h2a)'\)">([\s\S]*?)<\/button>/g,'<a class="apr-caminho $1" href="/aprenda/$2">$3</a>');
+  h=h.replace(/<button class="apr-link-btn" onclick="aprendaIr\('historias'\)">([^<]*)<\/button>/g,'<a href="/?cadastro=1">$1 (dentro do app, cadastro grátis)</a>');
+  h=h.replace(/<input class="apr-search"[^>]*>/g,'');
+  h=h.replace(/links na aba <b>🔎 Fontes Oficiais<\/b> abaixo/,'links na página <a href="/aprenda/fontes-oficiais">Fontes oficiais</a>');
+  h=h.replace(/\s+on[a-z]+="[^"]*"/g,'');
+  h=h.replace(/<details /g,'<details open ');
+  return h;
+}
+function _aprendaDados(){
+  if(_aprendaCache)return _aprendaCache;
+  const src=fs.readFileSync(path.join(__dirname,"aprenda-conteudo.html"),"utf8");
+  const subs={};
+  const re=/<div class="apr-sub[^"]*" data-sub="([a-z0-9-]+)">/g;let m;
+  while((m=re.exec(src))){
+    const f=_aprendaDivFim(src,m.index);if(f<0)continue;
+    const inner=src.slice(m.index+m[0].length,f-"</div>".length);
+    subs[m[1]]={html:_aprendaLimpa(inner),itens:(inner.match(/<details class="tut-d apr-item/g)||[]).length};
+  }
+  let aviso="";const di=src.indexOf('<div class="apr-disclaimer"');
+  if(di>=0){const df=_aprendaDivFim(src,di);if(df>0)aviso=_aprendaLimpa(src.slice(di,df));}
+  const rv=src.match(/Última verificação do conteúdo:\s*(\d\d)\/(\d\d)\/(\d{4})/);
+  let css="";try{css=fs.readFileSync(path.join(__dirname,"aprenda-publico.css"),"utf8");}catch{}
+  _aprendaCache={subs,aviso,css,revisao:rv?{br:`${rv[1]}/${rv[2]}/${rv[3]}`,iso:`${rv[3]}-${rv[2]}-${rv[1]}`}:null};
+  return _aprendaCache;
+}
+function renderAprendaPage(slug){
+  const pg=APRENDA_PAGINAS.find(x=>x.slug===slug);if(!pg)return null;
+  const D=_aprendaDados(),blk=D.subs[pg.sub];if(!blk)return null;
+  const e=_escHtml,url=`https://h2bapply.com/aprenda${slug?"/"+slug:""}`;
+  const nav=`<nav class="apr-nav" aria-label="Guia dos vistos H-2B e H-2A">${APRENDA_PAGINAS.map(x=>`<a href="/aprenda${x.slug?"/"+x.slug:""}"${x.slug===slug?' aria-current="page"':""}>${e(x.nav)}</a>`).join("")}</nav>`;
+  const rev=D.revisao?`<p class="apr-rev">Conteúdo revisado em ${D.revisao.br} com base em fontes oficiais do governo dos EUA (USCIS, DOL, Departamento de Estado, CBP). As regras mudam: confirme sempre nos links oficiais.</p>`:"";
+  const mais=`<section class="apr-mais"><h2>Continue aprendendo</h2><div class="apr-mais-grid">${APRENDA_PAGINAS.filter(x=>x.slug!==slug).map(x=>`<a href="/aprenda${x.slug?"/"+x.slug:""}"><strong>${e(x.nav)}</strong>${e(x.resumo)}</a>`).join("")}<a href="/vagas-h2b"><strong>Vagas por estado e área</strong>Veja onde estão as vagas H-2B e H-2A e quanto pagam.</a><a href="/h2b-e-golpe"><strong>H2B é golpe?</strong>Como reconhecer oferta falsa antes de pagar qualquer coisa.</a></div></section>`;
+  const body=`  ${nav}\n  ${rev}\n  <div class="apr-wrap">${D.aviso}${blk.html}</div>\n  ${mais}`;
+  const desc=_cortaTexto(pg.resumo+" Texto em português, com fontes oficiais citadas. Grátis, no H2BApply.",158);
+  const ld={"@context":"https://schema.org","@type":"Article",headline:pg.h1,inLanguage:"pt-BR",mainEntityOfPage:url,author:{"@type":"Organization",name:"H2BApply",url:"https://h2bapply.com/"},publisher:{"@type":"Organization",name:"H2BApply",logo:{"@type":"ImageObject",url:"https://h2bapply.com/apple-touch-icon.png"}}};
+  if(D.revisao)ld.dateModified=D.revisao.iso;
+  const migalhas=[["H2BApply","https://h2bapply.com/"],["Aprenda sobre H-2B e H-2A","https://h2bapply.com/aprenda"]];
+  if(slug)migalhas.push([pg.nav,url]);
+  return _seoPaginaBase({title:pg.titulo,desc,canonical:url,h1:pg.h1,badge:pg.badge,sub:pg.resumo,bodyHtml:body,ctaTitulo:"Pronto para procurar vagas reais? 🇺🇸",fonte:"aprenda"+(slug?"-"+slug:""),migalhas,extraCss:D.css,ldExtra:ld});
 }
 function _renderSeoNaoEncontrada(titulo,msg,stats){
   const e=_escHtml;
@@ -7788,6 +7858,12 @@ const ADMIN_RESERVED_USERNAMES = new Set(["andrio","andrew","diego"]);
 const server=http.createServer(async(req,res)=>{
   res._req=req; // V951: permite ao helper json() negociar gzip sem mudar 400+ call sites
   let u,pathname;try{u=new URL(req.url,"http://x");pathname=u.pathname;}catch{res.writeHead(400);return res.end();}
+  // 🔎 v981 (SEO): www.h2bapply.com → h2bapply.com por 301. Dois hosts servindo o MESMO conteúdo dividem o sinal do
+  // Google (e o login por www nunca fechava: o cookie nasce num host e o callback OAuth volta noutro). Só GET/HEAD e só
+  // o host www EXATO — healthcheck do Render, 127.0.0.1 e o domínio .onrender.com ficam intocados.
+  if((req.method==="GET"||req.method==="HEAD")&&String(req.headers.host||"").toLowerCase().split(":")[0]==="www.h2bapply.com"){
+    res.writeHead(301,{"Location":"https://h2bapply.com"+req.url,"Cache-Control":"public, max-age=86400"});return res.end();
+  }
   res.setHeader("X-Content-Type-Options","nosniff");res.setHeader("X-Frame-Options","SAMEORIGIN");
   res.setHeader("Content-Security-Policy",[
     "default-src 'self'",
@@ -7878,6 +7954,16 @@ const server=http.createServer(async(req,res)=>{
       res.writeHead(302,{"Location":"/quanto-ganha-h2b"});return res.end();
     }
   }
+  // 📚 v981: guia público /aprenda e /aprenda/<tópico> (conteúdo vem do fragmento verificado do app)
+  if(pathname==="/aprenda"||pathname.startsWith("/aprenda/")){
+    const _slug=pathname.slice("/aprenda".length).replace(/^\/+|\/+$/g,"").toLowerCase();
+    try{
+      const _h=renderAprendaPage(_slug);
+      if(_h)return sendHtmlCompressed(req,res,_h,"public, max-age=1800");
+    }catch(e){console.warn("[aprenda] erro:",e.message);}
+    res.writeHead(404,{"Content-Type":"text/html; charset=utf-8","X-Robots-Tag":"noindex"});
+    return res.end(_renderSeoNaoEncontrada("Guia não encontrado","Esse tópico do guia não existe. Veja a lista completa em /aprenda.",null));
+  }
   const _seo404=(titulo,msg)=>{
     let st=null;try{st=computeWageStats();}catch{}
     res.writeHead(404,{"Content-Type":"text/html; charset=utf-8","X-Robots-Tag":"noindex"});
@@ -7957,6 +8043,7 @@ const server=http.createServer(async(req,res)=>{
         {loc:"https://h2bapply.com/guia",priority:"0.9",changefreq:"weekly"},
         {loc:"https://h2bapply.com/vagas-h2b",priority:"0.9",changefreq:"weekly"},
         {loc:"https://h2bapply.com/h2bapply-funciona",priority:"0.8",changefreq:"weekly"},
+        ...APRENDA_PAGINAS.map(x=>({loc:`https://h2bapply.com/aprenda${x.slug?"/"+x.slug:""}`,priority:x.slug?"0.7":"0.8",changefreq:"monthly"})),
         {loc:"https://h2bapply.com/h2b-e-golpe",priority:"0.8",changefreq:"weekly"},
         {loc:"https://h2bapply.com/quanto-ganha-h2b",priority:"0.8",changefreq:"weekly"},
         {loc:"https://h2bapply.com/como-usar",priority:"0.7",changefreq:"weekly"},

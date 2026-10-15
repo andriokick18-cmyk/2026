@@ -7333,6 +7333,37 @@ async function drillAdminSettingsLegado() {
       /const _SEO_CSS=`[\s\S]*--bg:#0d0f1a[\s\S]*`;/.test(_srv980) && (_srv980.match(/<a href="\/vagas-h2b">Vagas por Estado<\/a>/g) || []).length >= 4 &&
       /return _servirQuantoGanha\(req,res\)/.test(_srv980) && /function renderHubPage\(stats\)/.test(_srv980),
       "faltou peça da v980 no server.js");
+    // 📚 v981: o guia verificado do app (aprenda-conteudo.html, noindex) vira páginas PÚBLICAS /aprenda/* — o texto vem
+    // do próprio fragmento (fonte única), então as guardas provam: as 8 URLs existem, são indexáveis, completas e limpas.
+    const _slugsAp = ["", "h2b", "h2a", "h2b-vs-h2a", "mito-ou-verdade", "checklist", "glossario", "fontes-oficiais"];
+    const _apPgs = [];
+    for (const sl of _slugsAp) _apPgs.push({ sl, r: await req2("GET", "/aprenda" + (sl ? "/" + sl : "")) });
+    const _apSm = (await req2("GET", "/sitemap-conteudo.xml")).body;
+    const _apRuim = _apPgs.filter(({ sl, r }) => !(r.status === 200 && /index, follow/.test(r.body) &&
+      r.body.includes(`rel="canonical" href="https://h2bapply.com/aprenda${sl ? "/" + sl : ""}"`) &&
+      (r.body.match(/<h1\b/g) || []).length === 1 && /não substitui aconselhamento jurídico/.test(r.body) &&
+      _apSm.includes(`<loc>https://h2bapply.com/aprenda${sl ? "/" + sl : ""}</loc>`) &&
+      !/\son(click|input)="/.test((r.body.split('<div class="apr-wrap">')[1] || "x onclick=\"").split('<section class="apr-mais">')[0]) && !/aprendaIr|aprendaQuiz/.test(r.body))).map((x) => x.sl || "(hub)");
+    const _apH2b = _apPgs.find((x) => x.sl === "h2b").r.body, _apH2a = _apPgs.find((x) => x.sl === "h2a").r.body;
+    const _apMit = _apPgs.find((x) => x.sl === "mito-ou-verdade").r.body;
+    const _apFrag = (await req2("GET", "/aprenda-conteudo"));
+    const _apQuiz = await req2("GET", "/aprenda/quiz");
+    check("📚 v981: as 8 páginas /aprenda/* (hub, H-2B, H-2A, comparação, mito ou verdade, checklist, glossário, fontes) respondem 200, indexáveis, com canonical próprio, 1 H1, aviso jurídico, no sitemap e SEM nenhum handler/JS do app",
+      _apRuim.length === 0, "quebradas: " + _apRuim.join(", "));
+    check("📚 v981: os guias saem COMPLETOS e abertos (H-2B ≥10 tópicos, H-2A ≥10, mito ou verdade ≥5), com as fontes oficiais citadas (USCIS/DOL) e o rótulo de revisão vindo do próprio fragmento",
+      (_apH2b.match(/<details open /g) || []).length >= 10 && (_apH2a.match(/<details open /g) || []).length >= 10 && (_apMit.match(/<details open /g) || []).length >= 5 &&
+      /O que é o H-2B\?/.test(_apH2b) && /href="https:\/\/www\.uscis\.gov\//.test(_apH2b) && /href="https:\/\/www\.dol\.gov\//.test(_apPgs.find((x) => x.sl === "fontes-oficiais").r.body) &&
+      /Conteúdo revisado em \d\d\/\d\d\/\d{4}/.test(_apPgs[0].r.body),
+      JSON.stringify({ b: (_apH2b.match(/<details open /g) || []).length, a: (_apH2a.match(/<details open /g) || []).length }));
+    const _wwwR = await req2("GET", "/aprenda/h2b?x=1", null, { Host: "www.h2bapply.com" });
+    const _wwwP = await req2("POST", "/api/auth/where", { email: "x@y.com" }, { Host: "www.h2bapply.com" });
+    check("🔎 v981: www.h2bapply.com vira 301 pro domínio sem www (GET, mantendo caminho e query) — um só host pro Google — e POST/outros hosts NÃO são redirecionados",
+      _wwwR.status === 301 && _wwwR.headers.location === "https://h2bapply.com/aprenda/h2b?x=1" && _wwwP.status !== 301,
+      JSON.stringify({ www: [_wwwR.status, _wwwR.headers.location], post: _wwwP.status }));
+    check("📚 v981: o fragmento do app segue noindex (conteúdo duplicado fora do Google), tópico inexistente — inclusive o quiz, que é interativo e fica só no app — dá 404 noindex, e a home e o hub /vagas-h2b linkam /aprenda por <a href>",
+      /noindex/.test(String(_apFrag.headers["x-robots-tag"] || "")) && _apQuiz.status === 404 && /noindex/.test(String(_apQuiz.headers["x-robots-tag"] || "")) &&
+      (await req2("GET", "/")).body.includes('href="/aprenda"') && (await req2("GET", "/vagas-h2b")).body.includes('href="/aprenda"'),
+      JSON.stringify({ frag: _apFrag.headers["x-robots-tag"], quiz: _apQuiz.status }));
     const gUsd = await req2("POST", "/api/admin/financeiro", { action: "add_gasto", gasto: { moeda: "USD", valorUSD: 10, cambio: 5, valor: 1, recorrente: true, categoria: "hospedagem", descricao: "Render (teste P5)", pagoPor: "empresa", dataGasto: new Date(Date.now() - 32 * 24 * 3600 * 1000).toISOString() } });
     const _gU = ((await get("/api/admin/financeiro")).json?.gastos || []).find((x) => x.id === gUsd.json?.id);
     const rec1 = await req2("POST", "/api/admin/financeiro", { action: "rodar_recorrentes" });
