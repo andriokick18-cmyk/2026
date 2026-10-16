@@ -190,7 +190,6 @@ function createPlanilhas(deps) {
     botLog, pushToUser, ADMIN_EMAILS,
     detectCategory, detectCategoryH2A, dedupe, verify, manifest,
     limparCidade,        // v182: régua ÚNICA de limpeza de cidade (server.js, ao lado do mapa de estados)
-    registrarVagasNovasNoRadar,
     isTest,              // true no npm test (TEST_LOGIN_TOKEN) — agendadores desligados
   } = deps;
 
@@ -564,7 +563,7 @@ function createPlanilhas(deps) {
       saveMeta();
       dolColeta.count = compact.length; dolColeta.progress = 100;
       const comEmail = compact.filter(r => r.e && String(r.e).includes("@")).length;
-      if (autoPub) { dcLog(`📢 Planilha PUBLICADA automaticamente: ${compact.length} vagas (${comEmail} com e-mail) — já disponível no Manual e no Automático.`); registrarVagasNovasNoRadar(compact, `Planilha nova ${sheetName}`).catch(() => { }); }
+      if (autoPub) { dcLog(`📢 Planilha PUBLICADA automaticamente: ${compact.length} vagas (${comEmail} com e-mail) — já disponível no Manual e no Automático.`); }
       else if (typeof autoPublishMin === "number") dcLog(`⚠️ Só ${compact.length} vagas válidas (mínimo pra publicar sozinho: ${autoPublishMin}) — ficou em RASCUNHO, revise no painel.`, "warn");
       else dcLog(`💾 Planilha salva em RASCUNHO: ${compact.length} vagas (${comEmail} já com e-mail). Revise e clique PUBLICAR pra liberar aos usuários.`);
       dcLog("🤖 O Enriquecimento automático completa os campos que faltarem (roda sozinho).");
@@ -727,9 +726,6 @@ function createPlanilhas(deps) {
         const viva = getSheetH2A(); viva.splice(0, viva.length, ...finais); setSheetH2A(viva);
         if (saveSheet("h2a-jun2026", viva) === false) { h2aNovasBot.pendenteGravar = true; throw new Error("não consegui gravar a planilha H-2A no disco — nova tentativa já agendada (a memória já está atualizada)"); }
         h2aNovasBot.pendenteGravar = false;
-        // 📡 só avisa o Radar do que é NOVO de verdade (protocolado nas últimas 3 semanas) — o preenchimento do começo não é "vaga nova"
-        const corte = new Date(Date.parse(_hoje + "T12:00:00Z") - 21 * 86400_000).toISOString().slice(0, 10);
-        registrarVagasNovasNoRadar(novasQueFicaram.filter(c => dataDoCaso(c.c) >= corte), "Vagas novas H-2A").catch(() => { });
       }
       SHEET_H2A = getSheetH2A();
       const maisRecente = finais.reduce((m, r) => { const d = dataDoCaso(r.c); return d > m ? d : m; }, "");

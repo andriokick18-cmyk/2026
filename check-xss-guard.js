@@ -161,7 +161,6 @@ const ALLOWLIST = new Set([
   //    parser a guarda não enxerga isso — cada uma conferida lendo o
   //    trecho onde é montada)
   "app.js:959a45d44e6f", // de          — ` <small>${esc(t(...))}</small>` ou ""
-  "app.js:b3ca0b199c8a", // cur         — card do radar, todo esc() por dentro
   "app.js:a20d906cc7b0", // _corpo      — esc(`…`) na atribuição
   "app.js:26e88c94e52f", // vtTag       — ternário entre 2 <span> literais
   "app.js:c35b21d6ca39", // pdf         — p.pdfName?esc(p.pdfName):literal
@@ -183,13 +182,8 @@ const ALLOWLIST = new Set([
   // ── (d) .map(...).join("") cujo corpo já escapa cada campo ───────────
   "app.js:24c969bf60de", // profiles.map(…) — esc(icon)/esc(cats)/esc(name) por dentro (v177-FIX2/v198)
   "app.js:86ead499f429", // v218: (porPlano[pl]||[]).map(…) — só DIAS_LBL/brl/economia (número) e literais CSS por dentro
-  "app.js:a7d180300b97", // _vfChipList("manual").map(c2=>esc(c2.lbl)).join(" · ")||esc(t('radar_all'))
   // ── (b) v218: CONSTANTE INTERNA — cor do card de plano ──────────────
   "app.js:fd150390570f", // borderCor — ternário de 3 literais CSS fixos ('var(--blue)'|'#f59e0b'|'var(--border2)')
-  // ── (v352) Prateleira "Vagas pra Você" (Home) — /api/jobs/pra-voce ──
-  "app.js:c7d0a0eb2427", // j.matchScore — computeJobMatchScore (server.js) sempre devolve NÚMERO 0-100, nunca texto livre
-  "app.js:24a8598892cf", // wageLbl?" · "+wageLbl:"" — wageLbl é montado com esc(j.wage) na atribuição, algumas linhas acima
-  "app.js:cd2b23a881ff", // scoreBadge — <span> montado só com j.matchScore (número, já coberto acima) interpolado
 ]);
 
 // ── Extração: as instruções que escrevem HTML ────────────────────────────

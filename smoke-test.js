@@ -2007,29 +2007,6 @@ async function drillAdminSettingsLegado() {
       check("🧹 v341: como-usar.html não promete mais recompensa em 💎 (perfil completo / 1ª candidatura) — mecanismo que não existe desde a remoção do sistema de diamantes (v170)",
         !_cusaSrc.includes("recompensa") && !/\+\d\s*💎/.test(_cusaSrc) && !_cusaSrc.includes('class="reward"'),
         "como-usar.html ainda promete recompensa em diamantes");
-      // 🎨 v344 (reshoot dos 7 screenshots do tutorial, 26/09/2026 — achado
-      // pelo agente que fotografou o app de verdade): o passo 2 dizia "Cada
-      // vaga mostra um selo 🎯 % de encaixe" — falso. Confirmado em app.js
-      // que o selo (matchScore/matchWhy) só existe em mkDetailHTML (a tela
-      // de detalhe), NUNCA em mkSheetCard (o card da lista) — o print antigo
-      // já mentia sobre isso e o texto nunca foi corrigido. Corrigido pra
-      // "Ao abrir uma vaga, ela mostra...". Guarda ESTRUTURAL (não só o
-      // texto): se algum dia mkSheetCard passar a renderizar o selo — ou
-      // mkDetailHTML deixar de renderizar — este teste force a reler e
-      // ajustar o texto do tutorial junto, nunca deixando os dois divergirem
-      // de novo em silêncio (mesma filosofia do v162: UI e doc não podem
-      // andar cada uma pro seu lado sem uma guarda percebendo).
-      const _appL344 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
-      const _mkSheetStart = _appL344.indexOf("function mkSheetCard(");
-      const _mkDetailStart = _appL344.indexOf("function mkDetailHTML(");
-      const _mkSheetBody = _appL344.slice(_mkSheetStart, _mkDetailStart);
-      const _mkDetailBody = _appL344.slice(_mkDetailStart, _mkDetailStart + 4000);
-      check("🎨 v344: como-usar.html não afirma mais que 'cada vaga' na LISTA mostra o selo de % de encaixe — o texto agora diz 'ao abrir uma vaga' (o selo é só no detalhe, mkDetailHTML)",
-        !_cusaSrc.includes("Cada vaga mostra um selo") && _cusaSrc.includes("Ao abrir uma vaga, ela mostra um selo"),
-        "como-usar.html ainda afirma que a lista mostra o selo por card");
-      check("🎨 v344 (estrutural): mkSheetCard (card da lista) continua SEM o selo de % de encaixe e mkDetailHTML (detalhe) continua COM ele — se isso mudar, o texto do tutorial (passo 2) precisa ser revisto junto",
-        _mkSheetStart > -1 && _mkDetailStart > _mkSheetStart && !/% de encaixe/.test(_mkSheetBody) && /% de encaixe/.test(_mkDetailBody),
-        "a relação entre onde o selo aparece e o texto do tutorial mudou — revisar como-usar.html");
       // 🐛 v345 (achado revisando os screenshots do v344 — print real mostrou
       // o botão "Candidatar-se" cortado pelo bottom-nav numa vaga com
       // descrição longa): #mob-detail-content (painel de detalhe de vaga no
@@ -4039,116 +4016,6 @@ async function drillAdminSettingsLegado() {
       !_admL312.includes('["vip","vipro","doublepro"].indexOf(u.plano)>=0?u.plano:"vipro"'),
       "modal de plano VIP ainda não reconhece a conta 'pro' corretamente");
 
-    // 🚨 v313 (achado de auditoria contínua — job matching, prioridade #1 da
-    // casa): _matchSignalFromRow lia r.visa||"" cru, ignorando o fallback
-    // pelo prefixo do case number (H-300→H-2A) que FILTROS.visaDaLinha já é
-    // a fonte única pra isso. Caminho real: admin "Importar planilha (JSON)"
-    // formato antigo, sem o campo .visa por linha — a vaga caía no ||"h2b"
-    // de computeJobMatchScore e comparava contra o perfil ERRADO, violando
-    // "a vaga manda no perfil" (v19). Usa o fixture cliente@test.com (já tem
-    // perfil h2a "pa" com currículo válido) — só carimba um `state` nele,
-    // sobe 1 vaga H-2A SEM campo visa, e confere que o match comparou
-    // contra o perfil H-2A (nunca o H-2B, que não tem state nenhum).
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
-    const salvaPa = await req2("POST", "/api/profiles/save", { id: "pa", name: "Perfil H-2A", visaType: "h2a", subjects: ["a", "b", "c"], emailBodies: ["x", "y", "z"], resumeIdx: 1004, coverIdx: 1002, state: "FLORIDA" });
-    check("🚨 v313: (setup) perfil H-2A do fixture aceita o state novo", salvaPa.json?.ok === true, salvaPa.body.slice(0, 150));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-    const upMatchV313 = await req2("POST", "/api/admin/sheet/upload", { name: "Match V313", key: "match-v313", data: [{ c: "H-300-MATCHV313-01", e: "empregadormatchv313@test.com", n: "Empregador Match V313", t: "Farmworker", s: "FLORIDA" }] });
-    check("🚨 v313: (setup) planilha SEM campo 'visa' por linha sobe normalmente (caminho real do 'Importar planilha' formato antigo)", upMatchV313.json?.ok === true, upMatchV313.body.slice(0, 150));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
-    const smV313 = await get("/api/sheet-meta?sheet=match-v313&email=0&top=5");
-    const jobV313 = (smV313.json?.jobs || []).find((j) => j.id === "H-300-MATCHV313-01" || j.caseNum === "H-300-MATCHV313-01");
-    check("🚨 v313: vaga H-2A SEM campo 'visa' (só o case number H-300) é comparada contra o perfil H-2A — o 'estado do seu perfil' bate (FLORIDA), provando que NÃO caiu no fallback cego pra H-2B (cujo perfil não tem state nenhum)",
-      Array.isArray(jobV313?.matchWhy) && jobV313.matchWhy.some((w) => w.includes("estado do seu perfil")),
-      JSON.stringify({ job: jobV313, why: jobV313?.matchWhy }).slice(0, 260));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-
-    // 🚨 v325 (achado de auditoria contínua — job matching, prioridade #1 da
-    // casa): CLAUDE.md documenta CNH como sinal que "alimenta a nota de
-    // encaixe", junto com inglês — mas computeJobMatchScore só lia
-    // englishLevel; hasDriverLicense chegava até ctx.h2bProfile (mesmo
-    // objeto) e nunca era usado. Guarda de negação testada contra as 323
-    // vagas H-2A reais que citam CDL/driver's license: sem ela, "NO CDL
-    // REQUIRED"/"do not require ... license" bateriam como EXIGÊNCIA (o
-    // oposto do texto real) — por isso o teste cobre os 2 sinais E o
-    // negativo. Reusa o mesmo fixture/planilha do v313 (cliente@test.com,
-    // perfil h2a "pa").
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
-    const setCnhSim = await req2("POST", "/api/settings", { h2bProfile: { englishLevel: "basic", hasDriverLicense: true } });
-    check("🚨 v325: (setup) hasDriverLicense:true salva em h2bProfile normalmente (mesmo caminho de app.js)", setCnhSim.json?.ok === true, setCnhSim.body.slice(0, 150));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-    const upV325 = await req2("POST", "/api/admin/sheet/upload", {
-      name: "Match V325", key: "match-v325",
-      data: [
-        { c: "H-300-MATCHV325-01", e: "empregadormatchv325a@test.com", n: "Empregador Match V325 A", t: "Farmworker", s: "FLORIDA", req: "Must have a valid driver's license." },
-        { c: "H-300-MATCHV325-02", e: "empregadormatchv325b@test.com", n: "Empregador Match V325 B", t: "Farmworker", s: "FLORIDA", req: "Equipment operation, 26,001 lbs and do not require commercial driver license to operate." },
-      ],
-    });
-    check("🚨 v325: (setup) planilha com as 2 vagas de teste sobe normalmente", upV325.json?.ok === true, upV325.body.slice(0, 150));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
-    const smV325a = await get("/api/sheet-meta?sheet=match-v325&email=0&top=5");
-    const jobV325pede = (smV325a.json?.jobs || []).find((j) => j.id === "H-300-MATCHV325-01" || j.caseNum === "H-300-MATCHV325-01");
-    const jobV325naoPede = (smV325a.json?.jobs || []).find((j) => j.id === "H-300-MATCHV325-02" || j.caseNum === "H-300-MATCHV325-02");
-    check("🚨 v325: vaga que EXIGE CNH ('must have a valid driver's license') soma pontos e explica o porquê quando o candidato TEM CNH",
-      Array.isArray(jobV325pede?.matchWhy) && jobV325pede.matchWhy.some((w) => w.includes("você tem CNH")),
-      JSON.stringify({ job: jobV325pede, why: jobV325pede?.matchWhy }).slice(0, 260));
-    check("🚨 v325: vaga que diz 'do not require commercial driver license' NÃO é tratada como exigência (a guarda de negação suprime o sinal — sem ela, bateria como o OPOSTO do texto real)",
-      Array.isArray(jobV325naoPede?.matchWhy) && !jobV325naoPede.matchWhy.some((w) => w.includes("CNH")),
-      JSON.stringify({ job: jobV325naoPede, why: jobV325naoPede?.matchWhy }).slice(0, 260));
-    // Candidato SEM CNH contra a mesma vaga que exige → penalidade, não bônus.
-    const setSemCnh = await req2("POST", "/api/settings", { h2bProfile: { englishLevel: "basic", hasDriverLicense: false } });
-    check("🚨 v325: (setup) hasDriverLicense:false salva normalmente", setSemCnh.json?.ok === true, setSemCnh.body.slice(0, 150));
-    const smV325b = await get("/api/sheet-meta?sheet=match-v325&email=0&top=5");
-    const jobV325semCnh = (smV325b.json?.jobs || []).find((j) => j.id === "H-300-MATCHV325-01" || j.caseNum === "H-300-MATCHV325-01");
-    check("🚨 v325: a MESMA vaga que exige CNH avisa 'pede CNH que você ainda não tem' pra quem não tem — nunca some, nunca vira bônus",
-      Array.isArray(jobV325semCnh?.matchWhy) && jobV325semCnh.matchWhy.some((w) => w.includes("pede CNH que você ainda não tem")),
-      JSON.stringify({ job: jobV325semCnh, why: jobV325semCnh?.matchWhy }).slice(0, 260));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-
-    // 🚨 v336 (achado de auditoria contínua sobre o próprio v325 desta
-    // sessão): as alternativas genéricas de naoExigeCNH ("not require(s/d)",
-    // "do/does not require", "not required to obtain") não tinham âncora de
-    // proximidade com CDL/driver's license — casavam em QUALQUER lugar do
-    // texto (desc+req inteiros). Uma vaga com "Must have a valid driver's
-    // license. English not required." batia as duas: pedeCNH=true (correto)
-    // E naoExigeCNH=true (por causa da frase sobre INGLÊS, sem relação
-    // nenhuma com CNH) — o sinal inteiro sumia, nem soma pontos pra quem tem
-    // CNH nem avisa quem não tem, apesar da vaga exigir CNH claramente.
-    // Reusa o mesmo fixture (cliente@test.com, perfil h2a "pa") e o par de
-    // sinais que v325 já testa lado a lado.
-    const upV336 = await req2("POST", "/api/admin/sheet/upload", {
-      name: "Match V336", key: "match-v336",
-      data: [
-        { c: "H-300-MATCHV336-01", e: "empregadormatchv336a@test.com", n: "Empregador Match V336 A", t: "Farmworker", s: "FLORIDA", req: "Must have a valid driver's license. English not required." },
-      ],
-    });
-    check("🚨 v336: (setup) planilha com a vaga que expôs o bug sobe normalmente", upV336.json?.ok === true, upV336.body.slice(0, 150));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "cliente@test.com" });
-    const setCnhV336 = await req2("POST", "/api/settings", { h2bProfile: { englishLevel: "basic", hasDriverLicense: true } });
-    check("🚨 v336: (setup) hasDriverLicense:true salva normalmente", setCnhV336.json?.ok === true, setCnhV336.body.slice(0, 150));
-    const smV336a = await get("/api/sheet-meta?sheet=match-v336&email=0&top=5");
-    const jobV336pede = (smV336a.json?.jobs || []).find((j) => j.id === "H-300-MATCHV336-01" || j.caseNum === "H-300-MATCHV336-01");
-    check("🚨 v336: vaga com 'must have a valid driver's license' NUMA frase e 'English not required' NOUTRA frase continua reconhecendo a exigência de CNH — antes a frase sobre inglês (sem relação com CNH) suprimia o sinal inteiro",
-      Array.isArray(jobV336pede?.matchWhy) && jobV336pede.matchWhy.some((w) => w.includes("você tem CNH")),
-      JSON.stringify({ job: jobV336pede, why: jobV336pede?.matchWhy }).slice(0, 260));
-    const setSemCnhV336 = await req2("POST", "/api/settings", { h2bProfile: { englishLevel: "basic", hasDriverLicense: false } });
-    check("🚨 v336: (setup) hasDriverLicense:false salva normalmente", setSemCnhV336.json?.ok === true, setSemCnhV336.body.slice(0, 150));
-    const smV336b = await get("/api/sheet-meta?sheet=match-v336&email=0&top=5");
-    const jobV336semCnh = (smV336b.json?.jobs || []).find((j) => j.id === "H-300-MATCHV336-01" || j.caseNum === "H-300-MATCHV336-01");
-    check("🚨 v336: a MESMA vaga avisa 'pede CNH que você ainda não tem' pra quem não tem, mesmo com a frase de inglês solta no meio do texto",
-      Array.isArray(jobV336semCnh?.matchWhy) && jobV336semCnh.matchWhy.some((w) => w.includes("pede CNH que você ainda não tem")),
-      JSON.stringify({ job: jobV336semCnh, why: jobV336semCnh?.matchWhy }).slice(0, 260));
-    // Regressão: a vaga do v325 que legitimamente NÃO exige CNH ("do not
-    // require commercial driver license") continua suprimindo o sinal —
-    // a correção não pode reabrir o falso-positivo que a guarda original
-    // evitava.
-    const smV336c = await get("/api/sheet-meta?sheet=match-v325&email=0&top=5");
-    const jobV336regr = (smV336c.json?.jobs || []).find((j) => j.id === "H-300-MATCHV325-02" || j.caseNum === "H-300-MATCHV325-02");
-    check("🚨 v336 (regressão): 'do not require commercial driver license' (mesma vaga do v325) continua suprimindo o sinal normalmente — a correção da janela de proximidade não reabriu o falso-positivo original",
-      Array.isArray(jobV336regr?.matchWhy) && !jobV336regr.matchWhy.some((w) => w.includes("CNH")),
-      JSON.stringify({ job: jobV336regr, why: jobV336regr?.matchWhy }).slice(0, 260));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-
     // 🚨 v326 (achado de auditoria contínua — CRÍTICO, envio automático):
     // noEmailCount nascia com `let` DENTRO do bloco do MODO 2 (monta fila
     // por cases/caseMeta — o ÚNICO formato que o front real manda, app.js
@@ -4259,68 +4126,36 @@ async function drillAdminSettingsLegado() {
     check("💳 v141: usuário comum recebe 401/403 (admin-only — dado financeiro sensível)", [401, 403].includes(finU403.status), `status=${finU403.status}`);
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
 
-    // ═══ 🎯 v82 (ordem do dono, 29/07/2026 — "IA sugerindo as vagas com mais
-    // chance pra cada um", prioridade #1 da casa): MATCH DE VAGA. Pontua cada
-    // vaga pelo encaixe com o perfil do candidato (categoria preferida,
-    // estado do perfil, texto batendo com experiência/inglês) — na busca
-    // manual (/api/sheet-meta) E na fila automática (/api/auto/start). ═══
-    // 🔒 v172: este bloco é sobre matchScore na fila automática, não sobre o
-    // gate de plano/Gmail novo — semeia os 2 pra chegar na parte testada.
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "matchtest@test.com", name: "Match Test", refreshToken: "rt-matchtest-test", vip: { manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000, active: true, plan: "doublepro" }, plan: "doublepro" });
-    // Sem preferência ainda: pega a categoria do 1º resultado de uma planilha real.
-    const smBase = await get("/api/sheet-meta?sheet=jan2026&email=0&top=5");
-    const _jobsBase = smBase.json?.jobs || [];
-    check("🎯 v82: /api/sheet-meta expõe matchScore pra usuário logado (nunca null pra quem tem sessão)", _jobsBase.length > 0 && _jobsBase.every((j) => j.matchScore != null), JSON.stringify(_jobsBase.map((j) => j.matchScore)));
-    const _alvo = _jobsBase[0];
-    const _scoreAntes = _alvo?.matchScore;
-    // Preferência de categoria = a categoria EXATA do próprio job alvo — depois confere que o MESMO job subiu de nota.
-    await req2("POST", "/api/settings", { h2bProfile: { preferredArea: _alvo.category, englishLevel: "basic", experiencedH2B: false, h2bSeasons: 0, usaTrips: false, hasDriverLicense: false, availability: "immediate" } });
-    const smDepois = await get("/api/sheet-meta?sheet=jan2026&email=0&top=5");
-    const _alvoDepois = (smDepois.json?.jobs || []).find((j) => j.id === _alvo.id);
-    check("🎯 v82: setar preferredArea igual à categoria da vaga AUMENTA o matchScore dessa vaga específica (mesma vaga, antes x depois)",
-      _alvoDepois && _alvoDepois.matchScore > _scoreAntes,
-      JSON.stringify({ antes: _scoreAntes, depois: _alvoDepois?.matchScore, categoria: _alvo.category }));
-    check("🎯 v82: matchWhy explica o motivo (nunca uma caixa preta)", Array.isArray(_alvoDepois?.matchWhy) && _alvoDepois.matchWhy.some((w) => w.includes("categoria")), JSON.stringify(_alvoDepois?.matchWhy));
-    // sort=match: a página inteira vem em ordem NÃO-crescente de matchScore.
-    const smMatchSort = await get("/api/sheet-meta?sheet=jan2026&email=0&top=25&sort=match");
-    const _scores = (smMatchSort.json?.jobs || []).map((j) => j.matchScore);
-    let _ordenado = true;
-    for (let i = 0; i < _scores.length - 1; i++) if (_scores[i] < _scores[i + 1]) _ordenado = false;
-    check("🎯 v82: sort=match devolve a página em ordem decrescente de matchScore", _scores.length > 1 && _ordenado, JSON.stringify(_scores));
-    // 🐢 v162 (dono, 24/08: "site está completamente lento, não é internet"):
-    // o comparador do sort=match recalculava computeJobMatchScore() DENTRO
-    // do Array.sort — 2x por comparação, sem cache — travando o processo
-    // (single-thread) inteiro a cada busca "🎯 Melhor pra mim" com as
-    // planilhas reais (milhares de vagas). Guarda ESTRUTURAL: o padrão tem
-    // que ser "calcula 1x por item, guarda, ordena pelo valor guardado"
-    // (decorate-sort-undecorate) — o MESMO padrão já correto do
-    // orderQueueSmart — nunca mais computeJobMatchScore dentro do comparador.
+    // ═══ 🧹 v986 (ORDEM DO DONO, 15/10/2026): "nosso site só tem um objetivo: ensinar e enviar automaticamente". A nota 🎯 de
+    // encaixe, "Melhor pra mim", a prateleira "Vagas pra você" e o Radar SAÍRAM; e a fila do automático é só ALEATÓRIA
+    // (ou a que a pessoa escolheu pelos filtros) — sem "fila esperta" por empregador menos contatado. ═══
     {
-      const _srv162 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
-      const _blocoMatch = _srv162.slice(_srv162.indexOf('sort==="match" && matchCtx'), _srv162.indexOf('sort==="match" && matchCtx') + 400);
-      check("🐢 v162: (estrutural) sort=match NUNCA recalcula o score dentro do comparador — calcula 1x por item (map), guarda, ordena pelo valor guardado",
-        !/\.sort\(\(a,\s*b\)\s*=>\s*\(?computeJobMatchScore/.test(_blocoMatch) &&
-        /\.map\(r=>\(\{r,sc:computeJobMatchScore/.test(_blocoMatch) &&
-        /\.sort\(\(a,b\)=>b\.sc-a\.sc\)/.test(_blocoMatch),
-        "sort=match ainda recalcula score no comparador (regressão de performance)");
+      const _srv986 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      const _app986 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _idx986 = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+      const _sm986 = await get("/api/sheet-meta?sheet=jan2026&email=0&top=5&sort=match");
+      const _rotas986 = [await get("/api/jobs/pra-voce"), await get("/api/radar")];
+      check("🧹 v986: o servidor não tem mais motor de encaixe, prateleira nem Radar — nenhum matchScore/matchWhy na lista de vagas, sort=match cai na ordem estável, /api/jobs/pra-voce e /api/radar não existem (404), e a fila do automático é só embaralhada (shuffleArray), sem ranking",
+        !/computeJobMatchScore|_matchSignalFrom|buildMatchCtx|registrarVagasNovasNoRadar|_radarSanitiza|_praVoceCache/.test(_srv986) &&
+        !/orderQueueSmart|getGlobalContactCounts/.test(_srv986) && /queue = shuffleArray\(queue\);/.test(_srv986) && /const ordered=shuffleArray\(fresh\);/.test(_srv986) &&
+        (_sm986.json?.jobs || []).length > 0 && (_sm986.json.jobs).every((j) => !("matchScore" in j) && !("matchWhy" in j)) &&
+        _rotas986.every((r) => r.status === 404),
+        JSON.stringify({ rotas: _rotas986.map((r) => r.status), sample: Object.keys((_sm986.json?.jobs || [])[0] || {}).filter((k) => /match/i.test(k)) }));
+      check("🧹 v986: o front não tem mais 'Melhor pra mim', botão Radar, prateleira 'Vagas pra você', selo '% de encaixe' no detalhe nem chaves de tradução desses recursos (3 idiomas)",
+        !/so-match|radar-btn|home-pravoce|radarModal|renderHomePraVoce|abrirVagaPraVoce|% de encaixe|matchScore|matchWhy/.test(_idx986 + _app986) &&
+        !/"(radar_[a-z_]+|sort_match|home_pravoce_title|home_pravoce_sub)":/.test(_app986),
+        "sobrou resquício do encaixe/Radar no front");
+      const _fila986 = await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "fila986@test.com", name: "Fila", refreshToken: "rt-fila986", vip: { manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000, plan: "doublepro", source: "payment", active: true }, plan: "doublepro" });
+      const _cvF986 = await req2("POST", "/api/cv/upload", { base64: Buffer.from("%PDF-1.4 " + "fila986 ".repeat(300)).toString("base64"), name: "CV_Fila986.pdf", cvType: "resume" });
+      const _qF986 = []; for (let i = 0; i < 12; i++) _qF986.push({ to: `fila${i}@fila986-test.com`, title: "Vaga", company: "Empresa " + i, category: i % 2 ? "landscape" : "construction", state: "FL" });
+      const _asF986 = await req2("POST", "/api/auto/start", { queue: _qF986, resumeIdx: _cvF986.json?.cv?.idx, subjects: ["x"], emailBodies: ["y"] });
+      const _stF986 = await get("/api/auto/status");
+      await req2("POST", "/api/auto/stop", {});
+      check("🧹 v986: o automático segue funcionando só com ordem aleatória — a fila de 12 vagas inicia e todas ficam na fila (embaralhadas, nunca perdidas)",
+        _asF986.json?.ok === true && (_stF986.json?.queueCategories || []).length >= 12 && _fila986.status === 200,
+        JSON.stringify({ ok: _asF986.json?.ok, n: (_stF986.json?.queueCategories || []).length }));
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     }
-
-    // Fila automática: 10 vagas de uma categoria "preferida" + 10 de outra,
-    // todas com empregador NOVO (contagem global 0 → mesma faixa da fila
-    // esperta) — só o match score decide a ordem dentro da faixa.
-    const pdfB64Match = Buffer.from("%PDF-1.4 " + "match ".repeat(300)).toString("base64");
-    const upMatch = await req2("POST", "/api/cv/upload", { base64: pdfB64Match, name: "Curriculo_Match.pdf", cvType: "resume" });
-    const _queueMatch = [];
-    for (let i = 0; i < 10; i++) _queueMatch.push({ to: `pref-${i}@matchtest-fila.com`, title: "Vaga Preferida", company: "Empresa Pref", category: "landscape", state: "FL" });
-    for (let i = 0; i < 10; i++) _queueMatch.push({ to: `outra-${i}@matchtest-fila.com`, title: "Vaga Outra", company: "Empresa Outra", category: "construction", state: "TX" });
-    await req2("POST", "/api/settings", { h2bProfile: { preferredArea: "landscape", englishLevel: "basic", experiencedH2B: false, h2bSeasons: 0, usaTrips: false, hasDriverLicense: false, availability: "immediate" } });
-    const asMatch = await req2("POST", "/api/auto/start", { queue: _queueMatch, resumeIdx: upMatch.json?.cv?.idx, subjects: ["x"], emailBodies: ["y"] });
-    check("🎯 v82: (setup) fila sintética de 20 vagas iniciou ok", asMatch.json?.ok === true, asMatch.body.slice(0, 160));
-    const stMatch = await get("/api/auto/status");
-    const _cats = stMatch.json?.queueCategories || [];
-    check("🎯 v82: fila esperta prioriza a categoria do perfil (landscape) — mesma faixa de contato (0), só o match decide, sem sobreposição possível (score 60-80 vs 40-60)",
-      _cats.length >= 20 && _cats.slice(0, 10).every((c) => c === "landscape"),
-      JSON.stringify(_cats));
 
     // ═══ 🔍 v173 (ORDEM DO DONO, 13/09/2026 — reset TOTAL dos filtros): motor
     // único de facetas (mod-filtros.js) + /api/vagas/filtros + UI nova. As
@@ -5174,7 +5009,7 @@ async function drillAdminSettingsLegado() {
       check("🚨 v177-FIX2: statusPainel().coleta.published reflete a publicação real feita agora mesmo (não fica preso em 'rascunho' depois de publicar)",
         plStPub.json?.coleta?.key === "teste2099" && plStPub.json?.coleta?.published === true, JSON.stringify(plStPub.json?.coleta));
       const pub2 = await req2("POST", "/api/admin/sheet/coleta-publish", { key: "teste2099" });
-      check("📢 v174: publicar de novo é idempotente (jaPublicada) — o radar nunca é avisado 2x", pub2.json?.ok === true && pub2.json.jaPublicada === true, pub2.body.slice(0, 100));
+      check("📢 v174: publicar de novo é idempotente (jaPublicada)", pub2.json?.ok === true && pub2.json.jaPublicada === true, pub2.body.slice(0, 100));
 
       // 🌾 v332: mesmo achado do "Vagas Novas H-2A" (abaixo), mas no OUTRO
       // caminho de entrada — "Coleta do DOL" manual (runDolColeta) também
@@ -5307,7 +5142,7 @@ async function drillAdminSettingsLegado() {
           enrichBot: { running: false }, enrichLog: () => { }, saveSheet: saveFn || (() => true), httpsReq: async () => ({ status: 500, body: "" }),
           botLog: (b, l, m) => ref.logs.push(m), pushToUser: async () => { }, ADMIN_EMAILS: [], detectCategory: () => "other", detectCategoryH2A: () => "crop",
           dedupe: (r) => ({ rows: r }), verify: () => ({ ok: true, duplicateCases: [] }), manifest: () => ({}), limparCidade: (x) => x,
-          registrarVagasNovasNoRadar: async () => 0, isTest: false,
+          isTest: false,
         });
         const esperaRodada = async (inst, n) => { for (let i = 0; i < 80; i++) { await new Promise((r) => setTimeout(r, 100)); if (!inst.h2aNovasBot.running && inst.h2aNovasBot.runs >= n) return true; } return false; };
         const lerEstadoR = (d) => JSON.parse(fs.readFileSync(path.join(d, "h2a_rolling.json"), "utf8"));
@@ -5503,51 +5338,6 @@ async function drillAdminSettingsLegado() {
         JSON.stringify(_ped.slice(0, 2).map((x) => ({ to: x.to, s: String(x.subject).slice(0, 40) }))));
     }
 
-    // ═══ 📡 v134: RADAR DE VAGAS (aprovado pelo dono) + funil do limite ═══
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radaruser@test.com", name: "Radar User" });
-    const rdVazio = await req2("POST", "/api/radar", { estados: [], cidade: "", q: "" });
-    check("📡 v134: radar sem NENHUM filtro é recusado (400) — radar de tudo viraria spam", rdVazio.status === 400, rdVazio.body.slice(0, 120));
-    const rdSave = await req2("POST", "/api/radar", { estados: ["MA"], cidade: "Martha's Vineyard", q: "housekeeper" });
-    const rdGet = await get("/api/radar");
-    // ⚠️ ATUALIZADO no v182 LOTE 9: o radar guarda o SNAPSHOT INTEIRO dos
-    // filtros em `radar.filtros` (antes só 4 dimensões soltas). O corpo LEGADO
-    // ({estados, cidade, q, categoria}) continua sendo aceito — front antigo em
-    // cache não pode perder o radar de ninguém.
-    check("📡 v134 + v182-L9: radar salva e aparece no GET (corpo legado continua aceito, normalizado pro snapshot único)",
-      rdSave.json?.ok === true && rdGet.json?.radar?.filtros?.estado?.[0] === "MA" &&
-      rdGet.json?.radar?.filtros?.cidade?.[0] === "Martha's Vineyard" && rdGet.json?.radar?.ativo === true,
-      rdGet.body.slice(0, 200));
-    const rdOff = await req2("POST", "/api/radar", { remove: true });
-    const rdGet2 = await get("/api/radar");
-    check("📡 v134: desligar o radar remove de verdade", rdOff.json?.ok === true && rdGet2.json?.radar === null, rdGet2.body.slice(0, 100));
-    // v174: além do upload manual do admin, a coleta do DOL, a publicação de
-    // rascunho e as vagas novas H-2A também avisam o radar (bloco 📋 acima);
-    // aqui fica a prova comportamental do caminho do upload, de ponta a
-    // ponta, em vez de só contar chamadas de registrarVagasNovasNoRadar() no texto.
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radaruser@test.com", name: "Radar User" });
-    // estado no formato NOME POR EXTENSO — é o que o front realmente manda
-    // (o VF guarda "MASSACHUSETTS", não a sigla "MA" — normalizeStateName no
-    // servidor) e é o mesmo formato do campo `s` das planilhas compactas.
-    await req2("POST", "/api/radar", { estados: ["MASSACHUSETTS"], cidade: "", q: "housekeeper" });
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-    const rdUpload = await req2("POST", "/api/admin/sheet/upload", {
-      name: "Radar Teste", key: "radar-teste",
-      data: [{ c: "H-400-RADAR-0001", e: "vaga@radarteste.com", n: "Radar Teste LLC", t: "Housekeeper", s: "MASSACHUSETTS" }],
-    });
-    check("📡 v134: admin consegue publicar planilha nova (/api/admin/sheet/upload)", rdUpload.json?.ok === true, rdUpload.body.slice(0, 160));
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radaruser@test.com" });
-    const rdGet3 = await get("/api/radar");
-    // ⚠️ ATUALIZADO no v189 LOTE 7: esta asserção codificava um comportamento
-    // ERRADO — dizia "avisa de verdade" e checava `totalAvisos`, um contador
-    // que a tela mostrava como "🔔 N avisos já enviados" e que NUNCA
-    // correspondeu a aviso nenhum (não há push nesta reconstrução: pushToUser
-    // é no-op, PUSH_ENABLED=false, e a função nem chegava a chamá-lo). O que o
-    // radar faz de verdade — e agora o que se mede — é CONTAR as vagas novas
-    // que combinam com o filtro salvo, pra pessoa ver quando abrir o site.
-    check("📡 v134 + v189-L7: vaga nova casando com o radar é CONTADA de verdade (novas sobe com o nº real de vagas que combinam, ultimaEm carimbado) — e o contador de 'avisos enviados', que nunca correspondeu a aviso nenhum, morreu",
-      rdGet3.json?.radar?.novas === 1 && rdGet3.json?.radar?.ultimaEm > 0 &&
-      !("totalAvisos" in (rdGet3.json?.radar || {})) && !("lastPushAt" in (rdGet3.json?.radar || {})),
-      JSON.stringify(rdGet3.json?.radar || {}).slice(0, 200));
     // 🚫 v189 LOTE 7 — GUARDA PERMANENTE: enquanto PUSH_ENABLED for false, NENHUM
     // arquivo servido ao cliente pode prometer aviso/notificação. Não é questão
     // de texto: não existe canal nenhum (sem VAPID, sem rota /api/push/*,
@@ -5576,10 +5366,6 @@ async function drillAdminSettingsLegado() {
       !_idxL7.includes("plan-push-ask") && !_idxL7.includes("auto-push-ask") &&
       !/radar_alerts/.test(_appL7),
       "sobrou código de pedido de push no front");
-    check("🌐 v189-L7: as chaves novas do Radar honesto existem nas 3 línguas (regra do dicionário) e o texto do radar não promete mais aviso",
-      (_appL7.match(/"radar_novas":/g) || []).length === 3 && (_appL7.match(/"radar_novas_zero":/g) || []).length === 3 &&
-      !/radar_sub":"[^"]*celular/.test(_appL7),
-      "radar_novas/radar_novas_zero não estão nas 3 línguas ou o radar_sub ainda fala em celular");
     // ══════════════════════════════════════════════════════════════════════
     // 📣 v197 — LOTE 15: OS NÚMEROS E AS PROMESSAS BATEM COM O CÓDIGO
     // Cinco textos vendiam um produto diferente do que o motor entrega. A
@@ -5686,9 +5472,9 @@ async function drillAdminSettingsLegado() {
     }
 
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-    check("📡⭐ v134: front tem o botão 📡 Radar e o funil do limite (limitUpsell 1x/dia)",
-      frontAll.includes("function radarModal") && frontAll.includes("function limitUpsell") && home.body.includes('id="radar-btn"') && frontAll.includes("h2b_upsell"),
-      "radarModal/limitUpsell/radar-btn/h2b_upsell não encontrados");
+    check("⭐ v134: front tem o funil do limite (limitUpsell 1x/dia)",
+      frontAll.includes("function limitUpsell") && frontAll.includes("h2b_upsell"),
+      "limitUpsell/h2b_upsell não encontrados");
 
     // (v133: prompt da IA do chat — o chat com IA foi removido por completo
     // nesta reconstrução, README confirma.)
@@ -5721,56 +5507,7 @@ async function drillAdminSettingsLegado() {
       !_srvSrc.includes('"Accept-Encoding":"identity"') && !_srvSrc.includes('"Accept-Encoding":"gzip"'),
       `planilhas_gzip=${_planSrcV140.includes('"Accept-Encoding": "gzip"')} srv_gzip=${_srvSrc.includes('"Accept-Encoding":"gzip"')}`);
 
-    // ═══ 🎯 v139: VAGAS PRA VOCÊ — prateleira do match na Home (regra 13m) ═══
-    // O ranking é cacheado 10min por usuário, mas o corte da regra 8
-    // (enviado OU na fila nunca reaparece) roda FRESCO em toda resposta —
-    // o teste prova exatamente isso pondo o empregador nº1 na fila.
-    // 🔒 v172: este bloco é sobre a prateleira "Pra Você", não sobre o gate
-    // novo — semeia plano+Gmail pra chegar no /api/auto/start testado.
-    await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "pravoce@test.com", name: "PraVoce", refreshToken: "rt-pravoce-test", vip: { manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000, active: true, plan: "doublepro" }, plan: "doublepro" });
-    await req2("POST", "/api/settings", { h2bProfile: { preferredArea: "landscape", englishLevel: "basic", experiencedH2B: false, h2bSeasons: 0 } });
-    const pv1 = await get("/api/jobs/pra-voce");
-    const _pvJobs1 = pv1.json?.jobs || [];
-    check("🎯 v139: prateleira responde com 1 a 8 vagas, todas com e-mail e nota de match",
-      pv1.json?.ok === true && _pvJobs1.length >= 1 && _pvJobs1.length <= 8 && _pvJobs1.every((j) => j.email && typeof j.matchScore === "number"),
-      pv1.body.slice(0, 160));
-    check("🎯 v139: empregadores ÚNICOS, ordenados da maior nota pra menor (nunca caixa preta: matchWhy vem junto)",
-      new Set(_pvJobs1.map((j) => String(j.email).toLowerCase())).size === _pvJobs1.length &&
-      _pvJobs1.every((j, i) => i === 0 || _pvJobs1[i - 1].matchScore >= j.matchScore) &&
-      _pvJobs1.some((j) => Array.isArray(j.matchWhy)),
-      JSON.stringify(_pvJobs1.map((j) => j.matchScore)));
-    const pdfPv = Buffer.from("%PDF-1.4 pra-voce conteudo de teste ".repeat(60)).toString("base64");
-    const upPv = await req2("POST", "/api/cv/upload", { base64: pdfPv, name: "CV_PraVoce.pdf", cvType: "resume" });
-    const _pvTop = _pvJobs1[0];
-    const pvStart = await req2("POST", "/api/auto/start", { queue: [{ to: _pvTop.email, title: _pvTop.title, company: _pvTop.company, category: _pvTop.category || "other", state: _pvTop.state || "TX" }], resumeIdx: upPv.json?.cv?.idx, subjects: ["x"], emailBodies: ["y"] });
-    check("🎯 v139: (setup) fila de 1 vaga com o empregador nº1 da prateleira iniciou", pvStart.json?.ok === true, pvStart.body.slice(0, 140));
-    const pv2 = await get("/api/jobs/pra-voce");
-    check("🎯 v139: empregador que entrou na fila do automático SOME da prateleira NA HORA (regra 8 corta fresco, mesmo com ranking cacheado)",
-      pv2.json?.ok === true && !(pv2.json?.jobs || []).some((j) => String(j.email || "").toLowerCase() === String(_pvTop.email || "").toLowerCase()),
-      pv2.body.slice(0, 140));
-    await req2("POST", "/api/auto/stop", {});
     await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-
-    // 🎯 v352 (achado de auditoria autônoma pós-v351): a rota acima (v139) já
-    // existia 100% pronta e testada — dedupe da regra 8, nota de match,
-    // matchWhy — mas NENHUMA tela chamava ela; mesma classe de bug do
-    // v205-v208 ("backend existe, UI não chama"). Corrigido ligando a
-    // prateleira "🎯 Vagas pra Você" na Home (index.html) via
-    // renderHomePraVoce()/abrirVagaPraVoce() (app.js), reaproveitando
-    // _showJobOrSweep/mkDetailHTML (o MESMO fluxo de abrir vaga de sempre —
-    // nunca uma 2ª lógica de detalhe).
-    const _appJsPv = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
-    const _idxPv = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
-    check("🎯 v352: a Home tem o container da prateleira 'Vagas pra Você' (index.html) e app.js chama /api/jobs/pra-voce de dentro de renderHome() — a rota v139 deixou de ser código morto",
-      _idxPv.includes('id="home-pravoce-wrap"') && _idxPv.includes('id="home-pravoce-list"') &&
-      _appJsPv.includes('fetch("/api/jobs/pra-voce"') && /function renderHome\(\)\{[\s\S]{0,900}renderHomePraVoce/.test(_appJsPv),
-      "prateleira não está mais ligada na Home (container ou fetch sumiu)");
-    check("🎯 v352 (estrutural): abrirVagaPraVoce() reaproveita _showJobOrSweep — nunca uma 2ª lógica de abrir detalhe/sweep de já-contatado só pra esta prateleira",
-      /function abrirVagaPraVoce\(id\)\{[\s\S]{0,200}_showJobOrSweep\(id,j\)/.test(_appJsPv),
-      "abrirVagaPraVoce não está reaproveitando _showJobOrSweep");
-    check("🎯 v352 (i18n): home_pravoce_title/home_pravoce_sub existem nas 3 línguas (pt/en/es) — nunca texto fixo em português no markup de uma tela nova",
-      (_appJsPv.match(/"home_pravoce_title":/g) || []).length === 3 && (_appJsPv.match(/"home_pravoce_sub":/g) || []).length === 3,
-      "faltou alguma língua nas chaves novas de i18n");
 
     // ═══ 💼 MC4 — PARTE 1 (MASTER COMMAND 4, dono, 28/08): SÓCIOS & ACERTO ═══
     // "quanto eu tenho a receber e quanto diego tem a receber?" — fonte única
@@ -7483,7 +7220,7 @@ async function drillAdminSettingsLegado() {
       _stP984.status === 200 && _okP984 === true && _envP984?.assunto === "Unico titulo bom", JSON.stringify({ st: _stP984.status, ok: _okP984, assunto: _envP984?.assunto }));
     // imagens PÚBLICAS do editor nunca voltam à versão antiga (com botões {vaga}/exemplo/preview)
     const _sha984 = (b) => require("crypto").createHash("sha256").update(b).digest("hex");
-    const _aposentadas984 = new Set(["6c21577c6a718541b4cd040cf6daf37c28c70bfc11568a09d9ce0b09b2277aed", "1be6ef669d51242681d1e9b84b2e0265a2eea2a696316812f336da95452634f4", "5380c23a4d2bb1f7b0d8277e5b86537d7a1e9140bee55c9702ae40c900cda0e0", "35401217d976211acc95b00476018c32f5fecd3efab72f4875c6067207e3e182", "b20cbfb90b45741aaf73a47e36ad4c9139d0c3c880732fefc047605e28f5885f", "36385eb374e8599a2417de92f4fc62759233f9204867a608043f3e9318e9ade0", "86f3d6cd5be0cb23221a4defe4a887bc5dbec7f90b93d1d81092390af135b0eb", "c5fa8ee814046bceca4de346f9a2a998b35bb0b24c215214da6af24ec9c12d73", "232ed25c765a2472f5334f554460ddccb6516b430eabe96d091aa781c37c3846", "ed105631fd630eeb61cd095f5316359d40b7cbc8a576dd13988d081ac2456cd9", "347c3189fc7de6c42ebac7f7a4082e5e0bdf06a2777f5d462c5021bbd9592e5b", "26834909c169a1158c9f89b88d2c5d130a1569e33624cac6a746eb4b3246d413", "aedacbabe20480d0fea78954b5ed869c5624ceb4a89ac3503fc48fe9578bd499", "183f57c927025b281f74bda98a84290cb13937cb3bf90283a72c3f6f89d6948d"]);
+    const _aposentadas984 = new Set(["6c21577c6a718541b4cd040cf6daf37c28c70bfc11568a09d9ce0b09b2277aed", "1be6ef669d51242681d1e9b84b2e0265a2eea2a696316812f336da95452634f4", "5380c23a4d2bb1f7b0d8277e5b86537d7a1e9140bee55c9702ae40c900cda0e0", "35401217d976211acc95b00476018c32f5fecd3efab72f4875c6067207e3e182", "b20cbfb90b45741aaf73a47e36ad4c9139d0c3c880732fefc047605e28f5885f", "36385eb374e8599a2417de92f4fc62759233f9204867a608043f3e9318e9ade0", "86f3d6cd5be0cb23221a4defe4a887bc5dbec7f90b93d1d81092390af135b0eb", "c5fa8ee814046bceca4de346f9a2a998b35bb0b24c215214da6af24ec9c12d73", "232ed25c765a2472f5334f554460ddccb6516b430eabe96d091aa781c37c3846", "ed105631fd630eeb61cd095f5316359d40b7cbc8a576dd13988d081ac2456cd9", "347c3189fc7de6c42ebac7f7a4082e5e0bdf06a2777f5d462c5021bbd9592e5b", "26834909c169a1158c9f89b88d2c5d130a1569e33624cac6a746eb4b3246d413", "aedacbabe20480d0fea78954b5ed869c5624ceb4a89ac3503fc48fe9578bd499", "183f57c927025b281f74bda98a84290cb13937cb3bf90283a72c3f6f89d6948d", "932c819fe9e4754c2abbb10ee167519e68f323ce024a46e80a3b346d99b1a3d4", "1b9f9584de777d2afe56ed5a82bb252e1e128b5368a752cef862b330957c7b35", "28caef9617b5c069467c3e0d35e619d84413dfa5cf7566bf50e113e21a55907f", "84c8579c66c788528f416e3fe242d1dc320dca270a5c24e49f93272bc66cc698", "9fdcd31e3f2800503f29469ca242ebde1dd75576e3fce07ee1d01e0041d29532", "82cb4d3b8d8676d922a278be96d7eee56e6b1c81b8fddae4b819a92113b2e0ec", "23b63dad0e1fcbac33fb5768012ed69e2c08a371613e1da6f5bed277a0c6d352"]);
     const _imgsVelhas984 = fs.readdirSync(path.join(__dirname, "tutorial-img")).filter((f) => _aposentadas984.has(_sha984(fs.readFileSync(path.join(__dirname, "tutorial-img", f)))));
     const _cuHtml984 = fs.readFileSync(path.join(__dirname, "como-usar.html"), "utf8");
     const _cuVelhas984 = [..._cuHtml984.matchAll(/src="data:image\/jpeg;base64,([A-Za-z0-9+\/=]+)"/g)].filter((m) => _aposentadas984.has(_sha984(Buffer.from(m[1], "base64")))).length;
@@ -7629,10 +7366,10 @@ async function drillAdminSettingsLegado() {
       const _appJs160 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
       // Nesta reconstrução várias das 28 partes originais cobriam features
       // removidas (ranking, chat IA, notícias, códigos promo etc.) — restam
-      // 20 partes reais, todas com palavras-chave; o mecanismo (busca sob
+      // 18 partes reais (v986: saíram "Dados que aumentam suas chances" e o Radar), todas com palavras-chave; o mecanismo (busca sob
       // demanda) continua o mesmo.
       check(`📖 v160: o fragmento /tutorial-conteudo tem as ${_tuts.length} partes que sobraram (cada uma com palavras-chave) e a aba carrega sob demanda (loadTutorial) com busca (tutFiltra)`,
-        _tuts.length === 20 &&
+        _tuts.length === 18 &&
         (_frag160.match(/data-kw="/g) || []).length >= _tuts.length &&
         _idx160.includes('id="tut-conteudo"') && _idx160.includes('oninput="tutFiltra()"') &&
         _appJs160.includes("function tutFiltra") && _appJs160.includes("function loadTutorial") &&
@@ -7653,7 +7390,7 @@ async function drillAdminSettingsLegado() {
       // manda notificação nenhuma), então o print seria de uma tela que não
       // existe. O arquivo t05-notificacoes.jpg foi apagado do repo junto.
       check("📖 v160: TODAS as fotos referenciadas nos tutoriais existem de verdade no disco (nenhum print quebrado)",
-        _imgsRef.length >= 9 && _faltando.length === 0,
+        _imgsRef.length >= 8 && _faltando.length === 0,
         JSON.stringify({ refs: _imgsRef.length, faltando: _faltando }).slice(0, 200));
       const _img160 = await _getBufA("/tut-img/t01-landing.jpg");
       const _trav160 = await get("/tut-img/..%2Fserver.js");
@@ -8538,7 +8275,7 @@ async function drillAdminSettingsLegado() {
       const _appL9 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
       const _idxL9 = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
       // (36) dimensão sem dado AVISA, não some — nas 3 línguas (regra 6f)
-      const _chavesL9 = ["vf_no_cidade", "vf_no_inicio", "vf_no_cargo", "vf_no_vagas", "vf_no_exp", "vf_no_temporada", "vf_ponte", "vf_ws2_dyn", "radar_evaluated"];
+      const _chavesL9 = ["vf_no_cidade", "vf_no_inicio", "vf_no_cargo", "vf_no_vagas", "vf_no_exp", "vf_no_temporada", "vf_ponte", "vf_ws2_dyn"];
       check("🎨 v182-L9 (36): as 6 dimensões que sumiam caladas (cidade, mês de início, cargo, vagas, experiência, temporada) passaram a mostrar o MESMO aviso âmbar do salário/e-mail — e cada texto novo existe nas 3 línguas do dicionário",
         _chavesL9.every((k) => (_appL9.match(new RegExp('"' + k + '":', "g")) || []).length === 3) &&
         ['_semDado("cidade"', '_semDado("inicio"', '_semDado("cargo"', '_semDado("vagas"', '_semDado("exp"', '_semDado("temporada"'].every((x) => _appL9.includes(x)) &&
@@ -8939,77 +8676,10 @@ async function drillAdminSettingsLegado() {
         _idxL9.includes('id="btn-vf-ponte"') && _appL9.includes("function vfUsarFiltrosDaBusca(") &&
         _appL9.includes('VF.st.auto=Object.assign(_vfClone(st),{email:true})') && _appL9.includes("function _vfWs2Sub(") && _appL9.includes("_vfWs2Sub(d);vfPonteSync();"),
         "ponte manual→robô não encontrada");
-      check("🎨 v182-L9 (39/40): o snapshot dos filtros é função ÚNICA — o robô usa com e-mail forçado, o Radar usa o mesmo sem forçar nada",
-        _appL9.includes("function vfSnapshot(ctx,extra)") && _appL9.includes('function vfSnapshotAuto(extra){return vfSnapshot("auto",Object.assign({email:true}') &&
-        _appL9.includes('const payload={filtros:vfSnapshot("manual")}'),
+      check("🎨 v182-L9 (39): o snapshot dos filtros é função ÚNICA — o robô usa com e-mail forçado",
+        _appL9.includes("function vfSnapshot(ctx,extra)") && _appL9.includes('function vfSnapshotAuto(extra){return vfSnapshot("auto",Object.assign({email:true}'),
         "vfSnapshot deixou de ser a fonte única do snapshot");
-      // (40) o radar guarda TUDO e é avaliado pelo MESMO motor
-      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radar9@test.com", name: "Radar Nove" });
-      const rd9 = await req2("POST", "/api/radar", { filtros: { estado: ["MASSACHUSETTS"], categoria: ["housekeeper"], q: "housekeeper", salarioMin: 20, vagasMin: 2, exp: [0] } });
-      const rd9g = (await get("/api/radar")).json;
-      check("🎨 v182-L9 (40): o radar guarda o snapshot COMPLETO — salário, vagas abertas e experiência (que antes eram jogados fora) chegam inteiros ao servidor",
-        rd9.json?.ok === true && rd9.json.dimensoes === 6 && rd9g.radar.filtros.salarioMin === 20 && rd9g.radar.filtros.vagasMin === 2 &&
-        rd9g.radar.filtros.exp[0] === 0 && rd9g.radar.filtros.estado[0] === "MASSACHUSETTS" && rd9g.radar.filtros.categoria[0] === "housekeeper" && rd9g.radar.filtros.q === "housekeeper",
-        JSON.stringify(rd9g.radar && rd9g.radar.filtros).slice(0, 220));
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-      await req2("POST", "/api/admin/sheet/upload", {
-        name: "Radar Nove Pobre", key: "radar9-pobre",
-        data: [{ c: "H-400-R9-0001", e: "rh@radar9pobre.com", n: "Radar Nove Pobre LLC", t: "Housekeeper", s: "MASSACHUSETTS", k: "housekeeper", w: "12.00", wunit: "h", wk: 5, exp: 0 }],
-      });
-      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radar9@test.com" });
-      const rd9pobre = (await get("/api/radar")).json;
-      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-      await req2("POST", "/api/admin/sheet/upload", {
-        name: "Radar Nove Rico", key: "radar9-rico",
-        data: [{ c: "H-400-R9-0002", e: "rh@radar9rico.com", n: "Radar Nove Rico LLC", t: "Housekeeper", s: "MASSACHUSETTS", k: "housekeeper", w: "25.00", wunit: "h", wk: 5, exp: 0 }],
-      });
-      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radar9@test.com" });
-      const rd9rico = (await get("/api/radar")).json;
-      // ⚠️ v189 LOTE 7: mede `novas` (vagas novas que combinam de verdade) no
-      // lugar do antigo `totalAvisos` — o comportamento provado é o mesmo (a
-      // vaga pobre não entra, a rica entra), só o nome deixou de mentir.
-      check("🎨 v182-L9 (40) + v189-L7: quem pediu '$20+/h' não vê no radar a vaga de $12/h que só casa no estado e na palavra — o radar é avaliado pelo MESMO FILTROS.filtrar da lista e da fila do robô, nunca por uma 3ª régua",
-        (rd9pobre.radar.novas || 0) === 0 && rd9rico.radar.novas === 1 && rd9rico.radar.ultimaEm > 0,
-        `pobre=${rd9pobre.radar.novas} rico=${rd9rico.radar.novas}`);
-      const _srvL9 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
-      check("🎨 v182-L9 (40, estrutural): a régua própria do radar (includes/split de texto) morreu — sobrou _radarFiltrosDe + FILTROS.filtrar, e o modal diz exatamente o que está sendo avaliado",
-        _srvL9.includes("function _radarFiltrosDe(") && _srvL9.includes("const matches=FILTROS.filtrar(novas,f,{isDP:_isDoublePro(u2)});") &&
-        !_srvL9.includes("if(r.cidade&&!hay.includes(_nrm(r.cidade)))return false;") &&
-        _appL9.includes("radar_evaluated") && _appL9.includes('id="radar-agora"'),
-        "o radar voltou a ter régua própria");
-      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-      await req2("DELETE", "/api/admin/sheet/radar9-pobre");
-      await req2("DELETE", "/api/admin/sheet/radar9-rico");
-      // 🛡️ v276 (mesmo bug real do dono, agora no Radar): o filtro salvo do
-      // Radar NEM SEMPRE tem `email` explícito (a tela nunca expôs esse
-      // campo pro usuário escolher) — _radarSanitiza defaultava `false`
-      // (mostra tudo, inclusive vaga IMPOSSÍVEL de aplicar por falta de
-      // e-mail do empregador). Agora só `false` EXPLÍCITO desliga; ausente
-      // cai no padrão protetor, igual a lista e a fila do robô.
-      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radar276@test.com", name: "Radar 276" });
-      const rd276 = await req2("POST", "/api/radar", { filtros: { estado: ["MASSACHUSETTS"], categoria: ["housekeeper"] } });
-      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-      await req2("POST", "/api/admin/sheet/upload", {
-        name: "Radar 276 Sem Email", key: "radar276-sememail",
-        data: [{ c: "H-400-R276-0001", e: "", n: "Radar 276 Sem Email LLC", t: "Housekeeper", s: "MASSACHUSETTS", k: "housekeeper", w: "25.00", wunit: "h", wk: 5 }],
-      });
-      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radar276@test.com" });
-      const rd276semEmail = (await get("/api/radar")).json;
-      check("🛡️ v276: radar SEM `email` explícito no filtro salvo (nem true nem false) já esconde vaga sem e-mail do empregador — bate em tudo mais (estado/categoria) mas não conta como 'vaga nova' porque é impossível se candidatar",
-        rd276.json?.ok === true && (rd276semEmail.radar.novas || 0) === 0,
-        JSON.stringify({ save: rd276.json, novas: rd276semEmail.radar?.novas }));
-      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-      await req2("POST", "/api/admin/sheet/upload", {
-        name: "Radar 276 Com Email", key: "radar276-comemail",
-        data: [{ c: "H-400-R276-0002", e: "rh@radar276.com", n: "Radar 276 Com Email LLC", t: "Housekeeper", s: "MASSACHUSETTS", k: "housekeeper", w: "25.00", wunit: "h", wk: 5 }],
-      });
-      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "radar276@test.com" });
-      const rd276comEmail = (await get("/api/radar")).json;
-      check("🛡️ v276: a MESMA vaga COM e-mail conta normalmente — a proteção é só do campo e-mail, o resto do filtro (estado/categoria) segue funcionando igual",
-        rd276comEmail.radar.novas === 1, `novas=${rd276comEmail.radar.novas}`);
-      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
-      await req2("DELETE", "/api/admin/sheet/radar276-sememail");
-      await req2("DELETE", "/api/admin/sheet/radar276-comemail");
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -9052,15 +8722,6 @@ async function drillAdminSettingsLegado() {
         JSON.stringify(anon.jobs.map((j) => j.caseNum)) === JSON.stringify(pagante.jobs.map((j) => j.caseNum)) &&
         JSON.stringify(gratis.jobs.map((j) => j.email)) === JSON.stringify(pagante.jobs.map((j) => j.email)),
         `totais anon=${anon.total} gratis=${gratis.total} pagante=${pagante.total} admin=${admin.total}`);
-      // 🔓 v277: a prateleira "Pra Você" usa o MESMO podeVerEmailVaga — prova
-      // separada porque é o 2º (e único outro) consumidor da função.
-      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "gratis10@test.com" });
-      const pvGratis = await get("/api/jobs/pra-voce");
-      const _pvGratisJobs = pvGratis.json?.jobs || [];
-      check("🔓 v277: 'Pra Você' pra sessão GRÁTIS também devolve o e-mail COMPLETO (mesma régua da lista principal — podeVerEmailVaga não distingue mais free de VIP)",
-        pvGratis.json?.ok === true && _pvGratisJobs.length >= 1 &&
-        _pvGratisJobs.every((j) => j.email && !j.email.includes("•") && j.email.includes("@") && !j.emailBloqueado),
-        JSON.stringify({ n: _pvGratisJobs.length, primeiro: _pvGratisJobs[0]?.email }));
       // o filtro "só com e-mail" não pode depender do mascaramento
       const fAnon = (await getSemCookie("/api/vagas/filtros?sheet=jan2026&email=1")).json;
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "pagante10@test.com" });
@@ -9084,9 +8745,9 @@ async function drillAdminSettingsLegado() {
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
       const _srvL10 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
       const _appL10 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
-      check("🔒 v182-L10 (estrutural): a máscara é função ÚNICA (mascararEmail + podeVerEmailVaga) e está em TODA rota que devolve vaga com e-mail — lista e 'pra você' (v223: detalhe/lote/vagas ao vivo saíram do site — só planilhas a partir de agora)",
+      check("🔒 v182-L10 (estrutural): a máscara é função ÚNICA (mascararEmail + podeVerEmailVaga) e está em TODA rota que devolve vaga com e-mail — a lista (v986: 'pra você' saiu; v223: detalhe/lote/vagas ao vivo saíram do site — só planilhas a partir de agora)",
         _srvL10.includes("function mascararEmail(") && _srvL10.includes("function podeVerEmailVaga(") &&
-        (_srvL10.match(/podeVerEmailVaga\(req\)/g) || []).length >= 2 &&
+        (_srvL10.match(/podeVerEmailVaga\(req\)/g) || []).length >= 1 &&
         !/email:emailVal\|\|null/.test(_srvL10),
         "alguma rota voltou a devolver o e-mail cru");
       // 🧹 v305 (achado de auditoria contínua): jobComEmailVisivel() ficou

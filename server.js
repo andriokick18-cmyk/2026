@@ -2024,9 +2024,6 @@ function podeVerEmailVaga(req){
     return true;
   }catch(e){ return false; }
 }
-// 🎯 v139: cache do ranking "pra você" (10min por usuário) — só o RANKING é
-// cacheado; o corte de enviados/fila (regra 8) roda fresco em toda resposta.
-const _praVoceCache=new Map();
 
 // ══════════════════════════════════════════════════════════
 //  v13 — SISTEMA DE IDs ÚNICOS POR CANDIDATURA
@@ -4404,77 +4401,6 @@ function scheduleResumoDono(){
 
 
 
-// ── 📡 v134 — RADAR DE VAGAS (aprovado pelo dono, 13/08) ────────────────────
-// O usuário salva UM radar (os filtros inteiros da busca dele) e o sistema
-// marca quantas vagas NOVAS entraram combinando com ele. Chamado pelos 2
-// pontos onde vaga nova entra no sistema: robô Vagas Novas H-2A (diário) e a
-// planilha mensal auto-publicada.
-// 🚫 v189 LOTE 7 (decisão do dono): NÃO existe push nem aviso no celular.
-// Esta reconstrução não tem canal de notificação nenhum (pushToUser é no-op,
-// PUSH_ENABLED=false) — o radar é um FILTRO SALVO que conta as vagas novas e
-// mostra pro usuário quando ele abre o site. PROIBIDO voltar a escrever
-// "avisamos"/"push"/"aviso no celular" em qualquer tela enquanto não existir
-// um canal de verdade.
-// 📡 v182 LOTE 9 — FILTROS DO RADAR, UMA RÉGUA SÓ. Aceita o formato NOVO
-// (snapshot inteiro em `radar.filtros`) e o LEGADO (estados/cidade/q/categoria
-// de radares criados antes), e devolve sempre um filtro do motor ÚNICO — quem
-// avalia é o MESMO FILTROS.filtrar da lista de vagas e da fila do robô.
-function _radarSanitiza(src){
-  const o=src&&typeof src==="object"?src:{};
-  const lim=(a,n,len)=>(Array.isArray(a)?a:(a?[a]:[])).map(x=>String(x).trim().slice(0,len)).filter(Boolean).slice(0,n);
-  return {
-    q:String(o.q||"").slice(0,60).trim(),
-    estado:lim(o.estado!==undefined?o.estado:o.estados,8,40),
-    cidade:lim(o.cidade,6,80),
-    categoria:lim(o.categoria,8,30),
-    cargo:lim(o.cargo,6,140),
-    status:lim(o.status,6,60),
-    grupo:lim(o.grupo,8,2),
-    temporada:lim(o.temporada,4,20),
-    visa:lim(o.visa,2,10),
-    inicio:lim(o.inicio,12,10),
-    exp:(Array.isArray(o.exp)?o.exp:[]).map(x=>parseInt(x,10)).filter(n=>Number.isFinite(n)&&n>=0&&n<=600).slice(0,6),
-    salarioMin:Number(o.salarioMin)>0?Number(o.salarioMin):0,
-    vagasMin:Number(o.vagasMin)>0?Math.floor(Number(o.vagasMin)):0,
-    // 🛡️ v276: mesmo padrão protetor do mod-filtros.js — só `false` EXPLÍCITO
-    // desliga (nunca avisa de vaga sem e-mail, impossível de aplicar); campo
-    // ausente/indefinido (radar legado, ou snapshot sem a chave) cai no
-    // padrão seguro, não no antigo "mostra tudo".
-    email:o.email!==false,
-  };
-}
-function _radarFiltrosDe(r){
-  if(!r)return null;
-  const base=(r.filtros&&typeof r.filtros==="object")?r.filtros:_radarSanitiza(r);
-  return FILTROS.parse(base);
-}
-// 📡 v189 LOTE 7 — O RADAR É UM FILTRO SALVO, NÃO UM AVISO (decisão do dono).
-// Esta função se chamava "notificar" e contava `totalAvisos`, que a tela
-// mostrava como "🔔 N avisos já enviados" — mas NENHUM aviso saía daqui: não
-// há push (pushToUser é no-op, PUSH_ENABLED=false) e nem sequer era chamado.
-// O número subia sozinho e o usuário acreditava que tinha sido avisado N
-// vezes. Agora o que se registra é o que realmente acontece: quantas vagas
-// NOVAS entraram combinando com o filtro salvo (`radar.novas`, contagem real
-// de matches) e quando (`radar.ultimaEm`) — o usuário vê isso ao abrir o
-// Radar. A trava de 1x/dia saiu junto: ela era anti-spam de push, e contar
-// vaga nova não faz spam nenhum.
-async function registrarVagasNovasNoRadar(novas,origem){
-  try{
-    if(!Array.isArray(novas)||!novas.length)return 0;
-    const now=Date.now();let atingidos=0;
-    for(const [em,u2] of Object.entries(DB_USERS)){
-      const r=u2?.radar;if(!r||r.ativo===false)continue;
-      const f=_radarFiltrosDe(r);
-      if(!f||!FILTROS.ativos(f))continue;
-      const matches=FILTROS.filtrar(novas,f,{isDP:_isDoublePro(u2)});
-      if(!matches.length)continue;
-      setUser(em,{radar:{...r,ultimaEm:now,novas:Math.min(9999,(r.novas||0)+matches.length)}});
-      atingidos++;
-    }
-    if(atingidos)console.log(`[radar] 📡 ${atingidos} radar(es) com vaga nova combinando (${origem}, ${novas.length} vagas novas)`);
-    return atingidos;
-  }catch(e){console.warn("[radar]",e.message);return 0;}
-}
 
 
 function renderStatePage(entry,topCats,overallCount,ctx){
@@ -5348,8 +5274,8 @@ function _dataISO(v){const s=String(v||"").slice(0,10);return /^\d{4}-\d{2}-\d{2
 
 // no padrão estável — ordenação aleatória por requisição quebra a paginação
 // (a mesma vaga aparece 2x e outra nunca aparece).
-const SORTS_VALIDOS = new Set(["random", "asc", "desc", "wage", "start", "match"]);
-function searchSheet(arr, q, state, category, skip, top, sort, matchCtx) {
+const SORTS_VALIDOS = new Set(["random", "asc", "desc", "wage", "start"]);
+function searchSheet(arr, q, state, category, skip, top, sort) {
   let list = arr;
   let sugestao = null;
   if (q && q.trim()) {
@@ -5494,26 +5420,6 @@ function searchSheet(arr, q, state, category, skip, top, sort, matchCtx) {
       .map(x=>x.r);
   }
 
-  // 🎯 match → vaga com melhor encaixe no perfil do candidato primeiro
-  // (v82). Só ativa se o chamador passou um contexto — sem perfil,
-  // cai no comportamento estável de sempre (nunca quebra quem não logou).
-  // 🐢 v162 (dono, 24/08: "site está completamente lento, não é internet"):
-  // achado revisando o motor de busca — o comparador chamava
-  // computeJobMatchScore() DENTRO do sort, recalculando a pontuação (regex
-  // sobre o texto da vaga) 2x por comparação. Array.sort é O(n log n)
-  // comparações, então virava ~2n·log(n) chamadas da função — com as
-  // planilhas reais (9.240 + 2.206 + 4.831 + 2.625 vagas), uma busca só com
-  // "🎯 Melhor pra mim" recalculava a pontuação DEZENAS DE MILHARES de vezes,
-  // travando o processo (single-thread) inteiro por um tempo real — e isso
-  // trava o site pra TODOS os usuários conectados na hora, não só quem
-  // buscou. Corrigido com o mesmo padrão "decorate-sort-undecorate" que o
-  // orderQueueSmart (fila automática) já usava certo: calcula a pontuação
-  // UMA VEZ por item, guarda junto, ordena pelo valor guardado. O(n) scores
-  // em vez de O(n log n) — de dezenas de milhares de chamadas pra só n.
-  else if (sort==="match" && matchCtx) {
-    list=list.map(r=>({r,sc:computeJobMatchScore(_matchSignalFromRow(r),matchCtx)?.score||0}))
-      .sort((a,b)=>b.sc-a.sc).map(x=>x.r);
-  }
   // sort="asc", "random", "" → ordem estável para paginação correta
   return { total:list.length, items:list.slice(skip,skip+top), sugestao };
 }
@@ -5662,98 +5568,6 @@ function jobVisaType(target, sheet){
   return null;
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// 🎯 MATCH DE VAGA (dono, 29/07/2026: "IA sugerindo as vagas com mais chance
-// pra cada um" — prioridade #1 da casa é brasileiro conseguir emprego).
-// Pontua 0-100 o encaixe de UMA vaga com o perfil do candidato — heurística
-// local, instantânea, sem chamada de IA externa (dá pra rodar em toda busca
-// e em toda fila automática sem custo). Sempre devolve o "porquê" (nunca
-// caixa preta). Duas fontes de vaga (linha crua da planilha `r.*` e o objeto
-// já mapeado `{category,state,...}` usado na fila) convergem pro MESMO
-// formato de sinal antes de pontuar — uma função de pontuação só, nunca
-// duplicada por formato de vaga.
-// ══════════════════════════════════════════════════════════════════════════
-// 🚨 v313 (achado de auditoria contínua): visa:r.visa||"" cru ignorava o
-// fallback pelo prefixo do case number (H-300→H-2A, H-400→H-2B) que
-// FILTROS.visaDaLinha já é a fonte única pra isso (mod-filtros.js, reusado
-// em server.js:8378). Vaga sem o campo `.visa` — caminho real e suportado:
-// admin "Importar planilha (JSON)" formato antigo — caía silenciosamente no
-// ||"h2b" de computeJobMatchScore, comparando o perfil ERRADO (H-2A vs
-// perfil H-2B) e violando a regra "a vaga manda no perfil" (v19, dono,
-// 15/07/2026). Latente com os dados de hoje (100% das linhas têm .visa),
-// mas real assim que uma planilha antiga sem o campo entrar.
-function _matchSignalFromRow(r){return{category:r.k||"other",state:r.s||"",workers:r.wk||0,text:`${r.desc||""} ${r.req||""}`,visa:FILTROS.visaDaLinha(r)||r.visa||""};}
-function _matchSignalFromJob(j){return{category:j.category||"other",state:j.state||"",workers:j.workers||0,text:`${j.desc||""} ${j.req||""}`,visa:FILTROS.visaDaLinha({visa:j.visa,c:j.caseNum})||j.visa||""};}
-function computeJobMatchScore(sig,ctx){
-  if(!ctx)return null;
-  const vt=jobVisaType({visa:sig.visa})||"h2b";
-  const profile=ctx.profileByVisa?ctx.profileByVisa[vt]:null;
-  const h2bProfile=ctx.h2bProfile;
-  let score=50;const why=[];
-  if(h2bProfile?.preferredArea&&sig.category&&h2bProfile.preferredArea===sig.category){score+=20;why.push("categoria que você prefere");}
-  if(profile){
-    if(Array.isArray(profile.categories)&&profile.categories.length&&profile.categories.includes(sig.category)){score+=15;why.push("dentro do que seu perfil mira");}
-    if(profile.state&&sig.state&&profile.state===sig.state){score+=15;why.push("estado do seu perfil");}
-  }
-  const txt=(sig.text||"").toLowerCase().trim();
-  if(txt){
-    const pedeExperiencia=/experience required|experienced worker|prior experience|returning worker/.test(txt);
-    const aceitaIniciante=/no experience|entry.?level|will train|on.the.job training/.test(txt);
-    const temExperiencia=!!(h2bProfile?.experiencedH2B||(h2bProfile?.h2bSeasons||0)>0);
-    if(temExperiencia&&pedeExperiencia){score+=10;why.push("pede experiência e você já tem");}
-    if(!temExperiencia&&aceitaIniciante){score+=10;why.push("aceita quem está começando");}
-    if(!temExperiencia&&pedeExperiencia){score-=10;why.push("pede experiência que você ainda não tem");}
-    const pedeIngles=/fluent english|advanced english|strong english|excellent english/.test(txt);
-    const inglesOpcional=/english not required|no english required|english is not necessary/.test(txt);
-    const nivel=h2bProfile?.englishLevel||"basic";
-    if((nivel==="none"||nivel==="basic")&&inglesOpcional){score+=8;why.push("não exige inglês avançado");}
-    if((nivel==="none"||nivel==="basic")&&pedeIngles){score-=12;why.push("pede inglês avançado");}
-    if(nivel==="advanced"&&pedeIngles){score+=5;why.push("seu inglês avançado é diferencial aqui");}
-    // 🚨 achado de auditoria contínua: CNH é documentada (CLAUDE.md) como
-    // sinal que "alimenta a nota de encaixe", junto com inglês — mas só
-    // inglês era realmente lido aqui; hasDriverLicense chegava até ctx e
-    // nunca era usado. Guarda de negação SEPARADA (não um "no"/"not" solto
-    // colado no requisito, que geraria falso positivo): testado contra as
-    // 323 vagas H-2A reais que citam CDL/driver's license — sem essa
-    // guarda, "do not require commercial driver license" e "NO CDL
-    // REQUIRED" batiam como se a vaga EXIGISSE CNH, o oposto do texto real.
-    const pedeCNH=/\b(?:must (?:have|possess|obtain)|requires?|valid|clean)\b[^.]{0,40}\b(?:driver.?s?\s+licen[sc]e|cdl)\b/i.test(txt);
-    // 🚨 v336 (achado de auditoria contínua, sobre o próprio fix de CNH desta
-    // sessão): as 3 alternativas genéricas de naoExigeCNH ("not require(s/d)",
-    // "do/does not require", "not required to obtain") não tinham NENHUMA
-    // âncora de proximidade com CDL/driver's license — casavam em QUALQUER
-    // lugar do texto (desc+req inteiros). Uma vaga com "Must have a valid
-    // driver's license. English not required." batia as duas: pedeCNH=true
-    // (correto) E naoExigeCNH=true (por causa de "English not required",
-    // sem relação nenhuma com CNH) — o sinal inteiro era suprimido, nem
-    // somava pontos pra quem tem CNH nem avisava quem não tem, apesar da
-    // vaga exigir CNH claramente. Corrigido dando a essas 3 alternativas a
-    // MESMA janela `[^.]{0,40}` (nunca cruza frase, por causa do ponto) que
-    // pedeCNH já usa, nos 2 sentidos (a negação pode vir antes ou depois da
-    // menção à licença) — mantém "do not require commercial driver license"
-    // funcionando (verificado contra os 4 datasets reais: 39 vagas com
-    // pedeCNH=true, ZERO mudaram de comportamento) sem deixar a negação
-    // vazar pra frases sem relação nenhuma com CNH.
-    const naoExigeCNH=/\bno\s+cdl\b|\bwithout\s+(?:a\s+)?cdl\b|\bcdl\s+not\s+required\b|\bno\s+driver.?s?\s+licen[sc]e\b|\bdriver.?s?\s+licen[sc]e\s+not\s+required\b|\b(?:not\s+required\s+to\s+obtain|(?:do|does)\s+not\s+require|not\s+require[sd]?)\b[^.]{0,40}\b(?:driver.?s?\s+licen[sc]e|cdl)\b|\b(?:driver.?s?\s+licen[sc]e|cdl)\b[^.]{0,40}\b(?:not\s+required\s+to\s+obtain|(?:do|does)\s+not\s+require|not\s+require[sd]?)\b/i.test(txt);
-    if(pedeCNH&&!naoExigeCNH){
-      if(h2bProfile?.hasDriverLicense){score+=8;why.push("você tem CNH, que essa vaga pede");}
-      else{score-=8;why.push("pede CNH que você ainda não tem");}
-    }
-  }
-  if((sig.workers||0)>=10)score+=5;
-  return{score:Math.max(0,Math.min(100,Math.round(score))),why};
-}
-// Monta o contexto de match (h2bProfile + 1 perfil por tipo de visto) a
-// partir do usuário logado — usado na busca manual E na fila automática,
-// nunca duas verdades separadas sobre "qual perfil vale pra essa vaga".
-function buildMatchCtx(u){
-  if(!u)return null;
-  const profiles=(u.profiles||[]).filter(pr=>pr.active!==false);
-  const profileByVisa={};
-  for(const pr of profiles){const vt=pr.visaType||"h2b";if(!profileByVisa[vt])profileByVisa[vt]=pr;}
-  return{h2bProfile:u.h2bProfile||null,profileByVisa};
-}
-
 // ── Seleção de perfil — v19: PERFIL POR TIPO DE VISTO (dono, 15/07/2026) ────
 // Cada usuário pode ter até 2 perfis: 1 H-2B e 1 H-2A (cliente real reclamou:
 // tinha perfis separados, a consolidação juntou tudo e o texto de H-2B saiu
@@ -5803,61 +5617,11 @@ function selectProfile(profiles, target, sheet, preferredId) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 🧠 v23 — INTELIGÊNCIA DO ROBÔ (pedido do dono: "programa agindo certo,
-// pensando certo"). 4 peças: fila esperta, vaga morta, refill automático.
+// pensando certo"). Peças: vaga morta, refill automático. v986 (dono): a ORDEM
+// de envio é só ALEATÓRIA (shuffleArray) ou a que a pessoa escolheu — nada de
+// "fila esperta" por empregador menos contatado.
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Quantos e-mails o APP INTEIRO já mandou pra cada empregador (cache 30min).
-// Usado pra ordenar a fila: empregador MENOS contatado primeiro — mais chance
-// de resposta pro usuário e menos risco de spam coletivo nos populares.
-let _globalContactCache={map:null,ts:0};
-function getGlobalContactCounts(){
-  if(_globalContactCache.map&&Date.now()-_globalContactCache.ts<30*60_000)return _globalContactCache.map;
-  const m=new Map();
-  try{
-    for(const h of Object.values(DB_HIST)){
-      for(const x of (h||[])){
-        if(x.type==="reply")continue;
-        const t=String(x.to||"").toLowerCase();
-        if(t)m.set(t,(m.get(t)||0)+1);
-      }
-    }
-  }catch(e){console.warn("[fila-esperta] contagem falhou:",e.message);}
-  _globalContactCache={map:m,ts:Date.now()};
-  return m;
-}
-// Ordena a fila em faixas de "quanto o app já contatou esse empregador"
-// (0 → 1-2 → 3-5 → 6-15 → 16+), embaralhando DENTRO de cada faixa — mantém
-// a proteção original (usuários simultâneos não batem nos mesmos alvos) e
-// ainda prioriza os empregadores mais frescos.
-// v82: com matchCtx, DENTRO de cada faixa as vagas com melhor encaixe no
-// perfil do candidato flutuam pra cima (jitter aleatório de ±10 pontos
-// preserva a proteção original — usuários com perfil parecido não convergem
-// todos pro EXATO mesmo empregador no topo da fila).
-function orderQueueSmart(queue,matchCtx){
-  try{
-    const counts=getGlobalContactCounts();
-    const buckets=new Map();
-    for(const it of queue){
-      const c=counts.get(String(it.to||"").toLowerCase())||0;
-      const b=c===0?0:c<=2?1:c<=5?2:c<=15?3:4;
-      if(!buckets.has(b))buckets.set(b,[]);
-      buckets.get(b).push(it);
-    }
-    const out=[];
-    for(const b of [...buckets.keys()].sort((x,y)=>x-y)){
-      const arr=buckets.get(b);
-      if(matchCtx){
-        out.push(...arr
-          .map(it=>({it,key:(computeJobMatchScore(_matchSignalFromJob(it),matchCtx)?.score||50)+(Math.random()*20-10)}))
-          .sort((x,y)=>y.key-x.key)
-          .map(x=>x.it));
-      } else {
-        out.push(...shuffleArray(arr));
-      }
-    }
-    return out;
-  }catch(e){console.warn("[fila-esperta] falhou — usando shuffle:",e.message);return shuffleArray(queue);}
-}
 
 // A fila envelhece (dias/semanas no automático). Antes de gastar 1 envio do
 // limite diário do usuário, confere se a vaga ainda está VIVA na planilha
@@ -5933,7 +5697,7 @@ function tryAutoRefill(email,job){
       if(fresh.length>=cap)break;
     }
     if(!fresh.length)return 0;
-    const ordered=orderQueueSmart(fresh,buildMatchCtx(u2));
+    const ordered=shuffleArray(fresh); // v986: ordem aleatória (nunca ranqueada pelo sistema)
     setAutoJob(email,{...job,queue:ordered,originalCount:(job.originalCount||0)+ordered.length,
       filteredCount:ordered.length,refills:(job.refills||0)+1,lastRefillAt:Date.now(),
       status:"refilled",active:true,finishedAt:null});
@@ -7700,9 +7464,6 @@ const PLANILHAS = _createPlanilhas({
   enrichBot: _enrichBot, enrichLog: _enrichLog, saveSheet: _saveEnrichedSheet,
   httpsReq, botLog, pushToUser, ADMIN_EMAILS, detectCategory, detectCategoryH2A, limparCidade,
   dedupe: _vagasDedupe, verify: _vagasVerify, manifest: _vagasManifest,
-  // 📡 v189 LOTE 7: o nome diz o que a função faz — CONTA vaga nova que
-  // combina com o filtro salvo. Não notifica ninguém (não há canal).
-  registrarVagasNovasNoRadar,
   isTest: !!process.env.TEST_LOGIN_TOKEN,
 });
 
@@ -8892,8 +8653,6 @@ ul li{margin-bottom:6px}
       meta.published=true;meta.publishedAt=Date.now();meta.publishedBy=s.user_email;
       fs.writeFileSync(SHEETS_META_FILE,JSON.stringify(DB_SHEETS_META,null,2));
       addLog(s.user_email,{status:"sistema",jobTitle:`📢 Planilha publicada: ${meta.name||key}`,company:`${rows.length} vagas — Chave: ${key}`});
-      // 📡 v134: 1ª publicação = vaga nova chegando pros usuários → radar avisa
-      registrarVagasNovasNoRadar(rows,`publicacao:${key}`).catch(e=>console.warn("[radar] publicar:",e.message));
       console.log(`[sheet] 📢 "${key}" publicada por ${s.user_email} (${rows.length} vagas)`);
       return json(res,200,{ok:true,key,count:rows.length});
     }catch(e){return json(res,400,{error:"Corpo inválido: "+e.message});}
@@ -9078,13 +8837,6 @@ ul li{margin-bottom:6px}
         const r = j26ApplyGroupsToSheet();
         if(r.applied>0) console.log(`[grupos-j26] ✅ ${r.applied} grupo(s) já existente(s) aplicado(s) na planilha recém-publicada.`);
       }
-      // 📡 v134: vaga nova entrando no sistema tem que avisar quem tem radar
-      // ligado casando com ela (v174: os robôs de coleta/publicação e o de
-      // vagas novas H-2A avisam do mesmo jeito — mod-planilhas.js). v180: numa
-      // reimportação só as vagas REALMENTE novas avisam — ninguém leva push de
-      // uma vaga que já estava no site desde ontem.
-      const _novasPraRadar=valid.slice(m.preservadas).filter(r=>r.e&&String(r.e).includes("@")); // planilha nova: preservadas=0, avisa de tudo
-      registrarVagasNovasNoRadar(_novasPraRadar,`upload:${keyReal}`).catch(e=>console.warn("[radar] notificar upload:",e.message));
       return json(res,200,{ok:true,key:keyReal,builtin:!!_builtin,count:valid.length,total:vagas.length,duplicatesMerged,
         substituiu:jaExistia,atualizadas:m.atualizadas,adicionadas:m.adicionadas,preservadas:m.preservadas,
         importedRows:m.recebidas,comEmailAntes:m.emailAntes,comEmail:m.emailDepois});
@@ -9537,11 +9289,7 @@ filtrar();
     const _corteMeta=hideSent?_excluirEnviadosFn(_sMeta?.user_email):null;
     const _verEmailMeta=!!_uMeta; // 🔓 v277: qualquer sessão logada vê o e-mail (free inclusive) — só quem não tem conta nenhuma fica mascarado
     const preFiltered=FILTROS.filtrar(baseArr,f,{except:["q"],excluir:_corteMeta,isDP:_dpMeta});
-    // 🎯 v82: contexto de match (perfil H2B + perfil por visto) do usuário
-    // logado — null pra visitante sem sessão/perfil, cai sempre no
-    // comportamento de sempre (sem score, sort=match vira ordem estável).
-    const matchCtx=_uMeta?buildMatchCtx(_uMeta):null;
-    const{total,items,sugestao}=searchSheet(preFiltered,f.q,"","",skip,top,sort,matchCtx);
+    const{total,items,sugestao}=searchSheet(preFiltered,f.q,"","",skip,top,sort);
     let filtered=items; // já paginado corretamente
     // total já é o total filtrado (pré-filtro + searchSheet)
     return json(res,200,{jobs:filtered.map(r=>{
@@ -9555,7 +9303,6 @@ filtrar();
       const cat=r.k||"other";
       const occupation=r.t||catTitles[cat]||"Seasonal Worker";
       const emailVal=(r.e||"").toLowerCase().trim();
-      const _m=matchCtx?computeJobMatchScore(_matchSignalFromRow(r),matchCtx):null;
       return{
         id:r.c, caseNum:r.c,
         company:r.n||"–", state:r.s||"–", city:r.ci||"",
@@ -9587,8 +9334,7 @@ filtrar();
         hours:r.hrs||null, schedule:r.sched||null,
         fullTime:r.ft||null,
         url:r.c&&r.c.startsWith("H-")?`https://seasonaljobs.dol.gov/jobs/${r.c}`:(r.url||null),
-        fromSheet:true,
-        matchScore:_m?_m.score:null, matchWhy:_m?_m.why:null
+        fromSheet:true
       };
     // v179: "de N vagas" agora passa pelo MESMO corte da regra 8 (enviadas /
     // na fila) que o `totalBase` de /api/vagas/filtros já usava — os dois
@@ -12672,21 +12418,6 @@ filtrar();
         const _lg=String(d.language).slice(0,2).toLowerCase();
         if(_lg==="pt")upd.language="pt";
       }
-      // h2bProfile: objeto completo
-      if(d.h2bProfile){
-        const cur=getUser(s.user_email)||{};
-        const hbp=d.h2bProfile;
-        upd.h2bProfile={
-          ...(cur.h2bProfile||{}),
-          experiencedH2B:!!hbp.experiencedH2B,
-          h2bSeasons:Math.max(0,parseInt(hbp.h2bSeasons)||0),
-          englishLevel:["none","basic","intermediate","advanced"].includes(hbp.englishLevel)?hbp.englishLevel:"basic",
-          preferredArea:String(hbp.preferredArea||"general").slice(0,50),
-          usaTrips:!!hbp.usaTrips,
-          hasDriverLicense:!!hbp.hasDriverLicense,
-          availability:["immediate","1month","3months"].includes(hbp.availability)?hbp.availability:"immediate",
-        };
-      }
       // v120 (ORDEM DO DONO, 05/08): o cooldown de 1min do envio MANUAL é o
       // padrão, mas o USUÁRIO pode desligar — desde que aceite o risco (o
       // front só manda true depois do aceite explícito; guardamos o carimbo
@@ -13317,82 +13048,6 @@ filtrar();
 
 
 
-  // 📡 v134 — RADAR DE VAGAS: GET vê, POST {estados,cidade,q,categoria}
-  // salva (1 por usuário), POST {remove:true} desliga.
-  if(pathname==="/api/radar"){const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    const u2=getUser(s.user_email)||{};
-    if(req.method==="GET")return json(res,200,{ok:true,radar:u2.radar||null});
-    if(req.method==="POST"){try{
-      const d=JSON.parse(await readBody(req));
-      if(d.remove===true){setUser(s.user_email,{radar:null});return json(res,200,{ok:true,removed:true});}
-      // 📡 v182 LOTE 9: o radar guardava 4 das 11 dimensões (e da cidade e da
-      // categoria só a PRIMEIRA) — quem montou "$20+/h + Alimentação +
-      // Flórida" era avisado de qualquer vaga de Alimentação na Flórida,
-      // inclusive de $12/h. Agora guarda o SNAPSHOT INTEIRO dos filtros e
-      // quem avalia é o MESMO FILTROS.filtrar da lista e da fila do robô —
-      // nunca uma 3ª régua.
-      const filtros=_radarSanitiza(d.filtros||d);
-      const f=FILTROS.parse(filtros);
-      if(!FILTROS.ativos(f))return json(res,400,{error:"Escolha ao menos 1 filtro antes de criar o radar."});
-      // 📡 v189 LOTE 7: filtro novo = contagem nova (o número mostrado é
-      // "vagas novas que entraram combinando com ESTE radar").
-      const radar={filtros,ativo:true,createdAt:u2.radar?.createdAt||Date.now(),
-        ultimaEm:0,novas:0};
-      setUser(s.user_email,{radar});
-      return json(res,200,{ok:true,radar,dimensoes:FILTROS.ativos(f)});
-    }catch(e){return json(res,500,{error:e.message});}}}
-
-  // 🔖 v126 (dono, 12/08): vaga salva agora guarda o SNAPSHOT completo
-  // (u.savedJobs) — aparece na aba Vagas Salvas mesmo meses depois, mesmo
-  // que a vaga já não esteja em nenhuma planilha. u.saved (ids) continua
-  // sendo a fonte do estado dos botõezinhos 🔖 nos cards.
-  // ── 🎯 v139 — VAGAS PRA VOCÊ (prateleira da Home) ────────────────────────
-  // Completa a regra 13m: a nota de match (computeJobMatchScore) ganhou uma
-  // prateleira própria — as melhores vagas AINDA DISPONÍVEIS pro perfil do
-  // usuário, com o porquê (matchWhy, nunca caixa preta). Regra 8 absoluta:
-  // empregador já enviado OU na fila do automático NUNCA aparece aqui — o
-  // ranking é cacheado 10min por usuário, mas esse corte roda FRESCO em
-  // toda resposta. Vaga morta/encerrada também fica de fora. Sem perfil,
-  // a nota é neutra (50) e a prateleira ainda mostra vagas — nunca bloqueia.
-  if(pathname==="/api/jobs/pra-voce"&&req.method==="GET"){
-    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
-    try{
-      const em=s.user_email;
-      let cand=_praVoceCache.get(em);
-      if(!cand||Date.now()-cand.t>10*60_000){
-        const ctx=buildMatchCtx(getUser(em));
-        const hoje=new Date().toISOString().slice(0,10);
-        const _DEAD=/denied|withdrawn|invalidat|expired|cancel/i;
-        const top=[];
-        for(const r of getAllSheets()){
-          const e2=_normEmail(r.e);
-          if(!e2||!e2.includes("@"))continue;
-          if(_DEAD.test(String(r.st||"")))continue;
-          if(r.de&&/^\d{4}-\d{2}-\d{2}$/.test(r.de)&&r.de<hoje)continue;
-          const m=ctx?computeJobMatchScore(_matchSignalFromRow(r),ctx):null;
-          top.push({row:r,score:m?m.score:50,why:m?(m.why||null):null});
-        }
-        top.sort((a,b)=>b.score-a.score);
-        cand={t:Date.now(),top:top.slice(0,80)};
-        if(_praVoceCache.size>2000)_praVoceCache.clear();
-        _praVoceCache.set(em,cand);
-      }
-      const sentSet=buildUserSentSet(em);
-      const _verEmailPV=podeVerEmailVaga(req); // 🔒 v182 LOTE 10
-      const aj=getAutoJob(em);
-      const qEmails=new Set();
-      if(aj&&Array.isArray(aj.queue))for(const it of aj.queue){const qe=_normEmail(it.email||it.to);if(qe)qEmails.add(qe);}
-      const out=[];const seen=new Set();
-      for(const c of cand.top){
-        const e2=_normEmail(c.row.e);
-        if(!e2||seen.has(e2)||sentSet.has(e2)||qEmails.has(e2))continue;
-        seen.add(e2);
-        out.push({..._vagaSnapshot(c.row,_verEmailPV),sheet:c.row._sheet||"",matchScore:c.score,matchWhy:c.why});
-        if(out.length>=8)break;
-      }
-      return json(res,200,{ok:true,jobs:out});
-    }catch(e){return json(res,500,{ok:false,error:e.message});}
-  }
   // 🚨 v237t (achado de auditoria — Baixa, auth): faltava a trava
   // req.method==="POST" — o cookie é SameSite=Lax (sempre vai numa
   // navegação de topo, mesmo vinda de outro site), então uma página
@@ -13941,14 +13596,11 @@ filtrar();
       // no perfil da vaga. Cover letter agora só entra por escolha explícita
       // (do perfil ou do painel) — nunca por adivinhação.
 
-      // ✅ v23 FILA ESPERTA: empregador MENOS contatado pelo app inteiro vai
-      // primeiro (mais chance de resposta; menos spam coletivo nos populares).
-      // Dentro de cada faixa continua embaralhado — usuários simultâneos não
-      // batem nos mesmos alvos (proteção original preservada).
-      // v82: dentro de cada faixa, prioriza (com jitter) as vagas com melhor
-      // match pro perfil do candidato — "IA sugerindo as vagas com mais
-      // chance pra cada um" (ordem do dono, 29/07/2026).
-      queue = orderQueueSmart(queue,buildMatchCtx(p));
+      // 🎲 v986 (ORDEM DO DONO, 16/10/2026: "sempre que forem enviar é aleatório ou eles escolhem"): a fila do automático é
+      // EMBARALHADA — o sistema não ranqueia vaga nenhuma (nem por encaixe com o perfil, nem por "empregador menos contatado").
+      // Quem escolhe é a pessoa, pelos filtros do Passo 2; dentro do que ela escolheu, a ordem é sorteio. O embaralhamento
+      // também mantém a proteção de usuários simultâneos não baterem nos mesmos alvos na mesma ordem.
+      queue = shuffleArray(queue);
       // ── v23 AVISO DE VISTO: fila tem vagas de um tipo que o usuário não tem
       // perfil — o envio segue (regra do dono: nunca trava), mas ele fica
       // SABENDO que essas vagas sairão com o texto do outro perfil.
@@ -14040,9 +13692,8 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
     // que vem por aí e calcula o horário estimado de término (menos tela
     // vazia, mais informação, pedido do dono 26/07).
     const queuePreview=j&&j.active?(j.queue||[]).slice(0,4).map(q=>({company:q.company||"",title:q.title||"",to:q.to||"",state:q.state||""})):[];
-    // 🎯 v82: categorias da fila NA ORDEM REAL de envio — confirma pro
-    // próprio usuário (e pro smoke test) que a fila esperta está mesmo
-    // priorizando o que combina com o perfil, não só uma promessa no ar.
+    // categorias da fila NA ORDEM REAL de envio (a ordem é sorteio — v986; o smoke usa pra provar que a fila
+    // inteira está lá).
     const queueCategories=j&&j.active?(j.queue||[]).slice(0,30).map(q=>q.category||"other"):[];
     // v118: usuário comum ~7min (ordem do dono). v172b: admin sem customizar
     // caiu pra 300 (5min), não mais o fallback de usuário comum (420).

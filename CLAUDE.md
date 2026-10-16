@@ -393,6 +393,19 @@ se referindo a outro repositório/projeto.
   reintroduzir motor de variáveis, botão de variável, exemplo de texto ou
   preview com dado de vaga. Detalhes na seção v983 no fim deste arquivo.
 
+- **🎯 SEM "CONEXÃO DE VAGAS" (dono, 16/10/2026: "não quero conexão de vagas,
+  esquece isso — nosso site só tem um objetivo: ensinar e enviar
+  automaticamente")**: NÃO existe nota de encaixe (`computeJobMatchScore`,
+  selo "% de encaixe"), ordenação "Melhor pra mim" (`sort=match`), prateleira
+  "Vagas pra você" na Home (`/api/jobs/pra-voce`) nem Radar de vagas
+  (`/api/radar`, `registrarVagasNovasNoRadar`). A fila do automático
+  agora é só EMBARALHADA (`shuffleArray`) — a ordem de envio é aleatória ou a que a pessoa escolheu
+  pelos filtros; o sistema não ranqueia vaga nenhuma (dono, 16/10: "sempre que forem enviar é aleatório
+  ou eles escolhem"). PROIBIDO
+  reintroduzir qualquer recomendação/pontuação/alerta de vaga por perfil sem
+  ordem EXPRESSA e NOVA do dono. As regras 13m e 13q do repositório irmão
+  (match de vaga e Radar) NÃO valem aqui.
+
 ## Variáveis de ambiente
 
 `.env.example` é a fonte da verdade (revisado contra `process.env.*` real
@@ -4576,3 +4589,19 @@ a nota 🎯 de encaixe (regra 13m) usa `englishLevel`, `hasDriverLicense`, `pref
 `h2bProfile`; nenhuma tela coleta mais esses dados (a de inglês/CNH era a última), então a nota fica neutra para conta
 nova e usa o que já estava salvo nas antigas — o servidor segue lendo, nulo-seguro. O item 7 do tutorial ("Dados que
 aumentam suas chances") já descrevia campos que não existem na tela e continua defasado. 2 checks. sw v206.
+
+## 🎯 v986 — Fim da "conexão de vagas" (dono, 16/10/2026)
+
+O dono respondeu "Nota 🎯 de encaixe" à pergunta do que sair: removido de ponta a ponta, incluindo tudo o que dependia
+dela. **Servidor**: `computeJobMatchScore`, `_matchSignalFromRow/Job`, `buildMatchCtx`, `sort=match` (SORTS_VALIDOS),
+`matchScore/matchWhy` na lista, `/api/jobs/pra-voce` (+ cache), `/api/radar`, `registrarVagasNovasNoRadar` (3 chamadas +
+mod-planilhas) e o tratamento de `h2bProfile` em `/api/settings` (nenhuma tela coleta mais). `orderQueueSmart` e a contagem global de contatos por empregador também saíram: o dono disse "sempre que forem enviar é
+aleatório ou eles escolhem" — a fila do automático (início e refill) é `shuffleArray`, sem nenhum ranking.
+**Front**: botão/ordem "Melhor pra mim", botão 📡 Radar e o modal, prateleira da Home, selo "% de encaixe" no detalhe,
+45 chaves de tradução (3 idiomas), `h2bProfile` em `U`. **Docs**: tutorial perdeu o item 7 (dados da nota 🎯) e o item 10
+(Radar) e foi renumerado (18 passos, referências cruzadas ajustadas); como-usar perdeu as linhas do selo e da ordenação.
+**Imagens**: refeitas no Chromium as que mostravam o que saiu (landing-1/4/5/14/15 e as duas de vagas do /como-usar), com
+`?v=986`; as 7 versões anteriores entram na lista de impressões digitais barradas; 10 imagens `ob-*` sem nenhuma
+referência foram apagadas e `t06-perfil` saiu junto com o item do tutorial. **Dados**: `u.h2bProfile` e `u.radar` de
+usuários antigos ficam no banco (não apagamos dado de ninguém) — o export LGPD continua incluindo `h2bProfile`. Testes: ~25
+checks da família match/radar/pra-voce/CNH removidos, 3 novos; `check-xss-guard` sem as entradas das telas removidas. Suíte: 1094 checks verdes. sw v208.
