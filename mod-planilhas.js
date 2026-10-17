@@ -645,67 +645,114 @@ function createPlanilhas(deps) {
   // ══════════════════════════════════════════════════════════════════════
   const H2A_ROLL_FILE = path.join(DATA_DIR, "h2a_rolling.json");
   let DB_H2A_ROLL = lerEstado(H2A_ROLL_FILE);
-  const gravarRoll = (patch) => { DB_H2A_ROLL = { ...DB_H2A_ROLL, ...patch }; try { fs.writeFileSync(H2A_ROLL_FILE, JSON.stringify(DB_H2A_ROLL, null, 2)); } catch (e) { console.warn("[h2a-roll] estado não gravado:", e.message); } };
+  // v987: gravação ATÔMICA (tmp + rename) — o arquivo agora carrega também o log e o histórico do robô, e um deploy no meio da escrita não pode deixar JSON truncado (lerEstado devolve {} e o card voltaria a "nunca rodou").
+  const gravarRoll = (patch) => { DB_H2A_ROLL = { ...DB_H2A_ROLL, ...patch }; try { const tmp = H2A_ROLL_FILE + ".tmp"; fs.writeFileSync(tmp, JSON.stringify(DB_H2A_ROLL, null, 2)); fs.renameSync(tmp, H2A_ROLL_FILE); } catch (e) { console.warn("[h2a-roll] estado não gravado:", e.message); } };
+  // v987 (dono, 16/10/2026 — "clico e não aparece nenhum log"): o robô ganhou LOG PRÓPRIO e HISTÓRICO em disco. O log geral dos robôs
+  // (botLog) é um anel único de 80 linhas visíveis que o Enriquecimento (1 linha por vaga) enterra em segundos e que zera a cada deploy.
+  const H2A_LOG_CAP = 150, H2A_HIST_CAP = 20;
+  const h2aLog = (msg, type) => {
+    botLog("h2a-novas", "Planilha H-2A (5.000 mais recentes)", msg, type || "info");
+    const l = (DB_H2A_ROLL.log || []).slice(-(H2A_LOG_CAP - 1)); l.push({ ts: Date.now(), msg: String(msg || "").slice(0, 400), type: type || "info" });
+    gravarRoll({ log: l });
+  };
+  const h2aHistPush = (e) => gravarRoll({ historico: [{ ...e, em: Date.now() }, ...(DB_H2A_ROLL.historico || [])].slice(0, H2A_HIST_CAP) });
   const h2aCap = (opts) => (isTest && opts && Number(opts.cap) > 0) ? Math.floor(Number(opts.cap)) : H2A_JANELA_PADRAO;
   const h2aIntervaloMs = () => Math.max(1, parseInt(process.env.H2A_INTERVALO_DIAS || "14", 10) || 14) * 86400_000;
-  const h2aDevido = (agora = Date.now()) => !DB_H2A_ROLL.lastOkAt || agora >= (DB_H2A_ROLL.nextRunAt || 0);
-  const h2aNovasBot = { running: false, lastRunAt: null, lastError: null, lastAdded: 0, totalAdded: 0, lastRemoved: 0, totalRemoved: 0, lastEvicted: 0, totalEvicted: 0, runs: 0 };
+  // v987: `retryAt` PERSISTIDO — antes a nova tentativa depois de uma falha era só um setTimeout em memória (perdido em qualquer deploy)
+  // e, com uma rodada boa anterior, h2aDevido() só voltava a ser verdade na data da próxima rodada (14 dias).
+  // `retryAt` é PORTÃO: enquanto existir, manda sobre o resto (revisão v987 — antes era só "OU", e com a rodada agendada já vencida cada deploy ignorava o recuo e rebaixava o DOL de novo).
+  const h2aDevido = (agora = Date.now()) => DB_H2A_ROLL.retryAt ? agora >= DB_H2A_ROLL.retryAt : (!DB_H2A_ROLL.lastOkAt || agora >= (DB_H2A_ROLL.nextRunAt || 0));
+  // v987: hidratado do disco — o painel dizia "Última rodada: nunca" depois de TODO deploy (estado só em memória) mesmo com rodada gravada em /data.
+  const h2aNovasBot = { running: false, lastRunAt: DB_H2A_ROLL.lastRunAt || null, lastError: DB_H2A_ROLL.lastError || null, lastAdded: DB_H2A_ROLL.lastAdded || 0, totalAdded: DB_H2A_ROLL.totalAdded || 0, lastRemoved: DB_H2A_ROLL.lastRemoved || 0, totalRemoved: DB_H2A_ROLL.totalRemoved || 0, lastEvicted: DB_H2A_ROLL.lastEvicted || 0, totalEvicted: DB_H2A_ROLL.totalEvicted || 0, runs: DB_H2A_ROLL.runs || 0, fase: null, progresso: null, startedAt: null, trigger: null };
   async function runH2aNovasCycle(trigger, opts) {
     if (h2aNovasBot.running) return { ok: false, error: "já rodando" };
     if (dolColeta.running) return { ok: false, error: "já existe uma coleta rodando — tente de novo em alguns minutos" };
-    h2aNovasBot.running = true; h2aNovasBot.lastError = null;
-    const LOG = (m, t) => botLog("h2a-novas", "Planilha H-2A (5.000 mais recentes)", m, t || "info");
+    h2aNovasBot.running = true; h2aNovasBot.lastError = null; h2aNovasBot.startedAt = Date.now(); h2aNovasBot.trigger = String(trigger || "agendado"); h2aNovasBot.progresso = null;
+    // v987: marcador em DISCO de que a rodada começou — deploy no meio dela deixa o rastro (ver h2aRecuperarInterrompida)
+    gravarRoll({ rodando: { startedAt: h2aNovasBot.startedAt, trigger: h2aNovasBot.trigger } });
+    const LOG = h2aLog;
+    const fase = (f, prog) => { h2aNovasBot.fase = f; if (prog !== undefined) h2aNovasBot.progresso = prog; };
+    const t0 = Date.now();
     try {
+      fase("preparando");
       const bs = require("./build-sheets.js");
       const base = (process.env.DOL_FEED_BASE || bs.DOL_BASE).replace(/\/$/, "");
       const cap = h2aCap(opts); const agora = Date.now(); const _hoje = hoje();
       let SHEET_H2A = getSheetH2A();
       const antesTotal = SHEET_H2A.length;
+      const mortasAntes = SHEET_H2A.filter(r => h2aMorta(r, _hoje)).length;   // as encerradas saem nesta rodada: o "quanto falta" conta só as VIVAS
       // Quanto do passado cobrir: planilha cheia e rodada recente → só o que saiu
       // desde então (+21 dias de folga, cada feed enxerga ~20 dias pra trás);
       // primeira vez ou planilha abaixo do teto → até 126 dias pra ENCHER.
       const diasDesde = DB_H2A_ROLL.lastOkAt ? Math.ceil((agora - DB_H2A_ROLL.lastOkAt) / 86400_000) : Infinity;
-      const encher = !DB_H2A_ROLL.lastOkAt || antesTotal < cap * 0.95;
+      const encher = !DB_H2A_ROLL.lastOkAt || (antesTotal - mortasAntes) < cap * 0.95;
       const cobrir = encher ? 126 : Math.min(126, diasDesde + 21);
       const nFeeds = Math.max(1, Math.min(8, Math.ceil(cobrir / 18)));
-      LOG(`🌾 Conferindo o Seasonal Jobs (${trigger || "agendado"}): planilha com ${antesTotal} vagas, teto ${cap}; olhando ${cobrir} dias (${nFeeds} feed${nFeeds > 1 ? "s" : ""})`);
+      LOG(`🌾 Rodada iniciada (${trigger || "agendado"}): a planilha tem ${antesTotal} vagas, o teto é ${cap}. Vou olhar ${cobrir} dias do Seasonal Jobs (${nFeeds} arquivo${nFeeds > 1 ? "s" : ""} do DOL).`);
       const have = new Set(SHEET_H2A.map(r => String(r.c || "").trim().toUpperCase()));
       const statusDoFeed = new Map();   // TODO case do feed (inclusive negado/retirado) → status/datas mais novos
       const candidatas = new Map();     // só o que a planilha ainda NÃO tem e passa na qualidade
-      let descartadas = 0, outroVisto = 0, feedsOk = 0, feedsFalharam = 0, brutos = 0; const usados = new Set();
-      for (let i = 0; i < nFeeds; i++) {
+      let semQualidade = 0, mortas = 0, outroVisto = 0, feedsOk = 0, feedsFalharam = 0, brutos = 0, jaNaPlanilha = 0, feedsTentados = 0; const usados = new Set();
+      // v987: "olhar mais fundo" — as vagas VIVAS não são só as dos últimos 126 dias (temporada H-2A dura meses: um protocolo de 7 meses atrás ainda pode
+      // estar valendo). Planilha ainda abaixo do teto depois dos arquivos normais → o robô continua pra trás, 1 arquivo (18 dias) por vez, até o teto
+      // projetado fechar ou o DOL não ter mais arquivo (no máx. 14 arquivos ≈ 250 dias). Arquivo EXTRA que falha não conta como falha da rodada.
+      const maxFeeds = encher ? Math.max(nFeeds, 14) : nFeeds;
+      for (let i = 0; i < maxFeeds; i++) {
+        const extra = i >= nFeeds;
+        if (extra) {
+          const projetado = antesTotal - mortasAntes + candidatas.size;
+          if (feedsFalharam > 0 || projetado >= cap * 0.95) break;
+          LOG(`🔎 Ainda faltam ~${cap - projetado} vagas pro teto de ${cap} — olhando mais fundo no passado (arquivo extra ${i - nFeeds + 1}).`);
+        }
         const planejada = new Date(Date.parse(_hoje + "T12:00:00Z") - i * 18 * 86400_000).toISOString().slice(0, 10);
+        const rotulo = extra ? `extra ${i - nFeeds + 1}` : `${i + 1}/${nFeeds}`;
+        fase(`baixando o arquivo ${rotulo}`, { feed: i + 1, de: Math.max(nFeeds, Math.min(maxFeeds, i + 1)), brutos, candidatas: candidatas.size });
+        LOG(`📥 Arquivo ${rotulo} (a partir de ${planejada}): baixando do DOL…`);
+        feedsTentados++;
         try {
           const { raw, data: dataFeed, pulados } = await baixarFeedComFallback(bs, base, "h2a", { desde: planejada, dias: i === 0 ? 7 : 4, onPulo: d => LOG(`📭 O DOL ainda não publicou o arquivo de ${d} — tentando o dia anterior`) });
           if (pulados) LOG(`📅 Usando o arquivo de ${dataFeed} (o mais recente que o DOL publicou)`);
-          if (usados.has(dataFeed)) continue; usados.add(dataFeed);
+          if (usados.has(dataFeed)) { LOG(`↩️ O arquivo de ${dataFeed} já foi lido nesta rodada — pulando`); continue; } usados.add(dataFeed);
           const recs = Array.isArray(raw) ? raw : (raw.data || raw.results || raw.items || raw.cases || []);
+          // v987: arquivo MAIS RECENTE sem nenhuma vaga é erro (formato novo ou arquivo vazio) — antes virava "sucesso" que ainda tirava as encerradas sem repor e travava o robô por 14 dias.
+          if (i === 0 && !recs.length) throw new Error(`o DOL devolveu o arquivo de ${dataFeed} sem nenhuma vaga (arquivo vazio ou formato novo) — a planilha não foi mexida`);
           brutos += recs.length; feedsOk++;
+          const f = { tot: recs.length, ja: 0, sem: 0, outro: 0, morta: 0, nova: 0 };
           for (const rec of recs) {
             const cn = String(rec.case_number || rec.case_id || "").trim().toUpperCase(); if (!cn) continue;
             if (!statusDoFeed.has(cn)) statusDoFeed.set(cn, { st: (rec.case_status || "").trim(), d: (rec.begin_date || rec.start_date || "").slice(0, 10), de: (rec.end_date || rec.expiration_date || "").slice(0, 10) });
-            if (have.has(cn) || candidatas.has(cn)) continue;
-            if (bs.shouldDiscard(rec)) { descartadas++; continue; }
+            if (have.has(cn)) { f.ja++; continue; } if (candidatas.has(cn)) continue;
+            if (bs.shouldDiscard(rec)) { f.sem++; continue; }
             const c = bs.toCompact(rec);
-            if (String(c.visa || "").toUpperCase() !== "H-2A") { outroVisto++; continue; }
-            if (h2aMorta(c, _hoje)) { descartadas++; continue; }   // temporada já encerrada / status morto: não ocupa lugar da viva
+            if (String(c.visa || "").toUpperCase() !== "H-2A") { f.outro++; continue; }
+            if (h2aMorta(c, _hoje)) { f.morta++; continue; }   // temporada já encerrada / status morto: não ocupa lugar da viva
             // categorizador PRÓPRIO do H-2A (v332): c.k de toCompact é da taxonomia H-2B.
-            c.k = detectCategoryH2A(c.t); candidatas.set(cn, c);
+            c.k = detectCategoryH2A(c.t); candidatas.set(cn, c); f.nova++;
           }
+          semQualidade += f.sem; mortas += f.morta; outroVisto += f.outro; jaNaPlanilha += f.ja;
+          fase(`arquivo ${rotulo} lido`, { feed: i + 1, de: Math.max(nFeeds, Math.min(maxFeeds, i + 1)), brutos, candidatas: candidatas.size });
+          LOG(`✅ Arquivo ${rotulo} (${dataFeed}): ${f.tot} vagas no DOL → ${f.nova} novas pra planilha · ${f.ja} já estavam · ${f.sem} descartadas (sem e-mail ou só candidatura por site) · ${f.morta} com temporada encerrada${f.outro ? ` · ${f.outro} de outro visto` : ""}`, f.nova ? "ok" : "info");
         } catch (e) {
           if (i === 0) throw e;   // sem o feed mais recente não há rodada: erro honesto, planilha intacta
+          if (extra) {
+            // "o DOL não publicou" = acabou o histórico dele (normal, fim da busca funda); qualquer outro erro (5xx/timeout/rede/403) é falha de verdade: conta e volta em 6h
+            if (/não publicou/.test(String(e.message))) { LOG(`ℹ️ O DOL não entregou o arquivo extra de ${planejada} (${e.message}) — paro de olhar pra trás por aqui.`, "info"); }
+            else { feedsFalharam++; LOG(`⚠️ O arquivo extra de ${planejada} falhou (${e.message}) — paro a busca funda e o robô tenta de novo em ~6 horas.`, "warn"); }
+            break;
+          }
           feedsFalharam++;
-          LOG(`⚠️ feed de ${planejada} falhou (${e.message}) — seguindo com os demais`, "warn");
+          LOG(`⚠️ O arquivo ${rotulo} (${planejada}) falhou (${e.message}) — seguindo com os demais`, "warn");
         }
-        if (i < nFeeds - 1) await new Promise(r => setTimeout(r, process.env.DOL_FEED_BASE ? 20 : 8000)); // educado com o DOL
+        if (i < maxFeeds - 1) await new Promise(r => setTimeout(r, process.env.DOL_FEED_BASE ? 20 : 8000)); // educado com o DOL
       }
+      fase("comparando com a planilha", { feed: feedsTentados, de: feedsTentados, brutos, candidatas: candidatas.size });
       // (a) quem já está na planilha só tem status/datas atualizados — NUNCA reentra
-      let atualizadas = 0, jaTinha = 0;
+      let atualizadas = 0, jaTinha = 0, datasMudadas = 0;
       for (const r of SHEET_H2A) {
         const f = statusDoFeed.get(String(r.c || "").trim().toUpperCase()); if (!f) continue; jaTinha++;
         if (f.st && f.st !== r.st) { r.st = f.st; atualizadas++; }
-        if (f.d && f.d !== r.d) r.d = f.d;
-        if (f.de && f.de !== r.de) r.de = f.de;
+        if (f.d && f.d !== r.d) { r.d = f.d; datasMudadas++; }
+        if (f.de && f.de !== r.de) { r.de = f.de; datasMudadas++; }
       }
       // (b) inativo (negado/retirado/inválido) ou temporada encerrada SAI — com a trava anti-catástrofe
       const vivas = SHEET_H2A.filter(r => !h2aMorta(r, _hoje));
@@ -719,8 +766,9 @@ function createPlanilhas(deps) {
       if (!chk.ok) throw new Error(`integridade: duplicata após o merge (${chk.duplicateCases.length}) — NADA foi salvo`);
       const despSet = new Set(despejadas.map(r => r.c));
       const novasQueFicaram = novas.filter(c => !despSet.has(c.c));
-      const mudou = novasQueFicaram.length || despejadas.length || removidas > 0 || atualizadas > 0;
+      const mudou = novasQueFicaram.length || despejadas.length || removidas > 0 || atualizadas > 0 || datasMudadas > 0;
       if (mudou || h2aNovasBot.pendenteGravar) {
+        fase("gravando no disco");
         // IN PLACE de propósito: o robô de Enriquecimento segura a REFERÊNCIA do array por horas e
         // regrava ele inteiro a cada vaga — trocar o array deixaria ele sobrescrevendo a planilha nova com a velha.
         const viva = getSheetH2A(); viva.splice(0, viva.length, ...finais); setSheetH2A(viva);
@@ -730,39 +778,73 @@ function createPlanilhas(deps) {
       SHEET_H2A = getSheetH2A();
       const maisRecente = finais.reduce((m, r) => { const d = dataDoCaso(r.c); return d > m ? d : m; }, "");
       const total = finais.length;
+      const abaixo = total < cap * 0.95;
+      const ms = Date.now() - t0;
+      // explicação em português claro de POR QUE a planilha tem o tamanho que tem (o dono perguntou "por que 4.549 e não 5.000?")
+      const motivo = abaixo
+        ? `A planilha tem ${total} de ${cap}. Nos ${feedsOk} arquivos que o robô leu (uns ${feedsOk * 18} dias pra trás), o DOL trouxe ${brutos} vagas H-2A: ${jaNaPlanilha} já estavam aqui, ${semQualidade} foram descartadas por não terem e-mail de contato (ou só aceitarem candidatura pelo site), ${mortas} já estão com a temporada encerrada e ${novasQueFicaram.length} entraram. Ela só passa de ${total} quando o DOL publicar mais vagas com e-mail — o robô nunca inventa vaga.`
+        : `A planilha está cheia (${total} de ${cap}); quando entra vaga nova, a mais antiga sai.`;
       LOG(mudou
-        ? `✅ Planilha H-2A atualizada: +${novasQueFicaram.length} nova(s), −${removidas} inativa(s), −${despejadas.length} mais antiga(s) pra caber o teto de ${cap}, ${atualizadas} status atualizado(s) — total ${total}. (${jaTinha} do feed já estavam na planilha e foram ignoradas, ${descartadas} sem e-mail/qualidade.)`
-        : `💤 Nada mudou desta vez (${jaTinha} do feed já estavam na planilha, ${descartadas} sem e-mail/qualidade). Planilha com ${total} vagas.`, mudou ? "ok" : "info");
+        ? `✅ Planilha H-2A atualizada: +${novasQueFicaram.length} nova(s), −${removidas} encerrada(s), −${despejadas.length} mais antiga(s) pra caber o teto de ${cap}, ${atualizadas} status e ${datasMudadas} data(s) corrigidos — total ${total}. (${jaTinha} do DOL já estavam na planilha.)`
+        : `💤 Nada mudou desta vez (${jaTinha} vagas do DOL já estavam na planilha, ${semQualidade} descartadas por falta de e-mail/qualidade). Planilha com ${total} vagas.`, mudou ? "ok" : "info");
+      if (abaixo) LOG(`ℹ️ ${motivo}`, "info");
       console.log(`[h2a-novas] ✅ +${novasQueFicaram.length} novas, -${removidas} inativas, -${despejadas.length} antigas, ${atualizadas} atualizadas (total ${total})`);
       h2aNovasBot.lastAdded = novasQueFicaram.length; h2aNovasBot.totalAdded += novasQueFicaram.length;
       h2aNovasBot.lastRemoved = removidas; h2aNovasBot.totalRemoved += removidas;
       h2aNovasBot.lastEvicted = despejadas.length; h2aNovasBot.totalEvicted += despejadas.length;
       h2aNovasBot.runs++; h2aNovasBot.lastRunAt = agora; h2aNovasBot.retries = 0; h2aNovasBot.proximaTentativa = null;
-      // Pediu pra ENCHER (1ª vez / abaixo do teto) mas só parte dos feeds respondeu: não agenda 14 dias —
-      // volta em 6h (o relógio de 3h pega), no máximo 3 vezes seguidas; depois segue o ciclo normal.
-      const parcial = encher && feedsFalharam > 0 && (DB_H2A_ROLL.parciaisSeguidas || 0) < 3;
-      if (parcial) LOG(`⚠️ Só ${feedsOk} de ${nFeeds} feeds responderam — a planilha ainda não encheu; o robô tenta de novo em ~6 horas.`, "warn");
-      gravarRoll({ lastOkAt: agora, lastRunAt: agora, nextRunAt: agora + (parcial ? 6 * 3600_000 : h2aIntervaloMs()), parciaisSeguidas: parcial ? (DB_H2A_ROLL.parciaisSeguidas || 0) + 1 : 0, lastAdded: novasQueFicaram.length, lastRemoved: removidas, lastEvicted: despejadas.length,
-        total, cap, maisRecente, feeds: feedsOk, brutos, runs: (DB_H2A_ROLL.runs || 0) + 1, lastTrigger: String(trigger || ""), lastError: null, falhasSeguidas: 0 });
+      // Pediu pra ENCHER (1ª vez / abaixo do teto) mas faltou: (1) só parte dos arquivos respondeu → volta em 6h; (2) nada novo entrou e a planilha segue abaixo
+      // do teto → volta em 24h (v987: antes isso virava "sucesso" e o robô só voltava em 14 dias). No máximo 3 vezes seguidas; depois segue o ciclo normal.
+      const parciais = DB_H2A_ROLL.parciaisSeguidas || 0;
+      const manual = /^manual/.test(String(trigger || ""));   // clique do admin não gasta as 3 conferências automáticas (ele clica várias vezes pra ver o que o robô faz)
+      let parcial = false, parcialMs = 6 * 3600_000;
+      if (encher && (manual || parciais < 3)) {
+        if (feedsFalharam > 0) { parcial = true; LOG(`⚠️ Só ${feedsOk} de ${feedsTentados} arquivos responderam — a planilha ainda não encheu; o robô tenta de novo em ~6 horas.`, "warn"); }
+        else if (abaixo && novasQueFicaram.length === 0) { parcial = true; parcialMs = 24 * 3600_000; LOG(`⏳ Nenhuma vaga nova entrou e a planilha segue abaixo do teto — o robô confere o DOL de novo em ~24 horas (até 3 vezes), caso ele publique mais.`, "warn"); }
+      }
+      const ultima = { cobrir, nFeeds: feedsTentados, feedsOk, brutos, jaNaPlanilha, semQualidade, mortas, outroVisto, novas: novasQueFicaram.length, ms };
+      gravarRoll({ lastOkAt: agora, lastRunAt: agora, nextRunAt: agora + (parcial ? parcialMs : h2aIntervaloMs()), retryAt: null, parciaisSeguidas: manual ? parciais : (parcial ? parciais + 1 : 0), lastAdded: novasQueFicaram.length, lastRemoved: removidas, lastEvicted: despejadas.length,
+        totalAdded: h2aNovasBot.totalAdded, totalRemoved: h2aNovasBot.totalRemoved, totalEvicted: h2aNovasBot.totalEvicted,
+        total, cap, maisRecente, feeds: feedsOk, brutos, runs: (DB_H2A_ROLL.runs || 0) + 1, lastTrigger: String(trigger || ""), lastError: null, falhasSeguidas: 0, motivo, ultima, rodando: null });
+      h2aHistPush({ ok: true, trigger: String(trigger || ""), added: novasQueFicaram.length, removidas, evicted: despejadas.length, atualizadas, total, feeds: feedsOk, nFeeds: feedsTentados, brutos, ms });
+      LOG(`🏁 Rodada concluída em ${Math.max(1, Math.round(ms / 1000))}s. Próxima conferência automática: ${new Date(agora + (parcial ? parcialMs : h2aIntervaloMs())).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}.`, "ok");
       // as vagas que acabaram de entrar vêm do feed (e-mail, cargo, datas, salário); descrição/telefone/endereço completa o Enriquecimento — sozinho, 1 vaga por vez
       if (!isTest && novasQueFicaram.length) autoEnrichCycle().catch(e => console.warn("[h2a-novas] enriquecimento pós-rodada:", e.message));
-      return { ok: true, added: novasQueFicaram.length, removidas, evicted: despejadas.length, atualizadas, jaTinha, descartadas, outroVisto, total, cap };
+      return { ok: true, added: novasQueFicaram.length, removidas, evicted: despejadas.length, atualizadas, jaTinha, descartadas: semQualidade + mortas, semQualidade, mortas, outroVisto, total, cap };
     } catch (e) {
       h2aNovasBot.lastError = e.message; h2aNovasBot.lastRunAt = Date.now();
-      // v207: nunca fica preso em "⚠️ Erro" — re-tenta sozinho em 1 hora (até 3 vezes seguidas;
-      // depois o relógio de 3h do agendador volta a tentar). Planilha atual SEMPRE intacta.
-      const tentativa = trigger === "retry" ? (h2aNovasBot.retries || 0) + 1 : 1;
-      h2aNovasBot.retries = tentativa;
+      // v207: nunca fica preso em "⚠️ Erro". v987: a nova tentativa agora é PERSISTIDA (retryAt) e com recuo: 1h nas 3 primeiras falhas seguidas, 6h até a 6ª, depois 24h.
+      // O setTimeout em memória continua pra resposta rápida, mas quem garante é o retryAt (sobrevive a deploy). Planilha atual SEMPRE intacta.
       const falhas = (DB_H2A_ROLL.falhasSeguidas || 0) + 1;
-      gravarRoll({ lastRunAt: Date.now(), lastError: String(e.message).slice(0, 300), falhasSeguidas: falhas });
-      if (tentativa <= 3) {
-        h2aNovasBot.proximaTentativa = Date.now() + 3600_000;
-        if (!isTest) { const t = setTimeout(() => runH2aNovasCycle("retry").catch(() => { }), 3600_000); if (t.unref) t.unref(); }
-      } else h2aNovasBot.proximaTentativa = null;
-      LOG(`⚠️ ${e.message} (planilha atual intacta — ${tentativa <= 3 ? "nova tentativa automática em 1 hora" : "3 tentativas seguidas falharam; o agendador tenta de novo em até 3 horas"})`, "warn");
+      const atrasoMs = (falhas <= 3 ? 1 : falhas <= 6 ? 6 : 24) * 3600_000;
+      h2aNovasBot.retries = falhas;
+      gravarRoll({ lastRunAt: Date.now(), lastError: String(e.message).slice(0, 300), falhasSeguidas: falhas, retryAt: Date.now() + atrasoMs, rodando: null });
+      h2aHistPush({ ok: false, trigger: String(trigger || ""), erro: String(e.message).slice(0, 200), ms: Date.now() - t0 });
+      h2aNovasBot.proximaTentativa = Date.now() + atrasoMs;
+      if (falhas <= 3 && !isTest) { const t = setTimeout(() => { if (DB_H2A_ROLL.retryAt && Date.now() >= DB_H2A_ROLL.retryAt - 1000) runH2aNovasCycle("retry").catch(() => { }); }, atrasoMs); if (t.unref) t.unref(); }   // só dispara se a nova tentativa ainda for devida (uma rodada boa no meio limpa o retryAt)
+      LOG(`⚠️ ${e.message} (planilha atual intacta — nova tentativa automática em ${Math.round(atrasoMs / 3600_000)} hora${atrasoMs > 3600_000 ? "s" : ""})`, "warn");
       if (falhas === 3 && !isTest) for (const ae of ADMIN_EMAILS) pushToUser(ae, { type: "generic", title: "⚠️ Planilha H-2A não atualizou", body: `${String(e.message).slice(0, 110)} — o robô continua tentando sozinho.`, icon: "/icon-192.png", url: "/admin" }).catch(() => { });
       return { ok: false, error: e.message, proximaTentativa: h2aNovasBot.proximaTentativa };
-    } finally { h2aNovasBot.running = false; }
+    } finally { h2aNovasBot.running = false; h2aNovasBot.fase = null; h2aNovasBot.progresso = null; if (DB_H2A_ROLL.rodando) gravarRoll({ rodando: null }); }
+  }
+  // v987: rodada que estava no ar quando o servidor reiniciou (deploy) deixa rastro e é refeita em ~1 min — antes sumia sem nenhum registro
+  // e, com uma rodada boa anterior, o robô só voltava na data da próxima (14 dias).
+  function h2aRecuperarInterrompida() {
+    const r = DB_H2A_ROLL.rodando; if (!r) return false;
+    const hist = [{ ok: false, trigger: String(r.trigger || ""), erro: "interrompida por reinício do servidor (deploy) — a planilha não foi mexida; o robô refaz sozinha", em: Date.now() }, ...(DB_H2A_ROLL.historico || [])].slice(0, H2A_HIST_CAP);
+    const l = (DB_H2A_ROLL.log || []).slice(-(H2A_LOG_CAP - 1)); l.push({ ts: Date.now(), msg: "⚠️ A rodada anterior foi interrompida por um reinício do servidor (deploy). A planilha não foi mexida; o robô refaz a rodada em ~1 minuto.", type: "warn" });
+    gravarRoll({ rodando: null, retryAt: Date.now() + 60_000, historico: hist, log: l });
+    return true;
+  }
+  // v987 — CURA ÚNICA do estado de produção: antes deste fix, uma rodada que não trouxe NENHUMA vaga nova com a planilha abaixo do teto (ex.: 4.549 de 5.000)
+  // ainda carimbava "próxima só em 14 dias". Quem está nesse estado volta a conferir o DOL já neste boot (o robô agora explica o resultado no log). Roda 1 vez
+  // (carimbo v987Curado) — nunca vira "roda a cada deploy" quando o DOL realmente não tem mais vaga.
+  function h2aCurarEstadoV987() {
+    if (DB_H2A_ROLL.v987Curado) return false;
+    const preso = !!DB_H2A_ROLL.lastOkAt && (DB_H2A_ROLL.total || 0) < (DB_H2A_ROLL.cap || H2A_JANELA_PADRAO) * 0.95 && !(DB_H2A_ROLL.lastAdded > 0) && !DB_H2A_ROLL.retryAt;
+    gravarRoll({ v987Curado: true, ...(preso ? { nextRunAt: Date.now() } : {}) });
+    if (preso) h2aLog(`🩺 Atualização do robô: a última rodada deixou a planilha com ${DB_H2A_ROLL.total} de ${DB_H2A_ROLL.cap || H2A_JANELA_PADRAO} vagas sem nada novo e a próxima só viria em 14 dias — vou conferir o DOL de novo agora e explicar o resultado aqui.`, "info");
+    return preso;
   }
   // Card "Atualizada em" (usuário) e painel (admin): uma leitura só do estado persistido.
   function h2aJanelaInfo() {
@@ -771,10 +853,12 @@ function createPlanilhas(deps) {
   }
   // ⏰ AGENDADOR DA H-2A — autorizado EXPRESSAMENTE pelo dono (10/10/2026), exceção
   // ao v217 só pra esta planilha. Sem estado (primeiro deploy) roda ~90s depois do boot;
-  // depois, a cada 14 dias (estado em /data sobrevive a deploy). O relógio de 3h só
+  // depois, a cada 14 dias (estado em /data sobrevive a deploy). O relógio de 30min só
   // olha "venceu?" — não bate no DOL sem necessidade. Desligado no npm test.
   function iniciarAgendadorH2a() {
+    h2aRecuperarInterrompida();
     if (isTest) { console.log("[h2a-roll] 🧪 modo teste — agendador da H-2A desligado (disparo só por rota)"); return false; }
+    h2aCurarEstadoV987();
     const tick = (origem) => {
       if (!h2aDevido() || h2aNovasBot.running || dolColeta.running) return;
       if (h2aNovasBot.proximaTentativa && Date.now() < h2aNovasBot.proximaTentativa) return;   // a re-tentativa de 1h já está armada
@@ -782,7 +866,7 @@ function createPlanilhas(deps) {
       runH2aNovasCycle(DB_H2A_ROLL.lastOkAt ? "agendado" : "primeira-vez").catch(e => console.warn("[h2a-roll]", e.message));
     };
     const t1 = setTimeout(() => tick("boot"), 90_000); if (t1.unref) t1.unref();
-    const t2 = setInterval(() => tick("relógio"), 3 * 3600_000); if (t2.unref) t2.unref();
+    const t2 = setInterval(() => tick("relógio"), 30 * 60_000); if (t2.unref) t2.unref();   // v987: 30min (era 3h) — barato (só olha "venceu?") e a nova tentativa persistida não espera até 3h
     console.log(`[h2a-roll] ⏰ agendador ligado: ${DB_H2A_ROLL.lastOkAt ? "próxima busca em " + new Date(DB_H2A_ROLL.nextRunAt || 0).toISOString() : "nunca rodou — primeira busca ~90s após o boot"}`);
     return true;
   }
@@ -820,7 +904,7 @@ function createPlanilhas(deps) {
       // o robô vai atacá-las (e pela MESMA função que ele usa) — o painel
       // mostrava "100%" pra planilha que não tem cidade nem descrição nenhuma.
       enrichFila: filaEnriquecimento().slice(0, 8),
-      h2aNovas: { ...h2aNovasBot, totalPlanilha: (getSheetH2A() || []).length, ...h2aJanelaInfo(), devido: h2aDevido(), agendadorLigado: !isTest },
+      h2aNovas: { ...h2aNovasBot, log: (DB_H2A_ROLL.log || []).slice(-100), historico: DB_H2A_ROLL.historico || [], motivo: DB_H2A_ROLL.motivo || null, ultima: DB_H2A_ROLL.ultima || null, retryAt: DB_H2A_ROLL.retryAt || null, falhasSeguidas: DB_H2A_ROLL.falhasSeguidas || 0, parciaisSeguidas: DB_H2A_ROLL.parciaisSeguidas || 0, totalPlanilha: (getSheetH2A() || []).length, ...h2aJanelaInfo(), devido: h2aDevido(), agendadorLigado: !isTest },
       // 🚨 v177-FIX2 (auditoria 14/09/2026): faltava `published` — o admin.html
       // sempre mostrava "em rascunho, publique abaixo" mesmo DEPOIS de clicar
       // "Publicar pros usuários" com sucesso, porque esse campo nunca existia
@@ -836,7 +920,7 @@ function createPlanilhas(deps) {
   }
 
   return { runEnrichBot, autoEnrichCycle, filaEnriquecimento, planilhasPublicadas, dolColeta, runDolColeta, runPlanilhaMensal, runH2aMensal, runH2bMensal,
-    getEstadoH2a: () => DB_H2A_BIM, getEstadoH2b: () => DB_H2B_MEN, runH2aNovasCycle, h2aNovasBot, h2aJanelaInfo, h2aDevido, iniciarAgendadorH2a, iniciarAgendadores, statusPainel, aplicarDolNaLinha };
+    getEstadoH2a: () => DB_H2A_BIM, getEstadoH2b: () => DB_H2B_MEN, runH2aNovasCycle, h2aNovasBot, h2aJanelaInfo, h2aDevido, h2aRecuperarInterrompida, iniciarAgendadorH2a, iniciarAgendadores, statusPainel, aplicarDolNaLinha };
 }
 
 module.exports = { createPlanilhas, dataDoCaso, mesclarJanelaH2a, CAMPOS_ESSENCIAIS, linhaCompleta, progressoPlanilha, unidadeSalario, mesesExperiencia };

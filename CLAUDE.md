@@ -4605,3 +4605,32 @@ aleatório ou eles escolhem" — a fila do automático (início e refill) é `sh
 referência foram apagadas e `t06-perfil` saiu junto com o item do tutorial. **Dados**: `u.h2bProfile` e `u.radar` de
 usuários antigos ficam no banco (não apagamos dado de ninguém) — o export LGPD continua incluindo `h2bProfile`. Testes: ~25
 checks da família match/radar/pra-voce/CNH removidos, 3 novos; `check-xss-guard` sem as entradas das telas removidas. Suíte: 1094 checks verdes. sw v208.
+
+## 🌾 v987 — Robô da planilha H-2A (5.000) VISÍVEL e sem lugar pra falhar calado (dono, 16/10/2026)
+
+Print do painel: "cliquei pra rodar e não aparece nenhum log; eu preciso de respostas". Auditoria independente (3 lentes + verificação
+adversarial de cada achado) confirmou: o motor entrava/saía certo e NUNCA apagava a planilha inteira, mas a OBSERVABILIDADE era o
+defeito. **Causas e correções** (`mod-planilhas.js`, `server.js`, `admin.html`):
+(1) o log só ia pro anel global `botLog` (80 linhas visíveis, 1 linha por vaga do Enriquecimento enterrava tudo em segundos, zera a cada
+deploy) → **log próprio em disco** (`h2a_rolling.json`: `log` 150 linhas + `historico` 20 rodadas, gravação atômica tmp+rename) com linha por
+ARQUIVO ("N vagas no DOL → X novas · Y já estavam · Z descartadas · W encerradas") e painel novo "Planilha H-2A — acompanhamento ao vivo"
+(fase, barra, log, últimas rodadas, "Por que não tem 5.000?"); (2) a rota esperava a rodada inteira e o proxy do Render (~100s) cortava →
+clique manda `background:true`, responde **202** na hora, 409 (não 500) quando já roda; sem `background` segue síncrono (testes); (3) o
+estado vivia em memória e o painel dizia "Última rodada: nunca" depois de TODO deploy → `h2aNovasBot` hidratado do disco, totais
+persistidos; (4) feed mais recente VAZIO virava "sucesso", tirava as encerradas sem repor e travava 14 dias → vira **erro** (planilha
+intacta); rodada sem nada novo com a planilha abaixo do teto volta em **24h** (até 3x), e arquivo parcial volta em 6h; (5) nova tentativa
+após falha era só `setTimeout` (perdido no deploy) → `retryAt` **persistido** com recuo (1h/6h/24h) e relógio de **30min** (era 3h);
+(6) rodada morta por deploy deixava zero rastro → marcador `rodando` + `h2aRecuperarInterrompida()` registra e refaz em ~1min;
+(7) **"olhar mais fundo"**: planilha ainda abaixo do teto depois dos 7 arquivos (126 dias) segue pra trás até 14 arquivos (~250 dias),
+parando quando o teto projetado fecha ou o DOL não tem o arquivo (extra que falha não conta como falha); (8) **cura única** do estado
+preso de produção (4.549/5.000, nada novo, próxima em 14 dias → confere de novo no boot, carimbo `v987Curado`, 1 vez só). Regra: a
+robô só ENCHE com vaga REAL do DOL com e-mail — nunca inventa; quando não chega a 5.000 o painel diz por quê. Achados rebaixados/refutados
+pelo verificador (watchdog de download pendurado, RAM do ZIP, backoff do DOL) ficaram de fora de propósito. Testes novos no bloco v987 do
+smoke (feed vazio, retryAt, 24h, log/histórico pós-"deploy", interrompida, atômico, extensão, cura única, rota 202, estrutural).
+**Revisão independente em cima da 1ª versão (28 agentes) achou e eu corrigi antes do deploy**: `retryAt` virou PORTÃO em `h2aDevido` (antes
+era só "OU": com a rodada agendada já vencida, cada deploy ignorava o recuo e rebaixava o DOL); clique MANUAL não gasta as 3 conferências
+automáticas de 24h (`parciaisSeguidas` só conta rodada automática); arquivo EXTRA com erro 5xx/rede conta como falha (volta em 6h) e só
+"o DOL não publicou" (fim do histórico) encerra a busca funda em silêncio; `encher` conta só as vagas VIVAS (as encerradas saem na mesma
+rodada); o `setTimeout` de retry só dispara se o `retryAt` ainda for devido; painel: log com data, rolagem que não prende, barra que não
+anda pra trás, toast só pra rodada recente, status que falha mantém o poll e avisa. Testes novos provam cada um (recuo 1/1/1/6/6/6/24h,
+marcador no início, boot registrando interrompida, rename que falha deixa JSON íntegro, fixtures da cura, 409 do 2º clique). Suíte: 1128 checks verdes. sw v210.

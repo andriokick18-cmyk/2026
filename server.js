@@ -8675,8 +8675,17 @@ ul li{margin-bottom:6px}
     const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
     try{
       let _b={};try{_b=JSON.parse(await readBody(req)||"{}");}catch{}
+      // v987: a rodada baixa até 7 arquivos grandes do DOL e passa fácil do timeout (~100s) do proxy do Render — o clique no painel
+      // manda background:true, a rota responde NA HORA (202) e o card acompanha pelo status (fase, progresso, log próprio).
+      // Recusa benigna ("já rodando") é 409, não 500. Sem background (testes/scripts) segue síncrono como sempre.
+      if(_b.background===true){
+        if(PLANILHAS.h2aNovasBot.running)return json(res,409,{ok:false,error:"A robô da H-2A já está rodando — acompanhe o andamento no cartão."});
+        if(PLANILHAS.dolColeta.running)return json(res,409,{ok:false,error:"Existe uma coleta do DOL rodando — espere terminar (dois downloads gigantes ao mesmo tempo estouram a memória)."});
+        PLANILHAS.runH2aNovasCycle("manual:"+s.user_email,{cap:_b.cap}).catch(e=>console.warn("[h2a-novas]",e.message));
+        return json(res,202,{ok:true,started:true});
+      }
       const r=await PLANILHAS.runH2aNovasCycle("manual:"+s.user_email,{cap:_b.cap}); // cap só vale no npm test (mod-planilhas ignora fora dele)
-      return json(res,r.ok?200:500,r);}
+      return json(res,r.ok?200:(/já rodando|coleta rodando/.test(r.error||"")?409:500),r);}
     catch(e){return json(res,500,{ok:false,error:e.message});}
   }
 
