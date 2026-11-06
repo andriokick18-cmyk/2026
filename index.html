@@ -2203,7 +2203,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
         <div class="ln-benefit-card ln-benefit-vip">
           <div class="ln-benefit-icon" style="background:rgba(251,191,36,.15);color:#fbbf24">👑</div>
           <div class="ln-benefit-title">Mais poder, assinando um plano</div>
-          <div class="ln-benefit-desc">Sem plano, a conta não envia candidatura nenhuma. Com um plano ativo você passa a enviar todo dia: 100 manuais no Manual, 100 manuais + 100 automáticas no Turbo e 50 manuais + 300 automáticas no Máximo. Nos planos com automático incluso o robô roda 24h, no seu ritmo. Veja os detalhes na aba 💎 Planos.</div>
+          <div class="ln-benefit-desc">Sem plano, o site não envia nada por você — mas a lista randomizada é grátis: você copia o e-mail da vaga e envia pelo seu próprio Gmail. Com um plano ativo você passa a enviar todo dia: 100 manuais no Manual, 100 manuais + 100 automáticas no Turbo e 50 manuais + 300 automáticas no Máximo. Nos planos com automático incluso o robô roda 24h, no seu ritmo. Veja os detalhes na aba 💎 Planos.</div>
         </div>
       </div>
     </div>
@@ -2237,6 +2237,35 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
           <div class="ln-step-ico" style="background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.3)"><i class="ti ti-mail-opened" style="font-size:28px;color:#10b981"></i></div>
           <div class="ln-step-title">4. Empresa te responde</div>
           <div class="ln-step-desc">A resposta cai direto na caixa de entrada do seu próprio Gmail.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ Listas randomizadas (dono, 03/11/2026): ensinar logo na entrada a
+       diferença pro SeasonalJobs e os 3 jeitos de enviar, pra ninguém achar que
+       "o site é pago" quando o envio por cópia de e-mail é grátis. Só afirma o
+       que é verificável (a lista oficial não traz e-mail; a nossa traz). ══ -->
+  <section class="ln-section" id="lista-randomizada" style="background:linear-gradient(135deg,#0a1024,#0d1530)">
+    <div class="ln-section-inner">
+      <div class="ln-sec-label">Por que o H2BApply</div>
+      <h2 class="ln-sec-title">Lista randomizada pronta, direto na empresa certa</h2>
+      <p class="ln-sec-sub" style="margin:0 0 28px;max-width:680px">No site oficial (SeasonalJobs) as vagas H-2B ficam todas misturadas — muitas são de empresas que <strong>não contratam de fora do país</strong>, só estendem ou trocam visto. Na nossa lista randomizada, <strong>todas as empresas abriram petição pra contratar fora do país</strong>. E a lista oficial não traz o e-mail da vaga: pra achar um você leva até 10 minutos. Aqui a vaga já vem completa.</p>
+      <div class="ln-benefits-grid">
+        <div class="ln-benefit-card">
+          <div class="ln-benefit-icon" style="background:rgba(16,185,129,.15);color:#10b981">🆓</div>
+          <div class="ln-benefit-title">1. Grátis — copiar e colar</div>
+          <div class="ln-benefit-desc">Na aba Listas randomizadas você copia o e-mail da vaga, cola no seu Gmail, envia e marca “Já enviei”. A vaga some da sua lista e você nunca manda duas vezes pro mesmo empregador. Não custa nada.</div>
+        </div>
+        <div class="ln-benefit-card">
+          <div class="ln-benefit-icon" style="background:rgba(99,102,241,.15);color:#818cf8">🖱️</div>
+          <div class="ln-benefit-title">2. Pago — envio manual de 1 clique</div>
+          <div class="ln-benefit-desc">Você abre a vaga e clica em enviar. O site manda pelo seu Gmail conectado, com o seu currículo e os seus textos.</div>
+        </div>
+        <div class="ln-benefit-card">
+          <div class="ln-benefit-icon" style="background:rgba(59,130,246,.15);color:#3b82f6">🤖</div>
+          <div class="ln-benefit-title">3. Pago — envio automático</div>
+          <div class="ln-benefit-desc">Você escolhe as vagas, cadastra currículo, título e corpo do e-mail e liga. Ele envia por dia, sem você no computador e mesmo se sair da conta. Sua única tarefa: olhar o seu e-mail pra ver as respostas.</div>
         </div>
       </div>
     </div>
@@ -2624,7 +2653,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
         <button class="sb-item" id="si-profile" onclick="sv('profile')"><i class="ti ti-user"></i>Meu Perfil</button>
         <button class="sb-item" id="si-cvs" onclick="sv('profile');setTimeout(()=>{if(typeof switchProfileTab==='function')switchProfileTab('profiles')},120)"><i class="ti ti-file-cv"></i>Currículos</button>
         <button class="sb-item" id="sb-auto-btn" onclick="openAutoModal()"><i class="ti ti-robot"></i>Envio Automático</button>
-        <button class="sb-item" id="si-jobs" onclick="sv('jobs')"><i class="ti ti-send"></i>Envio Manual</button>
+        <button class="sb-item" id="si-jobs" onclick="sv('jobs')"><i class="ti ti-list-details"></i><span data-i18n="manual_send_title">Listas randomizadas</span></button>
         <button class="sb-item" id="si-hist" onclick="sv('hist')"><i class="ti ti-history"></i><span data-i18n="sent_tab">Enviadas</span><span class="sb-badge sb-badge-g" id="sib-hist" style="display:none"></span></button>
         <button class="sb-item" id="si-plans" onclick="sv('plans')"><i class="ti ti-diamond"></i>💎 Planos</button>
       </div>
@@ -2742,6 +2771,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
             </div>
           </div>
 
+          <div id="lr-welcome-slot"></div>
           <!-- ══ CTAs SECUNDÁRIOS — Manual + Planos ══ -->
           <div style="padding:12px 14px 0">
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">
@@ -2749,8 +2779,8 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
                 <div aria-hidden="true" style="position:absolute;right:-14px;bottom:-16px;font-size:80px;line-height:1;opacity:.16;transform:rotate(-6deg);pointer-events:none">📤</div>
                 <div style="position:relative;z-index:1">
                   <div style="width:52px;height:52px;border-radius:16px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;margin-bottom:12px"><img src="/img/icon-envio-manual.png" alt="" width="52" height="52" style="width:100%;height:100%;object-fit:contain;padding:4px;box-sizing:border-box"></div>
-                  <div style="font-size:16px;font-weight:900;color:#fff" data-i18n="manual_send_title">Envio Manual</div>
-                  <div style="font-size:11.5px;color:rgba(255,255,255,.85);margin-top:4px;line-height:1.4;margin-bottom:10px" data-i18n="manual_send_sub">Busque vagas e envie candidaturas agora</div>
+                  <div style="font-size:16px;font-weight:900;color:#fff" data-i18n="manual_send_title">Listas randomizadas</div>
+                  <div style="font-size:11.5px;color:rgba(255,255,255,.85);margin-top:4px;line-height:1.4;margin-bottom:10px" data-i18n="manual_send_sub">Copie o e-mail das vagas e envie de graça, ou envie com 1 clique</div>
                   <div style="font-size:10.5px;color:rgba(255,255,255,.88);display:flex;align-items:center;gap:6px;margin-bottom:3px"><i class="ti ti-circle-check-filled" style="font-size:12px;flex-shrink:0"></i><span data-i18n="home_man_b1">Pesquise e filtre as vagas</span></div>
                   <div style="font-size:10.5px;color:rgba(255,255,255,.88);display:flex;align-items:center;gap:6px"><i class="ti ti-circle-check-filled" style="font-size:12px;flex-shrink:0"></i><span data-i18n="home_man_b4">Envie quando estiver pronto</span></div>
                   <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;margin-top:12px">
@@ -4174,7 +4204,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
     <!-- 2: Vagas (Envio Manual) -->
     <button class="bn" id="bn-jobs" onclick="sv('jobs')">
       <i class="ti ti-send"></i>
-      <span data-i18n="bn_jobs">Vagas</span>
+      <span data-i18n="bn_jobs">Listas</span>
     </button>
     <!-- 3: Enviadas -->
     <button class="bn" id="bn-hist" onclick="sv('hist')">

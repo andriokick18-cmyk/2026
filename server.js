@@ -5069,6 +5069,32 @@ function shuffleArray(arr) {
   return a;
 }
 
+// 🔀 v-LR (dono, 03/11/2026 — aba "Listas randomizadas"): embaralhamento
+// DETERMINÍSTICO por semente. Quando 10 pessoas abrem a lista sem filtro, a 1ª
+// vaga não pode ser a mesma pras 10 (todo mundo mandaria pro mesmo empregador).
+// Cada abertura da aba manda uma `seed` nova; as páginas seguintes (skip/top)
+// mandam a MESMA seed, então a paginação não duplica nem perde vaga (o erro do
+// v179 com `sort=shuffle` era justamente reembaralhar a cada requisição).
+function shuffleSeeded(arr, seed) {
+  const a = [...arr];
+  let h = 2166136261;
+  const s0 = String(seed || "");
+  for (let i = 0; i < s0.length; i++) h = Math.imul(h ^ s0.charCodeAt(i), 16777619);
+  let st = h >>> 0;
+  const rnd = () => {
+    st = (st + 0x6D2B79F5) >>> 0;
+    let t = st;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 // Maps job title keywords → category
 const JOB_TITLE_TO_CAT = {
   bartender:"food",barman:"food",barmaid:"food",cook:"food","line cook":"food",
@@ -9297,7 +9323,16 @@ filtrar();
     const _dpMeta=_isDoublePro(_uMeta);
     const _corteMeta=hideSent?_excluirEnviadosFn(_sMeta?.user_email):null;
     const _verEmailMeta=!!_uMeta; // 🔓 v277: qualquer sessão logada vê o e-mail (free inclusive) — só quem não tem conta nenhuma fica mascarado
-    const preFiltered=FILTROS.filtrar(baseArr,f,{except:["q"],excluir:_corteMeta,isDP:_dpMeta});
+    let preFiltered=FILTROS.filtrar(baseArr,f,{except:["q"],excluir:_corteMeta,isDP:_dpMeta});
+    // 🔀 Listas randomizadas: ordem "aleatória" (sem ordenação escolhida e sem
+    // busca de texto — a busca tem a ordem de relevância dela) vem EMBARALHADA
+    // por semente quando o cliente manda `seed`. Sem `seed` (robô do
+    // automático, cliente antigo) nada muda: ordem estável de sempre. Ordenar
+    // por salário/data é filtro: aí a ordem é igual pra todo mundo, de propósito.
+    const _seedReq=(u.searchParams.get("seed")||"").trim();
+    if(sort==="random"&&!(f.q&&String(f.q).trim())&&/^[A-Za-z0-9]{4,32}$/.test(_seedReq)){
+      preFiltered=shuffleSeeded(preFiltered,_seedReq);
+    }
     const{total,items,sugestao}=searchSheet(preFiltered,f.q,"","",skip,top,sort);
     let filtered=items; // já paginado corretamente
     // total já é o total filtrado (pré-filtro + searchSheet)
@@ -12980,6 +13015,69 @@ filtrar();
   if(pathname==="/api/history"&&req.method==="GET"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
     return json(res,200,{ok:true,history:getHist(s.user_email)});
+  }
+
+  // ✅ v-LR (dono, 03/11/2026): ENVIO GRÁTIS por cópia de e-mail. Quem não tem
+  // plano copia o e-mail da vaga, cola no próprio Gmail, envia e volta aqui pra
+  // marcar "já enviei". A marcação usa a MESMA anti-duplicata do resto do
+  // produto (DB_SENT por e-mail do EMPREGADOR — regra 8): a vaga some da lista
+  // DESSE usuário e nunca mais reaparece, e outras vagas do mesmo empregador
+  // somem junto (mandar 2x pro mesmo e-mail é o que a regra 8 sempre evitou).
+  // Entra no histórico como type:"gratis" (aba Enviadas) mas NÃO gasta limite
+  // diário — countManualToday/countAutoToday só contam "manual"/"auto".
+  // O e-mail vem SEMPRE da linha da planilha no servidor, nunca do cliente.
+  // POST {caseNum, sheet?, sent:true|false}; sent:false desfaz (só se o
+  // e-mail não está no histórico de um envio feito de verdade pelo app).
+  if(pathname==="/api/free-sent"&&req.method==="POST"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
+    if(rateLimit(s.user_email+"_freesent",900,3600_000))return json(res,429,{error:"Muitas marcações seguidas. Espere um pouco e tente de novo."});
+    try{
+      const d=JSON.parse(await readBody(req));
+      if(d.all===true&&d.sent===false){
+        // "Desmarcar todas": devolve TODAS as vagas marcadas como enviadas grátis
+        // pra lista (só as type:"gratis" — envio feito pelo app nunca é desfeito aqui).
+        const _h=DB_HIST[s.user_email]||[];
+        const gr=_h.filter(h=>h.type==="gratis");
+        DB_HIST[s.user_email]=_h.filter(h=>h.type!=="gratis");
+        for(const h of gr){
+          const e=_normEmail(h.to);
+          if(e&&!DB_HIST[s.user_email].some(x=>_normEmail(x.to)===e)&&DB_SENT[s.user_email]?.has(e))DB_SENT[s.user_email].delete(e);
+        }
+        if(gr.length){persist(HIST_FILE,DB_HIST);persistSent();invalidateUserStatsCache(s.user_email);}
+        return json(res,200,{ok:true,removed:gr.length});
+      }
+      const cn=String(d.caseNum||"").trim().slice(0,60);
+      if(!cn)return json(res,400,{error:"caseNum obrigatório."});
+      const sheetReq=String(d.sheet||"").trim();
+      const _pool=sheetReq?[getSheet(sheetReq)]:[SHEET_JAN,SHEET_JUL,SHEET_H2A];
+      let row=null;
+      for(const arr of _pool){row=(arr||[]).find(r=>r.c===cn);if(row)break;}
+      const emp=_normEmail(row?.e||"");
+      if(!row||!emp||!emp.includes("@"))return json(res,404,{error:"Vaga sem e-mail de empregador nesta lista."});
+      if(d.sent===false){
+        // Desfazer: tira a linha "grátis" do histórico (type:"gratis" — nunca mexe
+        // em envio feito de verdade pelo app) e só então libera o e-mail.
+        const _h0=DB_HIST[s.user_email]||[];
+        const _n0=_h0.length;
+        DB_HIST[s.user_email]=_h0.filter(h=>!(h.type==="gratis"&&(h.caseNum===cn||_normEmail(h.to)===emp)));
+        if(DB_HIST[s.user_email].length!==_n0){persist(HIST_FILE,DB_HIST);invalidateUserStatsCache(s.user_email);}
+        const noHist=!(DB_HIST[s.user_email]||[]).some(h=>_normEmail(h.to)===emp);
+        if(noHist&&DB_SENT[s.user_email]?.has(emp)){DB_SENT[s.user_email].delete(emp);persistSent();}
+        return json(res,200,{ok:true,sent:!noHist&&hasSent(s.user_email,emp)});
+      }
+      markSent(s.user_email,emp);
+      // Aparece na aba Enviadas como "enviado pelo seu Gmail (grátis)". type:"gratis"
+      // fica FORA de countManualToday/countAutoToday (só contam "manual"/"auto"),
+      // então não gasta limite diário nenhum de quem assinar um plano depois.
+      if(!(DB_HIST[s.user_email]||[]).some(h=>h.type==="gratis"&&h.caseNum===cn)){
+        addHist(s.user_email,{
+          appId:newAppId(),jobId:cn,job:row.t||"Seasonal Worker",company:row.n||"",to:emp,
+          dateStr:todayStr(),date:toLocaleBRT(Date.now()),sentAt:new Date().toISOString(),
+          type:"gratis",caseNum:cn,sheetSource:sheetReq||undefined,
+        });
+      }
+      return json(res,200,{ok:true,sent:true});
+    }catch(e){return json(res,400,{error:"Pedido inválido."});}
   }
 
   // Limpa TODO o histórico + DB_SENT do usuário (Reset geral — vagas voltam para a lista)

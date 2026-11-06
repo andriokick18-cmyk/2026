@@ -8828,6 +8828,123 @@ async function drillAdminSettingsLegado() {
     }
 
     // ══════════════════════════════════════════════════════════════════════
+    // ✅ LISTAS RANDOMIZADAS (dono, 03/11/2026) — a aba "Envio Manual" virou
+    // "Listas randomizadas": (1) sem filtro, a ordem vem EMBARALHADA por
+    // semente — cada abertura da aba manda uma semente nova, então a 1ª vaga
+    // não é igual pra todo mundo; a MESMA semente mantém a paginação sem
+    // duplicar nem perder vaga; ordenar (salário/data) é filtro e fica igual
+    // pra todos; (2) quem não tem plano copia o e-mail, envia pelo próprio
+    // Gmail e marca "Já enviei" (POST /api/free-sent): a vaga sai da lista
+    // DELE e só dele, o histórico/limite do app não é tocado, e o ENVIO pelo
+    // app continua fechado (402).
+    // ══════════════════════════════════════════════════════════════════════
+    {
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "gratis-lr@test.com", name: "Gratis LR" });
+      const L = (qs) => get("/api/sheet-meta?sheet=jan2026&hideSent=0&" + qs);
+      const ids = (r) => (r.json && r.json.jobs ? r.json.jobs.map((j) => j.caseNum) : []);
+      const sA1 = ids(await L("top=40&sort=random&seed=semente0001"));
+      const sA2 = ids(await L("top=40&sort=random&seed=semente0001"));
+      const sB = ids(await L("top=40&sort=random&seed=outraSemente22"));
+      const est1 = ids(await L("top=40&sort=random"));
+      const est2 = ids(await L("top=40"));
+      const estAsc = ids(await L("top=40&sort=asc"));
+      check("🔀 Listas randomizadas: sementes DIFERENTES dão ordens DIFERENTES (a 1ª vaga não é igual pra todo mundo) e a MESMA semente repete a mesma ordem",
+        sA1.length === 40 && JSON.stringify(sA1) === JSON.stringify(sA2) && JSON.stringify(sA1) !== JSON.stringify(sB) && sA1[0] !== sB[0],
+        `1ª(seed1)=${sA1[0]} 1ª(seed2)=${sB[0]}`);
+      check("🔀 Listas randomizadas: SEM semente nada muda — ordem estável de sempre (o robô do automático e clientes antigos paginam igual a antes)",
+        JSON.stringify(est1) === JSON.stringify(est2) && JSON.stringify(est1) === JSON.stringify(estAsc),
+        "sem seed deixou de ser a ordem estável");
+      // aberturas distintas → 1ª vaga distinta (10 'pessoas' abrindo a lista)
+      const primeiras = new Set();
+      for (let i = 0; i < 10; i++) primeiras.add((ids(await L("top=1&sort=random&seed=pessoa" + i + "abcd")))[0]);
+      check("🔀 Listas randomizadas: 10 aberturas da aba (10 sementes) NÃO caem todas na mesma 1ª vaga — pelo menos 8 vagas diferentes no topo",
+        primeiras.size >= 8, `1as vagas distintas=${primeiras.size}`);
+      // paginação com a mesma semente: sem duplicar e sem perder vaga
+      const p1 = ids(await L("top=50&skip=0&sort=random&seed=paginacao01"));
+      const p2 = ids(await L("top=50&skip=50&sort=random&seed=paginacao01"));
+      const p3 = ids(await L("top=50&skip=100&sort=random&seed=paginacao01"));
+      const tudo = ids(await L("top=150&skip=0&sort=random&seed=paginacao01"));
+      check("🔀 Listas randomizadas: paginação com a MESMA semente não duplica nem perde vaga (3 páginas de 50 = as 150 primeiras de uma vez, todas únicas)",
+        new Set([...p1, ...p2, ...p3]).size === 150 && JSON.stringify([...p1, ...p2, ...p3]) === JSON.stringify(tudo),
+        `únicas=${new Set([...p1, ...p2, ...p3]).size}`);
+      // o conjunto é o mesmo: embaralhar não muda QUEM entra, só a ordem
+      const totA = (await L("top=1&sort=random&seed=semente0001")).json.total;
+      const totB = (await L("top=1&sort=random")).json.total;
+      check("🔀 Listas randomizadas: embaralhar não muda o TOTAL (mesmo conjunto de vagas, só a ordem)", totA === totB && totA > 1000, `${totA} × ${totB}`);
+      // filtro de ordenação ignora a semente: igual pra todo mundo
+      const w1 = ids(await L("top=30&sort=wage&seed=semente0001"));
+      const w2 = ids(await L("top=30&sort=wage&seed=outraSemente22"));
+      check("🔀 Listas randomizadas: quem ordena por salário (filtro) recebe a MESMA ordem independente da semente — só a ordem 'aleatória' embaralha",
+        w1.length === 30 && JSON.stringify(w1) === JSON.stringify(w2), "sort=wage mudou com a semente");
+      // semente inválida é ignorada (nunca vira erro nem embaralhamento sem controle)
+      const sBad = ids(await L("top=40&sort=random&seed=" + encodeURIComponent("<script>")));
+      check("🔀 Listas randomizadas: semente inválida (fora de [A-Za-z0-9]{4,32}) é ignorada — ordem estável, sem erro", JSON.stringify(sBad) === JSON.stringify(est1), "semente inválida mudou a ordem");
+
+      // ── caixinha "Já enviei" (envio grátis por cópia de e-mail) ──
+      const lista0 = (await get("/api/sheet-meta?sheet=jan2026&hideSent=1&top=60&sort=asc")).json;
+      const alvo = lista0.jobs.find((j) => j.hasEmail && j.email && j.email.includes("@"));
+      const tot0 = lista0.total;
+      const hist0 = ((await get("/api/history")).json || {}).history || [];
+      const marcou = await req2("POST", "/api/free-sent", { caseNum: alvo.caseNum, sheet: "jan2026", sent: true });
+      const lista1 = (await get("/api/sheet-meta?sheet=jan2026&hideSent=1&top=2000&sort=asc")).json;
+      const sumiu = !lista1.jobs.some((j) => j.caseNum === alvo.caseNum) && !lista1.jobs.some((j) => (j.email || "") === alvo.email);
+      const hist1 = ((await get("/api/history")).json || {}).history || [];
+      check("✅ Listas randomizadas: marcar 'Já enviei' (grátis) tira a vaga da lista de quem marcou — e outras vagas do MESMO empregador saem junto (regra 8), o total cai",
+        marcou.status === 200 && marcou.json && marcou.json.ok === true && sumiu && lista1.total < tot0,
+        `status=${marcou.status} sumiu=${sumiu} total ${tot0} → ${lista1.total}`);
+      const grLinhas = hist1.filter((h) => h.type === "gratis");
+      check("✅ Listas randomizadas: a marcação entra na aba ENVIADAS como UMA linha type:'gratis' (com e-mail, vaga e empresa) — e NÃO conta no limite diário (countManualToday/countAutoToday só contam 'manual'/'auto')",
+        hist1.length === hist0.length + 1 && grLinhas.length === 1 && grLinhas[0].caseNum === alvo.caseNum && grLinhas[0].to === alvo.email.toLowerCase().trim() &&
+        /countManualToday\s*=\s*h\s*=>[^\n]*x\.type==="manual"/.test(fs.readFileSync(path.join(__dirname, "server.js"), "utf8")),
+        `histórico ${hist0.length} → ${hist1.length} · gratis=${grLinhas.length}`);
+      await req2("POST", "/api/free-sent", { caseNum: alvo.caseNum, sheet: "jan2026", sent: true });
+      const hist1b = ((await get("/api/history")).json || {}).history || [];
+      check("✅ Listas randomizadas: marcar a MESMA vaga duas vezes não duplica a linha no histórico", hist1b.filter((h) => h.type === "gratis").length === 1, `linhas=${hist1b.filter((h) => h.type === "gratis").length}`);
+      const envioGratis = await req2("POST", "/api/send", { to: alvo.email, subject: "Application", message: "Olá, gostaria de me candidatar." });
+      check("✅ Listas randomizadas: o ENVIO PELO APP continua fechado pra quem não tem plano (402) — copiar e-mail é grátis, enviar pelo Gmail do site não",
+        envioGratis.status === 402, `status=${envioGratis.status}`);
+      // isolamento: outro usuário continua vendo a vaga
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "gratis-lr2@test.com", name: "Gratis LR2" });
+      const outro = (await get("/api/sheet-meta?sheet=jan2026&hideSent=1&top=2000&sort=asc")).json;
+      check("✅ Listas randomizadas: a marcação vale SÓ pra quem marcou — outra conta continua vendo a vaga na lista dela",
+        outro.jobs.some((j) => j.caseNum === alvo.caseNum) && outro.total === tot0, `outro.total=${outro.total} tot0=${tot0}`);
+      // desfazer devolve a vaga
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "gratis-lr@test.com", name: "Gratis LR" });
+      const desfez = await req2("POST", "/api/free-sent", { caseNum: alvo.caseNum, sheet: "jan2026", sent: false });
+      const lista2 = (await get("/api/sheet-meta?sheet=jan2026&hideSent=1&top=2000&sort=asc")).json;
+      const hist2 = ((await get("/api/history")).json || {}).history || [];
+      check("✅ Listas randomizadas: 'Desfazer' (sent:false) devolve a vaga pra lista, o total volta ao que era e a linha sai da aba Enviadas",
+        desfez.status === 200 && lista2.jobs.some((j) => j.caseNum === alvo.caseNum) && lista2.total === tot0 && hist2.length === hist0.length, `total ${lista2.total} × ${tot0} · hist ${hist2.length} × ${hist0.length}`);
+      // desmarcar TODAS (enviar tudo de novo)
+      const tres = lista0.jobs.filter((j) => j.hasEmail && j.email).slice(0, 3);
+      for (const j of tres) await req2("POST", "/api/free-sent", { caseNum: j.caseNum, sheet: "jan2026", sent: true });
+      const comTres = ((await get("/api/history")).json || {}).history || [];
+      const todas = await req2("POST", "/api/free-sent", { all: true, sent: false });
+      const semNenhuma = ((await get("/api/history")).json || {}).history || [];
+      const lista3 = (await get("/api/sheet-meta?sheet=jan2026&hideSent=1&top=1&sort=asc")).json;
+      check("✅ Listas randomizadas: 'Desmarcar todas' tira TODAS as marcadas grátis do histórico e devolve as vagas pra lista (total volta ao original)",
+        comTres.filter((h) => h.type === "gratis").length >= 1 && todas.status === 200 && todas.json.removed >= 1 &&
+        semNenhuma.filter((h) => h.type === "gratis").length === 0 && lista3.total === tot0, `removidas=${todas.json && todas.json.removed} total ${lista3.total} × ${tot0}`);
+      const semCn = await req2("POST", "/api/free-sent", { sheet: "jan2026", sent: true });
+      const falsa = await req2("POST", "/api/free-sent", { caseNum: "H-000-NAO-EXISTE", sheet: "jan2026", sent: true });
+      check("✅ Listas randomizadas: marcação sem caseNum → 400 e vaga que não existe → 404 (o e-mail vem SEMPRE da planilha no servidor, nunca do cliente)",
+        semCn.status === 400 && falsa.status === 404, `${semCn.status} / ${falsa.status}`);
+      // estrutural: front + landing
+      const _appLR = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+      const _idxLR = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+      check("✅ Listas randomizadas (estrutural): a aba se chama 'Listas randomizadas' no menu, o aviso do envio grátis, a caixinha 'Já enviei', a semente por abertura e a explicação de boas-vindas existem no front",
+        /id="si-jobs"[^>]*>[^]*?Listas randomizadas/.test(_idxLR) && !/id="si-jobs"[^>]*><i class="ti ti-send"><\/i>Envio Manual/.test(_idxLR) &&
+        _appLR.includes("function _lrAvisoGratisHTML(") && _appLR.includes("async function lrMarcar(") && _appLR.includes("function lrCopiar(") &&
+        _appLR.includes("function _newSeed(") && _appLR.includes('p.set("seed",fSeed)') && _appLR.includes("function _lrExplicacaoHTML(") &&
+        _idxLR.includes('id="lr-welcome-slot"') && _idxLR.includes('id="lista-randomizada"'),
+        "algum pedaço da aba Listas randomizadas não foi encontrado");
+      check("✅ Listas randomizadas (estrutural): o aviso do grátis aparece no lugar do cartão vermelho de bloqueio pra quem não tem plano, e o 'Candidatar-se' de 1 clique segue pra quem tem plano",
+        /el\.innerHTML=_lrAvisoGratisHTML\(\)/.test(_appLR) && _appLR.includes("_isFreeApplier()&&j.email&&!j.emailBloqueado?_lrDetailActs(j):`<button class=\"btn btn-primary\" onclick=\"openModal("),
+        "gate do aviso/CTA mudou");
+      await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
     // 🔒 v182 — LOTE 10: O E-MAIL DO EMPREGADOR É O ATIVO QUE O CLIENTE PAGA
     // Provado com curl SEM cookie: /api/sheet-meta?sheet=jan2026&top=2000
     // devolvia os e-mails de 2.000 empregadores em texto puro — 5 requisições
@@ -9146,11 +9263,11 @@ async function drillAdminSettingsLegado() {
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
       const _srvL5 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
       const _appL5 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
-      check("💳 v187-L5 (estrutural): o carimbo de limites numa concessão manual é régua ÚNICA (limitsParaAtivacaoAdmin, usada por vip/activate e vip/set-expiry) e a tela tem uma fonte só pro subtítulo do gate (_planGateSubTxt, usada pelos 2 gates e pelo toast do automático pausado)",
+      check("💳 v187-L5 (estrutural): o carimbo de limites numa concessão manual é régua ÚNICA (limitsParaAtivacaoAdmin, usada por vip/activate e vip/set-expiry) e a tela tem uma fonte só pro subtítulo do gate (_planGateSubTxt, usada pelo gate do automático e pelo toast do automático pausado)",
         _srvL5.includes("function limitsParaAtivacaoAdmin(") &&
         (_srvL5.match(/limitsParaAtivacaoAdmin\(target,planName\)/g) || []).length === 2 &&
         _srvL5.includes("function _provisorioPendente(") && _srvL5.includes("provisorioPendente:_provPend?") &&
-        _appL5.includes("function _planGateSubTxt(") && (_appL5.match(/_planGateSubTxt\(/g) || []).length === 4,
+        _appL5.includes("function _planGateSubTxt(") && (_appL5.match(/_planGateSubTxt\(/g) || []).length === 3, // 03/11/2026: o gate do MANUAL de quem não tem plano virou o aviso do envio grátis (Listas randomizadas) — sobram a definição + gate do automático + toast do automático pausado
         "o carimbo de limites ou o subtítulo do gate voltaram a ter 2 réguas");
     }
 

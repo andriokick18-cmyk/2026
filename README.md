@@ -42,6 +42,11 @@ período, paga via Pix e sobe o comprovante diretamente.
 - Depois do cadastro, a janela "Cadastre seu currículo agora" abre o editor
   de perfil (3 títulos + 3 textos de e-mail já abertos, currículo PDF; cover
   letter opcional) — dá pra pular e fazer depois em Perfil
+- Aba "Listas randomizadas" (antes "Envio Manual"): a ordem vem embaralhada
+  a cada abertura (semente por abertura, paginação estável); quem não tem
+  plano copia o e-mail da vaga, envia pelo próprio Gmail e marca "Já enviei"
+  (a vaga sai da lista dele e vai pra aba Enviadas como "grátis", sem gastar limite — `POST /api/free-sent`; dá pra desfazer uma ou todas); quem tem plano segue
+  com o envio de 1 clique
 - Compra direta de plano (Manual/Turbo/Máximo): escolhe plano+período (15, 30
   ou 60 dias — o de 15 custa a metade do de 30; o de 60 tem desconto), vê o
   preço oficial, paga via Pix e sobe o comprovante. Se o valor bater, o

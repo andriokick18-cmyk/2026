@@ -335,6 +335,46 @@ se referindo a outro repositório/projeto.
   com um número falso; use sempre `??`). O botão de conectar Gmail
   **não existe/não funciona pra conta free** — free só navega/vê vagas e
   planos, nunca autentica Gmail nem envia nada, manual ou automático.
+- **✅ LISTAS RANDOMIZADAS — envio grátis POR CÓPIA DE E-MAIL (dono,
+  03/11/2026 — única exceção sancionada ao "ZERO envio grátis" acima, e só
+  porque o APP não envia nada)**: a aba "Envio Manual" foi RENOMEADA pra
+  "Listas randomizadas" (mesma aba, mesma view `#v-jobs`, nenhuma aba nova).
+  Quem não tem plano (`U.needsPlan`) vê o aviso fixo "Aplicando de graça?"
+  (`_lrAvisoGratisHTML`, no lugar do antigo cartão vermelho): copia o e-mail da
+  vaga (`lrCopiar`), cola no PRÓPRIO Gmail, envia e marca a caixinha "Já enviei"
+  (`lrMarcar` → `POST /api/free-sent`). A marcação usa a MESMA anti-duplicata
+  do produto (`markSent`/`DB_SENT`, e-mail do EMPREGADOR — regra 8): a vaga
+  e as outras do mesmo empregador somem da lista DESSE usuário e só dele. A
+  marcação entra na aba ENVIADAS como UMA linha `type:"gratis"` ("Enviado pelo
+  seu Gmail (grátis)") e NUNCA gasta limite diário — `countManualToday`/
+  `countAutoToday` só contam `"manual"`/`"auto"`, PROIBIDO mudar isso. "Desfazer"
+  (`sent:false`, também na própria linha da aba Enviadas) remove só a linha
+  `gratis`; `{all:true,sent:false}` ("Desmarcar todas e voltar pra lista")
+  remove todas as `gratis` — envio feito de verdade pelo app nunca é desfeito
+  por essa rota (o "Resetar" geral da aba Enviadas continua existindo). O
+  e-mail vem SEMPRE da planilha no servidor, nunca do cliente. **O que NÃO
+  muda**: free continua sem Gmail conectado, sem Google, sem `/api/send`
+  (402) e sem `/oauth/connect-send` — "copiar e-mail" não é enviar pelo app
+  (o v277 já deixava o free VER/copiar o contato). PROIBIDO transformar isso
+  em envio pelo site pra conta free.
+  **Ordem embaralhada por abertura**: sem ordenação escolhida e sem busca de
+  texto, `/api/sheet-meta` recebe `seed` (alfanumérica 4-32) e devolve a lista
+  em `shuffleSeeded` — cada ABERTURA da aba (`sv('jobs')` vindo de outra tela,
+  trocar de aba de planilha, clicar em "🔀 Aleatório") gera semente nova
+  (`_newSeed`/`fSeed`), então a 1ª vaga não é igual pra todo mundo; o "carregar
+  mais" manda a MESMA semente (paginação sem duplicar/perder — o erro do v179
+  era reembaralhar a cada requisição). Sem `seed` NADA muda (ordem estável: é
+  o que o robô do automático e cliente antigo usam). Ordenar por salário/data é
+  FILTRO — ordem igual pra todos, de propósito.
+  **Texto do site (boas-vindas)**: `_lrExplicacaoHTML` (Home, 1ª visita de
+  quem não tem plano + botão "Por que é melhor que o SeasonalJobs") e a seção
+  `#lista-randomizada` da landing explicam o diferencial e os 3 jeitos de
+  enviar (grátis copiar/colar · pago 1 clique · pago automático). Só afirma
+  o que é verificável: a lista randomizada OFICIAL não traz e-mail (até ~10
+  min por vaga pra achar); a do H2BApply só tem empresas que abriram petição
+  pra contratar fora do país. NÃO colocar porcentagem inventada de "vagas que
+  não contratam de fora" nem "não existe outro site igual" — já houve acusação
+  de propaganda enganosa; número só com fonte oficial (regra 6 de "Como trabalhar").
 - **Plano vencido bloqueia de vez, com data (v172h, dono, 12/09/2026)**:
   quando o plano de alguém vence (mesmo com Gmail já conectado de antes),
   manual E automático ficam bloqueados — `/api/send`/`/api/auto/start`

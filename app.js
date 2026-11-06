@@ -88,6 +88,12 @@ let sJobs=[],sTotal=0,sTrueTotal=0,sSkip=0,sDone=false,sLoading=false;
 let sCtxSeq=0;
 let sCache={};
 let fQ="",fSort="random"; // v173: todo o resto dos filtros vive em VF.st (bloco "FILTROS DE VAGAS")
+// 🔀 Listas randomizadas (dono, 03/11/2026): cada vez que a pessoa ABRE a aba
+// (ou clica em "Aleatório") nasce uma semente nova e o servidor embaralha a
+// lista com ela — a 1ª vaga nunca é igual pra todo mundo. As páginas
+// seguintes (carregar mais) usam a MESMA semente, então nada duplica nem some.
+function _newSeed(){return (Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4)).replace(/[^A-Za-z0-9]/g,"")||"semente01";}
+let fSeed=_newSeed();
 let autoSelectedProfileId=null; // perfil/currículo escolhido no Passo 3
 let curView="jobs"; // (v198 LOTE 16: o global `histTab` era escrito e nunca lido — quem manda é _histTab)
 let autoInterval=null;
@@ -1058,7 +1064,7 @@ function sv(v,...args){
   // TODAS ganham `.gone`, o app inteiro some da tela sem erro nenhum. Cai
   // pra "home" em vez de deixar a pessoa numa tela em branco.
   if(!VIEWS.includes(v)){console.warn(`[sv] view desconhecida "${v}" — voltando pra home`);v="home";}
-  curView=v;
+  const _prevV=curView;curView=v;
   // Scroll to top ao mudar de aba
   const appEl=g("#app");if(appEl)appEl.scrollTop=0;window.scrollTo(0,0);
   // v166: #bn-profile virou o botão real "Meu Perfil" do bottom-nav (era o
@@ -1066,7 +1072,10 @@ function sv(v,...args){
   // NUNCA podia ficar "active" — forçar isso agora apagaria o destaque do
   // item certo assim que o loop abaixo o marcasse ativo).
   VIEWS.forEach(id=>{const ve=g("#v-"+id);if(ve)ve.classList.toggle("gone",id!==v);const si=g("#si-"+id);if(si)si.classList.toggle("active",id===v);const bn=g("#bn-"+id);if(bn)bn.classList.toggle("active",id===v);});const bnMore=g("#bn-more");if(bnMore)bnMore.classList.toggle("active",BN_MORE_VIEWS.includes(v));
-  if(v==="jobs"){setTimeout(loadLugares,400);updateManualSendGate();}if(v==="plans"){try{loadPlanos();}catch(e){}}if(v==="profile"){loadProfile();loadProfilesView();}
+  if(v==="jobs"){setTimeout(loadLugares,400);updateManualSendGate();
+    // 🔀 voltou pra aba vindo de OUTRA tela → lista embaralhada de novo (nova semente)
+    if(_prevV!=="jobs"&&fSort==="random"&&sJobs.length&&!sLoading){fSeed=_newSeed();sSkip=0;sDone=false;sJobs=[];g("#jlist").innerHTML=mkSkels(6);loadSheetMeta(true);}
+  }if(v==="plans"){try{loadPlanos();}catch(e){}}if(v==="profile"){loadProfile();loadProfilesView();}
 
   if(v==="auto"){loadAutoView();if(U.autoJob?.active)startAutoPolling();}
   if(v==="logs"){logSkip=0;logTotal=0;logDone=false;loadLogs();}
@@ -2151,7 +2160,7 @@ function limitUpsell(){
   document.body.appendChild(ov);
 }
 
-function setSort(s){fSort=s;["rand:random","wage:wage","start:start","desc:desc"].forEach(p=>{const[i,v]=p.split(":");g("#so-"+i)?.classList.toggle("on",s===v);});sSkip=0;sDone=false;sJobs=[];loadSheetMeta(true);}
+function setSort(s){fSort=s;if(s==="random")fSeed=_newSeed();["rand:random","wage:wage","start:start","desc:desc"].forEach(p=>{const[i,v]=p.split(":");g("#so-"+i)?.classList.toggle("on",s===v);});sSkip=0;sDone=false;sJobs=[];loadSheetMeta(true);}
 
 const PAGE=25;
 
@@ -2226,7 +2235,7 @@ async function loadSheetMeta(reset=false){
     // v173: TODOS os filtros vêm do VF — a MESMA query da contagem ao vivo
     // (/api/vagas/filtros), então "Ver N vagas" bate com a lista
     // v181: `q` já vai dentro do vfParams (a MESMA query da contagem ao vivo)
-    const p=vfParams("manual");p.set("sheet",tab);p.set("skip",String(sSkip));p.set("top",String(PAGE));p.set("sort",fSort);p.set("hideSent","1");
+    const p=vfParams("manual");p.set("sheet",tab);p.set("skip",String(sSkip));p.set("top",String(PAGE));p.set("sort",fSort);p.set("hideSent","1");if(fSort==="random")p.set("seed",fSeed);
 
     const r=await fetch("/api/sheet-meta?"+p,{credentials:"include"});const d=await jsonSafe(r);
     // 🚨 v237: uma troca de aba/busca/filtro MAIS NOVA já rodou enquanto esse
@@ -2320,6 +2329,160 @@ function updSheetCounter(){
   cnt.innerHTML=`<strong>${remaining.toLocaleString("pt-BR")}</strong> restantes${sentInSheet>0?` · <span style="font-size:11px;color:var(--t3)"><span style="color:var(--green)">${sentInSheet} enviadas</span> de ${trueTotal.toLocaleString("pt-BR")}</span>`:(remaining===trueTotal?``:` · <span style="font-size:11px;color:var(--t3)">${trueTotal.toLocaleString("pt-BR")} total</span>`)} · <span style="font-size:11px;color:var(--blue)">${esc(sheetLabel)}</span>`;
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+//  ✅ LISTAS RANDOMIZADAS — envio GRÁTIS por cópia de e-mail
+//  (dono, 03/11/2026). Quem não tem plano copia o e-mail da vaga, cola no
+//  próprio Gmail, envia e marca "Já enviei": a vaga some da lista DELA
+//  (mesma anti-duplicata por e-mail do empregador, regra 8). Nada disso
+//  passa pelo Google do site — free nunca autentica Gmail (regra ZERO envio
+//  pelo app). Quem tem plano continua com "Candidatar-se" de 1 clique.
+// ═══════════════════════════════════════════════════════════════════════
+function _isFreeApplier(){return !!U&&!U.isAdmin&&!!U.needsPlan;}
+
+function lrCopiar(email){
+  const em=String(email||"").trim();if(!em)return;
+  const ok=()=>toast("📋 E-mail copiado — cole no seu Gmail e envie.","g");
+  const fb=()=>{try{const ta=document.createElement("textarea");ta.value=em;ta.setAttribute("readonly","");ta.style.cssText="position:fixed;top:-100px;opacity:0";document.body.appendChild(ta);ta.select();const r=document.execCommand("copy");ta.remove();r?ok():toast("Não deu pra copiar sozinho. Selecione o e-mail e copie.","r");}catch(e){toast("Não deu pra copiar sozinho. Selecione o e-mail e copie.","r");}};
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(em).then(ok).catch(fb);else fb();
+}
+
+// Linha extra do CARD da lista (só quem não tem plano): e-mail + copiar + caixinha
+function _lrCardRow(j){
+  if(!_isFreeApplier())return "";
+  if(!j.hasEmail||!j.email||j.emailBloqueado)return `<div style="margin-top:6px;font-size:11px;color:var(--t3)"><i class="ti ti-mail-off" style="font-size:11px"></i> Esta vaga não tem e-mail direto.</div>`;
+  return `<div onclick="event.stopPropagation()" style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">
+    <div style="font-size:11.5px;font-weight:700;word-break:break-all;color:var(--t2);margin-bottom:6px"><i class="ti ti-mail" style="font-size:12px"></i> ${esc(j.email)}</div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <button type="button" class="btn btn-secondary btn-sm" data-em="${esc(j.email)}" onclick="event.stopPropagation();lrCopiar(this.dataset.em)"><i class="ti ti-copy"></i> Copiar e-mail</button>
+      <label style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:800;cursor:pointer;color:var(--text)"><input type="checkbox" aria-label="Já enviei para esta vaga" data-id="${esc(j.id)}" onchange="lrMarcar(this.dataset.id,this)" style="width:19px;height:19px;accent-color:#16a34a;cursor:pointer"> Já enviei</label>
+    </div>
+  </div>`;
+}
+
+// Botões do DETALHE da vaga (só quem não tem plano)
+function _lrDetailActs(j){
+  return `<div style="width:100%;display:flex;flex-direction:column;gap:10px">
+    <button type="button" class="btn btn-primary" data-em="${esc(j.email)}" onclick="lrCopiar(this.dataset.em)" style="justify-content:center;padding:12px"><i class="ti ti-copy"></i> Copiar e-mail da vaga</button>
+    <label style="display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:800;cursor:pointer;padding:11px 13px;border:1.5px solid rgba(22,163,74,.4);background:rgba(22,163,74,.08);border-radius:12px;color:var(--text)"><input type="checkbox" data-id="${esc(j.id)}" onchange="lrMarcar(this.dataset.id,this)" style="width:20px;height:20px;accent-color:#16a34a;cursor:pointer"> Já enviei para esta vaga</label>
+    <div style="font-size:11.5px;color:var(--t3);line-height:1.5">Copie, abra o seu Gmail, cole o e-mail, envie o seu currículo e volte aqui pra marcar. A vaga sai da sua lista e você não manda duas vezes pro mesmo empregador.</div>
+  </div>`;
+}
+
+// Marca/desmarca "já enviei". Servidor é quem decide (anti-duplicata por e-mail
+// do empregador); aqui só tira a vaga da tela e oferece DESFAZER por 7s.
+async function lrMarcar(id,box){
+  if(!id)return;
+  const marcar=!box||box.checked!==false;
+  if(box)box.disabled=true;
+  try{
+    const r=await fetch("/api/free-sent",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({caseNum:id,sheet:tab,sent:marcar})});
+    const d=await jsonSafe(r);
+    if(!r.ok||!d||d.ok!==true){if(box){box.checked=!marcar;box.disabled=false;}toast((d&&d.error)||"Não consegui marcar agora. Tente de novo.","r");return;}
+    if(!marcar){await Promise.all([_loadSentIds(),loadEmpregadoresBloqueados(),_lrRecarregarHist()]);sSkip=0;sDone=false;sJobs=[];g("#jlist").innerHTML=mkSkels(6);loadSheetMeta(true);return;}
+    const j=sJobs.find(x=>x.id===id||x.caseNum===id)||sCache[id]||null;
+    if(j&&j.email)_empSent.add(String(j.email).toLowerCase().trim());
+    _sentAll.add(id);
+    sJobs=sJobs.filter(x=>x.id!==id&&x.caseNum!==id);
+    const iid="s_"+String(id).replace(/[^a-zA-Z0-9]/g,"_");
+    g("#jcard-"+iid)?.remove();
+    sTotal=Math.max(0,sTotal-1);try{updSheetCounter();}catch(e){}
+    g("#jd-empty")?.classList.remove("gone");const dc=g("#jd-content");if(dc)dc.style.display="none";closeMobDetail();
+    _lrToastDesfazer(id);_lrRecarregarHist();
+  }catch(e){if(box){box.checked=!marcar;box.disabled=false;}toast("Sem conexão. Tente de novo.","r");}
+}
+function _lrToastDesfazer(id){
+  try{document.getElementById("lr-undo")?.remove();}catch(e){}
+  const el=document.createElement("div");el.id="lr-undo";
+  el.style.cssText="position:fixed;left:50%;bottom:84px;transform:translateX(-50%);z-index:9999;background:#14532d;color:#fff;border-radius:14px;padding:11px 14px;font-size:13px;font-weight:700;display:flex;align-items:center;gap:12px;box-shadow:0 10px 30px rgba(0,0,0,.35);max-width:92vw";
+  el.innerHTML='<span>✅ Marcada como enviada — saiu da sua lista.</span><button type="button" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:9px;padding:6px 11px;font-weight:800;cursor:pointer;font-family:inherit">Desfazer</button>';
+  el.querySelector("button").onclick=()=>{el.remove();lrMarcar(id,{checked:false});};
+  document.body.appendChild(el);setTimeout(()=>el.remove(),7000);
+}
+
+async function _lrRecarregarHist(){
+  try{const r=await fetch("/api/history",{credentials:"include"});if(!r.ok)return;const d=await r.json();
+    HIST=d.history||[];APPLIED=new Set();HIST.forEach(h=>{if(h.jobId)APPLIED.add(h.jobId);});updHistBadge();
+    if(curView==="hist")renderHist();}catch(e){}
+}
+// Aba Enviadas: devolve UMA vaga marcada grátis pra lista (e a tira do histórico)
+async function lrDesfazerHist(id,sheet){
+  if(!id)return;
+  try{
+    const r=await fetch("/api/free-sent",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({caseNum:id,sheet:sheet||undefined,sent:false})});
+    const d=await jsonSafe(r);if(!r.ok||!d||d.ok!==true){toast((d&&d.error)||"Não consegui desfazer agora.","r");return;}
+    _sentLoaded=false;await _loadSentIds();await loadEmpregadoresBloqueados();await _lrRecarregarHist();
+    toast("↩️ Vaga devolvida pra sua lista.","g");
+  }catch(e){toast("Sem conexão. Tente de novo.","r");}
+}
+// Aba Enviadas: desmarca TODAS as marcadas grátis (pra enviar tudo de novo)
+async function lrDesmarcarTodas(){
+  if(!confirm("Desmarcar todas as vagas que você marcou como enviadas de graça?\nElas voltam pra sua lista e você pode enviar de novo."))return;
+  try{
+    const r=await fetch("/api/free-sent",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({all:true,sent:false})});
+    const d=await jsonSafe(r);if(!r.ok||!d||d.ok!==true){toast((d&&d.error)||"Não consegui desmarcar agora.","r");return;}
+    _sentLoaded=false;await _loadSentIds();await loadEmpregadoresBloqueados();await _lrRecarregarHist();
+    toast(`↩️ ${d.removed||0} vaga${(d.removed||0)!==1?"s":""} voltou${(d.removed||0)!==1?"ram":""} pra sua lista.`,"g");
+  }catch(e){toast("Sem conexão. Tente de novo.","r");}
+}
+
+// Aviso FIXO no topo da aba (quem não tem plano): como enviar de graça
+function _lrAvisoGratisHTML(){
+  const passo=(n,t)=>`<div style="display:flex;gap:10px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:#16a34a;color:#fff;font-weight:900;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0">${n}</div><div style="font-size:13px;line-height:1.45;color:var(--text)">${t}</div></div>`;
+  return `<div style="display:flex;flex-direction:column;gap:10px;width:100%">
+    <div style="display:flex;align-items:center;gap:10px"><div style="width:40px;height:40px;border-radius:12px;background:rgba(22,163,74,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ti ti-gift" style="font-size:21px;color:#16a34a"></i></div>
+      <div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:900;color:#15803d">Aplicando de graça? É assim:</div><div style="font-size:12px;color:var(--t2);margin-top:1px">Você não paga nada e não precisa conectar o Google.</div></div></div>
+    ${passo(1,"<b>Copie o e-mail</b> de cada vaga (botão “Copiar e-mail”).")}
+    ${passo(2,"Vá no <b>seu Gmail</b>, cole o e-mail, escreva e envie o seu currículo.")}
+    ${passo(3,"Volte aqui e marque <b>“Já enviei”</b>. A vaga some da sua lista e você nunca manda duas vezes pro mesmo empregador.")}
+    <div style="font-size:11.5px;color:var(--t3);line-height:1.5">🔀 A ordem muda toda vez que você abre a lista, pra ninguém mandar sempre pros mesmos empregadores. Se você filtrar ou ordenar (ex.: maior salário), a ordem segue o filtro.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="lrAbrirExplicacao()"><i class="ti ti-help-circle"></i> Por que é melhor que o SeasonalJobs</button>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="sv('plans')"><i class="ti ti-diamond"></i> Envio com 1 clique ou automático</button>
+    </div>
+  </div>`;
+}
+
+// Explicação completa (boas-vindas + janela "Como funciona"). Texto único,
+// usado na Home (1ª visita) e no botão do aviso. Só afirma o que é
+// verificável: o que a lista oficial NÃO traz (e-mail) e o que a nossa traz.
+function _lrExplicacaoHTML(){
+  const bloco=(ic,tit,txt,cor)=>`<div style="display:flex;gap:12px;align-items:flex-start;padding:12px 13px;border:1.5px solid var(--border);border-radius:14px;background:var(--sf2)"><div style="width:36px;height:36px;border-radius:11px;background:${cor||"rgba(99,102,241,.14)"};display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ti ${ic}" style="font-size:19px"></i></div><div style="min-width:0"><div style="font-size:13.5px;font-weight:900;color:var(--text);margin-bottom:3px">${tit}</div><div style="font-size:12.5px;line-height:1.55;color:var(--t2)">${txt}</div></div></div>`;
+  return `<div style="display:flex;flex-direction:column;gap:10px">
+    ${bloco("ti-alert-triangle","No SeasonalJobs as vagas vêm todas misturadas","O site oficial mistura todas as vagas H-2B. Muitas são de empresas que <b>não contratam de fora do país</b> (só extensão de visto ou outros tipos). Quem envia por lá acaba mandando currículo pra vaga que não vai responder, e perde tempo.","rgba(245,158,11,.18)")}
+    ${bloco("ti-target-arrow","Na lista randomizada do H2BApply é direto ao ponto","A nossa lista randomizada é tratada: só tem <b>empresas que abriram petição pra contratar fora do país</b>. Você vai direto na empresa certa.","rgba(22,163,74,.16)")}
+    ${bloco("ti-clock-bolt","Sem perder até 10 minutos por vaga","A lista randomizada oficial <b>não traz o e-mail</b>: você copia o ETA Case Number, procura no SeasonalJobs, acha a vaga e só então copia o e-mail. Aqui, quando sai a lista nova, o site já busca tudo e deixa a vaga completa. Você copia o e-mail, envia e marca.","rgba(59,130,246,.16)")}
+    <div style="font-size:14px;font-weight:900;color:var(--text);margin:6px 2px 0">Três jeitos de enviar</div>
+    ${bloco("ti-gift","1. Grátis — copiar e colar","Na aba Listas randomizadas você copia o e-mail da vaga, cola no seu Gmail, envia e marca “Já enviei”. <b>Não custa nada</b> e não usa a conexão do Google do site.","rgba(22,163,74,.16)")}
+    ${bloco("ti-click","2. Pago — envio manual de 1 clique","Você abre a vaga e clica em enviar. O site manda pelo seu Gmail conectado.","rgba(99,102,241,.16)")}
+    ${bloco("ti-robot","3. Pago — envio automático","Você escolhe as vagas, cadastra currículo, título e corpo do e-mail e liga. Ele envia até 100 e-mails por dia (300 no plano Máximo) <b>sem você estar no computador</b>, e continua mesmo se você sair da conta. Sua única tarefa é olhar o seu e-mail pra ver as respostas dos empregadores.","rgba(124,58,237,.16)")}
+  </div>`;
+}
+function lrAbrirExplicacao(){
+  try{document.getElementById("lr-explica")?.remove();}catch(e){}
+  const ov=document.createElement("div");ov.id="lr-explica";ov.className="overlay";ov.style.zIndex="9998";
+  ov.innerHTML=`<div class="modal" style="max-width:560px"><div class="mhandle"></div><div class="mhdr"><div class="mttl">Como o H2BApply funciona</div><button aria-label="Fechar" title="Fechar" class="mx" type="button"><i class="ti ti-x"></i></button></div><div class="mbody" style="max-height:70vh;overflow-y:auto">${_lrExplicacaoHTML()}</div></div>`;
+  ov.addEventListener("click",e=>{if(e.target===ov)ov.remove();});
+  ov.querySelector(".mx").onclick=()=>ov.remove();
+  document.body.appendChild(ov);
+}
+
+// Boas-vindas na Home: aparece na 1ª visita de quem não tem plano e some no "Entendi"
+function _lrWelcomeKey(){return "h2b_lr_boasvindas_v1_"+String((U&&(U.email||U.name))||"u");}
+function _lrRenderWelcome(){
+  const slot=g("#lr-welcome-slot");if(!slot)return;
+  let visto=false;try{visto=localStorage.getItem(_lrWelcomeKey())==="1";}catch(e){}
+  if(!U||U.isAdmin||!U.needsPlan||visto){slot.innerHTML="";return;}
+  slot.innerHTML=`<div style="padding:12px 14px 0"><div style="border:1.5px solid rgba(22,163,74,.35);background:rgba(22,163,74,.07);border-radius:18px;padding:16px">
+    <div style="font-size:16px;font-weight:900;color:var(--text);margin-bottom:4px">👋 Bem-vindo ao H2BApply</div>
+    <div style="font-size:12.5px;color:var(--t2);line-height:1.5;margin-bottom:12px">Entenda em 1 minuto a diferença pro site oficial e como enviar de graça.</div>
+    ${_lrExplicacaoHTML()}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+      <button type="button" class="btn btn-primary" onclick="sv('jobs')"><i class="ti ti-list-details"></i> Abrir as Listas randomizadas</button>
+      <button type="button" class="btn btn-secondary" onclick="_lrFecharWelcome()">Entendi</button>
+    </div></div></div>`;
+}
+function _lrFecharWelcome(){try{localStorage.setItem(_lrWelcomeKey(),"1");}catch(e){}const s=g("#lr-welcome-slot");if(s)s.innerHTML="";}
+
 function mkSheetCard(j){
   const iid="s_"+j.id.replace(/[^a-zA-Z0-9]/g,"_");
   // O servidor agora retorna: visa, active, title (occupation), category, state, start, workers, wage
@@ -2350,6 +2513,7 @@ function mkSheetCard(j){
     <div class="jcard-title" id="jct-${iid}">${esc(jobTitle)}</div>
     <div class="jcard-co" id="jcc-${iid}"><i class="ti ti-building" style="font-size:9px"></i>${esc(j.company||"–")} · <i class="ti ti-map-pin" style="font-size:9px"></i>${j.city&&j.city!=="–"?esc(j.city)+", ":""}${esc(j.state||"–")}</div>
     <div class="jcard-tags" id="jctg-${iid}">${visaTag}${stateLbl}${wkTag}${dateLbl}${wageLbl}</div>
+    ${_lrCardRow(j)}
     ${j.url?`<a href="${esc(j.url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:rgba(59,130,246,.7);text-decoration:none;margin-top:3px"><i class="ti ti-external-link" style="font-size:9px"></i>Ver vaga DOL</a>`:""}
   </div>`;
 }
@@ -2505,7 +2669,7 @@ function mkDetailHTML(j){
       ${j.desc?`<div class="info-box" style="grid-column:1/-1"><div class="info-lbl">📋 Funções da vaga <span class="vaga-desc-status" style="font-weight:400;text-transform:none"></span></div><div class="info-val vaga-desc-txt" data-case="${esc(j.caseNum||j.id||"")}" style="font-size:12px;line-height:1.7;white-space:pre-wrap;background:rgba(0,0,0,.2);border-radius:8px;padding:10px">${esc(j.desc)}</div></div>`:""}
     </div>
     <div class="jd-acts">
-      ${j.hasEmail?`<button class="btn btn-primary" onclick="openModal('${j.id}')"><i class="ti ti-send"></i> Candidatar-se</button>`:`<div style="font-size:13px;color:var(--t3);padding:9px 13px;background:var(--sf2);border-radius:var(--r);border:1.5px solid var(--border)"><i class="ti ti-alert-triangle"></i> Sem e-mail direto</div>`}
+      ${j.hasEmail?(_isFreeApplier()&&j.email&&!j.emailBloqueado?_lrDetailActs(j):`<button class="btn btn-primary" onclick="openModal('${j.id}')"><i class="ti ti-send"></i> Candidatar-se</button>`):`<div style="font-size:13px;color:var(--t3);padding:9px 13px;background:var(--sf2);border-radius:var(--r);border:1.5px solid var(--border)"><i class="ti ti-alert-triangle"></i> Sem e-mail direto</div>`}
       ${j.caseNum?`<a class="btn btn-secondary" href="/vaga/${encodeURIComponent(j.caseNum)}" target="_blank" rel="noopener" title="Página pública desta vaga — compartilhe o link"><i class="ti ti-share-2"></i></a>`:""}
       ${j.url?`<a class="btn btn-secondary" href="https://${j.url.replace(/^https?:\/\//,"")}" target="_blank" rel="noopener"><i class="ti ti-external-link"></i></a>`:""}
     </div>
@@ -4182,14 +4346,18 @@ function renderHist(){
     </div>`;
     return;
   }
-  box.innerHTML=items.map(h=>{
-    const isAuto=h.type==="auto";
+  const _nGr=HIST.filter(h=>h.type==="gratis").length;
+  const _barGr=_nGr?`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;margin:0 0 6px;border:1.5px solid rgba(22,163,74,.35);background:rgba(22,163,74,.07);border-radius:12px;font-size:12.5px;color:var(--text)"><span style="flex:1;min-width:180px"><b>${_nGr}</b> marcada${_nGr!==1?"s":""} como enviada${_nGr!==1?"s":""} de graça (pelo seu Gmail).</span><button type="button" class="btn btn-secondary btn-sm" onclick="lrDesmarcarTodas()"><i class="ti ti-arrow-back-up"></i> Desmarcar todas e voltar pra lista</button></div>`:"";
+  box.innerHTML=_barGr+items.map(h=>{
+    const isAuto=h.type==="auto",isGr=h.type==="gratis";
     return `<div style="display:flex;align-items:center;gap:11px;padding:11px 4px;border-bottom:1px solid var(--border)">
-      <div style="width:36px;height:36px;border-radius:10px;background:${isAuto?"var(--purplel,#ede9fe)":"var(--bluel,#dbeafe)"};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${isAuto?"🤖":"✈️"}</div>
+      <div style="width:36px;height:36px;border-radius:10px;background:${isAuto?"var(--purplel,#ede9fe)":isGr?"rgba(22,163,74,.15)":"var(--bluel,#dbeafe)"};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${isAuto?"🤖":isGr?"✉️":"✈️"}</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(h.job||"–")}</div>
         <div style="font-size:11.5px;color:var(--t3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(h.company||"")}${h.to?" · "+esc(h.to):""}</div>
+        ${isGr?`<div style="font-size:10.5px;color:#15803d;font-weight:700">Enviado pelo seu Gmail (grátis)</div>`:""}
       </div>
+      ${isGr?`<button type="button" class="btn btn-secondary btn-sm" data-id="${esc(h.caseNum||h.jobId||"")}" data-sh="${esc(h.sheetSource||"")}" onclick="lrDesfazerHist(this.dataset.id,this.dataset.sh)" style="flex-shrink:0">Desfazer</button>`:""}
       <div style="font-size:10.5px;color:var(--t3);white-space:nowrap;flex-shrink:0">${esc(h.date||"")}</div>
     </div>`;
   }).join("");
@@ -5129,16 +5297,11 @@ function updateManualSendGate(){
   if((!U.isAdmin&&!U.needsPlan&&U.gmailConnected)||(U.isAdmin&&U.gmailConnected)){el.style.display="none";return;}
   el.style.display="flex";
   if(!U.isAdmin&&U.needsPlan){
-    const _sub=_planGateSubTxt("assine de novo pra continuar enviando.")||"Assine um plano pra liberar o envio de candidaturas.";
-    el.innerHTML=`<div style="display:flex;align-items:center;gap:12px;width:100%">
-      <div style="width:42px;height:42px;border-radius:12px;background:rgba(239,68,68,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ti ti-lock" style="font-size:21px;color:#dc2626"></i></div>
-      <div style="flex:1;min-width:150px">
-        <div style="font-size:14px;font-weight:800;color:#dc2626">Plano necessário pra enviar</div>
-        <div style="font-size:12px;color:#7f1d1d;opacity:.85;margin-top:2px">${esc(_sub)}</div>
-      </div>
-      <button onclick="sv('plans')" class="btn btn-primary" style="flex-shrink:0;padding:11px 18px;font-size:13.5px">Ver planos <i class="ti ti-arrow-right"></i></button>
-    </div>`;
-    el.style.background="rgba(239,68,68,.1)";el.style.border="1.5px solid rgba(239,68,68,.35)";el.style.color="#dc2626";
+    // ✅ v-LR (dono, 03/11/2026): quem não tem plano NÃO fica com um aviso
+    // vermelho de bloqueio — a lista randomizada é grátis por cópia de e-mail.
+    // O gate do ENVIO PELO APP (Gmail/Google) continua 100% fechado no servidor.
+    el.innerHTML=_lrAvisoGratisHTML();
+    el.style.background="rgba(22,163,74,.08)";el.style.border="1.5px solid rgba(22,163,74,.4)";el.style.color="var(--text)";
   } else {
     el.innerHTML=_gmailCardHTML('jobs');
     el.style.background="rgba(245,158,11,.12)";el.style.border="1.5px solid rgba(245,158,11,.4)";el.style.color="#b45309";
@@ -6028,6 +6191,7 @@ function renderHome(){
   try{renderNextStep();}catch(e){}
   try{updateGmailPrompts();}catch(e){}
   try{renderPendingOrderCard();}catch(e){}
+  try{_lrRenderWelcome();}catch(e){}
   // Stats — Vagas Disponíveis (cache de loadDynamicSheets) + Empresas Contatadas (HIST únicas)
   const sj=g("#home-stat-jobs");
   if(sj)sj.textContent=typeof window._sheetsTotalCount==="number"?window._sheetsTotalCount.toLocaleString("pt-BR"):"–";
@@ -7172,11 +7336,11 @@ const LANG_DICT = {
     "home_tip_quote":"Disciplina hoje, oportunidades amanhã.",
     "home_auto_b1":"Envia pra várias vagas por dia","home_auto_b3":"Nunca repete uma candidatura","home_auto_b4":"Funciona 24h — você não precisa ficar online","home_auto_cta":"Iniciar Envio Automático",
     "home_man_b1":"Pesquise e filtre as vagas","home_man_b4":"Envie quando estiver pronto",
-    "manual_send_title":"Envio Manual","manual_send_sub":"Busque vagas e envie candidaturas agora",
+    "manual_send_title":"Listas randomizadas","manual_send_sub":"Copie o e-mail das vagas e envie de graça, ou envie com 1 clique",
     "plans_send_title":"💎 Planos","plans_send_sub":"Assine um plano e turbine seus envios", // 🌐 v166: 3º CTA da Home
     "home_cv_tip":"Mantenha seu currículo sempre atualizado.","home_cv_tip_link":"Editar currículo →", // 🌐 v166: dica discreta da Home
     "inicio":"Início","auto_send":"Envio Automático",
-    "bn_jobs":"Vagas","bn_more":"Mais","bn_more_title":"Mais opções","bn_auto":"Envio Automático","bn_tutorial":"Central de Tutoriais","bn_settings":"Configurações", // 📱 v171: bottom-nav de 5 itens (era 3 — Enviadas/Vagas não tinham acesso direto no mobile)
+    "bn_jobs":"Listas","bn_more":"Mais","bn_more_title":"Mais opções","bn_auto":"Envio Automático","bn_tutorial":"Central de Tutoriais","bn_settings":"Configurações", // 📱 v171: bottom-nav de 5 itens (era 3 — Enviadas/Vagas não tinham acesso direto no mobile)
     "sent_tab":"Enviadas","download_app":"Baixar App",
     "hist_short":"Enviadas",
     "greet_m":"👋 Bom dia,","greet_t":"👋 Boa tarde,","greet_n":"👋 Boa noite,","greet_d":"👋 Madrugada,",
@@ -7336,11 +7500,11 @@ const LANG_DICT = {
     "home_tip_quote":"Discipline today, opportunities tomorrow.",
     "home_auto_b1":"Applies to several jobs a day","home_auto_b3":"Never repeats an application","home_auto_b4":"Works 24h — you don't need to stay online","home_auto_cta":"Start Auto Send",
     "home_man_b1":"Search and filter jobs","home_man_b4":"Send when you're ready",
-    "manual_send_title":"Manual Send","manual_send_sub":"Find jobs and apply right now",
+    "manual_send_title":"Randomized lists","manual_send_sub":"Copy each job's email and apply for free, or send in 1 click",
     "plans_send_title":"💎 Plans","plans_send_sub":"Subscribe to a plan and power up your applications", // 🌐 v166: Home 3rd CTA
     "home_cv_tip":"Keep your resume up to date.","home_cv_tip_link":"Edit resume →", // 🌐 v166: Home subtle tip
     "inicio":"Home","auto_send":"Auto Send",
-    "bn_jobs":"Jobs","bn_more":"More","bn_more_title":"More options","bn_auto":"Auto Send","bn_tutorial":"Tutorials Center","bn_settings":"Settings",
+    "bn_jobs":"Lists","bn_more":"More","bn_more_title":"More options","bn_auto":"Auto Send","bn_tutorial":"Tutorials Center","bn_settings":"Settings",
     "sent_tab":"Sent","download_app":"Get the App",
     "hist_short":"Sent",
     "greet_m":"👋 Good morning,","greet_t":"👋 Good afternoon,","greet_n":"👋 Good evening,","greet_d":"👋 Late night,",
@@ -7485,11 +7649,11 @@ const LANG_DICT = {
     "home_tip_quote":"Disciplina hoy, oportunidades mañana.",
     "home_auto_b1":"Envía a varias vacantes por día","home_auto_b3":"Nunca repite una postulación","home_auto_b4":"Funciona 24h — no necesitas estar en línea","home_auto_cta":"Iniciar Envío Automático",
     "home_man_b1":"Busca y filtra las vacantes","home_man_b4":"Envía cuando estés listo",
-    "manual_send_title":"Envío Manual","manual_send_sub":"Busca empleos y postúlate ahora",
+    "manual_send_title":"Listas aleatorias","manual_send_sub":"Copia el correo de cada empleo y postúlate gratis, o envía con 1 clic",
     "plans_send_title":"💎 Planes","plans_send_sub":"Suscríbete a un plan y potencia tus postulaciones", // 🌐 v166: 3er CTA de Home
     "home_cv_tip":"Mantén tu currículum siempre actualizado.","home_cv_tip_link":"Editar currículum →", // 🌐 v166: aviso discreto de Home
     "inicio":"Inicio","auto_send":"Envío Automático",
-    "bn_jobs":"Empleos","bn_more":"Más","bn_more_title":"Más opciones","bn_auto":"Envío Automático","bn_tutorial":"Centro de Tutoriales","bn_settings":"Configuración",
+    "bn_jobs":"Listas","bn_more":"Más","bn_more_title":"Más opciones","bn_auto":"Envío Automático","bn_tutorial":"Centro de Tutoriales","bn_settings":"Configuración",
     "sent_tab":"Enviadas","download_app":"Descargar App",
     "hist_short":"Enviadas",
     "greet_m":"👋 Buenos días,","greet_t":"👋 Buenas tardes,","greet_n":"👋 Buenas noches,","greet_d":"👋 Madrugada,",
