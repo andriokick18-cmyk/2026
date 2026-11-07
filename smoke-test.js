@@ -4706,7 +4706,7 @@ async function drillAdminSettingsLegado() {
       const faixas = (st10.jobs || []).map((j) => { const d = String(j.start || "").slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(d) ? (d >= _hj ? 0 : 1) : 2; });
       const semSort = (await get("/api/sheet-meta?sheet=h2a-jun2026&email=0&top=1")).json;
       check("🗓️ v181-L5 (caso 21): 'Começa logo' entregava 'começou há mais tempo' (as 5 primeiras da H-2A eram de jan/fev — 8 meses atrás). Agora: nenhuma vaga já iniciada aparece antes de uma que ainda vai começar, e o total não muda",
-        faixas.length === 10 && faixas.every((f, i) => i === 0 || f >= faixas[i - 1]) && faixas[0] === 0 && st10.total === semSort.total,
+        faixas.length === 10 && faixas.every((f, i) => i === 0 || f >= faixas[i - 1]) && (faixas[0] === 0 || faixas.every((f) => f !== 0) /* calendário: sem vaga futura na planilha, só não pode haver desordem */) && st10.total === semSort.total,
         JSON.stringify({ faixas, datas: (st10.jobs || []).map((j) => j.start), total: st10.total }));
       const vfJan = (await get("/api/vagas/filtros?sheet=jan2026&email=0")).json;
       check("🗓️ v181-L5: em jan2026/jul2025 a data de início é VAZIA em 100% das linhas (disponibilidade.inicio 0) — a tela esconde 🗓️/Recentes em vez de acender um botão que não faz nada em 11.446 vagas",
@@ -4859,8 +4859,8 @@ async function drillAdminSettingsLegado() {
       const _dL6 = (lang) => { const i = _appL6.indexOf(`  ${lang}: {`); const e = _appL6.indexOf("\n  }", i); return _appL6.slice(i, e); };
       const _ptL6 = _dL6("pt"), _enL6 = _dL6("en"), _esL6 = _dL6("es");
       const _faltaL6 = _i18nL6.filter((k) => !(_ptL6.includes(`"${k}":`) && _enL6.includes(`"${k}":`) && _esL6.includes(`"${k}":`)));
-      check("🧰 v181-L6 (estrutural): a tela nasce com o padrão que esconde a temporada encerrada (manual E Passo 2 do robô), manda exp/temporada/visa/ocultarEncerradas na MESMA query da contagem, tem o chip permanente e a regra única de dimensão com 1 valor — com todas as strings novas nas 3 línguas",
-        /ocultarEncerradas:true/.test(_appL6) && /\(st\.exp\|\|\[\]\)\.forEach/.test(_appL6) &&
+      check("🧰 v181-L6 (estrutural, atualizado 07/11/2026: a tela NÃO esconde mais temporada encerrada por padrão — lista antiga continua válida), manda exp/temporada/visa/ocultarEncerradas na MESMA query da contagem, tem o chip permanente e a regra única de dimensão com 1 valor — com todas as strings novas nas 3 línguas",
+        /ocultarEncerradas:false/.test(_appL6) && /\(st\.exp\|\|\[\]\)\.forEach/.test(_appL6) &&
         /"temporada","visa"/.test(_appL6) && /p\.set\("ocultarEncerradas","1"\)/.test(_appL6) &&
         _appL6.includes("vf_chip_encerradas") && _appL6.includes("const _soUmValor=") &&
         _appL6.includes("function _vfMesLabel(") && _faltaL6.length === 0,
@@ -8938,8 +8938,11 @@ async function drillAdminSettingsLegado() {
         _appLR.includes("function _newSeed(") && _appLR.includes('p.set("seed",fSeed)') && _appLR.includes("function _lrExplicacaoHTML(") &&
         _idxLR.includes('id="lr-welcome-slot"') && _idxLR.includes('id="lista-randomizada"'),
         "algum pedaço da aba Listas randomizadas não foi encontrado");
-      check("✅ Listas randomizadas (estrutural): o aviso do grátis aparece no lugar do cartão vermelho de bloqueio pra quem não tem plano, e o 'Candidatar-se' de 1 clique segue pra quem tem plano",
-        /el\.innerHTML=_lrAvisoGratisHTML\(\)/.test(_appLR) && _appLR.includes("_isFreeApplier()&&j.email&&!j.emailBloqueado?_lrDetailActs(j):`<button class=\"btn btn-primary\" onclick=\"openModal("),
+      check("✅ Listas randomizadas (estrutural): o painel do grátis (#lr-guia) é minimizável com 2 botões, o card obrigatório da 1ª vez existe, a caixinha 'Já enviei' aparece pra qualquer conta logada e o 'Candidatar-se' de 1 clique segue pra quem tem plano",
+        /el\.innerHTML=_lrAvisoGratisHTML\(\)/.test(_appLR) && _idxLR.includes('id="lr-guia"') && _appLR.includes("function lrGuiaToggle(") &&
+        _appLR.includes("function lrAbrirIntro(") && _appLR.includes("function lrPrimeiraVez(") && _appLR.includes("setTimeout(lrPrimeiraVez,350)") &&
+        _appLR.includes("function _lrDetailMarcar(") && /function _lrCardRow\(j\)\{[^]*?if\(!U\)return/.test(_appLR) &&
+        !/class="tag ta"><i class="ti ti-calendar"/.test(_appLR) && _appLR.includes("_isFreeApplier()&&j.email&&!j.emailBloqueado?_lrDetailActs(j):`<button class=\"btn btn-primary\" onclick=\"openModal("),
         "gate do aviso/CTA mudou");
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     }

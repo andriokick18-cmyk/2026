@@ -90,6 +90,7 @@ const SAFE_FNS = {
   "_srcCntHtml(s)":              "só contagens via toLocaleString (card de planilha)",
   "_agSuporteBtn()":            "botão fixo de suporte das telas de recuperação (v965) — HTML literal + URL do WhatsApp (constante do código) por esc()",
   "_planResumoLinhasHTML(linhas)": "linhas [chave,valor] do resumo do plano (v962) — cada célula passa por esc()",
+  "_lrIntroHTML()":             "card ilustrado das Listas randomizadas — HTML 100% literal do código, sem NENHUM dado de fora (só texto fixo, ícones e cores)",
   "_lrExplicacaoHTML()":         "explicação das Listas randomizadas — HTML 100% literal do código, sem NENHUM dado de fora (só texto fixo e ícones)",
 };
 const SAFE_FN_NAMES = Object.keys(SAFE_FNS).map((k) => k.slice(0, k.indexOf("(")));
@@ -105,6 +106,7 @@ const SAFE_FN_NAMES = Object.keys(SAFE_FNS).map((k) => k.slice(0, k.indexOf("(")
 // uma entrada nova: rode `node check-xss-guard.js`, copie a ASSINATURA que
 // aparece na falha (não invente uma) e escreva o porquê.
 const ALLOWLIST = new Set([
+  "app.js:c06d4545593a", // rodape — rodapé do card lrAbrirIntro: HTML literal (checkbox/botão) escolhido por um booleano, sem dado de fora
   // ── (a) NÚMERO puro (índice de laço, contador, limite, id numérico) ──
   "app.js:de7d1b721a1e", // i           — índice do laço de títulos/corpos do perfil
   "app.js:4a73096daa33", // i+1         — idem, rótulo "Título N"
