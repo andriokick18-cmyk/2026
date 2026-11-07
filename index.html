@@ -559,6 +559,25 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 .q-sug-it b{color:var(--purple)}
 .q-sug-it .q-sug-meta{margin-left:auto;font-size:11px;color:var(--t3);white-space:nowrap;flex:none}
 .q-sug-it:hover,.q-sug-it.on{background:var(--sf3)}
+/* v-LR5: barra de ferramentas compacta (lupa + filtros + ordenar em 1 linha) */
+.tb-row{display:flex;align-items:center;gap:6px}
+.tb-row .search-wrap{flex:1;min-width:0;margin-bottom:0}
+.tb-row .tb-ic{height:40px;min-width:44px;display:inline-flex;align-items:center;justify-content:center;gap:5px;border:1.5px solid var(--border2);background:var(--sf2);color:var(--t2);border-radius:12px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;padding:0 10px;position:relative}
+.tb-ic i{font-size:19px}
+.tb-row .tb-vf{color:#7c3aed;border-color:rgba(124,58,237,.4);background:rgba(124,58,237,.1);font-weight:800}
+.tb-row .tb-q,.tb-row .tb-sort{display:none}
+@media (max-width:767px){
+  .tb-row .tb-q,.tb-row .tb-sort{display:inline-flex}
+  .search-bar .search-wrap{display:none}
+  .search-bar.q-open .search-wrap{display:block}
+  .search-bar.q-open .tb-row .tb-q{display:none}
+  .search-bar.q-open .tb-row .tb-lbl{display:none}
+  .search-bar{padding:6px 10px}
+  #filters-row{display:none;margin-top:6px}
+  .search-bar.sort-open #filters-row{display:flex}
+  .search-bar.sort-open .tb-sort{background:var(--bluel);color:var(--blue);border-color:var(--blueb)}
+}
+@media (min-width:768px){.tb-row{margin-bottom:7px}.tb-vf .tb-lbl{display:inline}}
 .search-inp{width:100%;background:var(--sf2);border:1.5px solid var(--border2);border-radius:var(--r);padding:9px 10px 9px 33px;font-size:16px;color:var(--text);outline:none;transition:all .16s;-webkit-appearance:none;font-family:inherit}
 .search-inp:focus{border-color:var(--blue);background:#fff;box-shadow:0 0 0 3px rgba(26,86,219,.1)}
 /* v182 LOTE 9: o × de limpar a busca (o campo irmão da aba Enviadas já tinha).
@@ -589,16 +608,16 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 .jlist-hdr{padding:7px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--surface);flex-shrink:0;position:sticky;top:0;z-index:3}
 .jcount{font-size:12px;color:var(--t2)}
 /* ══ UPGRADED JCARD ══ */
-.jcard{padding:12px 12px 10px;border-bottom:1px solid var(--border);cursor:pointer;transition:all .15s;background:var(--surface);position:relative;border-left:3px solid transparent}
+.jcard{padding:9px 11px 8px;border-bottom:1px solid var(--border);cursor:pointer;transition:all .15s;background:var(--surface);position:relative;border-left:3px solid transparent}
 .jcard:hover{background:linear-gradient(135deg,#f8fbff,#f5f3ff);border-left-color:rgba(37,99,235,.3)}
 .jcard.active{background:linear-gradient(135deg,var(--bluel),#f5f3ff);border-left:3px solid var(--blue)}
 .jcard.applied::after{content:"✓";position:absolute;right:10px;top:11px;width:17px;height:17px;background:var(--green);color:#fff;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1}
 /* Category icon badge on card */
 
-.jcard-title{font-size:13px;font-weight:700;margin-bottom:2px;line-height:1.3;padding-right:24px;color:var(--text)}
+.jcard-title{font-size:13.5px;font-weight:800;margin-bottom:1px;line-height:1.3;padding-right:24px;color:var(--text)}
 .jcard-cat-row{display:flex;align-items:center;gap:5px;margin-bottom:4px}
 .jcard-cat-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;background:linear-gradient(135deg,#eff6ff,#f5f3ff);color:var(--blue);border:1px solid rgba(37,99,235,.15)}
-.jcard-co{font-size:11px;color:var(--t2);margin-bottom:5px;display:flex;align-items:center;gap:3px}
+.jcard-co{font-size:11.5px;color:var(--t2);margin-bottom:4px;display:flex;align-items:center;gap:3px}
 .jcard-tags{display:flex;gap:4px;flex-wrap:wrap}
 
 
@@ -2946,17 +2965,14 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
              quando o plano está ativo E o Gmail conectado (updateManualSendGate). -->
         <div id="lr-guia" style="display:none;margin:10px 14px 0;border-radius:14px"></div><!-- painel minimizável "Aplicando de graça?" (renderLrGuia) -->
         <div id="manual-send-gate" style="display:none;margin:10px 14px 0;padding:14px 16px;border-radius:14px;font-weight:700;flex-wrap:wrap"></div>
-        <div class="search-bar">
-          <!-- v173: busca por palavra (cargo, empresa, cidade, nº do caso — sugestões
-               instantâneas vindas de /api/lugares) + botão 🔍 Filtros (painel único
-               com contagem por opção) + ordenação. Os antigos seletores de
-               estado/cidade e o modal de filtros foram substituídos pelo VF. -->
-          <div class="search-wrap" style="min-width:170px"><i class="ti ti-search"></i><input class="search-inp" type="text" id="q" data-i18n-ph="q_ph" aria-label="Buscar vagas por cargo ou empresa" placeholder="Cargo, empresa..." oninput="onSearch();qSugInput()" onkeydown="qSugKey(event)" onfocus="qSugInput()" onblur="qSugBlur()" autocomplete="off" inputmode="search" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="q-sug" style="padding-right:42px"><button type="button" id="q-clear" onclick="limparBusca()" data-i18n-al="vf_remove" aria-label="Remover filtro" title="Limpar" style="display:none">×</button><div id="q-sug" class="q-sug" role="listbox" aria-label="Sugestões de busca"></div></div>
-          <div class="filters-row" id="filters-row">
-            <button class="fbtn" id="btn-vf-manual" onclick="vfOpen('manual')" style="font-weight:800;color:#7c3aed;border:1.5px solid rgba(124,58,237,.4);background:rgba(124,58,237,.1);white-space:nowrap">
-              <i class="ti ti-adjustments-horizontal"></i> <span data-i18n="vf_btn">Filtros</span>
-              <span id="vf-badge-manual" class="vf-badge" style="display:none"></span>
-            </button>
+        <div class="search-bar" id="search-bar"><div class="tb-row">
+          <button type="button" class="tb-ic tb-q" id="btn-q-open" onclick="qOpen()" aria-label="Buscar vagas" title="Buscar"><i class="ti ti-search"></i></button>
+          <div class="search-wrap" style="min-width:170px"><i class="ti ti-search"></i><input class="search-inp" type="text" id="q" data-i18n-ph="q_ph" aria-label="Buscar vagas por cargo ou empresa" placeholder="Cargo, empresa..." oninput="onSearch();qSugInput()" onkeydown="qSugKey(event)" onfocus="qSugInput()" onblur="qSugBlur();setTimeout(qMaybeClose,220)" autocomplete="off" inputmode="search" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="q-sug" style="padding-right:42px"><button type="button" id="q-clear" onclick="limparBusca()" data-i18n-al="vf_remove" aria-label="Remover filtro" title="Limpar" style="display:none">×</button><div id="q-sug" class="q-sug" role="listbox" aria-label="Sugestões de busca"></div></div>
+          <button type="button" class="fbtn tb-ic tb-vf" id="btn-vf-manual" onclick="vfOpen('manual')" aria-label="Filtros" title="Filtros"><i class="ti ti-adjustments-horizontal"></i><span class="tb-lbl" data-i18n="vf_btn">Filtros</span><span id="vf-badge-manual" class="vf-badge" style="display:none"></span></button>
+          <button type="button" class="tb-ic tb-sort" id="btn-sort-open" onclick="sortToggle()" aria-label="Ordenar vagas" title="Ordenar" aria-expanded="false"><i class="ti ti-arrows-sort"></i></button>
+        </div>
+        <div class="filters-row" id="filters-row">
+            
             <!-- v111: atalhos de 1 toque (nova experiência de busca) — os sorts
                  wage/start já existem no servidor desde o v82 -->
             <button class="fbtn on" id="so-rand"  onclick="setSort('random')" data-i18n="sort_rand">🔀 Aleatório</button>

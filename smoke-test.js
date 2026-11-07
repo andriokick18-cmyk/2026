@@ -5364,8 +5364,8 @@ async function drillAdminSettingsLegado() {
         {
           const _ap2 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
           const _lr = _ap2.slice(_ap2.indexOf("function _lrCardRow"), _ap2.indexOf("function _lrCardRow") + 1800);
-          check("📱 v-detalhe-celular: tocar em QUALQUER ponto da vaga (inclusive no e-mail) abre os detalhes completos — só os botões/caixinha seguram o clique; o card tem o botão 'Ver todas as informações e localização'; a janela de detalhe do celular sai de dentro da lista (anexada ao body)",
-            !/<div onclick="event\.stopPropagation\(\)" style="margin-top:8px;padding-top:8px;border-top/.test(_lr) && /Ver todas as informações e localização/.test(_ap2) && /document\.body\.appendChild\(md\)/.test(_ap2),
+          check("📱 v-detalhe-celular: tocar em QUALQUER ponto da vaga (inclusive no e-mail) abre os detalhes completos — só os botões/caixinha seguram o clique; o card tem o botão 'Ver detalhes e localização'; a janela de detalhe do celular sai de dentro da lista (anexada ao body)",
+            !/<div onclick="event\.stopPropagation\(\)" style="margin-top:8px;padding-top:8px;border-top/.test(_lr) && /Ver detalhes e localização/.test(_ap2) && /document\.body\.appendChild\(md\)/.test(_ap2),
             "toque na vaga voltou a ser engolido ou perdeu o botão de detalhes");
         }
         process.env.DOL_FEED_BASE = _env;
@@ -7272,7 +7272,7 @@ async function drillAdminSettingsLegado() {
       "faltou peça da v980 no server.js");
     // 📚 v981: o guia verificado do app (aprenda-conteudo.html, noindex) vira páginas PÚBLICAS /aprenda/* — o texto vem
     // do próprio fragmento (fonte única), então as guardas provam: as 8 URLs existem, são indexáveis, completas e limpas.
-    const _slugsAp = ["", "h2b", "h2a", "h2b-vs-h2a", "mito-ou-verdade", "checklist", "glossario", "fontes-oficiais"];
+    const _slugsAp = ["", "h2b", "h2a", "do-zero-ao-embarque", "h2b-vs-h2a", "mito-ou-verdade", "checklist", "glossario", "fontes-oficiais"];
     const _apPgs = [];
     for (const sl of _slugsAp) _apPgs.push({ sl, r: await req2("GET", "/aprenda" + (sl ? "/" + sl : "")) });
     const _apSm = (await req2("GET", "/sitemap-conteudo.xml")).body;
@@ -7285,7 +7285,7 @@ async function drillAdminSettingsLegado() {
     const _apMit = _apPgs.find((x) => x.sl === "mito-ou-verdade").r.body;
     const _apFrag = (await req2("GET", "/aprenda-conteudo"));
     const _apQuiz = await req2("GET", "/aprenda/quiz");
-    check("📚 v981: as 8 páginas /aprenda/* (hub, H-2B, H-2A, comparação, mito ou verdade, checklist, glossário, fontes) respondem 200, indexáveis, com canonical próprio, 1 H1, aviso jurídico, no sitemap e SEM nenhum handler/JS do app",
+    check("📚 v981: as 9 páginas /aprenda/* (hub, H-2B, H-2A, comparação, mito ou verdade, checklist, glossário, fontes) respondem 200, indexáveis, com canonical próprio, 1 H1, aviso jurídico, no sitemap e SEM nenhum handler/JS do app",
       _apRuim.length === 0, "quebradas: " + _apRuim.join(", "));
     check("📚 v981: os guias saem COMPLETOS e abertos (H-2B ≥10 tópicos, H-2A ≥10, mito ou verdade ≥5), com as fontes oficiais citadas (USCIS/DOL) e o rótulo de revisão vindo do próprio fragmento",
       (_apH2b.match(/<details open /g) || []).length >= 10 && (_apH2a.match(/<details open /g) || []).length >= 10 && (_apMit.match(/<details open /g) || []).length >= 5 &&

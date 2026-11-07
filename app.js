@@ -1216,7 +1216,10 @@ function _vfSyncQInput(){const el=g("#q");const q=(VF.st.manual&&VF.st.manual.q)
 // 🔎 v182 LOTE 9: o × do campo de busca (o campo irmão da aba Enviadas já
 // tinha) — a pessoa filtrava, saía da tela, voltava e não tinha onde clicar
 // pra desfazer. Ele aparece só quando há texto, e limpar é UM clique.
-function _vfSyncQClear(){const b=g("#q-clear");if(b)b.style.display=(g("#q")&&g("#q").value)?"flex":"none";}
+function _vfSyncQClear(){const b=g("#q-clear");const has=!!(g("#q")&&g("#q").value);if(b)b.style.display=has?"flex":"none";if(has)g("#search-bar")?.classList.add("q-open");}
+function qOpen(){g("#search-bar")?.classList.add("q-open");setTimeout(()=>g("#q")?.focus(),30);}
+function qMaybeClose(){const q=g("#q");if(q&&!q.value.trim())g("#search-bar")?.classList.remove("q-open");}
+function sortToggle(){const b=g("#search-bar");if(!b)return;const o=b.classList.toggle("sort-open");g("#btn-sort-open")?.setAttribute("aria-expanded",o?"true":"false");}
 function limparBusca(){const el=g("#q");if(el)el.value="";_vfSetQ("");qSugClose();_vfSyncQClear();vfAfterChange("manual");el&&el.focus();}
 // A fileira de filtros/ordenação rola na horizontal: a borda apagada só liga
 // enquanto ainda há botão fora da tela (nunca mente dizendo que tem mais).
@@ -2348,8 +2351,8 @@ function _lrCardRow(j){
   // quem copia o e-mail e envia pelo próprio Gmail precisa poder marcar a vaga.
   if(!U)return "";
   if(!j.hasEmail||!j.email||j.emailBloqueado)return `<div style="margin-top:6px;font-size:11px;color:var(--t3)"><i class="ti ti-mail-off" style="font-size:11px"></i> Essa vaga não contém e-mail. Contate pelo telefone ou site.</div>`;
-  return `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">
-    <div style="font-size:11.5px;font-weight:700;word-break:break-all;color:var(--t2);margin-bottom:6px"><i class="ti ti-mail" style="font-size:12px"></i> ${esc(j.email)}</div>
+  return `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">
+    <div style="font-size:11.5px;font-weight:700;word-break:break-all;color:var(--t2);margin-bottom:5px"><i class="ti ti-mail" style="font-size:12px"></i> ${esc(j.email)}</div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <button type="button" class="btn btn-secondary btn-sm" data-em="${esc(j.email)}" onclick="event.stopPropagation();lrCopiar(this.dataset.em)"><i class="ti ti-copy"></i> Copiar e-mail</button>
       <label onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:800;cursor:pointer;color:var(--text)"><input type="checkbox" aria-label="Já enviei para esta vaga" data-id="${esc(j.id)}" onchange="lrMarcar(this.dataset.id,this)" style="width:19px;height:19px;accent-color:#16a34a;cursor:pointer"> Já enviei</label>
@@ -2445,10 +2448,10 @@ function _lrGravar(p,v){
 function _lrAvisoGratisHTML(){
   const min=_lrLer("guia_min")==="1";
   if(min){
-    return `<div style="display:flex;gap:8px;align-items:stretch;width:100%">
-      <button type="button" onclick="sv('plans')" style="flex:1;min-width:0;display:flex;align-items:center;gap:9px;padding:9px 12px;border:0;border-radius:13px;cursor:pointer;font-family:inherit;text-align:left;color:#fff;background:linear-gradient(135deg,#7c3aed,#4f46e5);box-shadow:0 4px 14px rgba(99,102,241,.35)"><i class="ti ti-robot" style="font-size:22px;flex-shrink:0"></i><span style="min-width:0"><span style="display:block;font-size:13px;font-weight:900;line-height:1.2">Envio automático</span><span style="display:block;font-size:10.5px;font-weight:800;opacity:.9;letter-spacing:.3px">💎 PLANO PAGO</span></span></button>
-      <button type="button" onclick="lrAbrirIntro(false)" style="flex:1;min-width:0;display:flex;align-items:center;gap:9px;padding:9px 12px;border:0;border-radius:13px;cursor:pointer;font-family:inherit;text-align:left;color:#fff;background:linear-gradient(135deg,#16a34a,#0d9488);box-shadow:0 4px 14px rgba(22,163,74,.3)"><i class="ti ti-target-arrow" style="font-size:22px;flex-shrink:0"></i><span style="min-width:0"><span style="display:block;font-size:13px;font-weight:900;line-height:1.2">Nossa lista × SeasonalJobs</span><span style="display:block;font-size:10.5px;font-weight:800;opacity:.9;letter-spacing:.3px">ENTENDA A DIFERENÇA</span></span></button>
-      <button type="button" onclick="lrGuiaToggle()" aria-label="Abrir: como enviar de graça" title="Abrir: como enviar de graça" style="width:44px;flex-shrink:0;border:1.5px solid rgba(22,163,74,.45);background:rgba(22,163,74,.1);color:#16a34a;border-radius:13px;cursor:pointer;font-size:20px;display:flex;align-items:center;justify-content:center"><i class="ti ti-chevron-down"></i></button>
+    return `<div style="display:flex;gap:6px;align-items:stretch;width:100%">
+      <button type="button" onclick="sv('plans')" style="flex:1;min-width:0;display:flex;align-items:center;gap:8px;padding:6px 10px;min-height:44px;border:0;border-radius:12px;cursor:pointer;font-family:inherit;text-align:left;color:#fff;background:linear-gradient(135deg,#7c3aed,#4f46e5);box-shadow:0 2px 8px rgba(99,102,241,.3)"><i class="ti ti-robot" style="font-size:19px;flex-shrink:0"></i><span style="min-width:0;line-height:1.15"><span style="display:block;font-size:12px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Envio automático</span><span style="display:block;font-size:10px;font-weight:700;opacity:.92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">💎 plano pago</span></span></button>
+      <button type="button" onclick="lrAbrirIntro(false)" style="flex:1;min-width:0;display:flex;align-items:center;gap:8px;padding:6px 10px;min-height:44px;border:0;border-radius:12px;cursor:pointer;font-family:inherit;text-align:left;color:#fff;background:linear-gradient(135deg,#16a34a,#0d9488);box-shadow:0 2px 8px rgba(22,163,74,.28)"><i class="ti ti-target-arrow" style="font-size:19px;flex-shrink:0"></i><span style="min-width:0;line-height:1.15"><span style="display:block;font-size:12px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Nossa lista × Seasonal</span><span style="display:block;font-size:10px;font-weight:700;opacity:.92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">entenda a diferença</span></span></button>
+      <button type="button" onclick="lrGuiaToggle()" aria-label="Abrir: como enviar de graça" title="Abrir: como enviar de graça" style="width:44px;flex-shrink:0;border:1.5px solid rgba(22,163,74,.45);background:rgba(22,163,74,.1);color:#16a34a;border-radius:12px;cursor:pointer;font-size:20px;display:flex;align-items:center;justify-content:center"><i class="ti ti-chevron-down"></i></button>
     </div>`;
   }
   const passo=(n,t)=>`<div style="display:flex;gap:10px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:#16a34a;color:#fff;font-weight:900;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0">${n}</div><div style="font-size:13px;line-height:1.45;color:var(--text)">${t}</div></div>`;
@@ -2576,13 +2579,18 @@ function lrPrimeiraVez(){
 // "entendi" (a pessoa precisa saber a hora do visto); depois é só abrir e fechar.
 function _lrFab(mostrar){
   let b=document.getElementById("lr-fab");
-  if(!mostrar||!U){if(b)b.remove();return;}
+  let off=false;try{off=localStorage.getItem("h2b_lr_fab_off")===new Date().toISOString().slice(0,10);}catch(e){}
+  if(!mostrar||!U||off){if(b)b.remove();document.getElementById("lr-fab-x")?.remove();return;}
   if(b)return;
   b=document.createElement("button");b.id="lr-fab";b.type="button";
   b.setAttribute("aria-label","Ajuda: quando sai a lista nova");b.title="Quando sai a lista nova?";
   b.style.cssText="position:fixed;right:14px;bottom:calc(86px + env(safe-area-inset-bottom,0px));z-index:900;width:52px;height:52px;border-radius:50%;border:2px solid #fff7d6;background:linear-gradient(135deg,#fde68a,#f59e0b 55%,#d97706);color:#4a2c00;font-size:26px;font-weight:900;box-shadow:0 6px 18px rgba(217,119,6,.55);cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1";
   b.textContent="?";b.onclick=()=>lrAbrirAjuda(false);
   document.body.appendChild(b);
+  const x=document.createElement("button");x.id="lr-fab-x";x.type="button";x.setAttribute("aria-label","Fechar o botão de ajuda por hoje");x.title="Fechar por hoje";x.textContent="✕";
+  x.style.cssText="position:fixed;right:6px;bottom:calc(132px + env(safe-area-inset-bottom,0px));z-index:901;width:34px;height:34px;border-radius:50%;border:1.5px solid #fff;background:#475569;color:#fff;font-size:12px;font-weight:900;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.3);padding:0";
+  x.onclick=()=>{try{localStorage.setItem("h2b_lr_fab_off",new Date().toISOString().slice(0,10));}catch(e){}b.remove();x.remove();};
+  document.body.appendChild(x);
 }
 function _lrAjudaHTML(){
   const MES=["JAN","FEV","MAR","ABR","MAI","JUN","JUL","AGO","SET","OUT","NOV","DEZ"];
@@ -2608,7 +2616,7 @@ function lrAbrirAjuda(obrigatorio){
     ?`<label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:800;cursor:pointer;color:var(--text);margin:14px 0 10px"><input type="checkbox" id="lr-ajuda-ck" onchange="lrAjudaCk(this)" style="width:22px;height:22px;accent-color:#16a34a;flex-shrink:0"> Entendi: a lista é antiga e a nova sai em janeiro</label>
        <button type="button" id="lr-ajuda-ok" class="btn btn-primary" disabled onclick="lrAjudaFechar(true)" style="width:100%;justify-content:center;padding:13px;opacity:.5">Entendi, ver as vagas</button>`
     :`<button type="button" class="btn btn-primary" onclick="lrAjudaFechar(false)" style="width:100%;justify-content:center;padding:13px;margin-top:14px">Fechar</button>`;
-  ov.innerHTML=`<div class="modal" style="max-width:520px"><div class="mhandle"></div><div class="mhdr"><div class="mttl">📅 Quando sai a lista nova?</div>${obrigatorio?"":'<button aria-label="Fechar" class="mx" type="button">✕</button>'}</div><div class="mbody" style="padding:4px 16px 16px">${_lrAjudaHTML()}${rodape}</div></div>`;
+  ov.innerHTML=`<div class="modal" style="max-width:520px"><div class="mhandle"></div><div class="mhdr"><div class="mttl">📅 Quando sai a lista nova?</div>${obrigatorio?"":'<button aria-label="Fechar" class="mx" type="button">✕</button>'}</div><div class="mbody" style="padding:4px 16px 16px">${_lrAjudaHTML()}<button type="button" onclick="lrAjudaFechar(false);window._aprSubPend='jornada';sv('aprenda')" style="width:100%;display:flex;align-items:center;gap:11px;padding:12px 14px;margin-top:14px;border:0;border-radius:14px;cursor:pointer;font-family:inherit;text-align:left;color:#fff;background:linear-gradient(135deg,#0ea5e9,#4f46e5);box-shadow:0 4px 14px rgba(79,70,229,.3)"><span style="font-size:26px;flex-shrink:0">🧭</span><span style="min-width:0;line-height:1.25"><span style="display:block;font-size:14px;font-weight:900">Quer aprender tudo sobre os vistos de trabalho nos EUA?</span><span style="display:block;font-size:12px;font-weight:700;opacity:.92">Abrir o guia H-2B e H-2A, do zero ao embarque</span></span></button>${rodape}</div></div>`;
   if(!obrigatorio){
     ov.addEventListener("click",e=>{if(e.target===ov)lrAjudaFechar(false);});
     const x=ov.querySelector(".mx");if(x)x.onclick=()=>lrAjudaFechar(false);
@@ -2655,25 +2663,25 @@ function mkSheetCard(j){
   const visaTag=j.visa
     ?`<span class="tag ${j.visa==="H-2A"?"ta":"tb"}">${j.visa}</span>`
     :'<span class="tag tb">H-2B</span>';
-  const stateLbl=j.state&&j.state!=="–"?`<span class="tag tgr"><i class="ti ti-map-pin" style="font-size:9px"></i>${esc(j.state)}</span>`:"";
   // Data de início sempre NEUTRA (cinza): lista antiga continua válida pra aplicar
   // pensando na próxima temporada — nada de cor de alerta nem "vaga inativa".
   const dateLbl=j.start&&j.start!=="–"?`<span class="tag tgr"><i class="ti ti-calendar" style="font-size:9px"></i>${esc(_fmtDataBR(j.start))}</span>`:"";
-  const wageLbl=j.wage&&j.wage!=="–"?`<span class="tag tg">${esc(j.wage)}</span>`:"";
   const wkTag=j.workers&&j.workers>0?`<span class="tag tgr">👥 ${j.workers} vagas</span>`:"";
 
   const _inAutoQ=_autoQueueIds.has(j.id)||_autoQueueIds.has(j.caseNum);
   return`<div class="jcard${isApplied||_inAutoQ?" applied":""}" id="jcard-${iid}" onclick="selSheetJob('${esc(j.id)}')" role="button" tabindex="0"${(isApplied||_inAutoQ)?' style="display:none"':""}>
-    <div class="jcard-cat-row" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;padding-right:26px">
+    <div class="jcard-cat-row" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;padding-right:22px;gap:6px">
       <span class="jcard-cat-badge" id="jctg-cat-${iid}"><i class="ti ${esc(catInfo.icon)}" style="font-size:9px"></i> ${esc(catInfo.name)}</span>
-      ${j.wage&&j.wage!=="–"?`<span style="font-size:12px;font-weight:800;color:#10b981">💰 ${esc(j.wage)}</span>`:""}
+      ${j.wage&&j.wage!=="–"?`<span style="font-size:12.5px;font-weight:900;color:#059669;white-space:nowrap">${esc(j.wage)}</span>`:""}
     </div>
     <div class="jcard-title" id="jct-${iid}">${esc(jobTitle)}</div>
-    <div class="jcard-co" id="jcc-${iid}"><i class="ti ti-building" style="font-size:9px"></i>${esc(j.company||"–")} · <i class="ti ti-map-pin" style="font-size:9px"></i>${j.city&&j.city!=="–"?esc(j.city)+", ":""}${esc(j.state||"–")}</div>
-    <div class="jcard-tags" id="jctg-${iid}">${visaTag}${stateLbl}${wkTag}${dateLbl}${wageLbl}</div>
+    <div class="jcard-co" id="jcc-${iid}"><i class="ti ti-building" style="font-size:10px"></i> ${esc(j.company||"–")} · <i class="ti ti-map-pin" style="font-size:10px"></i> ${j.city&&j.city!=="–"?esc(j.city)+", ":""}${esc(j.state||"–")}</div>
+    <div class="jcard-tags" id="jctg-${iid}">${visaTag}${wkTag}${dateLbl}</div>
     ${_lrCardRow(j)}
-    <button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();selSheetJob('${esc(j.id)}')" style="margin-top:8px;width:100%;justify-content:center"><i class="ti ti-map-pin"></i> Ver todas as informações e localização</button>
-    ${j.url?`<a href="${esc(j.url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:rgba(59,130,246,.7);text-decoration:none;margin-top:3px"><i class="ti ti-external-link" style="font-size:9px"></i>Ver vaga DOL</a>`:""}
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px">
+      <span style="font-size:12px;font-weight:800;color:var(--blue)">Ver detalhes e localização <i class="ti ti-chevron-right" style="font-size:12px"></i></span>
+      ${j.url?`<a href="${esc(j.url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--t3);text-decoration:none;padding:6px 0 6px 8px"><i class="ti ti-external-link" style="font-size:11px"></i>DOL</a>`:""}
+    </div>
   </div>`;
 }
 
@@ -6731,7 +6739,7 @@ function tutFiltra(){
 let _aprLoaded=false;
 async function loadAprenda(){
   const box=g("#aprenda-conteudo");if(!box)return;
-  if(_aprLoaded){_aprAtualizaProgresso();return;}
+  if(_aprLoaded){_aprAtualizaProgresso();if(window._aprSubPend){aprendaIr(window._aprSubPend);window._aprSubPend=null;}return;}
   try{
     const r=await fetch("/aprenda-conteudo",{cache:"no-cache"});
     if(!r.ok)throw new Error("HTTP "+r.status);
@@ -6744,6 +6752,7 @@ async function loadAprenda(){
     }
     _aprBindTopicos();
     _aprAtualizaProgresso();
+    if(window._aprSubPend){aprendaIr(window._aprSubPend);window._aprSubPend=null;}
   }catch(e){
     box.innerHTML='<div class="alert al-amber" style="justify-content:center;text-align:center;margin:16px">⚠️ Não deu pra carregar o guia agora. Confira a internet e abra a aba de novo.</div>';
   }
