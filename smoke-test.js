@@ -3102,7 +3102,7 @@ async function drillAdminSettingsLegado() {
     const _addHistBody = (_srvSrc.match(/const addHist\s*=[\s\S]*?\n/) || [""])[0];
     const _markSentBody = (_srvSrc.match(/const markSent = \(u, d\) => \{[\s\S]*?\n\};/) || [""])[0];
     check("⚡ v199-L18: a via quente do envio grava certo — addHist (1x por candidatura) é DEBOUNCED e markSent continua SÍNCRONO de propósito (v184: fila pode voltar atrasada num crash, 'já enviei pra esse empregador' NUNCA)",
-      _addHistBody.includes("persistDebounced(HIST_FILE") && !/(?<!Debounced)persist\(HIST_FILE/.test(_addHistBody) &&
+      (_addHistBody.includes("persistDebounced(HIST_FILE") || _addHistBody.includes("persistThrottled(HIST_FILE")) && !/(?<!Debounced)(?<!Throttled)persist\(HIST_FILE/.test(_addHistBody) &&
       _markSentBody.includes("persistSent()"),
       JSON.stringify({ addHist: !!_addHistBody, markSent: !!_markSentBody }));
 
@@ -5997,6 +5997,34 @@ async function drillAdminSettingsLegado() {
 
     // ═══ 🩻 v163: RAIO-X DE MEMÓRIA (OOM 2GB no Render — medir antes de operar)
     const memX = (await get("/api/admin/memoria")).json;
+
+    // ═══ RAM (ordem do dono, 07/11/2026 — pico de memória derrubando o Render;
+    // "a pesquisa pode ser lenta, o importante é nunca estourar a RAM") ═══════
+    {
+      const _ramSrv = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      const _ramPl = fs.readFileSync(path.join(__dirname, "mod-planilhas.js"), "utf8");
+      const _ramBs = fs.readFileSync(path.join(__dirname, "build-sheets.js"), "utf8");
+      check("RAM: o robô de enriquecimento grava em LOTES (25 linhas alteradas ou 60s) em vez de regravar a planilha inteira a cada vaga, carimba o HTTP 400 no mesmo row.eq do 'DOL já respondeu' (não repergunta por 60h), tem disjuntor de 25 rejeições seguidas (desfaz o carimbo) e espera a RAM normalizar — ritmo 1200ms",
+        _ramPl.includes("dirty >= 25 || Date.now() - lastSave >= 60000") && _ramPl.includes("saveSheet(sheetKey, sheet, true)") &&
+        _ramPl.includes("if (status === 400) {") && _ramPl.includes("consec400 >= 25") && _ramPl.includes("for (const r of recentes400) delete r.eq;") &&
+        _ramPl.includes("await aguardaRam(enrichLog)") && !/saveSheet\(sheetKey, sheet\); enrichBot\.savedAt = Date\.now\(\);\n      if \(enrichBot\.done % 10/.test(_ramPl),
+        "robô de enriquecimento ainda regrava a planilha inteira a cada vaga");
+      check("RAM: a coleta do DOL guarda só os campos que o filtro/compactador leem (registro bruto enxuto, sem push(...spread)) e espera a RAM nos 2 robôs de feed; o download do ZIP não passa mais por 3 cópias (unzip escreve direto em arquivo, ZIP solto antes do parse)",
+        _ramPl.includes("function _rawEnxuto(rec)") && _ramPl.includes("records.push(_rawEnxuto(recs[q]))") && !_ramPl.includes("records.push(...recs)") &&
+        _ramPl.includes("await aguardaRam(dcLog)") && _ramPl.includes("await aguardaRam(LOG)") &&
+        _ramBs.includes('execFileSync("unzip", ["-p", tmpZip') && _ramBs.includes('stdio: ["ignore", fd, "pipe"]') && !_ramBs.includes("512 * 1024 * 1024"),
+        "coleta do DOL ainda acumula registro bruto inteiro ou copia o feed 3x");
+      check("RAM: a GUARDA vigia o RSS contra o limite do serviço (RAM_LIMIT_MB/cgroup/2048): acima de 70% solta caches e pausa SÓ os robôs de planilha, abaixo de 55% libera — envio e site nunca pausam; gravações grandes usam throttle com TETO (histórico 20s/60s, logs 15s/60s, usuários 15s/30s, jornada 20s/60s), token em cache deixa de forçar gravação síncrona e snapshot de envio guarda ≤400 chars (+migração única dos antigos)",
+        _ramSrv.includes("function _memGuardTick()") && _ramSrv.includes("setInterval(_memGuardTick,30000).unref()") && _ramSrv.includes("if(pct>=0.70)") && _ramSrv.includes("pct<0.55") &&
+        _ramSrv.includes("memAperto: () => _memAperto") &&
+        _ramSrv.includes("persistThrottled(USERS_FILE, DB_USERS,") && _ramSrv.includes("persistThrottled(JOURNEY_FILE, DB_JOURNEY,") && _ramSrv.includes("function persistLogs() { persistThrottled(LOGS_FILE") &&
+        _ramSrv.includes("const isCritical = !!(d.refresh_token || d.vip || d.isAdmin || d.plan);") &&
+        _ramSrv.includes('(j.desc || j.description || "").slice(0,400)') && _ramSrv.includes("hist_desc_curta_v1.json"),
+        "guarda de RAM ou gravações com teto incompletas");
+    }
+    check("RAM: o raio-X de memória mostra a guarda (limite do serviço, % usado e se o modo apertado está ligado)",
+      memX?.guarda && memX.guarda.limiteMB > 0 && typeof memX.guarda.pct === "number" && memX.guarda.apertado === false,
+      JSON.stringify(memX?.guarda));
     // ⚠️ ASSERÇÃO ATUALIZADA no v192 LOTE 10: ela exigia `pedidos.n >= 2`, ou
     // seja, codificava como CERTO justamente o problema que o próprio raio-X
     // denunciava ("candidato nº1 a migrar pra disco"). Com os comprovantes de
@@ -8290,9 +8318,9 @@ async function drillAdminSettingsLegado() {
         JSON.stringify({ resp: seedForce.json, linha: { e: _linhaJ26.e, ci: _linhaJ26.ci } }).slice(0, 220));
       // estrutural: produção intocada (mesma URL do DOL, mesmo ritmo) e critério numa lista só
       const _modL8 = fs.readFileSync(path.join(__dirname, "mod-planilhas.js"), "utf8");
-      check("🧩 v182-L8 (estrutural): em produção NADA mudou no trato com o DOL — a base padrão continua sendo api.seasonaljobs.dol.gov/datahub/ e o ritmo educado do enriquecimento (800ms) só encolhe com base local de teste",
+      check("🧩 v182-L8 (estrutural): em produção NADA mudou no trato com o DOL — a base padrão continua sendo api.seasonaljobs.dol.gov/datahub/ e o ritmo educado do enriquecimento (1200ms desde a ordem de RAM de 07/11/2026 — pesquisa pode ser lenta) só encolhe com base local de teste",
         _modL8.includes('process.env.DOL_API_BASE || "https://api.seasonaljobs.dol.gov/datahub/"') &&
-        _modL8.includes("_dolLocal ? 20 : 800") &&
+        _modL8.includes("_dolLocal ? 20 : 1200") &&
         !/httpsReq\(\{ hostname: "api\.seasonaljobs/.test(_modL8),
         "o ritmo/hostname de produção foi alterado");
       check("🧩 v182-L8 (estrutural): o critério de 'completa' é UMA lista só (CAMPOS_ESSENCIAIS) — fila, ponto de retomada, laço do robô e painel leem dela, nunca cada um do seu jeito",

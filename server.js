@@ -1300,6 +1300,20 @@ function boot() {
   _limparCuringasUsuarios(DB_USERS); // v983 (ordem do dono): nenhum curinga {x} nos textos — {vaga}→work, demais apagados (originais guardados)
   _migrarIdiomaParaPt(DB_USERS);   // 🇧🇷 v199 LOTE 17: conta presa em EN/ES volta pro português (o site não tem seletor)
   DB_HIST   = mig(HIST_FILE,   path.join(DATA_DIR, "h2b_history.json"), {});
+  // RAM (07/11/2026): snapshots de envios com mais de 7 dias perdem o excesso do
+  // texto da vaga (>400 chars). O histórico inteiro vive na RAM; descrição longa
+  // de milhares de envios antigos era o maior peso dele. Uma vez só (carimbo).
+  try{
+    const _hs=path.join(DATA_DIR,"hist_desc_curta_v1.json");
+    if(!fs.existsSync(_hs)){
+      let _cut=0;const _lim=Date.now()-7*86400000;
+      for(const arr of Object.values(DB_HIST||{})) for(const h of (Array.isArray(arr)?arr:[])){
+        const sn=h&&h.jobSnapshot; if(sn&&typeof sn.desc==="string"&&sn.desc.length>400&&(Date.parse(h.sentAt||"")||0)<_lim){ sn.desc=sn.desc.slice(0,400); _cut++; }
+      }
+      if(_cut){ persist(HIST_FILE,DB_HIST); console.log(`[ram] ${_cut} snapshot(s) antigo(s) do histórico encurtados (desc ≤400)`); }
+      fs.writeFileSync(_hs,JSON.stringify({em:Date.now(),encurtados:_cut}));
+    }
+  }catch(e){ console.warn("[ram] migração hist desc:",e.message); }
   DB_AUTO   = load(AUTO_FILE, {});
   DB_LOGS   = load(LOGS_FILE, {});
   DB_JOURNEY = load(JOURNEY_FILE, {});
@@ -1454,7 +1468,7 @@ function persist(file, data) {
 function persistSent() {
   const out={};for(const[k,v]of Object.entries(DB_SENT))out[k]=[...v];persist(SENT_FILE,out);
 }
-function persistLogs() { persistDebounced(LOGS_FILE, DB_LOGS, 3000); }
+function persistLogs() { persistThrottled(LOGS_FILE, DB_LOGS, process.env.TEST_LOGIN_TOKEN?3000:15000, process.env.TEST_LOGIN_TOKEN?1500:60000); } // RAM: era debounce de 3s sem teto
 function persistLogsImmediate() { persist(LOGS_FILE, DB_LOGS); }
 // ⚡ v190 LOTE 8: caminho do LOG DE ENVIO (status enviado/falhou/pausado/…).
 // Era `persistLogsImmediate()` — o auto_logs.json INTEIRO, de TODOS os
@@ -1465,8 +1479,8 @@ function persistLogsImmediate() { persist(LOGS_FILE, DB_LOGS); }
 // mais que `_LOGS_MAX_WAIT` sem ir pro disco, mesmo com tráfego contínuo.
 // No npm test o teto é curto pra suíte provar as DUAS metades (não grava na
 // hora × grava mesmo com chamadas contínuas) sem esperar meio minuto.
-const _LOGS_MAX_WAIT = process.env.TEST_LOGIN_TOKEN ? 1500 : 30000;
-function persistLogsThrottled() { persistThrottled(LOGS_FILE, DB_LOGS, 3000, _LOGS_MAX_WAIT); }
+const _LOGS_MAX_WAIT = process.env.TEST_LOGIN_TOKEN ? 1500 : 60000; // RAM: era 30s
+function persistLogsThrottled() { persistThrottled(LOGS_FILE, DB_LOGS, process.env.TEST_LOGIN_TOKEN ? 3000 : 15000, _LOGS_MAX_WAIT); }
 
 // CRUD
 const getUser    = e => DB_USERS[e]||null;
@@ -1525,11 +1539,15 @@ const setUser    = (e,d) => {
   // de uma edição — infinitamente mais raro que travar todo mundo a cada
   // clique. Fica síncrono só o que É dinheiro/acesso: token OAuth, VIP,
   // admin, plano.
-  const isCritical = !!(d.refresh_token || d.cached_access_token || d.vip || d.isAdmin || d.plan);
+  // RAM (07/11/2026): cached_access_token sozinho NÃO é crítico — é só o cache do
+  // token de 1h; se perder, o refresh_token gera outro. Antes cada renovação
+  // horária de cada usuário forçava gravação SÍNCRONA + criptografia do banco
+  // inteiro. refresh_token continua crítico.
+  const isCritical = !!(d.refresh_token || d.vip || d.isAdmin || d.plan);
   if (isCritical) {
     persist(USERS_FILE, DB_USERS);
   } else {
-    persistDebounced(USERS_FILE, DB_USERS, 5000);
+    persistThrottled(USERS_FILE, DB_USERS, process.env.TEST_LOGIN_TOKEN ? 5000 : 15000, 30000); // RAM: era debounce 5s sem teto; o teto garante gravação sob fluxo contínuo
   }
 };
 const delUser    = e => { delete DB_USERS[e]; persist(USERS_FILE,DB_USERS); };
@@ -1902,7 +1920,7 @@ function _sweepOrphanCvFiles(users){
   }catch(e){ console.warn("[cv-sweep] varredura falhou:",e.message); }
 }
 const getHist    = e => DB_HIST[e]||[];
-const addHist    = (e,entry) => { if(!DB_HIST[e])DB_HIST[e]=[]; DB_HIST[e].unshift(entry); if(DB_HIST[e].length>10000)DB_HIST[e]=DB_HIST[e].slice(0,10000); invalidateUserStatsCache(e); persistDebounced(HIST_FILE,DB_HIST,1500); }; // FIX-BUG8
+const addHist    = (e,entry) => { if(!DB_HIST[e])DB_HIST[e]=[]; DB_HIST[e].unshift(entry); if(DB_HIST[e].length>10000)DB_HIST[e]=DB_HIST[e].slice(0,10000); invalidateUserStatsCache(e); persistThrottled(HIST_FILE,DB_HIST,process.env.TEST_LOGIN_TOKEN?1500:20000,process.env.TEST_LOGIN_TOKEN?3000:60000); }; // FIX-BUG8
 const delHist    = e => { delete DB_HIST[e]; persist(HIST_FILE,DB_HIST); };
 const getAutoJob = e => DB_AUTO[e]||null;
 // v45-FIX (auditoria proativa, mesma classe do setUser() em 23/07: "site
@@ -2099,7 +2117,7 @@ function buildJobSnapshot(j){
     start:   j.start || j.beginDate || "",
     end:     j.end || j.endDate || "",
     category:j.category || "",
-    desc:    (j.desc || j.description || "").slice(0,1000),
+    desc:    (j.desc || j.description || "").slice(0,400), // RAM: era 1000 — cada envio ficava na RAM do histórico pra sempre
     caseNum: j.caseNum || j.case_number || "",
     sourceEmail: (j.to || j.email || "").toLowerCase(),
     capturedAt: Date.now()
@@ -2153,7 +2171,7 @@ function trackJourney(email, action, detail) {
       detail:d.detail||'', error:d.error||'', meta:d.meta||{}
     });
     if(DB_JOURNEY[email].length>500) DB_JOURNEY[email]=DB_JOURNEY[email].slice(0,500);
-    persistDebounced(JOURNEY_FILE, DB_JOURNEY, 5000);
+    persistThrottled(JOURNEY_FILE, DB_JOURNEY, process.env.TEST_LOGIN_TOKEN ? 5000 : 20000, 60000); // RAM
     if(d.ok===false && d.critical) pushGlobalEvent('user_error',email,`${action}: ${d.error||''}`, 'error');
   } catch(e){ console.warn('[trackJourney]',e.message); }
 }
@@ -5734,6 +5752,37 @@ function invalidateUserStatsCache(email) {
 
 // ── PERFORMANCE: deduplicação de envio manual por destinatário ──
 // Impede envio duplicado por duplo-clique / refresh
+// ══ GUARDA DE RAM (ordem do dono, 07/11/2026 — "o Render dá pico de RAM e o
+// server cai; a pesquisa de vagas pode ser LENTA, o importante é nunca estourar
+// a RAM, não quero pagar plano maior só pra ser rápido") ═══════════════════
+// Vigia o RSS contra o limite do serviço (RAM_LIMIT_MB; senão o cgroup do
+// container; senão 2048). Acima de 70% liga o modo "apertado": solta os caches
+// reconstruíveis, roda GC se exposto e PAUSA os robôs de planilha (enriquecimento
+// e coletas aguardam) até a memória baixar de 55%. Envio e site NUNCA pausam.
+let _memAperto=false;
+function _ramLimitMB(){
+  const env=parseInt(process.env.RAM_LIMIT_MB||"",10);
+  if(env>0)return env;
+  for(const f of ["/sys/fs/cgroup/memory.max","/sys/fs/cgroup/memory/memory.limit_in_bytes"]){
+    try{const n=Number(String(fs.readFileSync(f,"utf8")).trim());if(n>0&&n<64*1024**3)return Math.round(n/1048576);}catch(e){}
+  }
+  return 2048;
+}
+function _soltaCaches(){
+  try{for(const k of Object.keys(_assetCache))delete _assetCache[k];}catch(e){}
+  try{for(const k of Object.keys(_imgRawCache))delete _imgRawCache[k];}catch(e){}
+  try{_userStatsCache.clear();_seoMemoMap.clear();_VF_CACHE.clear();}catch(e){}
+  try{if(typeof global.gc==="function")global.gc();}catch(e){}
+}
+function _memGuardTick(){
+  const rss=Math.round(process.memoryUsage().rss/1048576),lim=_ramLimitMB(),pct=rss/lim;
+  if(pct>=0.70){
+    if(!_memAperto){_memAperto=true;console.warn(`[ram] RAM APERTADA: ${rss}MB de ${lim}MB (${Math.round(pct*100)}%) — caches soltos e robôs de planilha PAUSADOS até baixar de 55%`);}
+    _soltaCaches();
+  }else if(_memAperto&&pct<0.55){_memAperto=false;console.log(`[ram] RAM normalizada: ${rss}MB de ${lim}MB — robôs de planilha liberados`);}
+  return {rssMB:rss,limiteMB:lim,pct:Math.round(pct*100),apertado:_memAperto};
+}
+setInterval(_memGuardTick,30000).unref();
 const _manualSendInFlight = new Map(); // email+to → promessa em andamento
 
 // 🚨 v177-FIX5 (auditoria 14/09/2026): /api/auto/start não tinha NENHUM lock
@@ -7374,7 +7423,7 @@ async function gmailGetToken(sid){
 
 
 
-function _saveEnrichedSheet(sheetKey, sheet){
+function _saveEnrichedSheet(sheetKey, sheet, leve){
   // v179: as linhas em memória JÁ mudaram — o índice dos filtros e o palheiro
   // da busca precisam saber disso mesmo que a gravação em disco falhe depois.
   _bumpSheetVersion(sheet);
@@ -7384,7 +7433,7 @@ function _saveEnrichedSheet(sheetKey, sheet){
     // enriquecimento só EDITA campos das linhas já existentes, não deveria
     // nunca introduzir duplicata; se acontecer, só avisa no log pra
     // investigar, já que abortar aqui perderia o progresso do enriquecimento).
-    const _chk = _vagasVerify(sheet, {caseField:'c'});
+    const _chk = leve ? {ok:true} : _vagasVerify(sheet, {caseField:'c'}); // RAM: salvamento em lote pula a verificação (roda no final)
     if(!_chk.ok){
       _enrichLog(`⚠️ Integridade: ${_chk.duplicateCases.length} case number(s) duplicado(s) detectado(s) em "${sheetKey}" — investigar (não deveria acontecer no bot de enriquecimento).`, "warn");
     }
@@ -7450,6 +7499,7 @@ const PLANILHAS = _createPlanilhas({
   httpsReq, botLog, pushToUser, ADMIN_EMAILS, detectCategory, detectCategoryH2A, limparCidade,
   dedupe: _vagasDedupe, verify: _vagasVerify, manifest: _vagasManifest,
   isTest: !!process.env.TEST_LOGIN_TOKEN,
+  memAperto: () => _memAperto, // guarda de RAM: robôs de planilha esperam quando a memória aperta
 });
 
 // ═══ 📧 v175 — E-MAILS DO SISTEMA + CÓDIGOS (ordem do dono, 13/09/2026):
@@ -10645,6 +10695,7 @@ filtrar();
       if(MB(mu.rss)-MB(mu.heapUsed)>=300)dicas.push(`ℹ️ rss ${MB(mu.rss)}MB vs heap usado ${MB(mu.heapUsed)}MB: a diferença é buffer/nativo/fragmentação — picos transientes (coleta ZIP, backup gzip) contam aqui.`);
       if(!dicas.length)dicas.push("✅ Nenhum ofensor óbvio de memória nos números medidos agora — se o rss estiver alto mesmo assim, o vilão é pico transiente (compare este raio-x logo após um deploy vs horas depois).");
       return json(res,200,{ok:true,
+        guarda:_memGuardTick(), // limite do serviço, % usado e se o modo apertado está ligado
         processo:{rssMB:MB(mu.rss),heapUsadoMB:MB(mu.heapUsed),heapTotalMB:MB(mu.heapTotal),externosMB:MB(mu.external||0),buffersMB:MB(mu.arrayBuffers||0),uptimeHoras:Math.round(process.uptime()/360)/10,node:process.version},
         comprovantes,planilhas:planilhas.slice(0,12),bancos,arquivos:arquivos.slice(0,20),dicas});
     }catch(e){return json(res,500,{error:e.message});}

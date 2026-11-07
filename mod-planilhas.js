@@ -176,6 +176,16 @@ function mesclarJanelaH2a(atual, novas, { cap, hoje }) {
   return { rows: todas.filter(r => !fora.has(r)), despejadas };
 }
 
+// Campos do registro bruto do DOL que build-sheets.js (shouldDiscard + toCompact) realmente lê.
+const RAW_CAMPOS = ["case_number", "case_id", "apply_email", "employer_email", "apply_url", "case_status", "job_title",
+  "employer_business_name", "employer_trade_name", "worksite_state", "employer_state", "worksite_city", "employer_city",
+  "basic_rate_from", "pay_range_desc", "total_positions", "visa_class", "begin_date", "start_date", "end_date", "expiration_date"];
+function _rawEnxuto(rec) {
+  const o = {}; if (!rec || typeof rec !== "object") return o;
+  for (const k of RAW_CAMPOS) if (rec[k] !== undefined && rec[k] !== null && rec[k] !== "") o[k] = rec[k];
+  return o;
+}
+
 function createPlanilhas(deps) {
   const {
     fs, path, DATA_DIR, SHEETS_DIR, SHEETS_META_FILE,
@@ -191,7 +201,17 @@ function createPlanilhas(deps) {
     detectCategory, detectCategoryH2A, dedupe, verify, manifest,
     limparCidade,        // v182: régua ÚNICA de limpeza de cidade (server.js, ao lado do mapa de estados)
     isTest,              // true no npm test (TEST_LOGIN_TOKEN) — agendadores desligados
+    memAperto = () => false, // guarda de RAM (server.js): true = memória apertada, robôs esperam
   } = deps;
+  // RAM (ordem do dono, 07/11/2026): tarefa de fundo é LENTA e leve. Espera
+  // (em passos de 30s) enquanto a memória do serviço estiver apertada.
+  async function aguardaRam(log) {
+    let avisou = false;
+    while (memAperto()) {
+      if (!avisou) { avisou = true; if (log) log("RAM do servidor apertada — aguardando a memória baixar antes de continuar (a pesquisa pode demorar, de propósito)", "warn"); }
+      await new Promise(r => setTimeout(r, 30000));
+    }
+  }
 
   const saveMeta = () => { try { fs.writeFileSync(SHEETS_META_FILE, JSON.stringify(getMeta(), null, 2)); } catch (e) { console.warn("[planilhas] meta não gravado:", e.message); } };
   const hoje = () => new Date().toISOString().slice(0, 10);
@@ -230,7 +250,7 @@ function createPlanilhas(deps) {
   const _dolLocal = /^http:\/\/(127\.0\.0\.1|localhost)[:/]/i.test(DOL_API_BASE);
   // Ritmo com o DOL: INTOCADO em produção (o dono autorizou o robô levar
   // semanas). Só encolhe quando a base é local — não há governo do outro lado.
-  const RITMO = { enrich: _dolLocal ? 20 : 800 };
+  const RITMO = { enrich: _dolLocal ? 20 : 1200 }; // RAM: pesquisa pode ser lenta (era 800ms)
   function _dolReqOpts(caseNumber) {
     const params = new URLSearchParams({ "api-version": "2020-06-30" });
     params.append("$filter", `case_number eq '${caseNumber}'`); params.append("$top", "1");
@@ -354,6 +374,10 @@ function createPlanilhas(deps) {
     let uaIdx = Math.floor(Math.random() * USER_AGENTS.length);
     const getHDR = () => { uaIdx = (uaIdx + 1) % USER_AGENTS.length; return { ...DOL_HDR(), "User-Agent": USER_AGENTS[uaIdx], "Accept": "application/json, text/plain, */*", "Accept-Language": "en-US,en;q=0.9", "Pragma": "no-cache", "Origin": "https://seasonaljobs.dol.gov", "sec-fetch-dest": "empty", "sec-fetch-mode": "cors", "sec-fetch-site": "same-site" }; };
     let interDelay = RITMO.enrich, consecutive403 = 0;
+    // RAM (07/11/2026): antes saveSheet gravava a planilha INTEIRA a cada vaga
+    // (até nas de HTTP 400, onde nada mudava). Agora só grava em lote (25 linhas
+    // alteradas ou 60s) e para o ciclo se o DOL rejeitar 25 consultas seguidas.
+    let dirty = 0, lastSave = Date.now(), consec400 = 0, abortado = false; const recentes400 = [];
     for (let i = startIdx; i < sheet.length; i++) {
       if (!enrichBot.running) break;
       const row = sheet[i]; const cn = String(row.c || "").toUpperCase(); enrichBot.done = i + 1;
@@ -363,6 +387,7 @@ function createPlanilhas(deps) {
       // janela de 60h passar — era isto que fazia o vigia de 30min reperguntar
       // a planilha inteira pro governo, pra sempre, sem NENHUMA linha mudar.
       if (consultadaRecente(row)) { enrichBot.aguardando++; continue; }
+      await aguardaRam(enrichLog); if (!enrichBot.running) break;
       let attempt = 0, processed = false;
       while (attempt < 6 && !processed && enrichBot.running) {
         if (attempt > 0) {
@@ -375,12 +400,12 @@ function createPlanilhas(deps) {
         try {
           const { status, body } = await dolApiCase(row.c, getHDR());
           if (status === 200) {
-            consecutive403 = 0; if (interDelay > RITMO.enrich) interDelay = Math.max(RITMO.enrich, interDelay - 300);
+            consecutive403 = 0; consec400 = 0; if (interDelay > RITMO.enrich) interDelay = Math.max(RITMO.enrich, interDelay - 300);
             const raw = body?.value || body?.results || body?.data || (Array.isArray(body) ? body : []);
             const dol = raw[0] || null; processed = true;
             if (dol) {
               const tinhaEmail = !!row.e;
-              aplicarDolNaLinha(row, dol);
+              aplicarDolNaLinha(row, dol); dirty++;
               if (!tinhaEmail && row.e) enrichLog(`📧 [${i + 1}/${sheet.length}] ${cn}: email → ${row.e}`, "ok");
               enrichBot.ok++;
               // O DOL respondeu: se AINDA falta campo essencial, é porque ele
@@ -392,22 +417,38 @@ function createPlanilhas(deps) {
               // (frescor, mensal e sentinela sumiam por baixo).
               if (!row.e || !String(row.e).includes("@")) enrichBot.noEmail++;
               else enrichLog(`✅ [${i + 1}/${sheet.length}] ${cn} | ${(row.t || "?").slice(0, 35)} | ${row.ci || "?"}, ${row.s || "?"} | $${row.w || "?"}/h | ${row.e}`, "info");
-            } else { enrichBot.errors++; row.eq = Date.now(); enrichLog(`❌ [${i + 1}/${sheet.length}] ${cn} — não encontrado no DOL`, "warn"); }
+            } else { enrichBot.errors++; row.eq = Date.now(); dirty++; enrichLog(`❌ [${i + 1}/${sheet.length}] ${cn} — não encontrado no DOL`, "warn"); }
           } else if (status === 403 || status === 429) {
             consecutive403++; interDelay = Math.min(3000 + consecutive403 * 500, 8000);
             enrichLog(`🚫 [${i + 1}/${sheet.length}] ${cn} — HTTP ${status} (bloqueio DOL, tentativa ${attempt}/5, delay→${interDelay}ms)`, "warn");
-          } else { processed = true; enrichBot.errors++; enrichLog(`⚠️ [${i + 1}/${sheet.length}] ${cn} — DOL retornou HTTP ${status}`, "warn"); }
+          } else {
+            processed = true; enrichBot.errors++; enrichLog(`⚠️ [${i + 1}/${sheet.length}] ${cn} — DOL retornou HTTP ${status}`, "warn");
+            // RAM: HTTP 400 passa pelo MESMO carimbo "o DOL já respondeu" (row.eq, janela de reconsulta)
+            // — antes o 400 não era carimbado e a mesma vaga era perguntada de novo a cada ciclo.
+            if (status === 400) {
+              consec400++; row.eq = Date.now(); dirty++; recentes400.push(row); if (recentes400.length > 40) recentes400.shift();
+              if (consec400 <= 2) { try { enrichLog(`corpo do 400 (diagnóstico): ${JSON.stringify(body).slice(0, 300)}`, "warn"); } catch (e) { } }
+              // Disjuntor: 25 rejeições SEGUIDAS = o problema é a consulta/API, não as vagas. Pausa o ciclo
+              // e DESFAZ o carimbo dessas linhas (senão ficariam dias sem nova tentativa com a API já consertada).
+              if (consec400 >= 25) {
+                for (const r of recentes400) delete r.eq;
+                abortado = true; enrichBot.running = false;
+                enrichLog("DOL rejeitou 25 consultas seguidas (HTTP 400) — ciclo PAUSADO (provável mudança na API). O próximo ciclo tenta de novo.", "error");
+              }
+            }
+          }
         } catch (e) {
           if (attempt < 6) enrichLog(`🔌 [${i + 1}/${sheet.length}] ${cn} — erro de rede (retry ${attempt}/5): ${e.message}`, "warn");
           else { processed = true; enrichBot.errors++; enrichLog(`❌ [${i + 1}/${sheet.length}] ${cn} — falhou após 5 tentativas: ${e.message}`, "error"); }
         }
       }
       if (!processed && enrichBot.running) { enrichBot.errors++; enrichLog(`❌ [${i + 1}/${sheet.length}] ${cn} — desistindo após 5 tentativas (DOL bloqueando)`, "error"); }
-      saveSheet(sheetKey, sheet); enrichBot.savedAt = Date.now();
+      if (dirty > 0 && (dirty >= 25 || Date.now() - lastSave >= 60000)) { saveSheet(sheetKey, sheet, true); dirty = 0; lastSave = Date.now(); enrichBot.savedAt = Date.now(); }
       if (enrichBot.done % 10 === 0) enrichLog(`💾 [${enrichBot.done}/${sheet.length}] ${Math.round((enrichBot.done / sheet.length) * 100)}% — ok:${enrichBot.ok} semEmail:${enrichBot.noEmail} delay:${interDelay}ms`, "ok");
       await new Promise(r => setTimeout(r, interDelay));
     }
-    enrichBot.done = sheet.length; enrichBot.running = false;
+    if (!abortado) enrichBot.done = sheet.length;
+    enrichBot.running = false;
     saveSheet(sheetKey, sheet); enrichBot.savedAt = Date.now();
     const meta = getMeta();
     if (!meta[sheetKey]) meta[sheetKey] = { name: sheetKey };
@@ -415,7 +456,7 @@ function createPlanilhas(deps) {
     meta[sheetKey].enriched = enrichBot.ok; meta[sheetKey].enrichedAt = Date.now(); meta[sheetKey].enrichedTotal = enrichBot.total;
     meta[sheetKey].completas = prog.completas; meta[sheetKey].pendentes = prog.pendentes;
     saveMeta();
-    enrichLog(`🏁 CONCLUÍDO! ${prog.completas}/${prog.total} completas | ${prog.pendentes} pendente(s)${prog.pendentes ? ` (${faltasTexto(prog)})` : ""} | erros:${enrichBot.errors}`, "ok");
+    enrichLog(`${abortado ? '⏸️ PAUSADO (DOL rejeitando)' : '🏁 CONCLUÍDO!'} ${prog.completas}/${prog.total} completas | ${prog.pendentes} pendente(s)${prog.pendentes ? ` (${faltasTexto(prog)})` : ""} | erros:${enrichBot.errors}`, "ok");
     // Resumo do que o DOL não tem (1 linha por CICLO, nunca por vaga) e do que
     // ficou de molho até a janela de reconsulta abrir.
     if (enrichBot.noEmail || prog.aguardandoDol) {
@@ -504,11 +545,16 @@ function createPlanilhas(deps) {
       dcLog(`🚀 Coleta iniciada: ${sheetName} (${visa}) — ${datas.length} feed(s): ${datas.join(", ")}`);
       const records = []; let feedsOk = 0, feedsDone = 0;
       for (const feedDate of datas) {
+        await aguardaRam(dcLog);
         try {
           // v207: data planejada sem arquivo no DOL (404) → usa o arquivo mais próximo pra trás (até 3 dias)
           const { raw, data: usada } = await baixarFeedComFallback(bs, base, type, { desde: feedDate, dias: 4, onPulo: d => dcLog(`📭 feed ${d} não existe no DOL (404) — tentando o dia anterior`) });
           const recs = Array.isArray(raw) ? raw : (raw.data || raw.results || raw.items || raw.cases || []);
-          records.push(...recs); feedsOk++;
+          // RAM: o registro bruto do DOL tem dezenas de campos e a coleta acumulava TODOS de TODOS os
+          // feeds até o fim (e `push(...recs)` ainda copiava via argumentos). Guarda só os campos que
+          // shouldDiscard/toCompact/dedupe leem — o resto do feed é solto a cada arquivo.
+          for (let q = 0; q < recs.length; q++) records.push(_rawEnxuto(recs[q]));
+          feedsOk++;
           dcLog(`📥 feed ${feedDate}${usada !== feedDate ? ` (usado o arquivo de ${usada})` : ""}: ${recs.length} registros brutos`);
         } catch (e) { dcLog(`⚠️ feed ${feedDate} falhou (${e.message}) — seguindo com os demais`, "warn"); }
         feedsDone++; dolColeta.progress = Math.round((feedsDone / datas.length) * 70);
@@ -699,6 +745,7 @@ function createPlanilhas(deps) {
       const maxFeeds = encher ? Math.max(nFeeds, 26) : nFeeds;   // v-H2A10k: teto de 10.000 → olha até 26 arquivos (~470 dias)
       for (let i = 0; i < maxFeeds; i++) {
         const extra = i >= nFeeds;
+        await aguardaRam(LOG);
         if (extra) {
           const projetado = antesTotal - mortasAntes + candidatas.size;
           if (feedsFalharam > 0 || projetado >= cap * 0.95) break;

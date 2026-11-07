@@ -319,35 +319,37 @@ function download(url) {
 
 async function downloadAndParse(url) {
   console.log(`  ↓ GET ${url}`);
-  const buf = await download(url);
-  // Detect if gzip/zip
-  let data;
+  let buf = await download(url);
+  // RAM (07/11/2026): antes o feed passava por 3 cópias vivas ao mesmo tempo
+  // (ZIP baixado + Buffer do unzip + string utf8) além do objeto do JSON.parse,
+  // com maxBuffer de 512MB. Agora o unzip escreve DIRETO num arquivo temporário
+  // (sem Buffer no Node), o ZIP baixado é solto antes do parse e só existem a
+  // string lida do arquivo + o objeto parseado.
   if (buf[0] === 0x1f && buf[1] === 0x8b) {
-    // gzip
-    data = zlib.gunzipSync(buf);
-  } else if (buf[0] === 0x50 && buf[1] === 0x4b) {
-    // ZIP — extrair primeiro arquivo JSON usando unzip nativo
-    const tmpZip = path.join(os.tmpdir(), `dol_feed_${Date.now()}.zip`);
-    fs.writeFileSync(tmpZip, buf);
-    const { execSync } = require("child_process");
-    // v121d (bug real em produção, 08/08: "spawnSync /bin/sh ENOBUFS" nos 6
-    // feeds da bimestral): o maxBuffer padrão do execSync é 1MB e o JSON
-    // descompactado do feed H-2A passa fácil disso — TODA extração de feed
-    // precisa do maxBuffer alto, senão o download morre depois de baixar.
-    const EXEC_MAX = 512 * 1024 * 1024;
+    const txt = zlib.gunzipSync(buf).toString("utf8"); buf = null;
+    return JSON.parse(txt);
+  }
+  if (buf[0] === 0x50 && buf[1] === 0x4b) {
+    const stamp = `${process.pid}_${Date.now()}`;
+    const tmpZip = path.join(os.tmpdir(), `dol_feed_${stamp}.zip`);
+    const tmpJson = path.join(os.tmpdir(), `dol_feed_${stamp}.json`);
+    fs.writeFileSync(tmpZip, buf); buf = null;
+    const { execFileSync } = require("child_process");
     try {
-      const list = execSync(`unzip -Z1 "${tmpZip}"`, { maxBuffer: EXEC_MAX }).toString().trim().split("\n");
+      const list = execFileSync("unzip", ["-Z1", tmpZip], { maxBuffer: 16 * 1024 * 1024 }).toString().trim().split("\n");
       const jsonFile = list.find(f => f.endsWith(".json") || f.endsWith(".JSON"));
       if (!jsonFile) throw new Error("No JSON inside ZIP");
-      const jsonBuf = execSync(`unzip -p "${tmpZip}" "${jsonFile.trim()}"`, { maxBuffer: EXEC_MAX });
-      data = jsonBuf;
+      const fd = fs.openSync(tmpJson, "w");
+      try { execFileSync("unzip", ["-p", tmpZip, jsonFile.trim()], { stdio: ["ignore", fd, "pipe"] }); }
+      finally { fs.closeSync(fd); }
+      return JSON.parse(fs.readFileSync(tmpJson, "utf8"));
     } finally {
-      try { fs.unlinkSync(tmpZip); } catch(_) {}
+      try { fs.unlinkSync(tmpZip); } catch (_) {}
+      try { fs.unlinkSync(tmpJson); } catch (_) {}
     }
-  } else {
-    data = buf;
   }
-  return JSON.parse(data.toString("utf8"));
+  const txt = buf.toString("utf8"); buf = null;
+  return JSON.parse(txt);
 }
 
 // ─── Main ──────────────────────────────────────────────────────────────────

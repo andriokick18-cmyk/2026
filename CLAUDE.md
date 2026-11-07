@@ -454,6 +454,33 @@ remover ou "corrigir" uma env como se fosse obsoleta, confirme com
 `grep -rn "process.env.NOME_DA_ENV" *.js` — já aconteceu desse arquivo
 ficar desatualizado citando variáveis de uma feature que não existe mais.
 
+## RAM é prioridade máxima (ordem do dono, 07/11/2026)
+
+"O Render dá pico de RAM e o server cai. A pesquisa de vagas pode ser lenta; o
+importante é nunca estourar a RAM — não quero pagar plano maior só pra ser
+rápido." Regras: (1) tarefa de fundo (enriquecimento, coletas de feed) é SEMPRE
+lenta e leve — nunca troca RAM por velocidade; (2) PROIBIDO gravar banco ou
+planilha inteira a cada item: grava em LOTE e só se mudou (`dirty`, 25 linhas
+ou 60s no enriquecimento); (3) todo banco grande usa `persistThrottled` com
+TETO, nunca `persistDebounced` puro em via contínua; (4) todo cache/Map novo
+precisa de teto de tamanho; (5) a GUARDA (`_memGuardTick`, 30s) mede o RSS
+contra o limite (`RAM_LIMIT_MB`, senão cgroup, senão 2048): acima de 70% solta
+caches e PAUSA só os robôs de planilha (`aguardaRam`), abaixo de 55% libera;
+site e envio nunca pausam; (6) registro bruto do DOL é reduzido aos campos
+usados (`_rawEnxuto`) assim que chega, nunca acumulado inteiro; o download de
+ZIP não passa por 3 cópias; (7) HTTP 400 do DOL entra no carimbo `row.eq` e 25
+seguidos disparam o disjuntor; (8) snapshot de envio guarda no máx. 400 chars
+de descrição. Antes de qualquer feature: "quanto isso segura na RAM e quanto
+aloca por gravação?". O teto de 10.000 vagas H-2A (v-H2A10k) foi mantido:
+~+15MB residentes, aceitável com a guarda ligada.
+
+## Repositório (ordem do dono, 07/11/2026)
+
+O código de produção é SÓ este repositório (`andriokick18-cmyk/2026`, o que o
+Render roda). Nunca escrever em outro repositório (Applyh2b.com, New-repository,
+Teste) nem criar espelhamento/force-push. Ao terminar e testar: commit + deploy
+direto, sem esperar aprovação.
+
 ## Documentação de deploy/verificação Google
 
 - `GOOGLE_VERIFICATION_CHECKLIST.md` — checklist atual da verificação
