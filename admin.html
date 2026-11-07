@@ -2606,7 +2606,7 @@ function _plRenderRobos(d){
      desc:"Completa cada vaga pela API do DOL (e-mail, cidade, datas, nº de vagas, telefone, salário, funções, URL). Só roda no upload de uma planilha nova (automático, 3s depois) ou quando você clica.",
      res:(en.running?"Planilha <b>"+esc(en.sheetKey||"?")+"</b> — "+_plNum(en.done)+"/"+_plNum(en.total)+" (ok "+_plNum(en.ok)+" · sem e-mail "+_plNum(en.noEmail)+" · erros "+_plNum(en.errors)+")":"Último salvamento: "+esc(en.savedAt?fmtData(en.savedAt):"nunca")+". Use \"Enriquecer DOL\" de cada planilha pra rodar.")
        +_plFilaHtml(d.enrichFila)},
-    {emoji:"🌾",titulo:"Planilha H-2A — "+_plNum(hn.janela||5000)+" mais recentes (automática)",badge:_plBadge(hn.running?"⚡ Rodando":hn.lastError?"⚠️ Erro":hn.atualizadoEm?"⏰ Automática":"⏳ 1ª busca no deploy",hn.running?"green":hn.lastError?"amber":"blue"),
+    {emoji:"🌾",titulo:"Planilha H-2A — "+_plNum(hn.janela||10000)+" mais recentes (automática)",badge:_plBadge(hn.running?"⚡ Rodando":hn.lastError?"⚠️ Erro":hn.atualizadoEm?"⏰ Automática":"⏳ 1ª busca no deploy",hn.running?"green":hn.lastError?"amber":"blue"),
      desc:"Roda SOZINHA a cada 14 dias (e na 1ª vez, logo depois do deploy): baixa os arquivos do Seasonal Jobs, ignora quem já está na planilha, ENTRA o que é novo e SAI o encerrado e, se passar do teto, as vagas mais antigas (data de protocolo). Nunca apaga a planilha inteira; o usuário vê o card \"atualizada em\". Acompanhe o passo a passo no painel logo abaixo.",
      res:(hn.proxima?"Próxima automática: <b>"+esc(fmtData(hn.proxima))+"</b>. ":"")+"Última rodada: "+esc(_plAgo(hn.lastRunAt))+" — +"+_plNum(hn.lastAdded)+" novas · −"+_plNum(hn.lastRemoved)+" inativas · −"+_plNum(hn.lastEvicted)+" mais antigas (acumulado +"+_plNum(hn.totalAdded)+" / −"+_plNum(hn.totalRemoved)+", "+_plNum(hn.runs)+" rodadas). Planilha H-2A: <b>"+_plNum(hn.totalPlanilha)+"</b> vagas."+(hn.lastError?"<br>⚠️ "+esc(hn.lastError)+(hn.retryAt?" — nova tentativa automática por volta de "+esc(fmtData(hn.retryAt))+".":""):""),
      btn:{id:"pl-btn-h2a-novas",fn:"plH2aNovasRun()",ic:"ti-plant-2",lbl:"Atualizar H-2A agora",off:!!hn.running}},
@@ -2717,11 +2717,11 @@ function _plRenderH2a(d){
     linha="⏳ <b>"+esc(hn.fase||"trabalhando")+"</b> · rodando há "+(seg>=60?Math.floor(seg/60)+"min "+(seg%60)+"s":seg+"s")+(pr?" · "+_plNum(pr.brutos||0)+" vagas lidas, "+_plNum(pr.candidatas||0)+" candidatas novas até agora":"")+". Pode demorar alguns minutos: o DOL entrega arquivos grandes e o robô espera 8s entre eles pra não sobrecarregar o site deles.";
   }else if(hn.lastRunAt){
     linha=(hn.lastError?"⚠️ A última tentativa ("+esc(fmtData(hn.lastRunAt))+") falhou: <b>"+esc(hn.lastError)+"</b>. A planilha não foi mexida"+(hn.retryAt?" — nova tentativa automática por volta de "+esc(fmtData(hn.retryAt)):"")+".":"✅ Última rodada em <b>"+esc(fmtData(hn.lastRunAt))+"</b>: +"+_plNum(hn.lastAdded)+" novas · −"+_plNum(hn.lastRemoved)+" encerradas · −"+_plNum(hn.lastEvicted)+" mais antigas.")
-      +" A planilha tem <b>"+_plNum(hn.totalPlanilha)+"</b> vagas (teto "+_plNum(hn.janela||5000)+")."+(hn.proxima?" Próxima conferência automática: <b>"+esc(fmtData(hn.proxima))+"</b>.":"");
+      +" A planilha tem <b>"+_plNum(hn.totalPlanilha)+"</b> vagas (teto "+_plNum(hn.janela||10000)+")."+(hn.proxima?" Próxima conferência automática: <b>"+esc(fmtData(hn.proxima))+"</b>.":"");
   }else linha="Nenhuma rodada registrada ainda. A planilha tem <b>"+_plNum(hn.totalPlanilha)+"</b> vagas."+(hn.proxima?" Próxima conferência automática: <b>"+esc(fmtData(hn.proxima))+"</b>.":"");
   _plG("h2a-line").innerHTML=linha;
   var mo=_plG("h2a-motivo");
-  if(!rodou&&hn.motivo&&(hn.totalPlanilha||0)<(hn.janela||5000)*0.95){mo.style.display="";mo.innerHTML="ℹ️ <b>Por que não tem "+_plNum(hn.janela||5000)+"?</b> "+esc(hn.motivo);}
+  if(!rodou&&hn.motivo&&(hn.totalPlanilha||0)<(hn.janela||10000)*0.95){mo.style.display="";mo.innerHTML="ℹ️ <b>Por que não tem "+_plNum(hn.janela||10000)+"?</b> "+esc(hn.motivo);}
   else mo.style.display="none";
   var lg=_plG("h2a-log"),fim=lg.scrollHeight-lg.scrollTop-lg.clientHeight<40;
   lg.innerHTML=(hn.log&&hn.log.length)?hn.log.map(function(l){var d=new Date(l.ts);return'<div class="'+esc(l.type||"info")+'">'+esc(d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"})+" "+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",second:"2-digit"})+" "+l.msg)+"</div>";}).join(""):'<div class="pl-log-empty">Nenhuma rodada registrada ainda.</div>';

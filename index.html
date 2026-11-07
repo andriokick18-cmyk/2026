@@ -536,17 +536,16 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
    (v96) removido junto por ficar morto. */
 .stab.active .stab-cnt{background:var(--bluel);color:var(--blue);border-color:var(--blueb)}
 /* Sheet tab special badges */
-.stab-sheet-jan{position:relative}
-.stab-sheet-jan::after{content:"☀️ VERÃO";position:absolute;top:-8px;right:-4px;font-size:9px;font-weight:800;background:linear-gradient(135deg,#f59e0b,#f97316);color:#fff;padding:1px 5px;border-radius:8px;white-space:nowrap;letter-spacing:.03em;line-height:1.4}
-.stab-sheet-jul{position:relative}
-.stab-sheet-jul::after{content:"❄️ INVERNO";position:absolute;top:-8px;right:-4px;font-size:9px;font-weight:800;background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;padding:1px 5px;border-radius:8px;white-space:nowrap;letter-spacing:.03em;line-height:1.4}
-.stab-sheet-h2a::after{content:"🌾 H-2A";position:absolute;top:-8px;right:-4px;font-size:9px;font-weight:800;background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:1px 5px;border-radius:8px;white-space:nowrap;letter-spacing:.03em;line-height:1.4}
-.stab-sheet-jan.active,.stab-sheet-jan:hover{color:#d97706!important}
-.stab-sheet-jul.active,.stab-sheet-jul:hover{color:#3b82f6!important}
-.stab-sheet-jan.active{border-bottom-color:#f59e0b!important}
-.stab-sheet-jul.active{border-bottom-color:#3b82f6!important}
-.stab-sheet-jan .stab-cnt{background:#fffbeb;color:#d97706;border-color:#fde68a}
-.stab-sheet-jul .stab-cnt{background:#eff6ff;color:#3b82f6;border-color:#bfdbfe}
+#stabs-row{gap:8px;padding:14px 10px 10px}
+.stab.sl{flex-direction:row;gap:9px;padding:8px 12px 8px 8px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface);margin-bottom:0;min-width:0;text-align:left}
+.stab.sl.active{background:var(--sf2);border-color:var(--slc,var(--blue));box-shadow:0 0 0 1px var(--slc,var(--blue)) inset;border-radius:12px}
+.stab.sl.active{border-bottom-color:var(--slc,var(--blue))!important}
+.sl-ic{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:19px;background:var(--slc,var(--blue));flex-shrink:0}
+.sl-tx{display:flex;flex-direction:column;gap:1px;min-width:0}
+.stab.sl strong{font-size:13px;font-weight:800;color:var(--text)!important}
+.stab.sl small{font-size:11px;font-weight:600;color:var(--t3)}
+.sl-jan{--slc:#f59e0b}.sl-jul{--slc:#3b82f6}.sl-h2a{--slc:#10b981}
+.source-btn-sub{font-size:10.5px;font-weight:600;color:var(--t3);margin-bottom:2px}
 /* Search */
 .search-bar{padding:9px 11px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0}
 .search-wrap{position:relative;margin-bottom:7px}
@@ -2937,9 +2936,9 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
       <!-- ══ JOBS ══ -->
       <div class="view" id="v-jobs">
         <div class="stabs" id="stabs-row">
-          <button class="stab stab-sheet-jan active" id="stab-jan2026" onclick="setTab('jan2026')"><i class="ti ti-sun" style="color:#f59e0b"></i><strong>Jan 2026</strong><span class="stab-cnt" id="sc-jan">–</span></button>
-          <button class="stab stab-sheet-jul" id="stab-jul2025" onclick="setTab('jul2025')" style="margin-top:8px"><i class="ti ti-snowflake" style="color:#3b82f6"></i><strong>Jul 2025</strong><span class="stab-cnt" id="sc-jul">–</span></button>
-          <button class="stab stab-sheet-h2a" id="stab-h2a-jun2026" onclick="setTab('h2a-jun2026')" style="margin-top:8px"><i class="ti ti-plant-2" style="color:#10b981"></i><strong>H-2A Agricultura</strong><span class="stab-cnt" id="sc-h2a">–</span></button>
+          <button class="stab sl sl-jan active" id="stab-jan2026" onclick="setTab('jan2026')"><span class="sl-ic">🌱</span><span class="sl-tx"><strong>Lista Janeiro 2026</strong><small data-i18n="lista_abr">Vagas começam em abril</small></span><span class="stab-cnt" id="sc-jan">–</span></button>
+          <button class="stab sl sl-jul" id="stab-jul2025" onclick="setTab('jul2025')"><span class="sl-ic">🍂</span><span class="sl-tx"><strong>Lista Julho 2025</strong><small data-i18n="lista_out">Vagas começam em outubro</small></span><span class="stab-cnt" id="sc-jul">–</span></button>
+          <button class="stab sl sl-h2a" id="stab-h2a-jun2026" onclick="setTab('h2a-jun2026')"><span class="sl-ic">🌾</span><span class="sl-tx"><strong>Lista H-2A · Agricultura</strong><small data-i18n="lista_ano">Contratam o ano todo</small></span><span class="stab-cnt" id="sc-h2a">–</span></button>
         </div>
         <div id="h2a-upd-card" style="display:none;margin:10px 14px 0"></div><!-- v968: card "H-2A atualizada em" (só na aba H-2A) -->
         <!-- 🔒 v172 (ORDEM DO DONO, 11/09/2026): gate de envio — "não pode
@@ -3454,18 +3453,21 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
               </div>
               <div class="source-btns" id="source-btns">
                 <button class="source-btn" data-src="jan2026" onclick="selectSource('jan2026')">
-                  <div class="source-btn-icon">☀️</div>
-                  <div class="source-btn-label"><strong>Jan 2026</strong> <span data-i18n="g_199">— Verão</span></div>
+                  <div class="source-btn-icon">🌱</div>
+                  <div class="source-btn-label"><strong>Lista Janeiro 2026</strong></div>
+                  <div class="source-btn-sub" data-i18n="lista_abr">Vagas começam em abril</div>
                   <div class="source-btn-count" id="src-jan-cnt">–</div>
                 </button>
                 <button class="source-btn" data-src="jul2025" onclick="selectSource('jul2025')">
-                  <div class="source-btn-icon">❄️</div>
-                  <div class="source-btn-label"><strong>Jul 2025</strong> — Inverno</div>
+                  <div class="source-btn-icon">🍂</div>
+                  <div class="source-btn-label"><strong>Lista Julho 2025</strong></div>
+                  <div class="source-btn-sub" data-i18n="lista_out">Vagas começam em outubro</div>
                   <div class="source-btn-count" id="src-jul-cnt">–</div>
                 </button>
                 <button class="source-btn" data-src="h2a-jun2026" onclick="selectSource('h2a-jun2026')">
                   <div class="source-btn-icon">🌾</div>
-                  <div class="source-btn-label"><strong>H-2A Agricultura</strong> <span style="display:inline-block;font-size:9px;font-weight:800;padding:1px 5px;border-radius:4px;background:rgba(16,185,129,.18);color:#10b981;margin-left:2px;vertical-align:middle">H-2A</span></div>
+                  <div class="source-btn-label"><strong>Lista H-2A · Agricultura</strong></div>
+                  <div class="source-btn-sub" data-i18n="lista_ano">Contratam o ano todo</div>
                   <div class="source-btn-count" id="src-h2a-cnt">–</div>
                 </button>
               </div>

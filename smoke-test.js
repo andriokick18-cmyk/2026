@@ -2577,8 +2577,8 @@ async function drillAdminSettingsLegado() {
       // (amostra das mais caras: vaga do DOL, planilha, chave Pix, limite
       // digitado pelo admin, hora do log, nome do plano do pedido).
       check("🛡️ v205-L23: o que é DADO passou a ser escapado de verdade — nome/emoji/visto de planilha, chave Pix e titular, limite por Gmail digitado pelo admin, hora do log e o nome do plano do pedido chegam por esc() no innerHTML (v223: o card de vaga do DOL em tempo real (job.workers) saiu junto com a aba Vagas ao Vivo)",
-        _app23.includes("<strong>${esc(s.name)}</strong>") &&
-        _app23.includes("${esc(s.emoji||'📋')}") && _app23.includes("${esc(PIX_KEY)}") && _app23.includes("${esc(PIX_NAME)}") &&
+        _app23.includes("<strong>${esc(li.titulo)}</strong>") &&
+        _app23.includes("${esc(li.ic)}") && _app23.includes("${esc(PIX_KEY)}") && _app23.includes("${esc(PIX_NAME)}") &&
         _app23.includes("${esc(currentLimits[em]||'')}") && _app23.includes("${esc(hora)}") &&
         _app23.includes("${esc(PLAN_NAMES[plano]||plano)}") && _app23.includes("${esc(sheetLabel)}") &&
         !/\$\{PIX_KEY\}/.test(_app23) && !/\$\{job\.workers\}/.test(_app23) && !/\$\{s\.visa\}/.test(_app23),
@@ -5141,7 +5141,7 @@ async function drillAdminSettingsLegado() {
       const _h2aV968 = (_slV968?.sheets || []).find((x) => x.key === "h2a-jun2026");
       const _stV968 = (await get("/api/admin/planilhas/status")).json;
       check("🌾 v968: depois da rodada o card 'atualizada em' tem dado (data, novas, teto 5000, próxima = 14 dias depois — ou 24h quando a rodada não trouxe nada novo e a planilha segue abaixo do teto, v987) e o painel mostra que NÃO está mais vencida",
-        _h2aV968?.h2aInfo?.atualizadoEm > Date.now() - 600_000 && _h2aV968.h2aInfo.janela === 5000 && _h2aV968.h2aInfo.novas === 0 &&
+        _h2aV968?.h2aInfo?.atualizadoEm > Date.now() - 600_000 && _h2aV968.h2aInfo.janela === 10000 && _h2aV968.h2aInfo.novas === 0 &&
         [14 * 86400_000, 24 * 3600_000].some((d) => Math.abs(_h2aV968.h2aInfo.proxima - _h2aV968.h2aInfo.atualizadoEm - d) < 5000) && _stV968?.h2aNovas?.devido === false && _stV968.h2aNovas.agendadorLigado === false,
         JSON.stringify(_h2aV968?.h2aInfo) + " | devido=" + _stV968?.h2aNovas?.devido);
       const _totV968 = (await get("/api/sheets-list")).json.sheets.find((x) => x.key === "h2a-jun2026").count;
@@ -5256,7 +5256,7 @@ async function drillAdminSettingsLegado() {
         const instN2 = mkInst(tmpN, { rows: refN.rows, logs: [] }); const stN2 = instN2.statusPainel().h2aNovas;
         check("🌾 v987: o robô grava LOG PRÓPRIO por arquivo (início, arquivo a arquivo com 'N vagas no DOL → X novas · Y já estavam · Z descartadas', conclusão) e HISTÓRICO em disco; depois de um 'deploy' o painel mostra a última rodada (e não 'nunca') e o motivo de a planilha estar abaixo de 5.000",
           logN.some((l) => /Rodada iniciada/.test(l.msg)) && logN.some((l) => /Arquivo 1\/\d+ \(.*\): \d+ vagas no DOL → \d+ novas/.test(l.msg)) && logN.some((l) => /Rodada concluída/.test(l.msg)) &&
-          (eN4.historico || []).length >= 4 && eN4.historico[0].ok === true && eN4.historico[0].feeds >= 1 && stN2.lastRunAt > 0 && stN2.runs === 5 && stN2.log.length > 0 && stN2.historico.length >= 4 && /A planilha tem 14 de 5000/.test(stN2.motivo || "") && stN2.totalAdded === 14,
+          (eN4.historico || []).length >= 4 && eN4.historico[0].ok === true && eN4.historico[0].feeds >= 1 && stN2.lastRunAt > 0 && stN2.runs === 5 && stN2.log.length > 0 && stN2.historico.length >= 4 && /A planilha tem 14 de 10000/.test(stN2.motivo || "") && stN2.totalAdded === 14,
           JSON.stringify({ logN: logN.length, hist: (eN4.historico || []).length, lastRunAt: stN2.lastRunAt, runs: stN2.runs, motivo: (stN2.motivo || "").slice(0, 80) }));
         // (4) rodada que estava no ar quando o servidor reiniciou deixa rastro e é refeita em ~1 min
         const tmpR = fs.mkdtempSync(path.join(DATA, "h2a-roll-"));
@@ -5271,11 +5271,11 @@ async function drillAdminSettingsLegado() {
           !fs.existsSync(path.join(tmpN, "h2a_rolling.json.tmp")) && eN5.rodando === null && /renameSync\(tmp, H2A_ROLL_FILE\)/.test(fs.readFileSync(path.join(__dirname, "mod-planilhas.js"), "utf8")),
           JSON.stringify({ rodando: eN5.rodando }));
         // (5b) "olhar mais fundo": planilha vazia/abaixo do teto → depois dos 7 arquivos normais o robô continua pra trás até 14 (≈250 dias); planilha que já fecha o teto com os normais NÃO estende
-        const grande = Array.from({ length: 4745 }, (_, i) => ({ c: `H-300-26${String(100 + (i % 200)).padStart(3, "0")}-${500000 + i}`, t: "Farm Worker", n: "F" + i, s: "TX", e: `f${i}@x.com`, st: "Certified", visa: "H-2A", d: "2099-01-01", de: "2099-12-31" }));
+        const grande = Array.from({ length: 9745 }, (_, i) => ({ c: `H-300-26${String(100 + (i % 200)).padStart(3, "0")}-${500000 + i}`, t: "Farm Worker", n: "F" + i, s: "TX", e: `f${i}@x.com`, st: "Certified", visa: "H-2A", d: "2099-01-01", de: "2099-12-31" }));
         const tmpX = fs.mkdtempSync(path.join(DATA, "h2a-roll-")); const refX = { rows: grande, logs: [] }; const instX = mkInst(tmpX, refX);
-        await instX.runH2aNovasCycle("teste-sem-extensao"); const eX = lerEstadoR(tmpX);
-        check("🔎 v987: planilha abaixo do teto 'olha mais fundo' (até 14 arquivos ≈ 250 dias) em vez de parar nos 126 dias; se os arquivos normais já fecham o teto projetado, NÃO estende (educado com o DOL)",
-          eN1.ultima?.nFeeds === 14 && (eN1.log || []).some((l) => /olhando mais fundo/.test(l.msg)) && eX.ultima?.nFeeds === 7 && !(eX.log || []).some((l) => /olhando mais fundo/.test(l.msg)),
+        await instX.runH2aNovasCycle("teste-sem-extensao", { cap: 5000 }); const eX = lerEstadoR(tmpX);
+        check("🔎 v987: planilha abaixo do teto 'olha mais fundo' (até 26 arquivos ≈ 470 dias, teto de 10.000) em vez de parar nos 126 dias; se os arquivos normais já fecham o teto projetado, NÃO estende (educado com o DOL)",
+          eN1.ultima?.nFeeds === 26 && (eN1.log || []).some((l) => /olhando mais fundo/.test(l.msg)) && eX.ultima?.nFeeds === 7 && !(eX.log || []).some((l) => /olhando mais fundo/.test(l.msg)),
           JSON.stringify({ vazia: eN1.ultima?.nFeeds, quase: eX.ultima?.nFeeds }));
         // ═══ revisão independente do v987 (28 agentes) — o que os testes acima NÃO provavam ═══
         const _stubTimers2 = (fn) => { const _t = global.setTimeout, _i = global.setInterval; global.setTimeout = () => ({ unref() { } }); global.setInterval = () => ({ unref() { } }); try { return fn(); } finally { global.setTimeout = _t; global.setInterval = _i; } };
@@ -5320,9 +5320,9 @@ async function drillAdminSettingsLegado() {
           meioK.rodando?.trigger === "teste-marcador" && meioK.rodando.startedAt > 0 && fimK.rodando === null && eB.rodando === null && /interrompida/.test(eB.historico?.[0]?.erro || "") && eB.retryAt > Date.now(),
           JSON.stringify({ meioK: meioK.rodando, fimK: fimK.rodando, eB: eB.historico?.[0] }));
         // (E) encher conta só as VIVAS (4.900 linhas das quais 400 encerradas = 4.500 vivas, abaixo de 95% → olha mais fundo; contando as encerradas seriam 4.900 e a rodada olharia só 2 arquivos)
-        const comMortas = Array.from({ length: 4900 }, (_, i) => ({ c: `H-300-26${String(100 + (i % 200)).padStart(3, "0")}-${700000 + i}`, t: "Farm Worker", n: "F" + i, s: "TX", e: `m${i}@x.com`, st: "Certified", visa: "H-2A", d: "2099-01-01", de: i < 400 ? "2020-01-01" : "2099-12-31" }));
+        const comMortas = Array.from({ length: 9900 }, (_, i) => ({ c: `H-300-26${String(100 + (i % 200)).padStart(3, "0")}-${700000 + i}`, t: "Farm Worker", n: "F" + i, s: "TX", e: `m${i}@x.com`, st: "Certified", visa: "H-2A", d: "2099-01-01", de: i < 800 ? "2020-01-01" : "2099-12-31" }));
         const tmpQ = fs.mkdtempSync(path.join(DATA, "h2a-roll-")); fs.writeFileSync(path.join(tmpQ, "h2a_rolling.json"), JSON.stringify({ lastOkAt: Date.now() - 86400_000, nextRunAt: Date.now() - 1000, total: 4900, cap: 5000, lastAdded: 3 })); const instQ = mkInst(tmpQ, { rows: comMortas, logs: [] }); await instQ.runH2aNovasCycle("teste-vivas"); const eQ = lerEstadoR(tmpQ);
-        check("🔎 v987 (revisão): o 'quanto falta pro teto' desconta as vagas ENCERRADAS (que saem na mesma rodada) — 4.900 linhas com 400 encerradas contam 4.500 vivas e o robô olha mais fundo", eQ.ultima?.nFeeds === 14, JSON.stringify({ nFeeds: eQ.ultima?.nFeeds }));
+        check("🔎 v987 (revisão): o 'quanto falta pro teto' desconta as vagas ENCERRADAS (que saem na mesma rodada) — 9.900 linhas com 800 encerradas contam 9.100 vivas e o robô olha mais fundo", eQ.ultima?.nFeeds === 26, JSON.stringify({ nFeeds: eQ.ultima?.nFeeds }));
         // (F) gravação atômica de verdade: se o rename falha, o arquivo anterior segue válido e idêntico (nunca JSON truncado)
         const antesAt = fs.readFileSync(path.join(tmpN, "h2a_rolling.json"), "utf8"); const _ren = fs.renameSync;
         fs.writeFileSync(path.join(DATA, "h2a_feed_404_todos.flag"), "1");
@@ -5331,7 +5331,7 @@ async function drillAdminSettingsLegado() {
         check("🧱 v987 (revisão): se a gravação atômica falha no meio (rename), o arquivo de estado anterior segue íntegro e idêntico — nunca um JSON truncado", jsonOk && depoisAt === antesAt, `igual=${depoisAt === antesAt} jsonOk=${jsonOk}`);
         // (G) cura única: cada fixture difere do 'preso' em UM campo — saudável (lastAdded>0), com retry pendente e sem rodada boa anterior NÃO mexem em nextRunAt
         const proxG = Date.now() + 13 * 86400_000;
-        const mkG = (extra) => { const d = fs.mkdtempSync(path.join(DATA, "h2a-roll-")); fs.writeFileSync(path.join(d, "h2a_rolling.json"), JSON.stringify({ lastOkAt: Date.now() - 86400_000, nextRunAt: proxG, total: 4549, cap: 5000, lastAdded: 0, ...extra })); const i = mkInst(d, { rows: [], logs: [] }); _stubTimers2(() => i.iniciarAgendadorH2a()); return lerEstadoR(d); };
+        const mkG = (extra) => { const d = fs.mkdtempSync(path.join(DATA, "h2a-roll-")); fs.writeFileSync(path.join(d, "h2a_rolling.json"), JSON.stringify({ lastOkAt: Date.now() - 86400_000, nextRunAt: proxG, total: 4549, cap: 5000, capV10k: true, lastAdded: 0, ...extra })); const i = mkInst(d, { rows: [], logs: [] }); _stubTimers2(() => i.iniciarAgendadorH2a()); return lerEstadoR(d); };
         const gSaud = mkG({ lastAdded: 12 }), gRetry = mkG({ retryAt: Date.now() + 3600_000 }), gSem = mkG({ lastOkAt: null, nextRunAt: undefined });
         check("🩺 v987 (revisão): cura única só mexe em quem está MESMO preso — com entrada na última rodada, com nova tentativa já agendada ou sem rodada boa anterior o nextRunAt fica como estava (e o carimbo vale nos 3)",
           gSaud.nextRunAt === proxG && gRetry.nextRunAt === proxG && gSem.nextRunAt === undefined && gSaud.v987Curado === true && gRetry.v987Curado === true && gSem.v987Curado === true,
@@ -5339,15 +5339,28 @@ async function drillAdminSettingsLegado() {
         // (6) CURA ÚNICA do estado preso de produção (4.549 de 5.000, nada novo, próxima só em 14 dias): volta a conferir já no boot; 1 vez só; não mexe em quem está saudável
         const _stubTimers = (fn) => { const _t = global.setTimeout, _i = global.setInterval; global.setTimeout = () => ({ unref() { } }); global.setInterval = () => ({ unref() { } }); try { return fn(); } finally { global.setTimeout = _t; global.setInterval = _i; } };
         const tmpC = fs.mkdtempSync(path.join(DATA, "h2a-roll-")); const proxima = Date.now() + 13 * 86400_000;
-        fs.writeFileSync(path.join(tmpC, "h2a_rolling.json"), JSON.stringify({ lastOkAt: Date.now() - 86400_000, nextRunAt: proxima, total: 4549, cap: 5000, lastAdded: 0, runs: 1 }));
+        fs.writeFileSync(path.join(tmpC, "h2a_rolling.json"), JSON.stringify({ lastOkAt: Date.now() - 86400_000, nextRunAt: proxima, total: 4549, cap: 5000, capV10k: true, lastAdded: 0, runs: 1 }));
         const instC = mkInst(tmpC, { rows: [], logs: [] }); const devidoC0 = instC.h2aDevido(); _stubTimers(() => instC.iniciarAgendadorH2a()); const eC1 = lerEstadoR(tmpC);
         const devidoC1 = instC.h2aDevido(); fs.writeFileSync(path.join(tmpC, "h2a_rolling.json"), JSON.stringify({ ...lerEstadoR(tmpC), nextRunAt: proxima })); const instC3 = mkInst(tmpC, { rows: [], logs: [] });
         _stubTimers(() => instC3.iniciarAgendadorH2a()); const devidoC3 = instC3.h2aDevido();
-        const tmpS = fs.mkdtempSync(path.join(DATA, "h2a-roll-")); fs.writeFileSync(path.join(tmpS, "h2a_rolling.json"), JSON.stringify({ lastOkAt: Date.now() - 86400_000, nextRunAt: proxima, total: 4900, cap: 5000, lastAdded: 12 }));
+        const tmpS = fs.mkdtempSync(path.join(DATA, "h2a-roll-")); fs.writeFileSync(path.join(tmpS, "h2a_rolling.json"), JSON.stringify({ lastOkAt: Date.now() - 86400_000, nextRunAt: proxima, total: 4900, cap: 5000, capV10k: true, lastAdded: 12 }));
         const instS = mkInst(tmpS, { rows: [], logs: [] }); _stubTimers(() => instS.iniciarAgendadorH2a());
         check("🩺 v987: estado preso de produção (planilha abaixo do teto, última rodada sem nada novo, próxima só em 14 dias) volta a ser 'devido' no boot e explica no log; só 1 vez (carimbo) e quem está saudável (entrou vaga na última rodada) não é tocado",
           devidoC0 === false && devidoC1 === true && eC1.v987Curado === true && (eC1.log || []).some((l) => /Atualização do robô/.test(l.msg)) && devidoC3 === false && instS.h2aDevido() === false,
           JSON.stringify({ devidoC0, devidoC1, devidoC3, curado: eC1.v987Curado }));
+        // v-H2A10k: teto 5.000→10.000 — quem rodou com teto menor confere o DOL de novo já no boot (1 vez só); quem já está no teto novo, sem rodada ou com retry pendente não é tocado
+        const mkK = (extra) => { const d = fs.mkdtempSync(path.join(DATA, "h2a-roll-")); fs.writeFileSync(path.join(d, "h2a_rolling.json"), JSON.stringify({ lastOkAt: Date.now() - 86400_000, nextRunAt: Date.now() + 13 * 86400_000, total: 4900, cap: 5000, lastAdded: 12, v987Curado: true, ...extra })); const i = mkInst(d, { rows: [], logs: [] }); const dev0 = i.h2aDevido(); _stubTimers(() => i.iniciarAgendadorH2a()); return { e: lerEstadoR(d), dev0, dev1: i.h2aDevido() }; };
+        const kSubiu = mkK({}), kNovo = mkK({ cap: 10000 }), kRetry = mkK({ retryAt: Date.now() + 3600_000 }), kJa = mkK({ capV10k: true });
+        check("📈 v-H2A10k: teto da H-2A subiu pra 10.000 — rodada antiga com teto 5.000 volta a ser 'devida' no boot e avisa no log (1 vez, carimbo capV10k); teto já novo, retry pendente ou carimbo existente não são tocados",
+          kSubiu.dev0 === false && kSubiu.dev1 === true && kSubiu.e.capV10k === true && (kSubiu.e.log || []).some((l) => /teto da planilha H-2A subiu/.test(l.msg)) && kNovo.dev1 === false && kRetry.e.retryAt > Date.now() + 3000_000 && kJa.dev1 === false,
+          JSON.stringify({ s: [kSubiu.dev0, kSubiu.dev1], n: kNovo.dev1, j: kJa.dev1 }));
+        {
+          const _ix = fs.readFileSync(path.join(__dirname, "index.html"), "utf8"), _ap = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+          check("🧱 v-listas: as 3 listas (Janeiro→abril, Julho→outubro, H-2A→ano todo) usam o MESMO padrão de botão (ícone + 'Lista …' + quando começam) nas abas e no assistente do automático; nada de 'VERÃO/INVERNO' em selo; listas novas derivam do nome por _listaInfo",
+            /Lista Janeiro 2026<\/strong><small data-i18n="lista_abr">Vagas começam em abril/.test(_ix) && /Lista Julho 2025<\/strong><small data-i18n="lista_out">Vagas começam em outubro/.test(_ix) && /Lista H-2A · Agricultura<\/strong><small data-i18n="lista_ano">Contratam o ano todo/.test(_ix) &&
+            !/VERÃO"|INVERNO"/.test(_ix) && /function _listaInfo\(/.test(_ap) && (_ap.match(/_listaInfo\(/g) || []).length >= 4,
+            "padrão das listas");
+        }
         process.env.DOL_FEED_BASE = _env;
       }
       const _modPl968 = fs.readFileSync(path.join(__dirname, "mod-planilhas.js"), "utf8"), _srv968 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8"), _app968 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");

@@ -156,7 +156,7 @@ function mesesExperiencia(dol) {
 // O ETA case number H-300-YYDDD-NNNNNN carrega a DATA DE PROTOCOLO (ano + dia
 // do ano): é a régua oficial e sempre presente de "quão recente é a vaga" —
 // vale também pras linhas antigas da planilha, que nunca tiveram campo de data.
-const H2A_JANELA_PADRAO = Math.max(100, Math.min(20000, parseInt(process.env.H2A_JANELA_MAX || "5000", 10) || 5000));
+const H2A_JANELA_PADRAO = Math.max(100, Math.min(20000, parseInt(process.env.H2A_JANELA_MAX || "10000", 10) || 10000));
 const ISO_DIA = /^\d{4}-\d{2}-\d{2}$/;
 const DEAD_ST_H2A = /denied|withdrawn|invalidat|expired|cancel/i;
 function dataDoCaso(caseNumber) {
@@ -629,7 +629,7 @@ function createPlanilhas(deps) {
   }
 
   // ══════════════════════════════════════════════════════════════════════
-  //  🌾 PLANILHA H-2A — JANELA ROLANTE DE 5.000 VAGAS (v968, dono, 10/10/2026)
+  //  🌾 PLANILHA H-2A — JANELA ROLANTE DE 10.000 VAGAS (v968, dono, 10/10/2026; teto 5.000→10.000 em 07/11/2026)
   //  "A planilha do H2A sempre tem que estar alimentada. Pelo menos duas
   //  vezes no mês, tem que ter um agendamento para ela iniciar sozinha...
   //  sempre vai ter 5 mil vagas. É obrigatório tirar as vagas mais velhas e
@@ -651,7 +651,7 @@ function createPlanilhas(deps) {
   // (botLog) é um anel único de 80 linhas visíveis que o Enriquecimento (1 linha por vaga) enterra em segundos e que zera a cada deploy.
   const H2A_LOG_CAP = 150, H2A_HIST_CAP = 20;
   const h2aLog = (msg, type) => {
-    botLog("h2a-novas", "Planilha H-2A (5.000 mais recentes)", msg, type || "info");
+    botLog("h2a-novas", "Planilha H-2A (10.000 mais recentes)", msg, type || "info");
     const l = (DB_H2A_ROLL.log || []).slice(-(H2A_LOG_CAP - 1)); l.push({ ts: Date.now(), msg: String(msg || "").slice(0, 400), type: type || "info" });
     gravarRoll({ log: l });
   };
@@ -695,8 +695,8 @@ function createPlanilhas(deps) {
       let semQualidade = 0, mortas = 0, outroVisto = 0, feedsOk = 0, feedsFalharam = 0, brutos = 0, jaNaPlanilha = 0, feedsTentados = 0; const usados = new Set();
       // v987: "olhar mais fundo" — as vagas VIVAS não são só as dos últimos 126 dias (temporada H-2A dura meses: um protocolo de 7 meses atrás ainda pode
       // estar valendo). Planilha ainda abaixo do teto depois dos arquivos normais → o robô continua pra trás, 1 arquivo (18 dias) por vez, até o teto
-      // projetado fechar ou o DOL não ter mais arquivo (no máx. 14 arquivos ≈ 250 dias). Arquivo EXTRA que falha não conta como falha da rodada.
-      const maxFeeds = encher ? Math.max(nFeeds, 14) : nFeeds;
+      // projetado fechar ou o DOL não ter mais arquivo (no máx. 26 arquivos ≈ 470 dias). Arquivo EXTRA que falha não conta como falha da rodada.
+      const maxFeeds = encher ? Math.max(nFeeds, 26) : nFeeds;   // v-H2A10k: teto de 10.000 → olha até 26 arquivos (~470 dias)
       for (let i = 0; i < maxFeeds; i++) {
         const extra = i >= nFeeds;
         if (extra) {
@@ -846,6 +846,15 @@ function createPlanilhas(deps) {
     if (preso) h2aLog(`🩺 Atualização do robô: a última rodada deixou a planilha com ${DB_H2A_ROLL.total} de ${DB_H2A_ROLL.cap || H2A_JANELA_PADRAO} vagas sem nada novo e a próxima só viria em 14 dias — vou conferir o DOL de novo agora e explicar o resultado aqui.`, "info");
     return preso;
   }
+  // v-H2A10k (dono, 07/11/2026 — "mande o robô acrescentar mais 5k"): o teto subiu de 5.000 pra 10.000. Quem já rodou com teto menor confere o DOL de novo
+  // já neste boot (1 vez só, carimbo capV10k) em vez de esperar os 14 dias; o resto do ciclo (14 dias, tira as mais antigas) não muda.
+  function h2aCurarCapV10k() {
+    if (DB_H2A_ROLL.capV10k) return false;
+    const subiu = !!DB_H2A_ROLL.lastOkAt && Number(DB_H2A_ROLL.cap) > 0 && Number(DB_H2A_ROLL.cap) < H2A_JANELA_PADRAO && !DB_H2A_ROLL.retryAt;
+    gravarRoll({ capV10k: true, ...(subiu ? { nextRunAt: Date.now(), parciaisSeguidas: 0 } : {}) });
+    if (subiu) h2aLog(`📈 O teto da planilha H-2A subiu de ${DB_H2A_ROLL.cap} para ${H2A_JANELA_PADRAO} vagas — vou buscar mais vagas H-2A no DOL já neste deploy (só entra vaga real, com e-mail, de temporada valendo; as mais antigas saem só se passar do teto).`, "info");
+    return subiu;
+  }
   // Card "Atualizada em" (usuário) e painel (admin): uma leitura só do estado persistido.
   function h2aJanelaInfo() {
     const s = DB_H2A_ROLL;
@@ -859,6 +868,7 @@ function createPlanilhas(deps) {
     h2aRecuperarInterrompida();
     if (isTest) { console.log("[h2a-roll] 🧪 modo teste — agendador da H-2A desligado (disparo só por rota)"); return false; }
     h2aCurarEstadoV987();
+    h2aCurarCapV10k();
     const tick = (origem) => {
       if (!h2aDevido() || h2aNovasBot.running || dolColeta.running) return;
       if (h2aNovasBot.proximaTentativa && Date.now() < h2aNovasBot.proximaTentativa) return;   // a re-tentativa de 1h já está armada
