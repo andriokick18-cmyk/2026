@@ -2348,11 +2348,11 @@ function _lrCardRow(j){
   // quem copia o e-mail e envia pelo próprio Gmail precisa poder marcar a vaga.
   if(!U)return "";
   if(!j.hasEmail||!j.email||j.emailBloqueado)return `<div style="margin-top:6px;font-size:11px;color:var(--t3)"><i class="ti ti-mail-off" style="font-size:11px"></i> Essa vaga não contém e-mail. Contate pelo telefone ou site.</div>`;
-  return `<div onclick="event.stopPropagation()" style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">
+  return `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">
     <div style="font-size:11.5px;font-weight:700;word-break:break-all;color:var(--t2);margin-bottom:6px"><i class="ti ti-mail" style="font-size:12px"></i> ${esc(j.email)}</div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <button type="button" class="btn btn-secondary btn-sm" data-em="${esc(j.email)}" onclick="event.stopPropagation();lrCopiar(this.dataset.em)"><i class="ti ti-copy"></i> Copiar e-mail</button>
-      <label style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:800;cursor:pointer;color:var(--text)"><input type="checkbox" aria-label="Já enviei para esta vaga" data-id="${esc(j.id)}" onchange="lrMarcar(this.dataset.id,this)" style="width:19px;height:19px;accent-color:#16a34a;cursor:pointer"> Já enviei</label>
+      <label onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:800;cursor:pointer;color:var(--text)"><input type="checkbox" aria-label="Já enviei para esta vaga" data-id="${esc(j.id)}" onchange="lrMarcar(this.dataset.id,this)" style="width:19px;height:19px;accent-color:#16a34a;cursor:pointer"> Já enviei</label>
     </div>
   </div>`;
 }
@@ -2672,6 +2672,7 @@ function mkSheetCard(j){
     <div class="jcard-co" id="jcc-${iid}"><i class="ti ti-building" style="font-size:9px"></i>${esc(j.company||"–")} · <i class="ti ti-map-pin" style="font-size:9px"></i>${j.city&&j.city!=="–"?esc(j.city)+", ":""}${esc(j.state||"–")}</div>
     <div class="jcard-tags" id="jctg-${iid}">${visaTag}${stateLbl}${wkTag}${dateLbl}${wageLbl}</div>
     ${_lrCardRow(j)}
+    <button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();selSheetJob('${esc(j.id)}')" style="margin-top:8px;width:100%;justify-content:center"><i class="ti ti-map-pin"></i> Ver todas as informações e localização</button>
     ${j.url?`<a href="${esc(j.url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:rgba(59,130,246,.7);text-decoration:none;margin-top:3px"><i class="ti ti-external-link" style="font-size:9px"></i>Ver vaga DOL</a>`:""}
   </div>`;
 }
@@ -2839,8 +2840,9 @@ function showDetail(html){
   qSugClose(); // ⚠️ QA 11/09: sem isso, o dropdown de sugestões de busca (z-index 90) ficava aberto por cima do painel de detalhe mobile (z-index 60) e podia roubar o primeiro toque do usuário
   const dc=g("#jd-content");const de=g("#jd-empty");
   if(dc&&de){de.classList.add("gone");dc.style.display="block";dc.innerHTML=html;}
-  const mc=g("#mob-detail-content");if(mc)mc.innerHTML=html;
-  g("#mob-detail")?.classList.add("show");
+  const mc=g("#mob-detail-content");if(mc){mc.innerHTML=html;mc.scrollTop=0;}
+  const md=g("#mob-detail");if(md&&md.parentElement!==document.body)document.body.appendChild(md); // fora de qualquer container: nunca fica escondido atrás da lista rolada
+  md?.classList.add("show");
 }
 function closeMobDetail(){g("#mob-detail")?.classList.remove("show");}
 

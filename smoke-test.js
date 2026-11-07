@@ -5361,6 +5361,13 @@ async function drillAdminSettingsLegado() {
             !/VERÃO"|INVERNO"/.test(_ix) && /function _listaInfo\(/.test(_ap) && (_ap.match(/_listaInfo\(/g) || []).length >= 4,
             "padrão das listas");
         }
+        {
+          const _ap2 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+          const _lr = _ap2.slice(_ap2.indexOf("function _lrCardRow"), _ap2.indexOf("function _lrCardRow") + 1800);
+          check("📱 v-detalhe-celular: tocar em QUALQUER ponto da vaga (inclusive no e-mail) abre os detalhes completos — só os botões/caixinha seguram o clique; o card tem o botão 'Ver todas as informações e localização'; a janela de detalhe do celular sai de dentro da lista (anexada ao body)",
+            !/<div onclick="event\.stopPropagation\(\)" style="margin-top:8px;padding-top:8px;border-top/.test(_lr) && /Ver todas as informações e localização/.test(_ap2) && /document\.body\.appendChild\(md\)/.test(_ap2),
+            "toque na vaga voltou a ser engolido ou perdeu o botão de detalhes");
+        }
         process.env.DOL_FEED_BASE = _env;
       }
       const _modPl968 = fs.readFileSync(path.join(__dirname, "mod-planilhas.js"), "utf8"), _srv968 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8"), _app968 = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
