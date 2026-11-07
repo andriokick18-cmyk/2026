@@ -189,6 +189,7 @@ function applyStatus(d){
   // pedido AINDA está com o admin — é o que impede a tela de mandar quem já
   // pagou "assinar de novo" (ver _planGateSubTxt).
   provisorioPendente:d.provisorioPendente||null,
+  lrAck:(d.lrAck&&typeof d.lrAck==='object')?d.lrAck:{},
   // 🚧 Migração de domínio: banner na aba Planos em vez do seletor de compra
   // (ver loadPlanos()). Nunca decidido no front — sempre o que o servidor manda.
   newPurchasesBlocked:!!d.newPurchasesBlocked};
@@ -1072,6 +1073,7 @@ function sv(v,...args){
   // NUNCA podia ficar "active" — forçar isso agora apagaria o destaque do
   // item certo assim que o loop abaixo o marcasse ativo).
   VIEWS.forEach(id=>{const ve=g("#v-"+id);if(ve)ve.classList.toggle("gone",id!==v);const si=g("#si-"+id);if(si)si.classList.toggle("active",id===v);const bn=g("#bn-"+id);if(bn)bn.classList.toggle("active",id===v);});const bnMore=g("#bn-more");if(bnMore)bnMore.classList.toggle("active",BN_MORE_VIEWS.includes(v));
+  try{_lrFab(v==="jobs");}catch(e){}
   if(v==="jobs"){setTimeout(loadLugares,400);updateManualSendGate();setTimeout(lrPrimeiraVez,350);
     // 🔀 voltou pra aba vindo de OUTRA tela → lista embaralhada de novo (nova semente)
     if(_prevV!=="jobs"&&fSort==="random"&&sJobs.length&&!sLoading){fSeed=_newSeed();sSkip=0;sDone=false;sJobs=[];g("#jlist").innerHTML=mkSkels(6);loadSheetMeta(true);}
@@ -1180,7 +1182,7 @@ function _ensureCatLabels(){
 // diário com vaga que não existe mais. Não é um filtro escondido: um chip
 // permanente sobre a lista diz quantas estão escondidas e mostra todas em 1
 // clique. Vale igual pro robô (o Passo 2 nasce com o mesmo padrão).
-function _vfEmpty(){return{q:"",estado:[],cidade:[],categoria:[],cargo:[],salarioMin:0,vagasMin:0,inicio:[],exp:[],temporada:[],visa:[],ocultarEncerradas:false,grupo:[],email:true,tipo:"all",ativa:false};}
+function _vfEmpty(){return{q:"",estado:[],cidade:[],categoria:[],cargo:[],salarioMin:0,vagasMin:0,inicio:[],exp:[],temporada:[],visa:[],ocultarEncerradas:false,grupo:[],email:false,tipo:"all",ativa:false};}
 
 const VF={ctx:"manual",st:{manual:_vfEmpty(),auto:_vfEmpty()},fac:{manual:null,auto:null},draft:null,seq:0,seqAplicado:0,timer:null,busca:{estado:"",cidade:"",cargo:""},mais:{},secs:[],facDraft:null};
 const _VF_ESTADO_PT={FLORIDA:"Flórida","NEW YORK":"Nova York",CALIFORNIA:"Califórnia",PENNSYLVANIA:"Pensilvânia","NEW JERSEY":"Nova Jersey","NORTH CAROLINA":"Carolina do Norte","SOUTH CAROLINA":"Carolina do Sul",VIRGINIA:"Virgínia","WEST VIRGINIA":"Virgínia Ocidental","NEW MEXICO":"Novo México","NEW HAMPSHIRE":"Nova Hampshire",LOUISIANA:"Luisiana",HAWAII:"Havaí","NORTH DAKOTA":"Dakota do Norte","SOUTH DAKOTA":"Dakota do Sul",GEORGIA:"Geórgia","DISTRICT OF COLUMBIA":"Washington D.C.","PUERTO RICO":"Porto Rico"};
@@ -1228,6 +1230,7 @@ function _vfSyncScrollHint(){
 function vfLoad(ctx){
   let st=null;try{const raw=localStorage.getItem(_vfKey(ctx));st=raw?JSON.parse(raw):null;}catch(e){st=null;}
   VF.st[ctx]=Object.assign(_vfEmpty(),st&&typeof st==="object"?st:{});
+  if(ctx==="manual")VF.st[ctx].email=false; // v-LR4: o filtro 'só com e-mail' não existe mais (estado antigo do aparelho é ignorado)
   VF.fac[ctx]=null;
 }
 // 🔍 v181 LOTE 5 — o badge "🔍 N filtros" contava o que a tela NUNCA envia
@@ -1669,15 +1672,10 @@ function _vfRenderSecs(d){
     } else show("vagas",false);
     setN("vagas",st.vagasMin>0?st.vagasMin+"+":"");
   }
-  // ✉️ só com e-mail (manual)
-  {
-    if(VF.ctx==="manual"&&fac){
-      const e=fac.email;
-      const nota=disp.email===0?`<div class="vf-note vf-note-warn">⏳ ${esc(t('vf_no_email'))}</div>`:"";
-      opts("email",`<label class="vf-toggle"><input type="checkbox" ${st.email?"checked":""} onchange="vfSet('email')"><span class="vf-sw"></span><span class="vf-toggle-lbl">${esc(t('vf_email_lbl'))}<small>${esc(t('vf_email_com').replace("{n}",e.com.toLocaleString("pt-BR")))} · ${esc(t('vf_email_sem').replace("{n}",e.sem.toLocaleString("pt-BR")))}</small></span></label>`+nota);
-    }
-    setN("email",st.email?"✓":"");
-  }
+  // ✉️ v-LR4 (dono, 07/11/2026): o filtro "só com e-mail" NÃO existe mais.
+  // Vaga sem e-mail continua na lista, sempre no FINAL (o servidor ordena),
+  // com o aviso "contate pelo telefone ou site" — e nunca entra na fila.
+  show("email",false);
   // 💎 Double Pro: grupo da loteria — só quando a planilha tem o dado
   // v209/v210: a seção "status no DOL" (Certified/Pending/Withdrawn/Denied/
   // Expired) foi REMOVIDA — regra 0.2 (nenhum status de vaga pro usuário,
@@ -1765,11 +1763,9 @@ function _vfChipsDe(st,ctx){
   if(st.vagasMin>0)push("vagasMin","","👥 "+t('vf_workers_more').replace("{v}",st.vagasMin),"var(--green)");
 
   if(st.grupo.length)push("grupo","","🎟️ "+st.grupo.join(","),"#d97706");
-  if(ctx==="manual"&&st.email&&VF.fac.manual&&VF.fac.manual.facetas.email.sem>0)push("email","","✉️ "+t('vf_chip_email'),"var(--green)");
   // v181: o "só com e-mail" DESLIGADO é o filtro mais consequente da tela
   // (a lista passa a incluir vaga em que é impossível se candidatar) e não
   // deixava rastro nenhum — sem chip, sem badge, sem "Limpar tudo".
-  if(ctx==="manual"&&!st.email)push("email","","✉️ "+t('vf_chip_sem_email'),"#d97706");
 
   // ⏳ v181 (decisão do dono): chip PERMANENTE e honesto do padrão que esconde
   // a temporada encerrada — com o número REAL vindo da faceta (que é calculada
@@ -2351,7 +2347,7 @@ function _lrCardRow(j){
   // Caixinha "Já enviei" pra QUALQUER conta logada (grátis, plano ou admin):
   // quem copia o e-mail e envia pelo próprio Gmail precisa poder marcar a vaga.
   if(!U)return "";
-  if(!j.hasEmail||!j.email||j.emailBloqueado)return `<div style="margin-top:6px;font-size:11px;color:var(--t3)"><i class="ti ti-mail-off" style="font-size:11px"></i> Esta vaga não tem e-mail direto.</div>`;
+  if(!j.hasEmail||!j.email||j.emailBloqueado)return `<div style="margin-top:6px;font-size:11px;color:var(--t3)"><i class="ti ti-mail-off" style="font-size:11px"></i> Essa vaga não contém e-mail. Contate pelo telefone ou site.</div>`;
   return `<div onclick="event.stopPropagation()" style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">
     <div style="font-size:11.5px;font-weight:700;word-break:break-all;color:var(--t2);margin-bottom:6px"><i class="ti ti-mail" style="font-size:12px"></i> ${esc(j.email)}</div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -2429,8 +2425,19 @@ async function lrDesmarcarTodas(){
 
 // ── Memória local por aparelho/usuário (try/catch: storage pode falhar) ──
 function _lrKey(p){return "h2b_lr_"+p+"_"+String((U&&(U.email||U.name))||"u");}
-function _lrLer(p){try{return localStorage.getItem(_lrKey(p));}catch(e){return null;}}
-function _lrGravar(p,v){try{localStorage.setItem(_lrKey(p),v);}catch(e){}}
+function _lrLer(p){
+  try{const v=localStorage.getItem(_lrKey(p));if(v!==null)return v;}catch(e){}
+  // v-LR4: o "entendi" também vive na CONTA (servidor) — aparelho novo / cache limpo não pedem de novo.
+  if((p==="intro"||p==="ajuda"||p==="tutorial"||p==="passos")&&U&&U.lrAck&&U.lrAck[p])return "1";
+  return null;
+}
+function _lrGravar(p,v){
+  try{localStorage.setItem(_lrKey(p),v);}catch(e){}
+  if((p==="intro"||p==="ajuda"||p==="tutorial"||p==="passos")&&v==="1"){
+    try{if(U){U.lrAck=Object.assign({},U.lrAck,{[p]:Date.now()});}
+      fetch("/api/lr-ack",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({k:p})}).catch(()=>{});}catch(e){}
+  }
+}
 
 // Painel fixo no topo da aba (grátis e admin): como enviar de graça + planos.
 // MINIMIZA pra liberar a tela pra lista; minimizado vira 2 botões bonitos
@@ -2554,11 +2561,64 @@ function lrFecharIntro(){
   try{_lrFecharWelcome();}catch(e){}
   try{document.getElementById("lr-intro")?.remove();}catch(e){}
   try{renderLrGuia();}catch(e){}
+  if(_lrLer("ajuda")!=="1")setTimeout(()=>{try{lrAbrirAjuda(true);}catch(e){}},250);
 }
 // 1ª vez que a pessoa abre "Listas randomizadas": card obrigatório com "entendi"
 function lrPrimeiraVez(){
-  if(!U||curView!=="jobs"||_lrLer("intro")==="1"||document.getElementById("lr-intro"))return;
-  lrAbrirIntro(true);
+  if(!U||curView!=="jobs"||document.getElementById("lr-intro")||document.getElementById("lr-ajuda"))return;
+  if(_lrLer("intro")!=="1"){lrAbrirIntro(true);return;}
+  if(_lrLer("ajuda")!=="1")lrAbrirAjuda(true);
+}
+
+// ❓ v-LR4 (dono, 07/11/2026): botão "?" dourado, sempre à mão na aba. Abre um
+// cartão curto com mini calendário: a lista é antiga, a nova sai em janeiro,
+// e lista antiga ainda serve (o e-mail é da EMPRESA). Na 1ª vez exige o
+// "entendi" (a pessoa precisa saber a hora do visto); depois é só abrir e fechar.
+function _lrFab(mostrar){
+  let b=document.getElementById("lr-fab");
+  if(!mostrar||!U){if(b)b.remove();return;}
+  if(b)return;
+  b=document.createElement("button");b.id="lr-fab";b.type="button";
+  b.setAttribute("aria-label","Ajuda: quando sai a lista nova");b.title="Quando sai a lista nova?";
+  b.style.cssText="position:fixed;right:14px;bottom:calc(86px + env(safe-area-inset-bottom,0px));z-index:900;width:52px;height:52px;border-radius:50%;border:2px solid #fff7d6;background:linear-gradient(135deg,#fde68a,#f59e0b 55%,#d97706);color:#4a2c00;font-size:26px;font-weight:900;box-shadow:0 6px 18px rgba(217,119,6,.55);cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1";
+  b.textContent="?";b.onclick=()=>lrAbrirAjuda(false);
+  document.body.appendChild(b);
+}
+function _lrAjudaHTML(){
+  const MES=["JAN","FEV","MAR","ABR","MAI","JUN","JUL","AGO","SET","OUT","NOV","DEZ"];
+  const mc=(i)=>{
+    const lista=(i===0||i===6),inicio=(i===3||i===9);
+    const bg=lista?"linear-gradient(135deg,#f59e0b,#d97706)":inicio?"linear-gradient(135deg,#3b82f6,#4f46e5)":"var(--sf2)";
+    const cor=(lista||inicio)?"#fff":"var(--t2)";
+    const sub=lista?"lista nova":inicio?"vagas começam":"";
+    return `<div style="border-radius:10px;padding:7px 2px;text-align:center;background:${bg};color:${cor};border:1.5px solid ${(lista||inicio)?"transparent":"var(--border)"};min-height:48px"><div style="font-size:12px;font-weight:900">${MES[i]}</div><div style="font-size:9px;font-weight:700;line-height:1.15;margin-top:3px">${sub}</div></div>`;
+  };
+  const li=t=>`<div style="font-size:14px;line-height:1.5;color:var(--text);margin-top:8px">${t}</div>`;
+  return `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">${MES.map((_,i)=>mc(i)).join("")}</div>
+    <div style="font-size:11.5px;color:var(--t3);margin-top:6px"><span style="color:#d97706">●</span> a lista nova sai &nbsp; <span style="color:#4f46e5">●</span> o trabalho começa</div>
+    ${li("📋 <b>As listas randomizadas daqui são as antigas.</b> A próxima sai <b>em janeiro</b>.")}
+    ${li("✅ Isso <b>não impede</b> você de falar com as mesmas empresas do ano passado: o e-mail é da <b>empresa</b>, e muita empresa pede de novo.")}
+    ${li("🕐 <b>Antes da lista nova sair, use a do ano passado.</b> Lista de janeiro → trabalho começa em abril. Lista de julho → trabalho começa em outubro.")}
+    ${li("🆕 <b>Quando a nova sair, passe a usar a nova.</b>")}`;
+}
+function lrAbrirAjuda(obrigatorio){
+  try{document.getElementById("lr-ajuda")?.remove();}catch(e){}
+  const ov=document.createElement("div");ov.id="lr-ajuda";ov.className="overlay";ov.style.zIndex="9997";
+  const rodape=obrigatorio
+    ?`<label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:800;cursor:pointer;color:var(--text);margin:14px 0 10px"><input type="checkbox" id="lr-ajuda-ck" onchange="lrAjudaCk(this)" style="width:22px;height:22px;accent-color:#16a34a;flex-shrink:0"> Entendi: a lista é antiga e a nova sai em janeiro</label>
+       <button type="button" id="lr-ajuda-ok" class="btn btn-primary" disabled onclick="lrAjudaFechar(true)" style="width:100%;justify-content:center;padding:13px;opacity:.5">Entendi, ver as vagas</button>`
+    :`<button type="button" class="btn btn-primary" onclick="lrAjudaFechar(false)" style="width:100%;justify-content:center;padding:13px;margin-top:14px">Fechar</button>`;
+  ov.innerHTML=`<div class="modal" style="max-width:520px"><div class="mhandle"></div><div class="mhdr"><div class="mttl">📅 Quando sai a lista nova?</div>${obrigatorio?"":'<button aria-label="Fechar" class="mx" type="button">✕</button>'}</div><div class="mbody" style="padding:4px 16px 16px">${_lrAjudaHTML()}${rodape}</div></div>`;
+  if(!obrigatorio){
+    ov.addEventListener("click",e=>{if(e.target===ov)lrAjudaFechar(false);});
+    const x=ov.querySelector(".mx");if(x)x.onclick=()=>lrAjudaFechar(false);
+  }
+  document.body.appendChild(ov);
+}
+function lrAjudaCk(cb){const b=g("#lr-ajuda-ok");if(!b)return;b.disabled=!cb.checked;b.style.opacity=cb.checked?"1":".5";}
+function lrAjudaFechar(gravar){
+  if(gravar)_lrGravar("ajuda","1");
+  try{document.getElementById("lr-ajuda")?.remove();}catch(e){}
 }
 
 // Boas-vindas na Home: aparece na 1ª visita de quem não tem plano e some no "Entendi"
@@ -2566,6 +2626,7 @@ function _lrWelcomeKey(){return "h2b_lr_boasvindas_v1_"+String((U&&(U.email||U.n
 function _lrRenderWelcome(){
   const slot=g("#lr-welcome-slot");if(!slot)return;
   let visto=false;try{visto=localStorage.getItem(_lrWelcomeKey())==="1";}catch(e){}
+  if(!visto&&_lrLer("tutorial")==="1")visto=true; // v-LR4: já aceitou antes (guardado na conta)
   if(!U||U.isAdmin||!U.needsPlan||visto){slot.innerHTML="";return;}
   slot.innerHTML=`<div style="padding:12px 14px 0"><div style="border:1.5px solid rgba(22,163,74,.35);background:rgba(22,163,74,.07);border-radius:18px;padding:16px">
     <div style="font-size:16px;font-weight:900;color:var(--text);margin-bottom:4px">👋 Bem-vindo ao H2BApply</div>
@@ -2576,7 +2637,7 @@ function _lrRenderWelcome(){
       <button type="button" class="btn btn-secondary" onclick="_lrFecharWelcome()">Entendi</button>
     </div></div></div>`;
 }
-function _lrFecharWelcome(){try{localStorage.setItem(_lrWelcomeKey(),"1");}catch(e){}const s=g("#lr-welcome-slot");if(s)s.innerHTML="";}
+function _lrFecharWelcome(){try{localStorage.setItem(_lrWelcomeKey(),"1");}catch(e){}_lrGravar("tutorial","1");const s=g("#lr-welcome-slot");if(s)s.innerHTML="";}
 
 function mkSheetCard(j){
   const iid="s_"+j.id.replace(/[^a-zA-Z0-9]/g,"_");
@@ -2766,7 +2827,7 @@ function mkDetailHTML(j){
       ${j.desc?`<div class="info-box" style="grid-column:1/-1"><div class="info-lbl">📋 Funções da vaga <span class="vaga-desc-status" style="font-weight:400;text-transform:none"></span></div><div class="info-val vaga-desc-txt" data-case="${esc(j.caseNum||j.id||"")}" style="font-size:12px;line-height:1.7;white-space:pre-wrap;background:rgba(0,0,0,.2);border-radius:8px;padding:10px">${esc(j.desc)}</div></div>`:""}
     </div>
     <div class="jd-acts">
-      ${j.hasEmail?(_isFreeApplier()&&j.email&&!j.emailBloqueado?_lrDetailActs(j):`<button class="btn btn-primary" onclick="openModal('${j.id}')"><i class="ti ti-send"></i> Candidatar-se</button>`):`<div style="font-size:13px;color:var(--t3);padding:9px 13px;background:var(--sf2);border-radius:var(--r);border:1.5px solid var(--border)"><i class="ti ti-alert-triangle"></i> Sem e-mail direto</div>`}
+      ${j.hasEmail?(_isFreeApplier()&&j.email&&!j.emailBloqueado?_lrDetailActs(j):`<button class="btn btn-primary" onclick="openModal('${j.id}')"><i class="ti ti-send"></i> Candidatar-se</button>`):`<div style="font-size:13px;color:var(--t3);padding:9px 13px;background:var(--sf2);border-radius:var(--r);border:1.5px solid var(--border)"><i class="ti ti-alert-triangle"></i> Essa vaga não contém e-mail. Contate pelo telefone ou site${j.id?` — <a href="https://seasonaljobs.dol.gov/jobs/${encodeURIComponent(j.id)}" target="_blank" rel="noopener" style="color:var(--green)">ver a vaga no SeasonalJobs</a>`:""}.</div>`}
       ${j.caseNum?`<a class="btn btn-secondary" href="/vaga/${encodeURIComponent(j.caseNum)}" target="_blank" rel="noopener" title="Página pública desta vaga — compartilhe o link"><i class="ti ti-share-2"></i></a>`:""}
       ${j.url?`<a class="btn btn-secondary" href="https://${j.url.replace(/^https?:\/\//,"")}" target="_blank" rel="noopener"><i class="ti ti-external-link"></i></a>`:""}
     </div>
@@ -7054,6 +7115,11 @@ function checkShowCvPrompt(){
       if(!U.onboarded){try{localStorage.setItem("h2b_onboarded","1");}catch(e){}fetch("/api/onboard",{method:"POST",credentials:"include"}).then(()=>{U.onboarded=true;}).catch(()=>{});}
       return;
     }
+    // v-LR4 (dono, 07/11/2026): quem NÃO tem plano pago NÃO é obrigado a cadastrar
+    // currículo — enviar de graça é copiar o e-mail e colar no próprio Gmail.
+    // O currículo só é necessário pro envio de 1 clique e pro automático (planos
+    // pagos). Em vez do convite, a pessoa vê o passo a passo ilustrado, 1 vez.
+    if(U&&U.needsPlan&&!U.isAdmin){try{lrPassosAbrir(false);}catch(e){}return;}
     if(sessionStorage.getItem("h2b_cv_prompt_pulado"))return;
     // 🚨 v177-FIX6: o overlay (z-index 999) nascia por cima de QUALQUER tela —
     // quem navegasse sozinho pro editor de perfil dentro do 1,5s levava o
@@ -7065,6 +7131,40 @@ function checkShowCvPrompt(){
     const t2=g("#cv-prompt-title");if(t2)t2.textContent=novo?"Conta criada! Cadastre seu currículo agora":"Cadastre seu currículo agora";
     ov.style.display="flex";
   }catch(e){}
+}
+
+// 🧭 v-LR4: passo a passo do 1º login (grátis) + convite honesto ao plano pago.
+// Regra do dono: nada de propaganda enganosa — o grátis é a manchete, o pago
+// aparece rotulado "PLANO PAGO", sem número inventado e sem prometer entrevista.
+function lrPassosAbrir(forcar){
+  if(!U||document.getElementById("lr-passos"))return;
+  if(!forcar&&_lrLer("passos")==="1")return;
+  const termsOverlay=document.getElementById("terms-overlay");
+  if(termsOverlay&&termsOverlay.style.display==="flex")return;
+  const passo=(n,ico,tit,txt)=>`<div style="display:flex;gap:12px;align-items:flex-start;border:1.5px solid var(--border);border-radius:16px;padding:12px;background:var(--sf2)"><div style="flex-shrink:0;width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;font-size:21px;display:flex;align-items:center;justify-content:center">${ico}</div><div><div style="font-size:15px;font-weight:900;color:var(--text)">${n}. ${tit}</div><div style="font-size:13.5px;line-height:1.5;color:var(--t2);margin-top:2px">${txt}</div></div></div>`;
+  const ov=document.createElement("div");ov.id="lr-passos";ov.className="overlay";ov.style.zIndex="9996";
+  ov.innerHTML=`<div class="modal" style="max-width:560px"><div class="mhandle"></div><div class="mhdr"><div class="mttl">🎁 Como aplicar de graça</div></div><div class="mbody" style="padding:4px 16px 16px;display:flex;flex-direction:column;gap:10px">
+    <div style="font-size:13.5px;line-height:1.5;color:var(--t2)">Todas as vagas daqui vêm do <b>SeasonalJobs</b> (site oficial do governo dos EUA) e têm o link oficial. Aplicar não custa nada e <b>você não precisa cadastrar currículo no site</b>.</div>
+    ${passo(1,"📋","Abra as Listas randomizadas","Escolha uma vaga e toque em <b>copiar o e-mail</b>.")}
+    ${passo(2,"✉️","Abra o seu Gmail","Em outra aba, escreva um e-mail novo e <b>cole</b> o endereço da empresa.")}
+    ${passo(3,"📎","Escreva e anexe","Escreva o seu texto e anexe o seu currículo e os seus documentos. Depois é só enviar.")}
+    ${passo(4,"✅","Marque “Já enviei”","Volte aqui e marque a caixinha. A vaga some da lista e vai pra aba <b>Enviadas</b>.")}
+    ${passo(5,"⏳","Espere a resposta","Se a empresa se interessar, ela responde <b>no seu próprio e-mail</b>. Ninguém pode garantir entrevista ou emprego.")}
+    <div style="border:2px solid rgba(124,58,237,.45);border-radius:16px;padding:12px;background:rgba(124,58,237,.07)">
+      <div style="font-size:11px;font-weight:900;letter-spacing:.05em;color:#7c3aed">💎 PLANO PAGO — OPCIONAL</div>
+      <div style="font-size:14px;line-height:1.5;color:var(--text);margin-top:4px">Quer mais rapidez? Com um plano pago você escreve <b>uma vez</b> o seu título, o seu texto e o seu currículo, e o site <b>entrega os e-mails por você</b>: com <b>1 clique</b> ou no <b>automático</b>. Aí é só esperar as respostas. <b>Só nos planos pagos você cadastra o currículo no site.</b></div>
+    </div>
+    <label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:800;cursor:pointer;color:var(--text);margin-top:4px"><input type="checkbox" id="lr-passos-ck" onchange="const b=g('#lr-passos-ok');b.disabled=!this.checked;b.style.opacity=this.checked?'1':'.5'" style="width:22px;height:22px;accent-color:#16a34a;flex-shrink:0"> Entendi como aplicar de graça</label>
+    <button type="button" id="lr-passos-ok" class="btn btn-primary" disabled onclick="lrPassosFechar(true)" style="width:100%;justify-content:center;padding:13px;opacity:.5">Ver as vagas</button>
+    <button type="button" class="btn btn-secondary" onclick="lrPassosFechar(false,'plans')" style="width:100%;justify-content:center;padding:11px">Ver os planos pagos</button>
+  </div></div>`;
+  document.body.appendChild(ov);
+}
+function lrPassosFechar(gravar,destino){
+  const ck=g("#lr-passos-ck");
+  if(gravar&&ck&&ck.checked)_lrGravar("passos","1");
+  try{document.getElementById("lr-passos")?.remove();}catch(e){}
+  try{const d=destino||"jobs";if(curView!==d)sv(d);}catch(e){}
 }
 function cvPromptAgora(){
   const ov=g("#cv-prompt-overlay");if(ov)ov.style.display="none";

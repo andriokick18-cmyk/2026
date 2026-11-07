@@ -90,6 +90,7 @@ const SAFE_FNS = {
   "_srcCntHtml(s)":              "só contagens via toLocaleString (card de planilha)",
   "_agSuporteBtn()":            "botão fixo de suporte das telas de recuperação (v965) — HTML literal + URL do WhatsApp (constante do código) por esc()",
   "_planResumoLinhasHTML(linhas)": "linhas [chave,valor] do resumo do plano (v962) — cada célula passa por esc()",
+  "_lrAjudaHTML()":             "cartão '?' com mini calendário — HTML 100% literal do código, sem NENHUM dado de fora (só texto fixo, meses e cores)",
   "_lrIntroHTML()":             "card ilustrado das Listas randomizadas — HTML 100% literal do código, sem NENHUM dado de fora (só texto fixo, ícones e cores)",
   "_lrExplicacaoHTML()":         "explicação das Listas randomizadas — HTML 100% literal do código, sem NENHUM dado de fora (só texto fixo e ícones)",
 };
@@ -183,6 +184,11 @@ const ALLOWLIST = new Set([
   "app.js:ddc6e2b224d0", // sub         — stLbl(p)[3], já com esc(motivoCancelamento)
   "app.js:7163c67187d6", // compLinha   — IIFE que só devolve HTML com esc(t(...))
   // ── (d) .map(...).join("") cujo corpo já escapa cada campo ───────────
+  "app.js:7f4445a6dfdd", // v-LR4 passo(1…) — função local do passo a passo grátis: só literais fixos, nenhum dado de fora
+  "app.js:986f9ef65685", // v-LR4 passo(2…) — idem
+  "app.js:29f56d30902b", // v-LR4 passo(3…) — idem
+  "app.js:b6570315399d", // v-LR4 passo(4…) — idem
+  "app.js:9bb03e1b3ce9", // v-LR4 passo(5…) — idem
   "app.js:24c969bf60de", // profiles.map(…) — esc(icon)/esc(cats)/esc(name) por dentro (v177-FIX2/v198)
   "app.js:86ead499f429", // v218: (porPlano[pl]||[]).map(…) — só DIAS_LBL/brl/economia (número) e literais CSS por dentro
   // ── (b) v218: CONSTANTE INTERNA — cor do card de plano ──────────────

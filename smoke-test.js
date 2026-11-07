@@ -4655,8 +4655,8 @@ async function drillAdminSettingsLegado() {
       check("🔍 v181-L5: o badge '🔍 N filtros' espelha EXATAMENTE o ativos() do motor nas 8 combinações — contava tipo/ativa (que a tela nunca envia fora da aba ao vivo) e ignorava o 'só com e-mail', o filtro mais consequente da tela",
         badge.every((b) => b.front === b.motor), JSON.stringify(badge));
       check("🔍 v181-L5 (estrutural): o 'só com e-mail' DESLIGADO virou chip visível ('incluindo vagas sem e-mail — não dá pra se candidatar') e tirar o chip volta ao outro estado — e (🛡️ v276) `email` NÃO conta mais em ativos() nem manda '1'/omite: manda '1' OU '0' sempre explícito (opt-out nunca depende de omissão)",
-        !/if\(st\.email\)n\+\+;/.test(_appL5) && _appL5.includes("vf_chip_sem_email") &&
-        /!st\.email\)push\("email"/.test(_appL5) && /else if\(dim==="email"\)st\.email=!st\.email;/.test(_appL5) &&
+        !/if\(st\.email\)n\+\+;/.test(_appL5) &&
+        !/!st\.email\)push\("email"/.test(_appL5) && /else if\(dim==="email"\)st\.email=!st\.email;/.test(_appL5) &&
         /p\.set\("email",\(ctx==="auto"\|\|st\.email\)\?"1":"0"\);/.test(_appL5),
 
         "chip do e-mail desligado ausente");
@@ -8940,6 +8940,25 @@ async function drillAdminSettingsLegado() {
         _appLR.includes("function _lrDetailMarcar(") && /function _lrCardRow\(j\)\{[^]*?if\(!U\)return/.test(_appLR) &&
         !/class="tag ta"><i class="ti ti-calendar"/.test(_appLR) && _appLR.includes("_isFreeApplier()&&j.email&&!j.emailBloqueado?_lrDetailActs(j):`<button class=\"btn btn-primary\" onclick=\"openModal("),
         "gate do aviso/CTA mudou");
+      // ── v-LR4 (dono, 07/11/2026) ──
+      // vaga SEM e-mail nunca some, mas vai SEMPRE pro final; sem filtro "só com e-mail".
+      const _h2aTodas = (await get("/api/sheet-meta?sheet=h2a-jun2026&email=0&top=2000&sort=asc")).json;
+      const _hj = (_h2aTodas.jobs || []).map((j) => !!j.hasEmail);
+      const _primSem = _hj.indexOf(false);
+      check("📭 v-LR4: vaga sem e-mail NÃO é apagada e fica SEMPRE depois de todas as com e-mail (partição estável, nenhuma com e-mail depois da 1ª sem)",
+        _hj.length > 100 && (_primSem === -1 || !_hj.slice(_primSem).includes(true)), `sem=${_hj.filter((x) => !x).length} primeiraSem=${_primSem}`);
+      const _ackBad = await req2("POST", "/api/lr-ack", { k: "xyz" });
+      const _ackOk = await req2("POST", "/api/lr-ack", { k: "ajuda" });
+      const _st2 = (await get("/api/status")).json;
+      check("📌 v-LR4: o 'entendi' dos cartões fica guardado na CONTA (POST /api/lr-ack grava, /api/status devolve lrAck, cartão desconhecido → 400) — nunca pede de novo",
+        _ackBad.status === 400 && _ackOk.status === 200 && _ackOk.json.lrAck && _ackOk.json.lrAck.ajuda && _st2.lrAck && _st2.lrAck.ajuda, `${_ackBad.status}/${_ackOk.status}`);
+      check("🧭 v-LR4 (estrutural): filtro 'só com e-mail' removido da tela, aviso 'não contém e-mail', botão '?' dourado com mini calendário, 1ª vez com 'entendi', passo a passo grátis com convite PAGO rotulado, currículo não exigido de quem não tem plano",
+        !_appLR.includes("onchange=\"vfSet('email')\"") && _appLR.includes('show("email",false)') && _appLR.includes("VF.st[ctx].email=false") &&
+        _appLR.includes("Essa vaga não contém e-mail. Contate pelo telefone ou site") &&
+        _appLR.includes("function _lrFab(") && _appLR.includes("function lrAbrirAjuda(") && _appLR.includes("function _lrAjudaHTML(") && _appLR.includes("em janeiro") &&
+        _appLR.includes("function lrPassosAbrir(") && _appLR.includes("PLANO PAGO") && _appLR.includes("U.needsPlan&&!U.isAdmin){try{lrPassosAbrir(false)") &&
+        _idxLR.includes("Pro <strong>envio de 1 clique</strong>"),
+        "algum pedaço da v-LR4 não foi encontrado");
       await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "smoke@test.com", isAdmin: true });
     }
 

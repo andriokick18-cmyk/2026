@@ -5446,6 +5446,10 @@ function searchSheet(arr, q, state, category, skip, top, sort) {
       .map(x=>x.r);
   }
 
+  // v-LR4 (dono, 07/11/2026): vaga SEM e-mail nunca some da lista, mas vai
+  // SEMPRE pro final (partição estável: a ordem de cada grupo é preservada,
+  // então skip/top continuam sem duplicar nem perder vaga).
+  { const _com=[], _sem=[]; for (const r of list) ((r.e && String(r.e).includes("@")) ? _com : _sem).push(r); if (_sem.length && _com.length) list = _com.concat(_sem); }
   // sort="asc", "random", "" → ordem estável para paginação correta
   return { total:list.length, items:list.slice(skip,skip+top), sugestao };
 }
@@ -12353,6 +12357,7 @@ filtrar();
     const _provPend = _provisorioPendente(p);
     return json(res,200,{connected:true,sendOnly:GMAIL_SEND_ONLY,newPurchasesBlocked:NEW_PURCHASES_BLOCKED&&!isAdminVip(p),planRulesNotice:_prNotice,
       curingasNotice:p.curingasAviso?"Seus títulos e textos de e-mail tinham campos entre chaves, como {vaga} ou {nome}, que não existem mais. O sistema apagou esses campos (e trocou {vaga} pela palavra work). Abra Perfil, confira os seus títulos e textos e reescreva o que faltar.":null,
+      lrAck:(p.lrAck&&typeof p.lrAck==='object')?p.lrAck:{},
       provisorioPendente:_provPend?{pedidoId:_provPend.pedidoId,ref:_provPend.ref}:null,manualCdOff:p.manualCdOff===true,gmailNeedsReconnect:!!(p.refresh_token&&p.rtInvalid),gmailConnected,gmailEmail,emailContato:p.emailContato||null,emailVerificado:!!p.emailVerificadoEm,needsPlan:!isAdminVip(p)&&!vipOk,email:s.user_email,name:p.name||s.user_name,picture:p.picture||s.picture||"",country:p.country||"Brazil",phone:p.phone||"",whatsapp:p.whatsapp||"",cc:p.cc||"",city:p.city||"",estado:p.estado||p.state||"",language:p.language||"pt",h2bProfile:p.h2bProfile||{},age:p.age||0,isAdmin:!!p.isAdmin,plan:planKey,totalSent,totalManual,totalAutoHist,vip:p.vip?{active:vipOk,expiresAt:p.vip.expiresAt||Math.max(p.vip.manualExpires||0,p.vip.autoExpires||0),activatedAt:p.vip.activatedAt,days:p.vip.days||30,plan:p.vip.plan||"vip",manualExpires:p.vip.manualExpires||0,autoExpires:p.vip.autoExpires||0,manualActive:isManualVipActive(p),autoActive:isAutoVipActive(p),source:p.vip.source||null}:null,todaySentManual:sentManual,manualLimit,manualRemaining:Math.max(0,manualLimit-sentManual),todaySentAuto:sentAuto,autoLimit,autoRemaining:Math.max(0,autoLimit-sentAuto),autoEnabled:true,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0,source:autoJob.source,startedAt:autoJob.startedAt,lastSentAt:autoJob.lastSentAt,nextSendAt:autoJob.nextSendAt,currentJob:autoJob.currentJob,originalCount:autoJob.originalCount}:null,autoStats:stats,cvs:(p.cvs||[]).map(c=>({idx:c.idx,name:c.name,size:c.size,date:c.date,cvType:c.cvType||"resume"})),settings:p.settings||{},onboarded:!!p.onboarded,aprendaProgresso:p.aprendaProgresso||[],adminMessage:p.adminMessage||null,profiles:p.profiles||[],senderEmails:(p.senderEmails||[]).map(sm=>({email:sm.email,label:sm.label||"",active:sm.active!==false,tokenExpired:!!sm.tokenExpired,blocked:!!sm.blocked,blockedReason:sm.blockedReason||null,addedAt:sm.addedAt,warmupCap:warmupCapForSender(sm.addedAt),sentToday:h.filter(x=>x.dateStr===todayStr()&&x.senderEmail===sm.email).length})),senderMax:getMaxSenders(p),primaryWarmup:{cap:warmupCapForSender(p.gmailConnectedAt||p.created_at),sentToday:h.filter(x=>x.dateStr===todayStr()&&(x.senderEmail===(gmailEmail||s.user_email)||x.senderEmail===s.user_email||!x.senderEmail)).length},adminSettings:isAdminVip(p)?{intervalSecs:(p.adminSettings?.intervalSecs||300),senderLimits:(p.adminSettings?.senderLimits||{}),maxSenders:getMaxSenders(p)}:null});
   }
 
@@ -12370,6 +12375,22 @@ filtrar();
       setUser(s.user_email,{aprendaProgresso:[...atuais].slice(0,40)});
       return json(res,200,{ok:true});
     }catch(e){return json(res,400,{error:"Dados inválidos."});}
+  }
+  // v-LR4 (dono, 07/11/2026): "li e entendi" dos cartões das Listas randomizadas
+  // é pedido UMA vez só — fica guardado na CONTA (não só no aparelho), então
+  // site fora do ar, outro celular ou cache limpo nunca pedem de novo.
+  if(pathname==="/api/lr-ack"&&req.method==="POST"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
+    try{
+      const d=JSON.parse(await readBody(req));
+      const k=String(d.k||"");
+      if(!["intro","ajuda","tutorial","passos"].includes(k))return json(res,400,{error:"Cartão desconhecido."});
+      const u0=getUser(s.user_email)||{};
+      const ack={...(u0.lrAck&&typeof u0.lrAck==="object"?u0.lrAck:{})};
+      if(!ack[k])ack[k]=Date.now();
+      setUser(s.user_email,{lrAck:ack});
+      return json(res,200,{ok:true,lrAck:ack});
+    }catch(e){return json(res,400,{error:"Pedido inválido."});}
   }
   if(pathname==="/api/settings"&&req.method==="POST"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
