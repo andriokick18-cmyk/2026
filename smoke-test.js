@@ -4571,11 +4571,9 @@ async function drillAdminSettingsLegado() {
           { c: "H-400-EXP-0003", e: "retirada@mortateste.com", n: "Retirada LLC", t: "Welder", st: "Withdrawn", exp: 0, de: "2027-01-01" },
         ],
       });
-      const mt = async (c) => (await get(`/api/test/vaga-morta?token=${TEST_TOKEN}&sheet=morta-teste&case=${c}`)).json;
-      const m1 = await mt("H-400-EXP-0001"), m2 = await mt("H-400-EXP-0002"), m3 = await mt("H-400-EXP-0003");
-      check("🔒 v179-L4: `exp` é MESES DE EXPERIÊNCIA EXIGIDA (0,1,2,…,60) e o robô tratava exp===1 como 'vaga EXPIRADA', pulando 447 vagas boas em jan2026 e 149 em jul2025 com motivo falso — e o enriquecimento grava exp=1 pra toda vaga que exige experiência (quanto mais rodava, pior)",
-        m1.motivo === null && /ENCERRADA/.test(m2.motivo || "") && /RETIRADA/.test(m3.motivo || ""),
-        `exp1=${JSON.stringify(m1.motivo)} temporadaVelha=${JSON.stringify(m2.motivo)} withdrawn=${JSON.stringify(m3.motivo)}`);
+      // v-LR3: o hook /api/test/vaga-morta morreu junto com a régua de vaga morta
+      check("🔒 v-LR3: NUNCA PULAR VAGAS — não existe mais régua de vaga morta (hook de teste fora do ar)",
+        (await get(`/api/test/vaga-morta?token=${TEST_TOKEN}&sheet=morta-teste&case=H-400-EXP-0003`)).status === 404, "hook voltou");
       // (3) parâmetro inválido não some calado
       const inv = (await get("/api/vagas/filtros?sheet=h2a-jun2026&email=0&inicio=13&salarioMin=abc&grupo=Z")).json;
       check("🔒 v179-L4: parâmetro inválido sumia CALADO e a resposta devolvia a planilha inteira (inicio=13 → total 4.964 com ativos=0) — na tela é confusão, no robô o job.filters corrompido fazia o refill se realimentar com TUDO; agora cada descarte é declarado",
@@ -4809,10 +4807,8 @@ async function drillAdminSettingsLegado() {
         JSON.stringify({ faceta: vfPadrao.facetas.temporada, ativos: vfPadrao.ativos }));
       // o robô: vaga com fim no passado nunca entra na fila do refill
       const _srvL6 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
-      check("⏳ v181-L6: o robô usa a MESMA régua no envio e no REFILL (função única _motivoVagaMorta) — antes o refill devolvia pra fila exatamente a vaga encerrada que o envio tinha acabado de pular",
-        /function _motivoVagaMorta\(/.test(_srvL6) && (_srvL6.match(/_motivoVagaMorta\(/g) || []).length >= 3 &&
-        !/if\(st\.includes\("WITHDRAWN"\)\|\|st\.includes\("DENIED"\)\|\|st\.includes\("EXPIRED"\)\|\|st\.includes\("INVALIDATED"\)\)continue;/.test(_srvL6),
-        "refill voltou a ter régua própria de vaga morta");
+      check("🚫 v-LR3: NUNCA PULAR VAGAS — envio e refill do robô não têm mais régua de vaga morta (status do DOL / data de fim não pulam nada)",
+        !/_motivoVagaMorta|isQueueJobDead|VAGA MORTA/.test(_srvL6), "régua de vaga morta voltou ao server.js");
       // (4) dimensão com menos de 2 valores distintos
       check("🙈 v181-L6: TODA dimensão de opções declara <dim>Distintos (não só o status) — jan2026 statusDistintos 1, H-2A 0, jul2026 grupoDistintos 2, jan2026 grupoDistintos 0 e visaDistintos 1 nas 4 planilhas: nenhuma separa nada e a tela não oferece",
         vfJ.disponibilidade.statusDistintos === 1 && vfH2a.disponibilidade.statusDistintos === 0 &&
@@ -9128,11 +9124,6 @@ async function drillAdminSettingsLegado() {
         !_antesSent.includes("empregador-persiste-l2@teste-h2b.com") && _depoisSent.includes("empregador-persiste-l2@teste-h2b.com"),
         "sent_emails.json não tinha o empregador logo após o markSent — voltou a ser debounced");
       const _srvL2 = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
-      const _deadFn = (_srvL2.match(/function _motivoVagaMorta\(row\)\{[\s\S]*?\n\}/) || [""])[0]
-        .split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
-      check("🤖 v184-L2 (estrutural): a régua de vaga morta não pode voltar a olhar `row.exp` (meses de EXPERIÊNCIA, nunca vencimento) — só status do DOL e data de fim no passado decidem",
-        !!_deadFn && !/row\.exp/.test(_deadFn) && /WITHDRAWN/.test(_deadFn) && /_dataISO\(row\.de\)/.test(_deadFn),
-        "o corpo de _motivoVagaMorta voltou a referenciar row.exp");
       check("🤖 v184-L2 (estrutural): markSent grava síncrono (SENT_FILE é só conjunto de e-mail) e setAutoJob CONTINUA debounced — o arquivo do robô carrega a fila inteira de todo mundo e é escrito várias vezes por envio",
         /DB_SENT\[u\]\.add\(nd\);\s*\n\s*persistSent\(\);/.test(_srvL2) && !_srvL2.includes("persistSentDebounced") &&
         _srvL2.includes("const setAutoJob = (e,d) => { DB_AUTO[e]={...(DB_AUTO[e]||{}),...d}; persistDebounced(AUTO_FILE,DB_AUTO,5000); };"),

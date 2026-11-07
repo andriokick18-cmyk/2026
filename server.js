@@ -5649,43 +5649,10 @@ function selectProfile(profiles, target, sheet, preferredId) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 
-// A fila envelhece (dias/semanas no automático). Antes de gastar 1 envio do
-// limite diário do usuário, confere se a vaga ainda está VIVA na planilha
-// atual. Devolve o motivo (string) se morreu, null se está ok/desconhecida.
-// Motivo de a LINHA estar morta (status do DOL ou temporada encerrada), ou
-// null. Fonte ÚNICA — usada pela checagem antes de cada envio do robô
-// (isQueueJobDead) E pelo REFILL da fila (tryAutoRefill): duas réguas
-// diferentes pro mesmo "essa vaga ainda existe?" era como a vaga encerrada
-// voltava pra fila pelo refill logo depois de ser pulada no envio.
-function _motivoVagaMorta(row){
-  if(!row)return null;
-  const st=String(row.st||"").toUpperCase();
-  if(st.includes("WITHDRAWN"))return "vaga RETIRADA pelo empregador";
-  if(st.includes("DENIED"))return "vaga NEGADA pelo DOL";
-  if(st.includes("EXPIRED")||st.includes("INVALIDATED"))return "vaga EXPIRADA";
-  // ⚠️ v179: `row.exp` é MESES DE EXPERIÊNCIA EXIGIDA (0,1,2,3,…,60), NUNCA
-  // "expirada" — mas a condição acima tinha `row.exp===1` e pulava o envio
-  // com a mensagem falsa "vaga EXPIRADA". São 447 vagas boas em jan2026 e
-  // 149 em jul2025 descartadas hoje, e o robô de enriquecimento grava
-  // exp=1 pra toda vaga que exige experiência: quanto mais ele roda, mais
-  // vaga boa era jogada fora. A temporada encerrada (data de FIM no
-  // passado) é o sinal honesto que faltava.
-  const de=_dataISO(row.de);
-  if(de&&de<new Date().toISOString().slice(0,10))return "temporada ENCERRADA (a vaga terminou em "+de.split("-").reverse().join("/")+")";
-  return null;
-}
-function isQueueJobDead(source,caseNum){
-  try{
-    if(!caseNum)return null;
-    const rows=getSheet(source||"");
-    if(!rows||!rows.length)return null;
-    const cn=String(caseNum).toUpperCase();
-    const row=rows.find(r=>String(r.c||"").toUpperCase()===cn);
-    if(!row)return null; // sumiu da planilha — não dá pra afirmar que morreu
-    return _motivoVagaMorta(row);
-  }catch{return null;}
-}
-
+// v-LR3 (dono, 07/11/2026): "NUNCA PULAR VAGAS". Não existe mais régua de
+// "vaga morta" no envio nem no refill: toda vaga da fila (status do DOL,
+// data de fim passada, tanto faz) recebe a candidatura. Os únicos motivos de
+// uma vaga não sair são a regra 8 (empregador já contatado) e e-mail inválido.
 
 // 🔄 REFILL AUTOMÁTICO: quando a fila zera, o robô se realimenta SOZINHO com
 // os MESMOS filtros que o usuário escolheu no início (job.filters), cortando
@@ -5708,11 +5675,6 @@ function tryAutoRefill(email,job){
     const fresh=[];
     for(const r of base){
       const em=String(r.e||"").toLowerCase().trim();
-      // v181: MESMA régua do envio (isQueueJobDead) — status morto do DOL E
-      // temporada encerrada. O refill devolvia pra fila exatamente a vaga que
-      // o envio acabara de pular por ter terminado.
-      if(_motivoVagaMorta(r))continue;
-
       fresh.push({
         id:r.c,to:em,title:r.t||"Seasonal Worker",company:r.n||"",category:r.k||"other",
         state:r.s||"",city:r.ci||"",wage:r.w?`$${r.w}/${r.wunit||"h"}`:"",visa:r.visa||"",
@@ -6009,14 +5971,6 @@ async function _doAutoSendInner(email) {
         const invInfo = DB_INVALID_EMAILS[_ce.email];
         const motivo = invInfo?.motivo || 'Email permanentemente inválido (bounce detectado)';
         addLog(email, { status:"pulado", company:candidate.company||"", to:candidate.to, jobTitle:candidate.title||"", category:candidate.category||"other", state:candidate.state||"", source:job.source||"", error:`⚫ Email inválido removido da fila: ${motivo} (${invInfo?.count||1}x detectado)` });
-        queue.shift(); continue;
-      }
-      // ── v23: VAGA MORTA — a fila envelhece; não gasta envio do limite
-      // diário do usuário numa vaga que foi retirada/negada/expirou depois
-      // que a fila foi montada.
-      const _dead = isQueueJobDead(job.source, candidate.caseNum || candidate.id);
-      if (_dead) {
-        addLog(email, { status:"pulado", company:candidate.company||"", to:candidate.to, jobTitle:candidate.title||"", category:candidate.category||"other", state:candidate.state||"", source:job.source||"", error:`🪦 ${_dead} depois que a fila foi montada — pulada (não contou no seu limite)` });
         queue.shift(); continue;
       }
       candidate.to = _ce.email; // normalizado
@@ -9773,15 +9727,6 @@ filtrar();
       PLANILHAS.aplicarDolNaLinha(row,d.dol||{});
       _saveEnrichedSheet(String(d.sheet||""),arr);
       return json(res,200,{ok:true,row});}catch(e){return json(res,400,{error:e.message});}
-  }
-  // 🧪 v179: gancho de teste pra `isQueueJobDead` — a função que decide se o
-  // robô PULA uma vaga da fila. É chamada no meio do laço de envio automático
-  // (que exige plano, Gmail conectado e fila viva), então sem este atalho a
-  // regra "exp é experiência, não expiração" só daria pra conferir lendo o
-  // código. Mesma trava dos outros /api/test/*.
-  if(pathname==="/api/test/vaga-morta"&&process.env.TEST_LOGIN_TOKEN){
-    if(String(u.searchParams.get("token")||"")!==process.env.TEST_LOGIN_TOKEN)return json(res,403,{error:"token"});
-    return json(res,200,{ok:true,motivo:isQueueJobDead(u.searchParams.get("sheet")||"",u.searchParams.get("case")||"")});
   }
   // 🧪 v184 LOTE 2: gancho de teste pro RESSUSCITAR do robô depois de um
   // restart. reactivateOneAutoJob() só roda no boot (e no self-heal do
