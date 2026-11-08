@@ -4721,3 +4721,20 @@ Ordem do dono: *"Nunca pular vagas em nenhum dos casos! As empresas devem recebe
 - **Botão "?" dourado** (`_lrFab`, só na aba Listas randomizadas) abre `lrAbrirAjuda`: mini calendário (JAN/JUL lista nova, ABR/OUT trabalho começa), "a lista é antiga, a nova sai em janeiro" (NÃO escrever "dia 10"), lista antiga vale porque o e-mail é da empresa. 1ª vez exige "entendi"; depois abre/fecha livre.
 - **"Entendi/concordo" é pedido UMA vez só e vive na CONTA**: `POST /api/lr-ack {k: intro|ajuda|tutorial|passos}` → `u.lrAck`, devolvido em `/api/status`; `_lrLer/_lrGravar` espelham no aparelho. Site fora do ar, outro celular ou cache limpo não pedem de novo.
 - **Quem não tem plano pago NÃO é forçado a cadastrar currículo**: `checkShowCvPrompt` mostra o passo a passo grátis (`lrPassosAbrir`: copiar e-mail → Gmail próprio → anexar → "Já enviei" → esperar) e um bloco rotulado "💎 PLANO PAGO — OPCIONAL". O currículo no site só é necessário pro envio de 1 clique e pro automático (o texto do convite pago diz isso). PROIBIDO dizer que o automático é grátis, prometer entrevista/emprego ou usar % sem fonte oficial.
+
+
+## 🚫 ENVIO AUTOMÁTICO DOS USUÁRIOS NUNCA PARA (ordem do dono, 07/11/2026)
+
+NUNCA pausar, atrasar ou desligar o bot de envio automático de NENHUM
+usuário por causa de RAM — em hipótese alguma. A guarda de RAM
+(`_memGuardTick`/`_soltaCaches`) só pode (1) soltar caches e (2) pausar
+ROBÔS INTERNOS (planilha, enriquecimento, coletas do DOL, backup pesado);
+`_memAperto` só é lido por `aguardaRam` do mod-planilhas — PROIBIDO
+referenciá-lo em scheduleAuto/jobs/envio. Se a RAM apertar, a solução é
+tornar cada envio mais LEVE: PDF lido do disco e solto (nunca retido;
+existência checada com `cvExists`, sem ler o arquivo), fila global de
+chamadas ao Gmail (`_gmailSlot`, `SEND_CONCURRENCY`, só enfileira),
+pré-aquecimento de tokens sequencial e espaçado, reativação de jobs no
+boot escalonada (3 s), sem acumular logs/histórico em memória. Pulso
+`[mem]` a cada 60 s (rss/heap/external/arrayBuffers/jobs/fila/envios).
+Guarda estrutural no smoke.

@@ -6010,6 +6010,11 @@ async function drillAdminSettingsLegado() {
         _ramPl.includes("if (status === 400) {") && _ramPl.includes("consec400 >= 25") && _ramPl.includes("for (const c of recentes400) delete neg400[c];") && _ramPl.includes("enrich_400.json") && _ramPl.includes("7 * 86400_000") &&
         _ramPl.includes("await aguardaRam(enrichLog)") && !/saveSheet\(sheetKey, sheet\); enrichBot\.savedAt = Date\.now\(\);\n      if \(enrichBot\.done % 10/.test(_ramPl),
         "robô de enriquecimento ainda regrava a planilha inteira a cada vaga");
+      check("RAM (envio automático NUNCA é tocado — ordem do dono 07/11): a guarda de RAM só solta caches e só informa memAperto aos robôs de planilha; envio automático não referencia _memAperto; fila global de chamadas ao Gmail só ENFILEIRA (SEND_CONCURRENCY), pré-aquecimento de tokens é sequencial, existência de PDF não lê o arquivo, haystack de busca é solto sob pressão",
+        (_ramSrv.match(/_memAperto/g) || []).length === 8 && !/function scheduleAuto[\s\S]{0,6000}_memAperto/.test(_ramSrv) && !/function _memGuardTick[\s\S]{0,700}(autoTimers|DB_AUTO|scheduleAuto|setAutoJob)/.test(_ramSrv) &&
+        _ramSrv.includes("function _gmailSlot(fn)") && !_ramSrv.includes('await httpsReq({hostname:"gmail.googleapis.com",path:"/gmail/v1/users/me/messages/send"') &&
+        _ramSrv.includes("const cvExists =") && _ramSrv.includes("_hayCache=new WeakMap()") && _ramSrv.includes("for (let i = 0; i < emailsToWarm.length; i++)"),
+        "guardas do envio automático / RAM ausentes");
       check("RAM (crash loop 07/11): plano real 512MB (padrão), teto H-2A padrão 5.000, boot só libera robô com RAM < 50% e depois de 5-10 min (enriquecimento 5min, agendador H-2A 10min com unref, backup 10min), próxima data gravada ANTES de baixar, recuperação de rodada interrompida espera 15min/6h e a rodada seguinte não faz busca funda, 400 lembrado em disco",
         /return 512;/.test(_ramSrv) && _ramPl.includes('H2A_JANELA_MAX || "5000"') && _ramSrv.includes("function _quandoRamLivre(") && _ramSrv.includes("pct<50") &&
         _ramSrv.includes("300000") && _ramPl.includes('tick("boot"), 600_000); if (t1.unref) t1.unref();') && _ramPl.includes("ramPct() >= 50") &&
@@ -6044,10 +6049,10 @@ async function drillAdminSettingsLegado() {
       Array.isArray(memX.arquivos) && memX.arquivos.some((a) => a.nome === "users.json") &&
       Array.isArray(memX.dicas) && memX.dicas.length >= 1 && typeof memX.bancos?.usuarios === "number",
       JSON.stringify({ rss: memX?.processo?.rssMB, comp: memX?.comprovantes?.pedidos, gastos: memX?.comprovantes?.gastos?.n }).slice(0, 160));
-    check("🩻 v163: (estrutural) a rota NUNCA faz JSON.stringify de banco inteiro (só de 1 linha-amostra) e o pulso [mem] roda a cada 6h no log",
+    check("🩻 v163: (estrutural) a rota NUNCA faz JSON.stringify de banco inteiro (só de 1 linha-amostra) e o pulso [mem] roda a cada 60s no log (RSS/heap/external/jobs/fila/envios)",
       /Planilhas residentes: linhas reais \+ estimativa por AMOSTRA/.test(_srvSrc) &&
       _srvSrc.includes("JSON.stringify(a[0]||{})") && !/JSON\.stringify\(DB_USERS\)/.test(_srvSrc.split("api/admin/memoria")[1]?.split("api/")[0] || "x") &&
-      _srvSrc.includes("[mem] rss=") && _srvSrc.includes("setInterval(_memPulse,6*3600_000)"),
+      _srvSrc.includes("[mem] rss=") && _srvSrc.includes("setInterval(_memPulse,60_000)"),
       "raio-x sem a guarda de amostra ou sem pulso");
     // 🩹 v240 (achado real, 22/09/2026 — 2º alerta de OOM do Render): antes
     // desta correção, "planilhas" só olhava SHEET_EXTRAS — as 3 planilhas

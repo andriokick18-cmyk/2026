@@ -3157,6 +3157,8 @@ function _migrarComprovantesParaDisco(){
   }catch(e){ console.warn("[migração] comprovantes:",e.message); }
 }
 
+// RAM: existência do PDF SEM ler/baseá64 o arquivo inteiro (antes, painel/vigia chamavam loadCv só pra saber se existe)
+const cvExists = (e,i) => { try { return fs.statSync(cvPath(e,i)).size > 100; } catch { return false; } };
 const loadCv = (e,i) => {
   // 1. Tenta ler do disco primeiro (mais rápido)
   try {
@@ -5261,7 +5263,7 @@ const _normSearch = (s) => String(s || "").toLowerCase()
   .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
   .replace(/["'‘’`´]/g, "")
   .replace(/[^a-z0-9@.\s]+/g, " ").replace(/\s+/g, " ").trim();
-const _hayCache = new WeakMap();
+let _hayCache = new WeakMap(); // RAM: reatribuído em _soltaCaches (guarda os textos normalizados de TODAS as vagas já buscadas, incluindo descrição)
 let _hayEpoca = 0; // sobe quando um robô mexe nas linhas (_saveEnrichedSheet)
 function _hayDe(r) {
   let c = _hayCache.get(r);
@@ -5478,6 +5480,18 @@ function searchSheet(arr, q, state, category, skip, top, sort) {
 //  Inicia imediatamente sem esperar carregar tudo
 // ══════════════════════════════════════════════════════════
 const autoTimers = new Map();
+// RAM (dono, 07/11/2026): fila GLOBAL de chamadas ao Gmail (messages/send). Cada envio monta MIME + base64 do
+// PDF (vários MB transitórios); com centenas de jobs coincidindo, isso empilhava no heap. Aqui só ENFILEIRA —
+// nunca recusa nem pausa o envio de ninguém (regra 13a2); o limite é por env SEND_CONCURRENCY (padrão 2).
+const _SEND_CONC = Math.max(1, parseInt(process.env.SEND_CONCURRENCY || "2", 10) || 2);
+let _sendAtivos = 0; const _sendFila = [];
+function _gmailSlot(fn){
+  return new Promise((resolve, reject) => {
+    const run = () => { _sendAtivos++; Promise.resolve().then(fn).then(resolve, reject).finally(() => { _sendAtivos--; const n = _sendFila.shift(); if (n) n(); }); };
+    if (_sendAtivos < _SEND_CONC) run(); else _sendFila.push(run);
+  });
+}
+const _gmailSendReq = (opts, payload) => _gmailSlot(() => httpsReq(opts, payload));
 const autoStats  = new Map(); // { email → { sent, failed, skipped, startedAt } }
 
 // isAutoHour REMOVIDA: automático não tem mais janela de horário
@@ -5785,6 +5799,7 @@ function _soltaCaches(){
   try{for(const k of Object.keys(_assetCache))delete _assetCache[k];}catch(e){}
   try{for(const k of Object.keys(_imgRawCache))delete _imgRawCache[k];}catch(e){}
   try{_userStatsCache.clear();_seoMemoMap.clear();_VF_CACHE.clear();}catch(e){}
+  try{_hayCache=new WeakMap();}catch(e){}
   try{if(typeof global.gc==="function")global.gc();}catch(e){}
 }
 function _memGuardTick(){
@@ -6391,7 +6406,7 @@ async function _doAutoSendInner(email) {
     logEntry.profileUsed = _pname;
 
     try {
-      const { status:gmStatus, body:gmBody } = await httpsReq(
+      const { status:gmStatus, body:gmBody } = await _gmailSendReq(
         { hostname:"gmail.googleapis.com", path:"/gmail/v1/users/me/messages/send", method:"POST",
           headers:{ "Authorization":"Bearer "+accessToken, "Content-Type":"application/json" } },
         { raw }
@@ -6721,26 +6736,31 @@ async function reactivateAutoJobs(){
 
   console.log(`[boot] Pré-aquecendo tokens para ${emailsToWarm.length} usuário(s) com auto ativo...`);
   // Fire-and-forget: não bloqueia o boot — tokens são renovados em background
+  // RAM: SEQUENCIAL (1 por vez, 1,5s entre cada) e 20s depois do boot — antes eram lotes de 3 no mesmo instante
+  // do boot, junto de tudo o mais. Nunca bloqueia o boot nem o envio de ninguém.
   (async () => {
-    for (let i = 0; i < emailsToWarm.length; i += 3) {
-      const lote = emailsToWarm.slice(i, i + 3);
-      await Promise.allSettled(lote.map(async email => {
-        const u = getUser(email);
-        if (!u?.refresh_token) return;
-        try {
-          await refreshTokenForUser(email);
-          console.log(`[boot] ✅ Token pré-aquecido: ${email}`);
-        } catch(e) {
-          console.warn(`[boot] ⚠️ Token falhou para ${email}:`, e.message);
-        }
-      }));
-      if (i + 3 < emailsToWarm.length) await new Promise(r => setTimeout(r, 1000));
+    if (!process.env.TEST_LOGIN_TOKEN) await new Promise(r => setTimeout(r, 20000));
+    for (let i = 0; i < emailsToWarm.length; i++) {
+      const email = emailsToWarm[i];
+      const u = getUser(email);
+      if (u?.refresh_token) {
+        try { await refreshTokenForUser(email); console.log(`[boot] ✅ Token pré-aquecido: ${email}`); }
+        catch(e) { console.warn(`[boot] ⚠️ Token falhou para ${email}:`, e.message); }
+      }
+      if (i + 1 < emailsToWarm.length) await new Promise(r => setTimeout(r, process.env.TEST_LOGIN_TOKEN ? 50 : 1500));
     }
   })();
 
   // Passo 2: agenda os jobs
+  // RAM: jobs que dispariam "agora" não acordam todos no mesmo tick do boot — escalonados 3s um do outro.
+  // Em teste continua síncrono (as asserções dependem disso). Ninguém é pausado: só espaça o primeiro disparo.
+  let _bootIdx = 0;
   for(const[email,job]of Object.entries(DB_AUTO)){
-    if(reactivateOneAutoJob(email, job, now)) n++;
+    if(process.env.TEST_LOGIN_TOKEN){ if(reactivateOneAutoJob(email, job, now)) n++; continue; }
+    if(!job?.active) continue;
+    const _d = (_bootIdx++) * 3000; n++;
+    const _t = setTimeout(()=>{ try{ const j=getAutoJob(email); if(j) reactivateOneAutoJob(email, j, Date.now()); }catch(e){ console.warn("[boot/auto]",email,e.message); } }, _d);
+    if(_t.unref) _t.unref();
   }
   if(n) console.log(`[boot/auto] ${n} job(s) reativados após restart`);
 }
@@ -7346,7 +7366,7 @@ async function _ensureSendToken(sid){
 // conta certa, mas o cabeçalho From malformado é outra história). O Gmail
 // REAL conectado (gmailEmail, ver resolveSendGmail) tem prioridade;
 // s.user_email só sobra como fallback pra conta LEGADA, onde ele já É o Gmail.
-async function gmailSend(sid,opts){const s=await _ensureSendToken(sid);const owner=getUser(s.user_email);const raw=buildMime({...opts,fromEmail:resolveSendGmail(owner)||s.user_email});const{status,body}=await httpsReq({hostname:"gmail.googleapis.com",path:"/gmail/v1/users/me/messages/send",method:"POST",headers:{"Authorization":"Bearer "+s.access_token,"Content-Type":"application/json"}},{raw});if(body?.error){const msg=body.error.message||JSON.stringify(body.error);throw new Error(msg);}if(status!==200)throw new Error("Gmail HTTP "+status);return body;}
+async function gmailSend(sid,opts){const s=await _ensureSendToken(sid);const owner=getUser(s.user_email);const raw=buildMime({...opts,fromEmail:resolveSendGmail(owner)||s.user_email});const{status,body}=await _gmailSendReq({hostname:"gmail.googleapis.com",path:"/gmail/v1/users/me/messages/send",method:"POST",headers:{"Authorization":"Bearer "+s.access_token,"Content-Type":"application/json"}},{raw});if(body?.error){const msg=body.error.message||JSON.stringify(body.error);throw new Error(msg);}if(status!==200)throw new Error("Gmail HTTP "+status);return body;}
 
 // Envio com suporte a threading (respostas na mesma conversa)
 async function gmailSendWithThread(sid,opts){
@@ -7356,7 +7376,7 @@ async function gmailSendWithThread(sid,opts){
   const payload={raw};
   // threadId vincula a mensagem ao thread correto no Gmail
   if(opts.threadId)payload.threadId=opts.threadId;
-  const{status,body}=await httpsReq({
+  const{status,body}=await _gmailSendReq({
     hostname:"gmail.googleapis.com",
     path:"/gmail/v1/users/me/messages/send",
     method:"POST",
@@ -11806,7 +11826,7 @@ filtrar();
                   text:emailText,
                   attachments, // array vazio se não tiver comprovante
                 });
-                await httpsReq({hostname:"gmail.googleapis.com",path:"/gmail/v1/users/me/messages/send",method:"POST",headers:{"Authorization":"Bearer "+adminToken,"Content-Type":"application/json"}},{raw});
+                await _gmailSendReq({hostname:"gmail.googleapis.com",path:"/gmail/v1/users/me/messages/send",method:"POST",headers:{"Authorization":"Bearer "+adminToken,"Content-Type":"application/json"}},{raw});
                 console.log("[pedido] ✅ Email"+(attachments.length?" c/ comprovante":"")+" enviado para:",toEmail);
               }catch(e){console.warn("[pedido] email err →",toEmail,":",e.message);}
             }
@@ -12686,7 +12706,7 @@ filtrar();
         setTimeout(()=>{ if(_reservedManualSlot){_releaseManualSlot(s.user_email);_reservedManualSlot=false;} }, 60_000);
       }
 
-      const attachments=[];const getAtt=async idx=>{if(idx==null)return null;const m=p.cvs?.find(c=>c.idx===parseInt(idx,10));return m&&loadCv(s.user_email,m.idx)?{data:loadCv(s.user_email,m.idx),name:m.name}:null;};
+      const attachments=[];const getAtt=async idx=>{if(idx==null)return null;const m=p.cvs?.find(c=>c.idx===parseInt(idx,10));if(!m)return null;const _d=loadCv(s.user_email,m.idx);return _d?{data:_d,name:m.name}:null;};
       {// Toda candidatura é NOVA — anexos sempre
         let resumeAttached=false;
         // 🚨 v177-FIX5 (auditoria 14/09/2026): o caminho alternativo pdfBase64
@@ -12758,7 +12778,7 @@ filtrar();
             try{
               const raw2=buildMimeWithHeaders({to:toEmail,subject:d.subject,text:d.message,fromName:d.fromName||p.name||s.user_name||"H2BApply",fromEmail:usedEmail,attachments});
               const payload2={raw:raw2};
-              const{status:gs2,body:gb2}=await httpsReq({hostname:"gmail.googleapis.com",path:"/gmail/v1/users/me/messages/send",method:"POST",headers:{"Authorization":"Bearer "+senderTok,"Content-Type":"application/json"}},payload2);
+              const{status:gs2,body:gb2}=await _gmailSendReq({hostname:"gmail.googleapis.com",path:"/gmail/v1/users/me/messages/send",method:"POST",headers:{"Authorization":"Bearer "+senderTok,"Content-Type":"application/json"}},payload2);
               if(gb2?.error)throw new Error(gb2.error.message||JSON.stringify(gb2.error));
               if(gs2!==200)throw new Error("Gmail HTTP "+gs2);
               r=gb2;
@@ -12813,7 +12833,7 @@ filtrar();
             // Extra escolhido pelo round-robin
             const rawRR=buildMimeWithHeaders({to:toEmail,subject:d.subject,text:d.message,fromName:d.fromName||p.name||s.user_name||"H2BApply",fromEmail:rrEmail,attachments});
             const payloadRR={raw:rawRR};
-            const{status:gsRR,body:gbRR}=await httpsReq({hostname:"gmail.googleapis.com",path:"/gmail/v1/users/me/messages/send",method:"POST",headers:{"Authorization":"Bearer "+rrTok,"Content-Type":"application/json"}},payloadRR);
+            const{status:gsRR,body:gbRR}=await _gmailSendReq({hostname:"gmail.googleapis.com",path:"/gmail/v1/users/me/messages/send",method:"POST",headers:{"Authorization":"Bearer "+rrTok,"Content-Type":"application/json"}},payloadRR);
             if(gbRR?.error)throw new Error(gbRR.error.message||JSON.stringify(gbRR.error));
             if(gsRR!==200)throw new Error("Gmail HTTP "+gsRR);
             r=gbRR;
@@ -14752,7 +14772,7 @@ if(DB_LOGS[te]){delete DB_LOGS[te];persistLogs();}return json(res,200,{ok:true})
         const tAuto=countAutoToday(hist);const aLim=getAutoLimit(usr);
         const hasTmr=autoTimers.has(em);const lastAct=job.lastSentAt||job.startedAt||0;
         const stalMs=job.active&&job.queue?.length>0?bsNow-lastAct:0;
-        const hPdf=(usr.cvs||[]).some(c=>{try{return!!loadCv(em,c.idx);}catch{return false;}});
+        const hPdf=(usr.cvs||[]).some(c=>cvExists(em,c.idx)||!!c.b64);
         const hTok=!!(usr.refresh_token||(usr.cached_access_token&&usr.cached_token_expiry&&bsNow<usr.cached_token_expiry-60000));
         const qLen=job.queue?.length||0;const origC=job.originalCount||0;
         const sentC=origC-qLen;const pct=origC>0?Math.round((sentC/origC)*100):0;
@@ -15839,7 +15859,7 @@ async function diagnoseJob(email) {
   h.lastCheck = now;
 
   // 1. Checa PDF/CV
-  const hasPdf = (user?.cvs||[]).some(c => loadCv(email, c.idx));
+  const hasPdf = (user?.cvs||[]).some(c => cvExists(email, c.idx) || !!c.b64);
   if (!hasPdf && h.hasPdf !== false) {
     h.hasPdf = false;
     addLog(email, { status:"sistema", jobTitle:"⚠️ PDF do currículo não encontrado", company:"Watchdog detectou: faça upload do currículo novamente", error:"PDF ausente" });
@@ -16892,5 +16912,10 @@ const handleAdminV2Routes = createAdminV2Router({
 });
 console.log("[admin-v2] ⛃ Módulo de backup carregado (rotas /api/admin/v2/backup/*).");
 
-const _memPulse=()=>{try{const m=process.memoryUsage();console.log(`[mem] rss=${Math.round(m.rss/1048576)}MB heap=${Math.round(m.heapUsed/1048576)}/${Math.round(m.heapTotal/1048576)}MB ext=${Math.round((m.external||0)/1048576)}MB up=${Math.round(process.uptime()/60)}min`);}catch(e){}};
-setTimeout(_memPulse,30_000);setInterval(_memPulse,6*3600_000);
+const _memPulse=()=>{try{
+  const m=process.memoryUsage();
+  let ativos=0,fila=0;for(const j of Object.values(DB_AUTO||{})){if(j&&j.active){ativos++;fila+=(j.queue?.length||0);}}
+  const rob=[_enrichBot.running?"enrich":"",(PLANILHAS&&PLANILHAS.dolColeta&&PLANILHAS.dolColeta.running)?"coleta":""].filter(Boolean).join("+")||"-";
+  console.log(`[mem] rss=${Math.round(m.rss/1048576)}MB heap=${Math.round(m.heapUsed/1048576)}/${Math.round(m.heapTotal/1048576)}MB ext=${Math.round((m.external||0)/1048576)}MB ab=${Math.round((m.arrayBuffers||0)/1048576)}MB | jobs=${ativos} timers=${autoTimers.size} fila=${fila} envios=${_sendAtivos}+${_sendFila.length}esp sess=${Object.keys(sessions).length} apertado=${_memAperto?"sim":"nao"} robos=${rob} up=${Math.round(process.uptime()/60)}min`);
+}catch(e){}};
+setTimeout(_memPulse,30_000);setInterval(_memPulse,60_000).unref();
