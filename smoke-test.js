@@ -10,6 +10,7 @@
    Roda em ~15s. Use antes de TODO deploy.
    ═══════════════════════════════════════════════════════════════════════ */
 "use strict";
+process.env.H2A_JANELA_MAX = process.env.H2A_JANELA_MAX || "10000"; // os testes antigos da janela H-2A assumem 10.000; o PADRÃO de produção (512MB) é 5.000 e é provado por check estrutural
 const { spawn } = require("child_process");
 const http = require("http");
 const fs = require("fs");
@@ -5185,7 +5186,7 @@ async function drillAdminSettingsLegado() {
         const rodou2 = await esperaRodada(inst, 2);
         Date.now = _dn;
         check("⏰ v968: agendador da H-2A liga 2 relógios (boot ~90s + conferência a cada 30min — v987, era 3h), roda SOZINHO na 1ª vez sem estado (enche a planilha), grava a próxima pra 14 dias e o relógio não bate no DOL antes de vencer",
-          liga === true && caps.some((c) => c.tipo === "t" && c.ms === 90_000) && caps.some((c) => c.tipo === "i" && c.ms === 30 * 60_000) && devidoAntes === true &&
+          liga === true && caps.some((c) => c.tipo === "t" && c.ms === 600_000) && caps.some((c) => c.tipo === "i" && c.ms === 30 * 60_000) && devidoAntes === true &&
           rodou1 && Math.abs(estado1.nextRunAt - estado1.lastOkAt - 14 * 86400_000) < 5000 && estado1.lastTrigger === "primeira-vez" && runsDepoisTick === 1,
           JSON.stringify({ liga, devidoAntes, rodou1, n1, estado1, runsDepoisTick, logs: ref.logs.slice(0, 3) }));
         check("🌾 v968: vaga cuja temporada JÁ ACABOU no feed não entra na planilha (13 de 14 entram)",
@@ -5263,8 +5264,8 @@ async function drillAdminSettingsLegado() {
         fs.writeFileSync(path.join(tmpR, "h2a_rolling.json"), JSON.stringify({ lastOkAt: Date.now() - 86400_000, nextRunAt: Date.now() + 13 * 86400_000, rodando: { startedAt: Date.now() - 60_000, trigger: "manual:x@y.com" } }));
         const instR = mkInst(tmpR, { rows: [], logs: [] }); const recuperou = instR.h2aRecuperarInterrompida(); const eR = lerEstadoR(tmpR);
         const _dR = Date.now; Date.now = () => _dR() + 90_000; const devidoR = instR.h2aDevido(); Date.now = _dR;
-        check("🌾 v987: rodada interrompida por deploy deixa rastro (log + histórico 'interrompida por reinício'), limpa o marcador e é refeita em ~1 min — nunca some em silêncio",
-          recuperou === true && eR.rodando === null && /interrompida/.test(eR.historico?.[0]?.erro || "") && (eR.log || []).some((l) => /interrompida/.test(l.msg)) && eR.retryAt - Date.now() < 61_000 && devidoR === true && instR.h2aRecuperarInterrompida() === false,
+        check("🌾 v987: rodada interrompida por deploy deixa rastro (log + histórico 'interrompida por reinício'), limpa o marcador e é refeita em ~15 min (RAM: não vira loop de crash; 6h se repetir) — nunca some em silêncio",
+          recuperou === true && eR.rodando === null && /interrompida/.test(eR.historico?.[0]?.erro || "") && (eR.log || []).some((l) => /interrompida/.test(l.msg)) && eR.retryAt - Date.now() > 14 * 60_000 && eR.retryAt - Date.now() < 16 * 60_000 && eR.interrompidasSeguidas === 1 && devidoR === false && instR.h2aRecuperarInterrompida() === false,
           JSON.stringify(eR).slice(0, 300));
         // (5) o arquivo de estado é gravado de forma atômica (sem .tmp sobrando) e sem marcador de rodada pendurado depois de uma rodada normal
         check("🌾 v987: estado gravado de forma atômica (tmp+rename: nenhum .tmp sobra) e sem marcador 'rodando' pendurado depois da rodada",
@@ -5351,8 +5352,8 @@ async function drillAdminSettingsLegado() {
         // v-H2A10k: teto 5.000→10.000 — quem rodou com teto menor confere o DOL de novo já no boot (1 vez só); quem já está no teto novo, sem rodada ou com retry pendente não é tocado
         const mkK = (extra) => { const d = fs.mkdtempSync(path.join(DATA, "h2a-roll-")); fs.writeFileSync(path.join(d, "h2a_rolling.json"), JSON.stringify({ lastOkAt: Date.now() - 86400_000, nextRunAt: Date.now() + 13 * 86400_000, total: 4900, cap: 5000, lastAdded: 12, v987Curado: true, ...extra })); const i = mkInst(d, { rows: [], logs: [] }); const dev0 = i.h2aDevido(); _stubTimers(() => i.iniciarAgendadorH2a()); return { e: lerEstadoR(d), dev0, dev1: i.h2aDevido() }; };
         const kSubiu = mkK({}), kNovo = mkK({ cap: 10000 }), kRetry = mkK({ retryAt: Date.now() + 3600_000 }), kJa = mkK({ capV10k: true });
-        check("📈 v-H2A10k: teto da H-2A subiu pra 10.000 — rodada antiga com teto 5.000 volta a ser 'devida' no boot e avisa no log (1 vez, carimbo capV10k); teto já novo, retry pendente ou carimbo existente não são tocados",
-          kSubiu.dev0 === false && kSubiu.dev1 === true && kSubiu.e.capV10k === true && (kSubiu.e.log || []).some((l) => /teto da planilha H-2A subiu/.test(l.msg)) && kNovo.dev1 === false && kRetry.e.retryAt > Date.now() + 3000_000 && kJa.dev1 === false,
+        check("📈 v-H2A10k: teto da H-2A: a cura que forçava rodada no boot foi NEUTRALIZADA (RAM, plano 512MB) — só carimba capV10k, nunca dispara coleta; teto já novo, retry pendente ou carimbo existente não são tocados",
+          kSubiu.dev0 === false && kSubiu.dev1 === false && kSubiu.e.capV10k === true && !(kSubiu.e.log || []).some((l) => /teto da planilha H-2A subiu/.test(l.msg)) && kNovo.dev1 === false && kRetry.e.retryAt > Date.now() + 3000_000 && kJa.dev1 === false,
           JSON.stringify({ s: [kSubiu.dev0, kSubiu.dev1], n: kNovo.dev1, j: kJa.dev1 }));
         {
           const _ix = fs.readFileSync(path.join(__dirname, "index.html"), "utf8"), _ap = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
@@ -5482,7 +5483,7 @@ async function drillAdminSettingsLegado() {
       // acima continuar provando algo de verdade (nunca um setInterval).
       const _bootHookBlock = _srvPl.slice(_srvPl.indexOf("PLANILHAS.iniciarAgendadores();"), _srvPl.indexOf("PLANILHAS.iniciarAgendadores();") + 2500);
       check("📧 v282 (estrutural, guarda permanente): existe 1 hook de BOOT (setTimeout, nunca setInterval) logo depois de PLANILHAS.iniciarAgendadores() chamando autoEnrichCycle() — garante e-mail das vagas sem precisar de clique do admin, mas sem virar vigia recorrente",
-        /setTimeout\(/.test(_bootHookBlock) && !/setInterval\(/.test(_bootHookBlock) && /PLANILHAS\.autoEnrichCycle\(\)/.test(_bootHookBlock),
+        /(setTimeout|_quandoRamLivre)\(/.test(_bootHookBlock) && !/setInterval\(/.test(_bootHookBlock) && /PLANILHAS\.autoEnrichCycle\(\)/.test(_bootHookBlock),
         _bootHookBlock.slice(0, 200));
       check("📧 v282 (estrutural): autoEnrichCycle() continua com o guard isTest — o hook de boot nunca bate rede real no npm test (mesma proteção que já existia pro clique manual)",
         /async function autoEnrichCycle\(\)\s*\{[\s\S]{0,200}if\s*\(isTest\)/.test(_modPl));
@@ -6004,11 +6005,17 @@ async function drillAdminSettingsLegado() {
       const _ramSrv = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
       const _ramPl = fs.readFileSync(path.join(__dirname, "mod-planilhas.js"), "utf8");
       const _ramBs = fs.readFileSync(path.join(__dirname, "build-sheets.js"), "utf8");
-      check("RAM: o robô de enriquecimento grava em LOTES (25 linhas alteradas ou 60s) em vez de regravar a planilha inteira a cada vaga, carimba o HTTP 400 no mesmo row.eq do 'DOL já respondeu' (não repergunta por 60h), tem disjuntor de 25 rejeições seguidas (desfaz o carimbo) e espera a RAM normalizar — ritmo 1200ms",
+      check("RAM: o robô de enriquecimento grava em LOTES (25 linhas alteradas ou 60s) em vez de regravar a planilha inteira a cada vaga, lembra o HTTP 400 por 7 dias EM DISCO (enrich_400.json, sobrevive a deploy/crash), tem disjuntor de 25 rejeições seguidas (desfaz a lembrança) e espera a RAM normalizar — ritmo 1200ms",
         _ramPl.includes("dirty >= 25 || Date.now() - lastSave >= 60000") && _ramPl.includes("saveSheet(sheetKey, sheet, true)") &&
-        _ramPl.includes("if (status === 400) {") && _ramPl.includes("consec400 >= 25") && _ramPl.includes("for (const r of recentes400) delete r.eq;") &&
+        _ramPl.includes("if (status === 400) {") && _ramPl.includes("consec400 >= 25") && _ramPl.includes("for (const c of recentes400) delete neg400[c];") && _ramPl.includes("enrich_400.json") && _ramPl.includes("7 * 86400_000") &&
         _ramPl.includes("await aguardaRam(enrichLog)") && !/saveSheet\(sheetKey, sheet\); enrichBot\.savedAt = Date\.now\(\);\n      if \(enrichBot\.done % 10/.test(_ramPl),
         "robô de enriquecimento ainda regrava a planilha inteira a cada vaga");
+      check("RAM (crash loop 07/11): plano real 512MB (padrão), teto H-2A padrão 5.000, boot só libera robô com RAM < 50% e depois de 5-10 min (enriquecimento 5min, agendador H-2A 10min com unref, backup 10min), próxima data gravada ANTES de baixar, recuperação de rodada interrompida espera 15min/6h e a rodada seguinte não faz busca funda, 400 lembrado em disco",
+        /return 512;/.test(_ramSrv) && _ramPl.includes('H2A_JANELA_MAX || "5000"') && _ramSrv.includes("function _quandoRamLivre(") && _ramSrv.includes("pct<50") &&
+        _ramSrv.includes("300000") && _ramPl.includes('tick("boot"), 600_000); if (t1.unref) t1.unref();') && _ramPl.includes("ramPct() >= 50") &&
+        _ramPl.includes("gravarRoll({ nextRunAt: Date.now() + 6 * 3600_000 });") && _ramSrv.includes("10*60_000; // RAM") &&
+        _ramPl.includes("interrompidasSeguidas: seg") && _ramPl.includes("modoRaso") && _ramPl.includes("have.has(cn) && !statusDoFeed.has(cn)"),
+        "guardas do crash loop ausentes");
       check("RAM: a coleta do DOL guarda só os campos que o filtro/compactador leem (registro bruto enxuto, sem push(...spread)) e espera a RAM nos 2 robôs de feed; o download do ZIP não passa mais por 3 cópias (unzip escreve direto em arquivo, ZIP solto antes do parse)",
         _ramPl.includes("function _rawEnxuto(rec)") && _ramPl.includes("records.push(_rawEnxuto(recs[q]))") && !_ramPl.includes("records.push(...recs)") &&
         _ramPl.includes("await aguardaRam(dcLog)") && _ramPl.includes("await aguardaRam(LOG)") &&

@@ -464,15 +464,14 @@ planilha inteira a cada item: grava em LOTE e só se mudou (`dirty`, 25 linhas
 ou 60s no enriquecimento); (3) todo banco grande usa `persistThrottled` com
 TETO, nunca `persistDebounced` puro em via contínua; (4) todo cache/Map novo
 precisa de teto de tamanho; (5) a GUARDA (`_memGuardTick`, 30s) mede o RSS
-contra o limite (`RAM_LIMIT_MB`, senão cgroup, senão 2048): acima de 70% solta
+contra o limite (`RAM_LIMIT_MB`, senão cgroup, senão 512 — plano real do Render, 0,5 CPU/512 MB): acima de 70% solta
 caches e PAUSA só os robôs de planilha (`aguardaRam`), abaixo de 55% libera;
 site e envio nunca pausam; (6) registro bruto do DOL é reduzido aos campos
 usados (`_rawEnxuto`) assim que chega, nunca acumulado inteiro; o download de
 ZIP não passa por 3 cópias; (7) HTTP 400 do DOL entra no carimbo `row.eq` e 25
 seguidos disparam o disjuntor; (8) snapshot de envio guarda no máx. 400 chars
 de descrição. Antes de qualquer feature: "quanto isso segura na RAM e quanto
-aloca por gravação?". O teto de 10.000 vagas H-2A (v-H2A10k) foi mantido:
-~+15MB residentes, aceitável com a guarda ligada.
+aloca por gravação?". O teto H-2A voltou a 5.000 por padrão (H2A_JANELA_MAX sobe quando o plano permitir) e a cura v-H2A10k não força mais rodada no boot. CRASH LOOP 07/11: no boot NADA de feed/robô antes de 5-10 min e só com RAM < 50% (`_quandoRamLivre`, `ramPct`); o agendador H-2A grava a próxima data ANTES de baixar; rodada interrompida só é refeita em 15 min (6 h se repetir) e sem busca funda; HTTP 400 do DOL fica 7 dias em DATA/enrich_400.json.
 
 ## Repositório (ordem do dono, 07/11/2026)
 

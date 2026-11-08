@@ -156,7 +156,7 @@ function mesesExperiencia(dol) {
 // O ETA case number H-300-YYDDD-NNNNNN carrega a DATA DE PROTOCOLO (ano + dia
 // do ano): é a régua oficial e sempre presente de "quão recente é a vaga" —
 // vale também pras linhas antigas da planilha, que nunca tiveram campo de data.
-const H2A_JANELA_PADRAO = Math.max(100, Math.min(20000, parseInt(process.env.H2A_JANELA_MAX || "10000", 10) || 10000));
+const H2A_JANELA_PADRAO = Math.max(100, Math.min(20000, parseInt(process.env.H2A_JANELA_MAX || "5000", 10) || 5000)); // RAM (07/11/2026, plano 512MB): 10.000 mantinha a planilha SEMPRE abaixo do teto e a rodada baixava até 26 feeds a cada boot; padrão volta a 5.000 (H2A_JANELA_MAX sobe quando o plano permitir)
 const ISO_DIA = /^\d{4}-\d{2}-\d{2}$/;
 const DEAD_ST_H2A = /denied|withdrawn|invalidat|expired|cancel/i;
 function dataDoCaso(caseNumber) {
@@ -202,9 +202,18 @@ function createPlanilhas(deps) {
     limparCidade,        // v182: régua ÚNICA de limpeza de cidade (server.js, ao lado do mapa de estados)
     isTest,              // true no npm test (TEST_LOGIN_TOKEN) — agendadores desligados
     memAperto = () => false, // guarda de RAM (server.js): true = memória apertada, robôs esperam
+    ramPct = () => 0,        // % do limite de RAM em uso agora (boot só libera robô abaixo de 50%)
   } = deps;
   // RAM (ordem do dono, 07/11/2026): tarefa de fundo é LENTA e leve. Espera
   // (em passos de 30s) enquanto a memória do serviço estiver apertada.
+  const NEG400_FILE = path.join(DATA_DIR, "enrich_400.json");
+  function _neg400Load() {
+    try { const o = JSON.parse(fs.readFileSync(NEG400_FILE, "utf8")) || {}; const lim = Date.now() - 7 * 86400_000; for (const k of Object.keys(o)) if (!(o[k] > lim)) delete o[k]; return o; }
+    catch (e) { return {}; }
+  }
+  function _neg400Save(o) {
+    try { const ks = Object.keys(o); if (ks.length > 20000) for (const k of ks.sort((a, b) => o[a] - o[b]).slice(0, ks.length - 20000)) delete o[k]; const t = NEG400_FILE + ".tmp"; fs.writeFileSync(t, JSON.stringify(o)); fs.renameSync(t, NEG400_FILE); } catch (e) { }
+  }
   async function aguardaRam(log) {
     let avisou = false;
     while (memAperto()) {
@@ -378,6 +387,9 @@ function createPlanilhas(deps) {
     // (até nas de HTTP 400, onde nada mudava). Agora só grava em lote (25 linhas
     // alteradas ou 60s) e para o ciclo se o DOL rejeitar 25 consultas seguidas.
     let dirty = 0, lastSave = Date.now(), consec400 = 0, abortado = false; const recentes400 = [];
+    // HTTP 400 lembrado EM DISCO por 7 dias (DATA/enrich_400.json) — sobrevive a deploy/crash; era
+    // reperguntado a cada boot. Disjuntor (25 seguidas) NÃO grava, pra não esconder vaga com a API consertada.
+    const neg400 = _neg400Load(); let neg400Sujo = false;
     for (let i = startIdx; i < sheet.length; i++) {
       if (!enrichBot.running) break;
       const row = sheet[i]; const cn = String(row.c || "").toUpperCase(); enrichBot.done = i + 1;
@@ -387,6 +399,7 @@ function createPlanilhas(deps) {
       // janela de 60h passar — era isto que fazia o vigia de 30min reperguntar
       // a planilha inteira pro governo, pra sempre, sem NENHUMA linha mudar.
       if (consultadaRecente(row)) { enrichBot.aguardando++; continue; }
+      if (neg400[cn] && Date.now() - neg400[cn] < 7 * 86400_000) { enrichBot.aguardando++; continue; }
       await aguardaRam(enrichLog); if (!enrichBot.running) break;
       let attempt = 0, processed = false;
       while (attempt < 6 && !processed && enrichBot.running) {
@@ -423,15 +436,14 @@ function createPlanilhas(deps) {
             enrichLog(`🚫 [${i + 1}/${sheet.length}] ${cn} — HTTP ${status} (bloqueio DOL, tentativa ${attempt}/5, delay→${interDelay}ms)`, "warn");
           } else {
             processed = true; enrichBot.errors++; enrichLog(`⚠️ [${i + 1}/${sheet.length}] ${cn} — DOL retornou HTTP ${status}`, "warn");
-            // RAM: HTTP 400 passa pelo MESMO carimbo "o DOL já respondeu" (row.eq, janela de reconsulta)
-            // — antes o 400 não era carimbado e a mesma vaga era perguntada de novo a cada ciclo.
+            // RAM: HTTP 400 vai pra lista de 7 dias em disco — antes não era lembrado e a mesma vaga era perguntada a cada boot.
             if (status === 400) {
-              consec400++; row.eq = Date.now(); dirty++; recentes400.push(row); if (recentes400.length > 40) recentes400.shift();
+              consec400++; neg400[cn] = Date.now(); neg400Sujo = true; recentes400.push(cn); if (recentes400.length > 40) recentes400.shift();
               if (consec400 <= 2) { try { enrichLog(`corpo do 400 (diagnóstico): ${JSON.stringify(body).slice(0, 300)}`, "warn"); } catch (e) { } }
               // Disjuntor: 25 rejeições SEGUIDAS = o problema é a consulta/API, não as vagas. Pausa o ciclo
               // e DESFAZ o carimbo dessas linhas (senão ficariam dias sem nova tentativa com a API já consertada).
               if (consec400 >= 25) {
-                for (const r of recentes400) delete r.eq;
+                for (const c of recentes400) delete neg400[c];
                 abortado = true; enrichBot.running = false;
                 enrichLog("DOL rejeitou 25 consultas seguidas (HTTP 400) — ciclo PAUSADO (provável mudança na API). O próximo ciclo tenta de novo.", "error");
               }
@@ -443,13 +455,13 @@ function createPlanilhas(deps) {
         }
       }
       if (!processed && enrichBot.running) { enrichBot.errors++; enrichLog(`❌ [${i + 1}/${sheet.length}] ${cn} — desistindo após 5 tentativas (DOL bloqueando)`, "error"); }
-      if (dirty > 0 && (dirty >= 25 || Date.now() - lastSave >= 60000)) { saveSheet(sheetKey, sheet, true); dirty = 0; lastSave = Date.now(); enrichBot.savedAt = Date.now(); }
+      if ((dirty > 0 || neg400Sujo) && (dirty >= 25 || Date.now() - lastSave >= 60000)) { if (dirty > 0) saveSheet(sheetKey, sheet, true); if (neg400Sujo) { _neg400Save(neg400); neg400Sujo = false; } dirty = 0; lastSave = Date.now(); enrichBot.savedAt = Date.now(); }
       if (enrichBot.done % 10 === 0) enrichLog(`💾 [${enrichBot.done}/${sheet.length}] ${Math.round((enrichBot.done / sheet.length) * 100)}% — ok:${enrichBot.ok} semEmail:${enrichBot.noEmail} delay:${interDelay}ms`, "ok");
       await new Promise(r => setTimeout(r, interDelay));
     }
     if (!abortado) enrichBot.done = sheet.length;
     enrichBot.running = false;
-    saveSheet(sheetKey, sheet); enrichBot.savedAt = Date.now();
+    saveSheet(sheetKey, sheet); enrichBot.savedAt = Date.now(); if (neg400Sujo) _neg400Save(neg400);
     const meta = getMeta();
     if (!meta[sheetKey]) meta[sheetKey] = { name: sheetKey };
     const prog = progressoPlanilha(sheet);
@@ -553,7 +565,7 @@ function createPlanilhas(deps) {
           // RAM: o registro bruto do DOL tem dezenas de campos e a coleta acumulava TODOS de TODOS os
           // feeds até o fim (e `push(...recs)` ainda copiava via argumentos). Guarda só os campos que
           // shouldDiscard/toCompact/dedupe leem — o resto do feed é solto a cada arquivo.
-          for (let q = 0; q < recs.length; q++) records.push(_rawEnxuto(recs[q]));
+          for (let q = 0; q < recs.length; q++) { if (bs.shouldDiscard(recs[q])) continue; records.push(_rawEnxuto(recs[q])); } // descarta no chegar o que o filtro jogaria fora
           feedsOk++;
           dcLog(`📥 feed ${feedDate}${usada !== feedDate ? ` (usado o arquivo de ${usada})` : ""}: ${recs.length} registros brutos`);
         } catch (e) { dcLog(`⚠️ feed ${feedDate} falhou (${e.message}) — seguindo com os demais`, "warn"); }
@@ -742,7 +754,8 @@ function createPlanilhas(deps) {
       // v987: "olhar mais fundo" — as vagas VIVAS não são só as dos últimos 126 dias (temporada H-2A dura meses: um protocolo de 7 meses atrás ainda pode
       // estar valendo). Planilha ainda abaixo do teto depois dos arquivos normais → o robô continua pra trás, 1 arquivo (18 dias) por vez, até o teto
       // projetado fechar ou o DOL não ter mais arquivo (no máx. 26 arquivos ≈ 470 dias). Arquivo EXTRA que falha não conta como falha da rodada.
-      const maxFeeds = encher ? Math.max(nFeeds, 26) : nFeeds;   // v-H2A10k: teto de 10.000 → olha até 26 arquivos (~470 dias)
+      const modoRaso = (DB_H2A_ROLL.interrompidasSeguidas || 0) > 0;   // RAM: depois de uma rodada interrompida, só os arquivos normais (sem a busca funda de até 26)
+      const maxFeeds = (encher && !modoRaso) ? Math.max(nFeeds, 26) : nFeeds; // teto de 5.000 (plano 512MB)
       for (let i = 0; i < maxFeeds; i++) {
         const extra = i >= nFeeds;
         await aguardaRam(LOG);
@@ -767,7 +780,7 @@ function createPlanilhas(deps) {
           const f = { tot: recs.length, ja: 0, sem: 0, outro: 0, morta: 0, nova: 0 };
           for (const rec of recs) {
             const cn = String(rec.case_number || rec.case_id || "").trim().toUpperCase(); if (!cn) continue;
-            if (!statusDoFeed.has(cn)) statusDoFeed.set(cn, { st: (rec.case_status || "").trim(), d: (rec.begin_date || rec.start_date || "").slice(0, 10), de: (rec.end_date || rec.expiration_date || "").slice(0, 10) });
+            if (have.has(cn) && !statusDoFeed.has(cn)) statusDoFeed.set(cn, { st: (rec.case_status || "").trim(), d: (rec.begin_date || rec.start_date || "").slice(0, 10), de: (rec.end_date || rec.expiration_date || "").slice(0, 10) });
             if (have.has(cn)) { f.ja++; continue; } if (candidatas.has(cn)) continue;
             if (bs.shouldDiscard(rec)) { f.sem++; continue; }
             const c = bs.toCompact(rec);
@@ -850,7 +863,7 @@ function createPlanilhas(deps) {
         else if (abaixo && novasQueFicaram.length === 0) { parcial = true; parcialMs = 24 * 3600_000; LOG(`⏳ Nenhuma vaga nova entrou e a planilha segue abaixo do teto — o robô confere o DOL de novo em ~24 horas (até 3 vezes), caso ele publique mais.`, "warn"); }
       }
       const ultima = { cobrir, nFeeds: feedsTentados, feedsOk, brutos, jaNaPlanilha, semQualidade, mortas, outroVisto, novas: novasQueFicaram.length, ms };
-      gravarRoll({ lastOkAt: agora, lastRunAt: agora, nextRunAt: agora + (parcial ? parcialMs : h2aIntervaloMs()), retryAt: null, parciaisSeguidas: manual ? parciais : (parcial ? parciais + 1 : 0), lastAdded: novasQueFicaram.length, lastRemoved: removidas, lastEvicted: despejadas.length,
+      gravarRoll({ interrompidasSeguidas: 0, lastOkAt: agora, lastRunAt: agora, nextRunAt: agora + (parcial ? parcialMs : h2aIntervaloMs()), retryAt: null, parciaisSeguidas: manual ? parciais : (parcial ? parciais + 1 : 0), lastAdded: novasQueFicaram.length, lastRemoved: removidas, lastEvicted: despejadas.length,
         totalAdded: h2aNovasBot.totalAdded, totalRemoved: h2aNovasBot.totalRemoved, totalEvicted: h2aNovasBot.totalEvicted,
         total, cap, maisRecente, feeds: feedsOk, brutos, runs: (DB_H2A_ROLL.runs || 0) + 1, lastTrigger: String(trigger || ""), lastError: null, falhasSeguidas: 0, motivo, ultima, rodando: null });
       h2aHistPush({ ok: true, trigger: String(trigger || ""), added: novasQueFicaram.length, removidas, evicted: despejadas.length, atualizadas, total, feeds: feedsOk, nFeeds: feedsTentados, brutos, ms });
@@ -880,7 +893,8 @@ function createPlanilhas(deps) {
     const r = DB_H2A_ROLL.rodando; if (!r) return false;
     const hist = [{ ok: false, trigger: String(r.trigger || ""), erro: "interrompida por reinício do servidor (deploy) — a planilha não foi mexida; o robô refaz sozinha", em: Date.now() }, ...(DB_H2A_ROLL.historico || [])].slice(0, H2A_HIST_CAP);
     const l = (DB_H2A_ROLL.log || []).slice(-(H2A_LOG_CAP - 1)); l.push({ ts: Date.now(), msg: "⚠️ A rodada anterior foi interrompida por um reinício do servidor (deploy). A planilha não foi mexida; o robô refaz a rodada em ~1 minuto.", type: "warn" });
-    gravarRoll({ rodando: null, retryAt: Date.now() + 60_000, historico: hist, log: l });
+    const seg = (DB_H2A_ROLL.interrompidasSeguidas || 0) + 1;   // RAM: crash no meio da rodada NÃO pode virar loop (reinício -> recupera em 1 min -> baixa feeds -> cai de novo)
+    gravarRoll({ rodando: null, retryAt: Date.now() + (seg <= 1 ? 15 * 60_000 : 6 * 3600_000), interrompidasSeguidas: seg, historico: hist, log: l });
     return true;
   }
   // v987 — CURA ÚNICA do estado de produção: antes deste fix, uma rodada que não trouxe NENHUMA vaga nova com a planilha abaixo do teto (ex.: 4.549 de 5.000)
@@ -897,7 +911,7 @@ function createPlanilhas(deps) {
   // já neste boot (1 vez só, carimbo capV10k) em vez de esperar os 14 dias; o resto do ciclo (14 dias, tira as mais antigas) não muda.
   function h2aCurarCapV10k() {
     if (DB_H2A_ROLL.capV10k) return false;
-    const subiu = !!DB_H2A_ROLL.lastOkAt && Number(DB_H2A_ROLL.cap) > 0 && Number(DB_H2A_ROLL.cap) < H2A_JANELA_PADRAO && !DB_H2A_ROLL.retryAt;
+    const subiu = false; // RAM (07/11/2026, plano 512MB): a cura que forçava rodada extra no boot foi neutralizada — só carimba; mudança de teto não dispara coleta sozinha
     gravarRoll({ capV10k: true, ...(subiu ? { nextRunAt: Date.now(), parciaisSeguidas: 0 } : {}) });
     if (subiu) h2aLog(`📈 O teto da planilha H-2A subiu de ${DB_H2A_ROLL.cap} para ${H2A_JANELA_PADRAO} vagas — vou buscar mais vagas H-2A no DOL já neste deploy (só entra vaga real, com e-mail, de temporada valendo; as mais antigas saem só se passar do teto).`, "info");
     return subiu;
@@ -918,11 +932,13 @@ function createPlanilhas(deps) {
     h2aCurarCapV10k();
     const tick = (origem) => {
       if (!h2aDevido() || h2aNovasBot.running || dolColeta.running) return;
+      if (ramPct() >= 50) { console.log(`[h2a-roll] adiado: RAM em ${ramPct()}% (precisa < 50%) — o relógio de 30 min reavalia`); return; }
       if (h2aNovasBot.proximaTentativa && Date.now() < h2aNovasBot.proximaTentativa) return;   // a re-tentativa de 1h já está armada
       console.log(`[h2a-roll] ⏰ venceu (${origem}) — ${DB_H2A_ROLL.lastOkAt ? "ciclo de " + Math.round(h2aIntervaloMs() / 86400_000) + " dias" : "primeira busca desde o deploy"}`);
+      gravarRoll({ nextRunAt: Date.now() + 6 * 3600_000 });   // RAM: adia a próxima data ANTES de baixar — se o processo cair no meio, o boot seguinte não repete na hora
       runH2aNovasCycle(DB_H2A_ROLL.lastOkAt ? "agendado" : "primeira-vez").catch(e => console.warn("[h2a-roll]", e.message));
     };
-    const t1 = setTimeout(() => tick("boot"), 90_000); if (t1.unref) t1.unref();
+    const t1 = setTimeout(() => tick("boot"), 600_000); if (t1.unref) t1.unref();   // RAM: era 90s depois do boot; agora 10 min (e só com RAM < 50%)
     const t2 = setInterval(() => tick("relógio"), 30 * 60_000); if (t2.unref) t2.unref();   // v987: 30min (era 3h) — barato (só olha "venceu?") e a nova tentativa persistida não espera até 3h
     console.log(`[h2a-roll] ⏰ agendador ligado: ${DB_H2A_ROLL.lastOkAt ? "próxima busca em " + new Date(DB_H2A_ROLL.nextRunAt || 0).toISOString() : "nunca rodou — primeira busca ~90s após o boot"}`);
     return true;

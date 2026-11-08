@@ -2378,7 +2378,7 @@ function _horasDesdeUltimoBackup(){
 const BACKUP_BOOT_MIN_H = 12;
 // No npm test o atraso é configurável pra provar a decisão de verdade; em
 // produção continua sendo 2 minutos, como sempre foi.
-const _BACKUP_BOOT_DELAY = (process.env.TEST_LOGIN_TOKEN && process.env.BACKUP_BOOT_MS) ? Number(process.env.BACKUP_BOOT_MS) : 2*60_000;
+const _BACKUP_BOOT_DELAY = (process.env.TEST_LOGIN_TOKEN && process.env.BACKUP_BOOT_MS) ? Number(process.env.BACKUP_BOOT_MS) : 10*60_000; // RAM (07/11/2026): era 2 min — o backup não roda mais junto do boot e dos robôs de planilha
 const _rodarBackup = (motivo) => criarBackupCompleto().catch(e=>console.error(`[backup] falha inesperada (${motivo}):`,e?.message||e));
 (function agendarBackupDiario(){
   // 1x por dia, ~03:00 BRT (06:00 UTC) — horário de menor uso.
@@ -5763,10 +5763,23 @@ let _memAperto=false;
 function _ramLimitMB(){
   const env=parseInt(process.env.RAM_LIMIT_MB||"",10);
   if(env>0)return env;
+  if(process.env.TEST_LOGIN_TOKEN)return 4096; // npm test: o processo de teste usa ~350MB e não pode disparar o modo apertado
   for(const f of ["/sys/fs/cgroup/memory.max","/sys/fs/cgroup/memory/memory.limit_in_bytes"]){
     try{const n=Number(String(fs.readFileSync(f,"utf8")).trim());if(n>0&&n<64*1024**3)return Math.round(n/1048576);}catch(e){}
   }
-  return 2048;
+  return 512; // plano real do Render: 0,5 CPU e 512 MB (dono, 07/11/2026)
+}
+function _ramPctAgora(){ return Math.round(process.memoryUsage().rss/1048576/_ramLimitMB()*100); }
+// Boot em container pequeno: robôs de planilha só começam depois de uma folga E se a
+// memória estiver abaixo de 50% do limite; senão reavalia a cada 2 min (nunca ao mesmo
+// tempo que o boot, os feeds do DOL e o backup — foi isso que gerou o crash loop).
+function _quandoRamLivre(rotulo,delayMs,fn){
+  const tenta=()=>{
+    const pct=_ramPctAgora();
+    if(process.env.TEST_LOGIN_TOKEN||pct<50){try{fn();}catch(e){console.error(`[ram] ${rotulo}:`,e&&e.message||e);}}
+    else{console.log(`[ram] ${rotulo} ADIADO: RAM em ${pct}% (precisa estar abaixo de 50%) — reavalio em 2 min`);const t2=setTimeout(tenta,120000);if(t2.unref)t2.unref();}
+  };
+  const t=setTimeout(tenta,delayMs);if(t.unref)t.unref();
 }
 function _soltaCaches(){
   try{for(const k of Object.keys(_assetCache))delete _assetCache[k];}catch(e){}
@@ -7450,7 +7463,7 @@ function _saveEnrichedSheet(sheetKey, sheet, leve){
     // dual-write pra pasta do código é PULADO: o smoke roda o servidor dentro
     // do próprio repositório e o robô H-2A gravaria vagas FALSAS de teste por
     // cima do arquivo bundled versionado no git.
-    const _skipSrcWrite = !!process.env.TEST_LOGIN_TOKEN;
+    const _skipSrcWrite = !!process.env.TEST_LOGIN_TOKEN || !!leve; // RAM: lote grava só em /data; o final grava também na pasta do código
     let _gravou=false;
     if(sheetKey==="jan2026"||sheetKey==="jul2025"){
       // Salva no disco persistente (/data/) — não é sobrescrito no deploy
@@ -7500,6 +7513,7 @@ const PLANILHAS = _createPlanilhas({
   dedupe: _vagasDedupe, verify: _vagasVerify, manifest: _vagasManifest,
   isTest: !!process.env.TEST_LOGIN_TOKEN,
   memAperto: () => _memAperto, // guarda de RAM: robôs de planilha esperam quando a memória aperta
+  ramPct: _ramPctAgora,        // % do limite em uso agora (boot só libera robô abaixo de 50%)
 });
 
 // ═══ 📧 v175 — E-MAILS DO SISTEMA + CÓDIGOS (ordem do dono, 13/09/2026):
@@ -16797,10 +16811,12 @@ server.listen(PORT,"0.0.0.0",()=>{
   // NENHUM timer (guarda estrutural do v217 intacta); este é um hook de
   // BOOT separado, do mesmo padrão da Migração de Segurança e da
   // Regularização logo acima (setTimeout de boot, não "agendador").
-  setTimeout(() => {
-    console.log("[auto-enrich-boot] 🚀 varredura automática pós-deploy (v282, ordem do dono 24/09/2026) — só mexe no que estiver pendente");
+  // RAM (07/11/2026, crash loop em 512MB): era 15s após o boot, junto com os feeds do
+  // DOL, a rodada H-2A e o backup. Agora espera 5 min E só começa com RAM < 50% do limite.
+  _quandoRamLivre("enriquecimento pós-deploy", process.env.TEST_LOGIN_TOKEN ? 15000 : 300000, () => {
+    console.log("[auto-enrich-boot] varredura automática pós-deploy (v282) — só mexe no que estiver pendente");
     PLANILHAS.autoEnrichCycle().catch(e => console.error("[auto-enrich-boot] erro:", e.message));
-  }, 15000); // 15s após boot — mesma folga que o enriquecimento original (v174) já dava
+  });
 
   // 📊 Resumo Diário do Dono — push às 8h BRT com os números de ontem.
   scheduleResumoDono();
