@@ -9192,7 +9192,8 @@ ul li{margin-bottom:6px}
     const _avail = (rows) => {
       let withEmail=0, sent=0;
       for(const r of rows){ const e=_normEmail(r.e); if(!e||!e.includes("@"))continue; withEmail++; if(_sentSet.has(e))sent++; }
-      return {withEmail, sent, available: withEmail-sent};
+      // restantes = o MESMO número da lista (todas as vagas menos as de empregador já contatado; as sem e-mail ficam no fim da lista)
+      return {withEmail, sent, available: withEmail-sent, semEmail: rows.length-withEmail, restantes: rows.length-sent};
     };
     const _mk=(key,name,visa,emoji)=>{const rows=getSheet(key)||[];return {key,name,visa,count:rows.length,builtin:true,emoji,..._avail(rows)};};
     const out=[
