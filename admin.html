@@ -1633,7 +1633,8 @@ function renderRobosParados(rep){
     box.innerHTML='<div style="font-size:13.5px;color:var(--green)"><i class="ti ti-check"></i> Nenhum pagante com o robô parado agora.</div>'+rodape;
     return;
   }
-  var html='<div class="tbl-wrap"><table><thead><tr><th>Cliente</th><th>Plano</th><th>Dias restantes</th><th>Situação do robô</th><th>Sumido há</th></tr></thead><tbody>';
+  var html='<div class="tbl-wrap"><table><thead><tr><th>Cliente</th><th>Plano</th><th>Dias restantes</th><th>Situação do robô</th><th>Sumido há</th><th>Avisar</th></tr></thead><tbody>';
+  window._robosParadosLista=lista;
   for(var i=0;i<lista.length;i++){
     var x=lista[i];
     html+='<tr>'
@@ -1642,6 +1643,7 @@ function renderRobosParados(rep){
       +'<td>'+esc(x.diasRestantes!=null?x.diasRestantes:"—")+'</td>'
       +'<td><span class="badge red">'+esc(x.status||"sem_job")+'</span>'+(x.tokenOk?'':'<div class="cell-sub">sem token de envio válido</div>')+'</td>'
       +'<td>'+esc(x.diasInativo!=null?(x.diasInativo+" dia(s)"):"—")+'</td>'
+      +'<td><button class="btn btn-sm" onclick="copiarMsgReconectar('+i+')"><i class="ti ti-brand-whatsapp"></i> Copiar mensagem</button></td>'
       +'</tr>';
   }
   html+='</tbody></table></div>';
@@ -2519,6 +2521,16 @@ function _plLogHtml(lines){
   return lines.map(function(l){var t=new Date(l.ts||l.t).toLocaleTimeString("pt-BR");return'<div class="'+esc(l.type||"info")+'">'+esc(t)+" "+esc(l.msg)+"</div>";}).join("");
 }
 
+// Mensagem de WhatsApp pro cliente pagante com o robô parado — o dono avisa; o sistema NÃO pausa nem manda nada sozinho.
+function copiarMsgReconectar(i){
+  var x=(window._robosParadosLista||[])[i];if(!x)return;
+  var nome=String(x.nome||"").split(" ")[0]||"tudo bem";
+  var msg=x.tokenOk===false
+    ?"Oi, "+nome+"! Aqui é do H2BApply. Vi que o seu Gmail desconectou do site, por isso o seu envio parou. Para voltar a enviar: entre em h2bapply.com, clique em \"Reconectar Gmail\" (aparece no topo da tela) e escolha a mesma conta. Leva 1 minuto e os seus dias de plano continuam valendo. Qualquer dúvida é só responder aqui."
+    :"Oi, "+nome+"! Aqui é do H2BApply. Vi que o seu envio automático está parado. Entre em h2bapply.com, abra a aba Envio Automático e confira se está ligado. Se aparecer algum aviso, me manda um print que eu te ajudo. Os seus dias de plano continuam valendo.";
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(msg).then(function(){toast&&toast("Mensagem copiada — cole no WhatsApp do cliente");},function(){prompt("Copie a mensagem:",msg);});}
+  else prompt("Copie a mensagem:",msg);
+}
 async function h2aRollToggle(desligar){
   try{await api("/api/admin/sheet/h2a-roll-toggle",{method:"POST",body:{desligado:!!desligar}});}catch(e){alert("Não consegui mudar: "+(e&&e.message||e));}
   loadPlanilhas();
