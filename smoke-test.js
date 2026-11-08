@@ -6010,6 +6010,9 @@ async function drillAdminSettingsLegado() {
         _ramPl.includes("if (status === 400) {") && _ramPl.includes("consec400 >= 25") && _ramPl.includes("for (const c of recentes400) delete neg400[c];") && _ramPl.includes("enrich_400.json") && _ramPl.includes("7 * 86400_000") &&
         _ramPl.includes("await aguardaRam(enrichLog)") && !/saveSheet\(sheetKey, sheet\); enrichBot\.savedAt = Date\.now\(\);\n      if \(enrichBot\.done % 10/.test(_ramPl),
         "robô de enriquecimento ainda regrava a planilha inteira a cada vaga");
+      check("RAM (vazamento?): caches ganharam teto (seo 150, contagem ao vivo 40, stats 3000, lugares 20) e há GC diagnóstico de 5 em 5 min que loga heap antes→depois e o tamanho das listas ([mem-gc])",
+        _ramSrv.includes("_seoMemoMap.size>=150") && _ramSrv.includes("_VF_CACHE.size>=40") && _ramSrv.includes("_userStatsCache.size >= 3000") && _ramSrv.includes("[mem-gc]") && _ramSrv.includes("setInterval(()=>{try{\n    const a=process.memoryUsage()"),
+        "tetos / diagnóstico ausentes");
       check("RAM (envio automático NUNCA é tocado — ordem do dono 07/11): a guarda de RAM só solta caches e só informa memAperto aos robôs de planilha; envio automático não referencia _memAperto; fila global de chamadas ao Gmail só ENFILEIRA (SEND_CONCURRENCY), pré-aquecimento de tokens é sequencial, existência de PDF não lê o arquivo, haystack de busca é solto sob pressão",
         (_ramSrv.match(/_memAperto/g) || []).length === 8 && !/function scheduleAuto[\s\S]{0,6000}_memAperto/.test(_ramSrv) && !/function _memGuardTick[\s\S]{0,700}(autoTimers|DB_AUTO|scheduleAuto|setAutoJob)/.test(_ramSrv) &&
         _ramSrv.includes("function _gmailSlot(fn)") && !_ramSrv.includes('await httpsReq({hostname:"gmail.googleapis.com",path:"/gmail/v1/users/me/messages/send"') &&

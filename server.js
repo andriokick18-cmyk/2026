@@ -3965,7 +3965,8 @@ const _seoMemoMap=new Map();
 function _seoMemo(chave,fn){
   const sig=_seoSig(),c=_seoMemoMap.get(chave);
   if(c&&c.sig===sig&&Date.now()-c.t<600000)return c.v;
-  const v=fn();_seoMemoMap.set(chave,{sig,t:Date.now(),v});return v;
+  const v=fn();if(_seoMemoMap.size>=150){const k0=_seoMemoMap.keys().next().value;_seoMemoMap.delete(k0);} // RAM: teto 150 (FIFO)
+  _seoMemoMap.set(chave,{sig,t:Date.now(),v});return v;
 }
 function computeWageStats(){return _seoMemo("wageStats",_computeWageStatsRaw);}
 function _computeWageStatsRaw(){
@@ -5756,6 +5757,7 @@ function getUserStatsCached(email) {
   const todayManual = countManualToday(h);
   const todayAuto   = countAutoToday(h);
   const result = { todayManual, todayAuto, ts: Date.now() };
+  if (_userStatsCache.size >= 3000) _userStatsCache.clear(); // RAM: teto
   _userStatsCache.set(email, result);
   return result;
 }
@@ -9469,7 +9471,7 @@ filtrar();
       cidadeBusca:(u.searchParams.get("cidadeBusca")||"").slice(0,60),
     });
     const _body={ok:true,sheet,totalPlanilha:arr.length,...r,filtros:f,ignorados:f._ignorados||[]};
-    if(_VF_CACHE.size>200)_VF_CACHE.clear();
+    if(_VF_CACHE.size>=40){const _now=Date.now();for(const[k,v]of _VF_CACHE)if(_now-v.t>5000)_VF_CACHE.delete(k);if(_VF_CACHE.size>=40)_VF_CACHE.clear();} // RAM: teto 40 (cada corpo carrega facetas de milhares de vagas)
     _VF_CACHE.set(_cKey,{t:Date.now(),body:_body});
     return json(res,200,_body);
   }
@@ -13199,6 +13201,7 @@ filtrar();
         cargos:Object.entries(car).sort((a,b)=>b[1]-a[1]).slice(0,400).map(([n,q])=>({n,q})),
         regioes:["Martha's Vineyard","Cape Cod","Nantucket","Florida Keys","Outer Banks","Hamptons","Lake Tahoe","Jackson Hole","Mackinac","Smoky Mountains","Wisconsin Dells","Myrtle Beach","Hilton Head","Gulf Shores","Ocean City","Branson","Aspen","Vail","Yellowstone","Poconos","Adirondacks","Door County","Destin"],
       };
+      if(Object.keys(global._lugaresCache).length>=20)global._lugaresCache={}; // RAM: teto
       global._lugaresCache[shKey]={at:Date.now(),data};
       return json(res,200,data);
     }catch(e){return json(res,500,{ok:false,error:e.message});}
@@ -16919,3 +16922,15 @@ const _memPulse=()=>{try{
   console.log(`[mem] rss=${Math.round(m.rss/1048576)}MB heap=${Math.round(m.heapUsed/1048576)}/${Math.round(m.heapTotal/1048576)}MB ext=${Math.round((m.external||0)/1048576)}MB ab=${Math.round((m.arrayBuffers||0)/1048576)}MB | jobs=${ativos} timers=${autoTimers.size} fila=${fila} envios=${_sendAtivos}+${_sendFila.length}esp sess=${Object.keys(sessions).length} apertado=${_memAperto?"sim":"nao"} robos=${rob} up=${Math.round(process.uptime()/60)}min`);
 }catch(e){}};
 setTimeout(_memPulse,30_000);setInterval(_memPulse,60_000).unref();
+// RAM (dono, 07/11/2026 — memória subindo ~100MB/h): a cada 5 min faz GC COMPLETO e loga antes→depois + o tamanho
+// das listas em memória. Heap que volta a cair = coleta preguiçosa do V8 (normal); heap que NÃO cai = retenção real,
+// e a linha mostra qual lista cresceu. Só observa e libera — não toca em job nem envio de usuário.
+if(!process.env.TEST_LOGIN_TOKEN){
+  const _gcDiag=setInterval(()=>{try{
+    const a=process.memoryUsage();if(typeof global.gc==="function")global.gc();const b=process.memoryUsage();
+    const mb=x=>Math.round(x/1048576);
+    let logs=0,hist=0,sent=0;
+    for(const v of Object.values(DB_LOGS||{}))logs+=v.length;for(const v of Object.values(DB_HIST||{}))hist+=v.length;for(const v of Object.values(DB_SENT||{}))sent+=(v&&v.size!==undefined?v.size:(Array.isArray(v)?v.length:0));
+    console.log(`[mem-gc] heap ${mb(a.heapUsed)}→${mb(b.heapUsed)}MB rss ${mb(a.rss)}→${mb(b.rss)}MB ext=${mb(b.external)}MB ab=${mb(b.arrayBuffers)}MB | logs=${logs} hist=${hist} enviados=${sent} users=${Object.keys(DB_USERS).length} botlogs=${DB_BOT_LOGS.length} seo=${_seoMemoMap.size} vf=${_VF_CACHE.size} asset=${Object.keys(_assetCache).length} img=${Object.keys(_imgRawCache).length}`);
+  }catch(e){}},300_000);_gcDiag.unref();
+}
