@@ -7738,6 +7738,8 @@ const server=http.createServer(async(req,res)=>{
   // rotas /vaga/, /api/pedido/… e a conexão ficava pendurada pra sempre. Uma guarda só, antes de todas as rotas.
   try{decodeURIComponent(pathname);}catch{res.writeHead(400,{"Content-Type":"text/plain; charset=utf-8"});return res.end("URL inválida");}
   res.setHeader("X-Content-Type-Options","nosniff");res.setHeader("X-Frame-Options","SAMEORIGIN");
+  res.setHeader("Referrer-Policy","strict-origin-when-cross-origin");
+  if(/https/i.test(String(req.headers["x-forwarded-proto"]||"")))res.setHeader("Strict-Transport-Security","max-age=15552000"); // 180 dias, só quando a requisição chegou por HTTPS (Render termina o TLS)
   res.setHeader("Content-Security-Policy",[
     "default-src 'self'",
     // v34-GA: googletagmanager liberado — o funil inteiro tinha gaEvent()
@@ -8739,6 +8741,16 @@ ul li{margin-bottom:6px}
     try{
       const r=await (pathname.endsWith("h2a-bimestral-run")?PLANILHAS.runH2aMensal:PLANILHAS.runH2bMensal)("manual:"+s.user_email,d.force===true,true);
       return json(res,r.skipped?409:r.ok?200:500,r);
+    }catch(e){return json(res,500,{ok:false,error:e.message});}
+  }
+  if(pathname==="/api/admin/sheet/h2a-roll-toggle"&&req.method==="POST"){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
+    const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
+    try{
+      let _b={};try{_b=JSON.parse(await readBody(req)||"{}");}catch{}
+      const d=PLANILHAS.h2aRollDesligar(!!_b.desligado);
+      logAdminAction(s.user_email,"h2a_roll_toggle","h2a-roll",null,{desligado:d});
+      return json(res,200,{ok:true,desligado:d});
     }catch(e){return json(res,500,{ok:false,error:e.message});}
   }
   if(pathname==="/api/admin/sheet/h2a-novas-run"&&req.method==="POST"){

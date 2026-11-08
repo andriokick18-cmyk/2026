@@ -2519,6 +2519,10 @@ function _plLogHtml(lines){
   return lines.map(function(l){var t=new Date(l.ts||l.t).toLocaleTimeString("pt-BR");return'<div class="'+esc(l.type||"info")+'">'+esc(t)+" "+esc(l.msg)+"</div>";}).join("");
 }
 
+async function h2aRollToggle(desligar){
+  try{await api("/api/admin/sheet/h2a-roll-toggle",{method:"POST",body:{desligado:!!desligar}});}catch(e){alert("Não consegui mudar: "+(e&&e.message||e));}
+  loadPlanilhas();
+}
 async function loadPlanilhas(){
   var list=_plG("pl-list");
   try{
@@ -2719,6 +2723,7 @@ function _plRenderH2a(d){
     linha=(hn.lastError?"⚠️ A última tentativa ("+esc(fmtData(hn.lastRunAt))+") falhou: <b>"+esc(hn.lastError)+"</b>. A planilha não foi mexida"+(hn.retryAt?" — nova tentativa automática por volta de "+esc(fmtData(hn.retryAt)):"")+".":"✅ Última rodada em <b>"+esc(fmtData(hn.lastRunAt))+"</b>: +"+_plNum(hn.lastAdded)+" novas · −"+_plNum(hn.lastRemoved)+" encerradas · −"+_plNum(hn.lastEvicted)+" mais antigas.")
       +" A planilha tem <b>"+_plNum(hn.totalPlanilha)+"</b> vagas (teto "+_plNum(hn.janela||10000)+")."+(hn.proxima?" Próxima conferência automática: <b>"+esc(fmtData(hn.proxima))+"</b>.":"");
   }else linha="Nenhuma rodada registrada ainda. A planilha tem <b>"+_plNum(hn.totalPlanilha)+"</b> vagas."+(hn.proxima?" Próxima conferência automática: <b>"+esc(fmtData(hn.proxima))+"</b>.":"");
+  linha+='<br><button class="btn btn-sm" style="margin-top:6px" onclick="h2aRollToggle('+(hn.desligado?'false':'true')+')">'+(hn.desligado?'▶️ Religar a conferência automática':'⏸️ Desligar a conferência automática')+'</button>'+(hn.desligado?' <small>(desligada — só roda quando você clicar)</small>':'');
   _plG("h2a-line").innerHTML=linha;
   var mo=_plG("h2a-motivo");
   if(!rodou&&hn.motivo&&(hn.totalPlanilha||0)<(hn.janela||10000)*0.95){mo.style.display="";mo.innerHTML="ℹ️ <b>Por que não tem "+_plNum(hn.janela||10000)+"?</b> "+esc(hn.motivo);}

@@ -917,6 +917,7 @@ function createPlanilhas(deps) {
     return subiu;
   }
   // Card "Atualizada em" (usuário) e painel (admin): uma leitura só do estado persistido.
+  function h2aRollDesligar(flag) { gravarRoll({ desligado: !!flag }); return !!flag; }
   function h2aJanelaInfo() {
     const s = DB_H2A_ROLL;
     return { atualizadoEm: s.lastOkAt || null, novas: s.lastAdded || 0, despejadas: s.lastEvicted || 0, proxima: s.nextRunAt || null, maisRecente: s.maisRecente || null, janela: s.cap || H2A_JANELA_PADRAO };
@@ -931,6 +932,7 @@ function createPlanilhas(deps) {
     h2aCurarEstadoV987();
     h2aCurarCapV10k();
     const tick = (origem) => {
+      if (DB_H2A_ROLL.desligado) return;   // dono desligou o agendamento automático da H-2A (painel Planilhas & Robôs); o clique manual segue valendo
       if (!h2aDevido() || h2aNovasBot.running || dolColeta.running) return;
       if (ramPct() >= 50) { console.log(`[h2a-roll] adiado: RAM em ${ramPct()}% (precisa < 50%) — o relógio de 30 min reavalia`); return; }
       if (h2aNovasBot.proximaTentativa && Date.now() < h2aNovasBot.proximaTentativa) return;   // a re-tentativa de 1h já está armada
@@ -965,7 +967,7 @@ function createPlanilhas(deps) {
   function iniciarAgendadores() {
     console.log(isTest
       ? "[planilhas] 🧪 modo teste — robôs de planilha são manuais (disparo só por rota), como em produção desde o v217"
-      : "[planilhas] ⏰ robôs de planilha são 100% MANUAIS (v217, 19/09/2026) — sem timer automático; use a aba Planilhas & Robôs quando o DOL publicar temporada nova");
+      : "[planilhas] ⏰ robôs de planilha são MANUAIS (v217) — a única exceção é a conferência H-2A de 14 dias (tardia, feed por feed, só com RAM livre, desligável no painel Planilhas & Robôs)");
     return false;
   }
 
@@ -977,7 +979,7 @@ function createPlanilhas(deps) {
       // o robô vai atacá-las (e pela MESMA função que ele usa) — o painel
       // mostrava "100%" pra planilha que não tem cidade nem descrição nenhuma.
       enrichFila: filaEnriquecimento().slice(0, 8),
-      h2aNovas: { ...h2aNovasBot, log: (DB_H2A_ROLL.log || []).slice(-100), historico: DB_H2A_ROLL.historico || [], motivo: DB_H2A_ROLL.motivo || null, ultima: DB_H2A_ROLL.ultima || null, retryAt: DB_H2A_ROLL.retryAt || null, falhasSeguidas: DB_H2A_ROLL.falhasSeguidas || 0, parciaisSeguidas: DB_H2A_ROLL.parciaisSeguidas || 0, totalPlanilha: (getSheetH2A() || []).length, ...h2aJanelaInfo(), devido: h2aDevido(), agendadorLigado: !isTest },
+      h2aNovas: { desligado: !!DB_H2A_ROLL.desligado, ...h2aNovasBot, log: (DB_H2A_ROLL.log || []).slice(-100), historico: DB_H2A_ROLL.historico || [], motivo: DB_H2A_ROLL.motivo || null, ultima: DB_H2A_ROLL.ultima || null, retryAt: DB_H2A_ROLL.retryAt || null, falhasSeguidas: DB_H2A_ROLL.falhasSeguidas || 0, parciaisSeguidas: DB_H2A_ROLL.parciaisSeguidas || 0, totalPlanilha: (getSheetH2A() || []).length, ...h2aJanelaInfo(), devido: h2aDevido(), agendadorLigado: !isTest },
       // 🚨 v177-FIX2 (auditoria 14/09/2026): faltava `published` — o admin.html
       // sempre mostrava "em rascunho, publique abaixo" mesmo DEPOIS de clicar
       // "Publicar pros usuários" com sucesso, porque esse campo nunca existia
@@ -993,7 +995,7 @@ function createPlanilhas(deps) {
   }
 
   return { runEnrichBot, autoEnrichCycle, filaEnriquecimento, planilhasPublicadas, dolColeta, runDolColeta, runPlanilhaMensal, runH2aMensal, runH2bMensal,
-    getEstadoH2a: () => DB_H2A_BIM, getEstadoH2b: () => DB_H2B_MEN, runH2aNovasCycle, h2aNovasBot, h2aJanelaInfo, h2aDevido, h2aRecuperarInterrompida, iniciarAgendadorH2a, iniciarAgendadores, statusPainel, aplicarDolNaLinha };
+    getEstadoH2a: () => DB_H2A_BIM, getEstadoH2b: () => DB_H2B_MEN, runH2aNovasCycle, h2aNovasBot, h2aJanelaInfo, h2aDevido, h2aRecuperarInterrompida, iniciarAgendadorH2a, h2aRollDesligar, iniciarAgendadores, statusPainel, aplicarDolNaLinha };
 }
 
 module.exports = { createPlanilhas, dataDoCaso, mesclarJanelaH2a, CAMPOS_ESSENCIAIS, linhaCompleta, progressoPlanilha, unidadeSalario, mesesExperiencia };
