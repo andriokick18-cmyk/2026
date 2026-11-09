@@ -7,3 +7,6 @@ node_modules/
 /data/
 *.log
 .DS_Store
+
+# i18n: blocos de ENTRADA para tradutores (regenerados por tools/i18n-extract.js --chunks) — não vão pro repositório
+i18n/todo/

@@ -7971,12 +7971,12 @@ const LANG_DICT = {
 // Agora é uma constante: um valor só, atribuído uma vez. Os dicionários EN/ES
 // continuam vivos (e as guardas i18n do smoke junto) — o dia em que existir
 // seletor, ele muda esta linha e mais nada.
-const _curLang = 'pt';
+const _curLang = (typeof window!=="undefined"&&window.H2B_LANG)||'pt'; // idioma escolhido no botão 🌐 (i18n.js); padrão PT
 
 function t(key){ return (LANG_DICT[_curLang]||LANG_DICT.pt)[key] || (LANG_DICT.pt[key]) || key; }
 
 function applyLang(){
-  document.documentElement.lang = 'pt-BR'; // v199 LOTE 17: idioma fixo
+  document.documentElement.lang = _curLang==='pt'?'pt-BR':_curLang;
 
   // 🌐 Etapa 1 do i18n profissional (dono, 12/08): VARREDURA AUTOMÁTICA —
   // qualquer elemento com data-i18n / data-i18n-ph / data-i18n-title é

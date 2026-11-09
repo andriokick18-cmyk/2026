@@ -4738,3 +4738,18 @@ pré-aquecimento de tokens sequencial e espaçado, reativação de jobs no
 boot escalonada (3 s), sem acumular logs/histórico em memória. Pulso
 `[mem]` a cada 60 s (rss/heap/external/arrayBuffers/jobs/fila/envios).
 Guarda estrutural no smoke.
+
+
+## 🌐 SITE EM 3 IDIOMAS — PT · EN · ES (ordem do dono, 09/11/2026)
+
+O site inteiro (landing, app, tutoriais, guias, SEO, páginas legais) tem um botão 🌐 sempre visível que troca
+o idioma de TODO o site; a escolha fica salva no aparelho (`localStorage h2b_lang`) e vale em toda página.
+PT continua o padrão (regra 6f: o idioma só sai do PT por escolha deliberada).
+Como funciona: `i18n.js` (carregado no `<head>` de toda página HTML, injetado em `_injectGaId` — admin NÃO, é só PT)
+baixa `/i18n/<lang>.json` (texto em português → tradução) e traduz textos, placeholder/title/aria-label/alt, título,
+alert/confirm e TUDO que o JS inserir depois (MutationObserver). Números viram `{#}`; trechos variáveis viram `{*}`.
+Fonte dos catálogos: `i18n/<en|es>/chunk-NNN.json` + sementes do LANG_DICT → `node tools/i18n-build.js`.
+**Toda string visível NOVA** (HTML, app.js, mensagem de erro do servidor): rodar `node tools/i18n-extract.js --rendered
+http://127.0.0.1:PORT --chunks --from N`, traduzir os blocos de `i18n/todo/` (brief em `tools/i18n-brief.md`), validar com
+`node tools/i18n-validate.js all`, rodar `node tools/i18n-build.js` e COMITAR `i18n/en.json`/`es.json`. O smoke trava a
+cobertura em 100% (rotas renderizadas incluídas). Sem tradução o texto fica em português — nunca quebra.

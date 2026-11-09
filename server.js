@@ -42,7 +42,15 @@ const _assetCache = {}; // { file: { mtime, raw, gz, br, etag } }
 // (Render), o servidor troca na hora de servir — analytics liga em TODAS as
 // páginas de uma vez, sem tocar em arquivo. Sem a env, tudo fica como era.
 const GA_MEASUREMENT_ID = String(process.env.GA_MEASUREMENT_ID || "").trim();
+const _I18N_TAG = '<script src="/i18n.js"></script>';
+// 🌐 Tradutor do site (PT/EN/ES): entra no <head> de TODA página HTML servida, menos as marcadas com h2b-no-i18n (admin).
+function _injectI18n(raw){
+  const txt = raw.toString("utf8");
+  if (!/<\/head>/i.test(txt) || txt.includes("/i18n.js") || txt.includes("h2b-no-i18n")) return raw;
+  return Buffer.from(txt.replace(/<head([^>]*)>/i, (m) => m + _I18N_TAG), "utf8");
+}
 function _injectGaId(raw){
+  raw = _injectI18n(raw);
   if (!GA_MEASUREMENT_ID || !/^G-[A-Z0-9]{4,}$/i.test(GA_MEASUREMENT_ID)) return raw;
   const txt = raw.toString("utf8");
   if (!txt.includes("G-XXXXXXXXXX")) return raw;
@@ -5329,23 +5337,44 @@ const _UF_XY={AC:[-9.0,-70.5],AL:[-9.6,-36.8],AP:[1.4,-51.8],AM:[-3.4,-65.0],BA:
 const _UF_NOME={acre:"AC",alagoas:"AL",amapa:"AP",amazonas:"AM",bahia:"BA",ceara:"CE","distrito federal":"DF","espirito santo":"ES",goias:"GO",maranhao:"MA","mato grosso":"MT","mato grosso do sul":"MS","minas gerais":"MG",para:"PA",paraiba:"PB",parana:"PR",pernambuco:"PE",piaui:"PI","rio de janeiro":"RJ","rio grande do norte":"RN","rio grande do sul":"RS",rondonia:"RO",roraima:"RR","santa catarina":"SC","sao paulo":"SP",sergipe:"SE",tocantins:"TO"};
 const _CIDADE_XY={"sao paulo":[-23.55,-46.63],"rio de janeiro":[-22.91,-43.17],"belo horizonte":[-19.92,-43.94],salvador:[-12.97,-38.51],fortaleza:[-3.73,-38.53],brasilia:[-15.79,-47.88],curitiba:[-25.43,-49.27],recife:[-8.05,-34.88],"porto alegre":[-30.03,-51.23],manaus:[-3.12,-60.02],belem:[-1.46,-48.5],goiania:[-16.68,-49.25],guarulhos:[-23.46,-46.53],campinas:[-22.91,-47.06],"sao luis":[-2.53,-44.3],maceio:[-9.67,-35.74],natal:[-5.79,-35.21],teresina:[-5.09,-42.8],"campo grande":[-20.47,-54.62],"joao pessoa":[-7.12,-34.86],florianopolis:[-27.6,-48.55],vitoria:[-20.32,-40.34],cuiaba:[-15.6,-56.1],aracaju:[-10.91,-37.07],londrina:[-23.31,-51.16],joinville:[-26.3,-48.85],uberlandia:[-18.92,-48.28],"ribeirao preto":[-21.18,-47.81],santos:[-23.96,-46.33],sorocaba:[-23.5,-47.46],niteroi:[-22.88,-43.1],"juiz de fora":[-21.76,-43.35],"feira de santana":[-12.27,-38.97],"caxias do sul":[-29.17,-51.18],maringa:[-23.42,-51.94],cascavel:[-24.96,-53.46],blumenau:[-26.92,-49.07],"foz do iguacu":[-25.55,-54.59],"governador valadares":[-18.85,-41.95],"montes claros":[-16.73,-43.86],anapolis:[-16.33,-48.95],pelotas:[-31.77,-52.34]};
 function _semAcento(x){return String(x||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9 ]+/g," ").replace(/\s+/g," ").trim();}
-function _mapaCadastros(){
-  const grupos=new Map();let total=0,semLocal=0,foraBR=0;
+const _UF_ZOOM={AM:5,PA:5,MT:5,MG:5,BA:5,TO:5,MA:5,GO:5,MS:5,PI:5,RS:5,PR:6,SC:6,SP:6,RJ:6,ES:6,CE:6,PE:6,RN:7,PB:7,AL:7,SE:7,RO:5,AC:6,RR:6,AP:6,DF:9};
+function _ehPaganteMapa(u){
+  const vip=u.vip||{};const src=String(vip.source||"").toLowerCase();
+  const everPaid=(src===""||src==="admin"||src==="pago"||src==="payment")&&((vip.manualExpires||0)>0||(vip.autoExpires||0)>0||vip.activatedAt);
+  return everPaid||(vip.creditos||[]).some(c=>c&&c.tipo==="pago");
+}
+function _mapaCadastros(opts){
+  opts=opts||{};const ufSel=String(opts.uf||"").toUpperCase();
+  const grupos=new Map(),porUf={},cidades={};let total=0,semLocal=0,foraBR=0;
   for(const u of Object.values(DB_USERS)){
     if(!u||u.accountDeleted||isAdminEmail(String(u.email||""))||u.isAdmin)continue;
+    if(opts.soPagantes&&!_ehPaganteMapa(u))continue;
     total++;
     const cid=_semAcento(u.city),est=_semAcento(u.estado),pais=_semAcento(u.country);
     const br=!pais||/^(brasil|brazil|br)$/.test(pais);
     if(!br){foraBR++;continue;}
-    let uf=(est.length===2&&_UF_XY[est.toUpperCase()])?est.toUpperCase():(_UF_NOME[est]||null);
+    const uf=(est.length===2&&_UF_XY[est.toUpperCase()])?est.toUpperCase():(_UF_NOME[est]||null);
+    if(uf)porUf[uf]=(porUf[uf]||0)+1;
+    if(ufSel){ // visão de UM estado: contagem por cidade (só região — sem endereço)
+      if(uf!==ufSel)continue;
+      const nome=(u.city||"").trim()||"(sem cidade)";const k=cid||"?";
+      const c=cidades[k]||(cidades[k]={cidade:nome,n:0,xy:_CIDADE_XY[cid]||null});c.n++;continue;
+    }
     let xy=_CIDADE_XY[cid]||null,rot=null;
     if(xy){rot=(u.city||"").trim();}
     else if(uf){xy=_UF_XY[uf];rot=uf+" (estado)";}
     if(!xy){semLocal++;continue;}
     const k=xy.join(",");const g=grupos.get(k)||{lat:xy[0],lon:xy[1],n:0,rotulo:rot};g.n++;grupos.set(k,g);
   }
+  if(ufSel){
+    const lista=Object.values(cidades).sort((a,b)=>b.n-a.n);
+    const c=_UF_XY[ufSel]||[-15,-52];
+    return {uf:ufSel,total:lista.reduce((n,x)=>n+x.n,0),centro:{lat:c[0],lon:c[1],zoom:_UF_ZOOM[ufSel]||6},
+      pontos:lista.filter(x=>x.xy).map(x=>({lat:x.xy[0],lon:x.xy[1],n:x.n,rotulo:x.cidade})),
+      cidades:lista.map(x=>({cidade:x.cidade,n:x.n,noMapa:!!x.xy}))};
+  }
   const pontos=[...grupos.values()].sort((a,b)=>b.n-a.n);
-  return {total,noMapa:pontos.reduce((n,p)=>n+p.n,0),foraBR,semLocal,pontos};
+  return {total,noMapa:pontos.reduce((n,p)=>n+p.n,0),foraBR,semLocal,pontos,porUf:Object.entries(porUf).sort((a,b)=>b[1]-a[1]).map(([uf,n])=>({uf,n}))};
 }
 function searchSheet(arr, q, state, category, skip, top, sort) {
   let list = arr;
@@ -8053,7 +8082,7 @@ const server=http.createServer(async(req,res)=>{
     res.writeHead(200,{"Content-Type":"text/html; charset=utf-8","Cache-Control":"public, max-age=86400"});
     return res.end(`<!DOCTYPE html>
 <html lang="pt-BR">
-<head>
+<head>${_I18N_TAG}
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Política de Privacidade — H2BApply</title>
@@ -8273,7 +8302,7 @@ const server=http.createServer(async(req,res)=>{
     res.writeHead(200,{"Content-Type":"text/html; charset=utf-8","Cache-Control":"public, max-age=86400"});
     return res.end(`<!DOCTYPE html>
 <html lang="pt-BR">
-<head>
+<head>${_I18N_TAG}
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Termos de Uso — H2BApply</title>
@@ -8431,7 +8460,7 @@ const server=http.createServer(async(req,res)=>{
     res.writeHead(200,{"Content-Type":"text/html; charset=utf-8","Cache-Control":"public, max-age=3600"});
     return res.end(`<!DOCTYPE html>
 <html lang="pt-BR">
-<head>
+<head>${_I18N_TAG}
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Excluir Conta — H2BApply</title>
@@ -8544,7 +8573,7 @@ ul li{margin-bottom:6px}
     res.writeHead(200,{"Content-Type":"text/html; charset=utf-8","Cache-Control":"public, max-age=3600"});
     return res.end(`<!DOCTYPE html>
 <html lang="pt-BR">
-<head>
+<head>${_I18N_TAG}
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Contato — H2BApply</title>
@@ -9145,6 +9174,8 @@ ul li{margin-bottom:6px}
     res.writeHead(200,h);return res.end(body);
   }
   // 🔧 FIX CRÍTICO (03/07): extras nunca eram servidos (404) — blindagem não carregava
+  if(pathname==="/i18n.js")return sendAsset(req,res,"i18n.js","application/javascript; charset=utf-8","no-cache, must-revalidate");
+  if(pathname==="/i18n/en.json"||pathname==="/i18n/es.json")return sendAsset(req,res,pathname.slice(1),"application/json; charset=utf-8","no-cache, must-revalidate");
   if(pathname==="/h2b-extras-user.js"||pathname==="/app.js"){
     // v116: /app.js = todo o JS do corpo do index.html, extraído pra fora
     // (1,3MB inline eram re-parseados a cada abertura = ~14s de travada em
@@ -13937,7 +13968,7 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
     if(pathname==="/api/admin/mapa-cadastros"&&req.method==="GET"){
       const sx=getSess(req);if(!sx?.user_email)return json(res,401,{error:"Não autenticado"});
       if(!isAdminVip(getUser(sx.user_email)))return json(res,403,{error:"Não autorizado"});
-      try{return json(res,200,{ok:true,..._mapaCadastros()});}catch(e){return json(res,500,{ok:false,error:e.message});}
+      try{return json(res,200,{ok:true,..._mapaCadastros({soPagantes:u.searchParams.get("pagantes")==="1",uf:(u.searchParams.get("uf")||"").slice(0,2)})});}catch(e){return json(res,500,{ok:false,error:e.message});}
     }
     if(pathname==="/api/admin/users"&&req.method==="GET"){const list=Object.values(DB_USERS).map(u=>{const vok=isVipActive(u);const h=getHist(u.email);const autoJob=getAutoJob(u.email);return{email:u.email,name:u.name,picture:u.picture,country:u.country,phone:u.phone,created_at:u.created_at,cvCount:(u.cvs||[]).length,histCount:h.length,todaySent:countManualToday(h)+countAutoToday(h),plan:getPlan(u),isAdmin:!!u.isAdmin,vip:u.vip?{active:vok,expiresAt:u.vip.expiresAt,activatedAt:u.vip.activatedAt,days:u.vip.days||30,plan:u.vip.plan||"vip",manualExpires:u.vip.manualExpires||0,autoExpires:u.vip.autoExpires||0,source:u.vip.source||"admin",usedCode:u.vip.usedCode||null,codeNote:u.vip.codeNote||null,activatedBy:u.vip.activatedBy||null,note:u.vip.note||null}:null,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0}:null};}).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));return json(res,200,{users:list,total:list.length});}
     // ── 🎁 DIAS GRÁTIS (cortesia) — dono, 18/07/2026 ─────────────────────

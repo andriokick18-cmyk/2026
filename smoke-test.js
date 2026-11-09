@@ -1792,8 +1792,11 @@ async function drillAdminSettingsLegado() {
       !_frontL17.includes("navigator.language") && !_frontL17.includes("h2b_lang") &&
       !/lang-label|lang-flag|lang-opt/.test(_frontL17) &&
       !/JSON\.stringify\(\{language:/.test(_frontL17);
-    check("🇧🇷 v199-L17: o app é PORTUGUÊS FIXO no código — _curLang é const 'pt' (1 atribuição só), sem leitura/gravação de h2b_lang, sem navigator.language, sem resíduo do seletor de idioma e sem POST de idioma pro servidor",
-      _langInitOk, `const=${_frontL17.includes("const _curLang = 'pt';")} atrib=${(_frontL17.match(/_curLang\s*=[^=]/g) || []).length} h2b_lang=${_frontL17.includes("h2b_lang")}`);
+    // 09/11/2026 (ordem do dono): o site agora tem 3 idiomas. A regra 6f continua: o PADRÃO é português, nunca decidido por
+    // navigator.language — o idioma só muda por escolha deliberada no botão 🌐 (i18n.js, localStorage h2b_lang).
+    check("🇧🇷 6f (3 idiomas): o padrão é PORTUGUÊS — o app lê só window.H2B_LANG (escolha do botão 🌐), nunca navigator.language, e o i18n.js usa 'pt' quando não há escolha salva",
+      /const _curLang = \(typeof window!=="undefined"&&window\.H2B_LANG\)\|\|'pt'/.test(_frontL17) && !/navigator\.language/.test(_frontL17) && !/navigator\.language/.test(fs.readFileSync(path.join(__dirname, "i18n.js"), "utf8")) && /lang = "pt"/.test(fs.readFileSync(path.join(__dirname, "i18n.js"), "utf8")),
+      "padrão PT");
 
     // v103: 🤖 chat IA mora FIXO na sidebar (ordem do dono, 02/08 — revoga a
     // janela flutuante do v25). Guarda: painel #ia-side existe, o botão
@@ -6015,6 +6018,37 @@ async function drillAdminSettingsLegado() {
       check("🔐 usuário pagante preso (07/11): automático pausado por autenticação mostra botão grande Reconectar meu Gmail, Retomar NÃO reusa o token morto (manda reconectar) e a reconexão sem refresh_token novo não reaproveita o velho inválido",
         fs.readFileSync(path.join(__dirname, "app.js"), "utf8").includes("auto-reconnect-cta") && fs.readFileSync(path.join(__dirname, "app.js"), "utf8").includes("if(_autoPrecisaReconectar()){connectGmailForSending(\"auto\");return;}") && _ramSrv.includes("reconexao_sem_refresh_novo"),
         "correções do pagante preso ausentes");
+      {
+        const _mp = await get("/api/admin/mapa-cadastros"), _mpP = await get("/api/admin/mapa-cadastros?pagantes=1"), _mpUf = await get("/api/admin/mapa-cadastros?uf=SP");
+        check("🗺️ mapa de cadastros (admin): devolve total, pontos por lugar, estados com contagem e filtro de pagantes; o mapa de UM estado devolve centro/zoom e a lista de cidades — só região, nunca endereço",
+          _mp.json?.ok === true && Array.isArray(_mp.json.pontos) && Array.isArray(_mp.json.porUf) && typeof _mp.json.total === "number" &&
+          _mpP.json?.ok === true && _mpP.json.total <= _mp.json.total && _mpUf.json?.ok === true && _mpUf.json.uf === "SP" && _mpUf.json.centro?.zoom >= 5 && Array.isArray(_mpUf.json.cidades) &&
+          !JSON.stringify(_mp.json).includes("@"),
+          JSON.stringify({ t: _mp.json?.total, p: _mpP.json?.total, uf: _mpUf.json?.uf }));
+        const _semAdm = await req2("GET", "/api/admin/mapa-cadastros", undefined, { Cookie: "" });
+        check("🗺️ mapa de cadastros: sem sessão de admin é 401/403 (dado de usuários nunca vaza)", _semAdm.status === 401 || _semAdm.status === 403, String(_semAdm.status));
+      }
+      {
+        const _i18nJs = await req2("GET", "/i18n.js"), _i18nEn = await req2("GET", "/i18n/en.json"), _i18nEs = await req2("GET", "/i18n/es.json");
+        const _home = await req2("GET", "/"), _adm = await req2("GET", "/admin"), _termos = await req2("GET", "/termos"), _apr = await req2("GET", "/aprenda");
+        check("🌐 i18n: o tradutor (/i18n.js) e os 2 catálogos (/i18n/en.json, /i18n/es.json) são servidos e viram JSON válido com centenas de entradas",
+          _i18nJs.status === 200 && /h2b_lang/.test(_i18nJs.body) && _i18nEn.status === 200 && Object.keys(_i18nEn.json || {}).length > 300 && _i18nEs.status === 200 && Object.keys(_i18nEs.json || {}).length > 300,
+          JSON.stringify({ js: _i18nJs.status, en: _i18nEn.status, es: _i18nEs.status }));
+        check("🌐 i18n: o tradutor entra no <head> da Home, dos Termos e do Aprenda — e NÃO entra no painel admin (só português)",
+          /<script src="\/i18n\.js"><\/script>/.test(_home.body) && /<script src="\/i18n\.js"><\/script>/.test(_termos.body) && /<script src="\/i18n\.js"><\/script>/.test(_apr.body) && !/\/i18n\.js/.test(_adm.body),
+          JSON.stringify({ home: /i18n\.js/.test(_home.body), termos: /i18n\.js/.test(_termos.body), apr: /i18n\.js/.test(_apr.body), adm: /i18n\.js/.test(_adm.body) }));
+        const _ex = require("./tools/i18n-extract.js"), _all = _ex.collect();
+        // + o que o SERVIDOR monta/reescreve (o texto final difere do arquivo-fonte): HTML renderizado das rotas públicas
+        for (const _r of _ex.ROTAS_RENDERIZADAS.filter(r => !r.startsWith("/vagas-h2b/"))) { try { const _rr = await req2("GET", _r); if (_rr.status === 200) _ex.htmlStrings(_rr.body).forEach(k => { if (!_all.has(k)) _all.set(k, new Set()); }); } catch (e) { } }
+        const _en = _i18nEn.json || {}, _es = _i18nEs.json || {};
+        const _fEn = [..._all.keys()].filter(k => !_en[k]), _fEs = [..._all.keys()].filter(k => !_es[k]);
+        check("🌐 i18n (COBERTURA 100%): todo texto em português do site (páginas, tutorial, guias, app.js e mensagens ao usuário) tem tradução em inglês E em espanhol — falta: EN " + _fEn.length + " · ES " + _fEs.length,
+          _fEn.length === 0 && _fEs.length === 0,
+          JSON.stringify({ en: _fEn.slice(0, 8), es: _fEs.slice(0, 8) }));
+        check("🌐 i18n: o app lê o idioma escolhido (window.H2B_LANG) em vez de fixar português, e o botão 🌐 de idioma existe em i18n.js",
+          /const _curLang = \(typeof window!=="undefined"&&window\.H2B_LANG\)\|\|'pt'/.test(fs.readFileSync(path.join(__dirname, "app.js"), "utf8")) && /id = "h2b-lang"/.test(_i18nJs.body),
+          "app.js/i18n.js");
+      }
       check("RAM (vazamento?): caches ganharam teto (seo 150, contagem ao vivo 40, stats 3000, lugares 20) e há GC diagnóstico de 5 em 5 min que loga heap antes→depois e o tamanho das listas ([mem-gc])",
         _ramSrv.includes("_seoMemoMap.size>=150") && _ramSrv.includes("_VF_CACHE.size>=40") && _ramSrv.includes("_userStatsCache.size >= 3000") && _ramSrv.includes("[mem-gc]") && _ramSrv.includes("setInterval(()=>{try{\n    const a=process.memoryUsage()"),
         "tetos / diagnóstico ausentes");

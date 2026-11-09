@@ -1,0 +1,9 @@
+{
+ "Nenhum currículo PDF selecionado.": "Ningún currículum en PDF seleccionado.",
+ "e vincule um PDF ao seu perfil.": "y vincula un PDF a tu perfil.",
+ "Sem Cover Letter anexada — o currículo será enviado mesmo assim.": "Sin carta de presentación adjunta — tu currículum se enviará de todos modos.",
+ "Atenção: nenhum currículo PDF está selecionado. Recomendamos enviar um currículo antes de continuar.": "Atención: no hay ningún currículum en PDF seleccionado. Te recomendamos subir un currículum antes de continuar.",
+ "[v{#}] doSend wrapped com pré-check de anexos": "[v{#}] doSend wrapped con verificación previa de adjuntos",
+ "(os {#} campos já estão abertos). O sistema usa exatamente o que você escrever, sem acrescentar nem trocar nada.": "(los {#} campos ya están abiertos). El sistema usa exactamente lo que escribas, sin agregar ni cambiar nada.",
+ "Nesta seleção: {*} a {*}/h · metade das vagas paga {*}/h ou mais": "En esta selección: {*} a {*}/h · la mitad de los empleos paga {*}/h o más"
+}

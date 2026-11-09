@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-<head>
+<head><meta name="h2b-no-i18n" content="1">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0a0f1e">
@@ -550,6 +550,7 @@ tbody tr:hover{background:var(--glass2)}
                 <i class="ti ti-search"></i>
                 <input type="search" id="usr-search" placeholder="Buscar por nome, usuário, e-mail ou telefone…" oninput="filtrarUsuarios()">
               </div>
+              <button class="btn btn-sm" type="button" onclick="usrToggleMapa()"><i class="ti ti-map-2"></i> Mapa</button>
               <select id="usr-filtro" aria-label="Filtrar usuários" onchange="USR_LIMIT=100;filtrarUsuarios()" style="width:auto">
                 <option value="">Todos</option>
                 <option value="pagantes">Já pagaram</option>
@@ -576,6 +577,7 @@ tbody tr:hover{background:var(--glass2)}
               </select>
             </div>
           </div>
+          <div id="usr-mapa" class="panel-body" style="display:none"></div>
           <div class="panel-body">
             <div id="usr-count" style="font-size:12.5px;color:var(--t2);margin-bottom:10px"></div>
             <div class="tbl-wrap">
@@ -3001,25 +3003,44 @@ async function verAnexo(tipo,id,titulo){
 }
 
 /* ── VISÃO DO DONO ───────────────────────────────────────────────────── */
-// 🗺️ Mapa dos cadastros: azulejos do OpenStreetMap (zoom 4, Brasil) + um ponto por lugar, maior onde há mais contas.
-async function carregarMapaCadastros(){
-  var box=document.getElementById("dono-mapa");if(!box)return;
+// 🗺️ Mapa dos cadastros: azulejos do OpenStreetMap + um ponto por lugar (maior = mais contas). Só região, nunca endereço.
+// boxId = onde desenhar; opt = {pagantes:bool, uf:"SP"|""}. Brasil inteiro no zoom 4; um estado centrado no próprio estado.
+function _mapaHtml(r,Z,cx,cy){
+  var T=256,n=Math.pow(2,Z);
+  function px(lon){return (lon+180)/360*n;}
+  function py(lat){var s=Math.sin(lat*Math.PI/180);return (1-Math.log((1+s)/(1-s))/(2*Math.PI))/2*n;}
+  var X0=Math.floor(px(cx))-1,Y0=Math.floor(py(cy))-1,tiles="",i,j;
+  for(j=0;j<3;j++)for(i=0;i<3;i++){var tx=((X0+i)%n+n)%n,ty=Y0+j;if(ty<0||ty>=n)continue;tiles+='<img alt="" loading="lazy" src="https://tile.openstreetmap.org/'+Z+'/'+tx+'/'+ty+'.png" style="position:absolute;left:'+(i*T)+'px;top:'+(j*T)+'px;width:'+T+'px;height:'+T+'px">';}
+  var max=1;(r.pontos||[]).forEach(function(p){if(p.n>max)max=p.n;});
+  var dots=(r.pontos||[]).map(function(p){
+    var x=(px(p.lon)-X0)*T,y=(py(p.lat)-Y0)*T,d=10+Math.round(26*Math.sqrt(p.n/max));
+    return '<div title="'+esc(p.rotulo)+': '+p.n+'" style="position:absolute;left:'+(x-d/2)+'px;top:'+(y-d/2)+'px;width:'+d+'px;height:'+d+'px;border-radius:50%;background:rgba(239,68,68,.65);border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.3);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">'+(d>=20?p.n:'')+'</div>';
+  }).join("");
+  return '<div style="max-width:100%;overflow:auto"><div style="position:relative;width:'+(3*T)+'px;height:'+(3*T)+'px;background:#cfe3f0;margin:0 auto">'+tiles+dots+'</div></div>';
+}
+async function carregarMapaCadastros(boxId,opt){
+  boxId=boxId||"dono-mapa";opt=opt||{};
+  var box=document.getElementById(boxId);if(!box)return;
+  box.dataset.pag=opt.pagantes?"1":"";box.dataset.uf=opt.uf||"";
   try{
-    var r=await api("/api/admin/mapa-cadastros");
-    var Z=4,T=256,X0=4,Y0=7,W=3*T,H=3*T,tiles="",i,j;
-    for(j=0;j<3;j++)for(i=0;i<3;i++)tiles+='<img alt="" loading="lazy" src="https://tile.openstreetmap.org/'+Z+'/'+(X0+i)+'/'+(Y0+j)+'.png" style="position:absolute;left:'+(i*T)+'px;top:'+(j*T)+'px;width:'+T+'px;height:'+T+'px">';
-    var max=1;(r.pontos||[]).forEach(function(p){if(p.n>max)max=p.n;});
-    var dots=(r.pontos||[]).map(function(p){
-      var x=((p.lon+180)/360*Math.pow(2,Z)-X0)*T;
-      var s=Math.sin(p.lat*Math.PI/180);var y=((1-Math.log((1+s)/(1-s))/(2*Math.PI))/2*Math.pow(2,Z)-Y0)*T;
-      var d=10+Math.round(26*Math.sqrt(p.n/max));
-      return '<div title="'+esc(p.rotulo)+': '+p.n+' cadastro(s)" style="position:absolute;left:'+(x-d/2)+'px;top:'+(y-d/2)+'px;width:'+d+'px;height:'+d+'px;border-radius:50%;background:rgba(239,68,68,.65);border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.3);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">'+(d>=20?p.n:'')+'</div>';
-    }).join("");
+    var r=await api("/api/admin/mapa-cadastros?pagantes="+(opt.pagantes?1:0)+(opt.uf?"&uf="+encodeURIComponent(opt.uf):""));
+    var ctl='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">'
+      +'<select onchange="carregarMapaCadastros(\''+boxId+'\',{pagantes:this.value===\'1\',uf:\''+(opt.uf||'')+'\'})" aria-label="Quem mostrar"><option value="0"'+(opt.pagantes?'':' selected')+'>Todos os cadastros</option><option value="1"'+(opt.pagantes?' selected':'')+'>Só quem já pagou</option></select>'
+      +'<select onchange="carregarMapaCadastros(\''+boxId+'\',{pagantes:'+(opt.pagantes?'true':'false')+',uf:this.value})" aria-label="Estado"><option value="">🇧🇷 Brasil inteiro</option>'+(r.porUf||[]).map(function(x){return '<option value="'+x.uf+'"'+(opt.uf===x.uf?' selected':'')+'>'+x.uf+' — '+x.n+'</option>';}).join("")+(opt.uf&&!(r.porUf||[]).some(function(x){return x.uf===opt.uf;})?'<option value="'+opt.uf+'" selected>'+opt.uf+'</option>':'')+'</select></div>';
+    if(opt.uf&&r.centro){
+      var rows=(r.cidades||[]).map(function(c){return '<tr><td>'+esc(c.cidade)+'</td><td style="text-align:right"><b>'+c.n+'</b></td><td>'+(c.noMapa?'':'<span style="color:var(--t3)">sem ponto no mapa</span>')+'</td></tr>';}).join("");
+      box.innerHTML=ctl+_mapaHtml(r,r.centro.zoom,r.centro.lon,r.centro.lat)+'<div style="margin-top:8px;color:var(--t3)">'+r.total+' conta(s) em '+esc(opt.uf)+'. Só a região (cidade) — nunca o endereço. © OpenStreetMap.</div><div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th>Cidade</th><th style="text-align:right">Contas</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="3">Ninguém nesse estado ainda.</td></tr>')+'</tbody></table></div>';
+      return;
+    }
     var top=(r.pontos||[]).slice(0,8).map(function(p){return esc(p.rotulo)+' <b>'+p.n+'</b>';}).join(' · ');
-    box.innerHTML='<div style="max-width:100%;overflow:auto"><div style="position:relative;width:'+W+'px;height:'+H+'px;background:#cfe3f0;margin:0 auto">'+tiles+dots+'</div></div>'
-      +'<div style="margin-top:8px;color:var(--t3)">'+(r.noMapa||0)+' de '+(r.total||0)+' contas no mapa'+(r.foraBR?' · '+r.foraBR+' fora do Brasil':'')+(r.semLocal?' · '+r.semLocal+' sem cidade/estado reconhecido':'')+'. Pontos de estado usam o centro do estado quando a cidade não está na lista. © OpenStreetMap.</div>'
+    box.innerHTML=ctl+_mapaHtml(r,4,-56,-14)
+      +'<div style="margin-top:8px;color:var(--t3)">'+(r.noMapa||0)+' de '+(r.total||0)+' contas no mapa'+(r.foraBR?' · '+r.foraBR+' fora do Brasil':'')+(r.semLocal?' · '+r.semLocal+' sem cidade/estado reconhecido':'')+'. Cidades grandes têm ponto próprio; as demais aparecem no centro do estado. © OpenStreetMap.</div>'
       +(top?'<div style="margin-top:6px">'+top+'</div>':'');
   }catch(e){box.innerHTML='<span style="color:var(--red)">Não consegui carregar o mapa.</span>';}
+}
+function usrToggleMapa(){
+  var b=document.getElementById("usr-mapa");if(!b)return;
+  if(b.style.display==="none"){b.style.display="block";carregarMapaCadastros("usr-mapa",{pagantes:true,uf:""});}else b.style.display="none";
 }
 async function carregarDono(){
   try{
