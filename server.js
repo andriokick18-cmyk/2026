@@ -10219,6 +10219,12 @@ filtrar();
         const{body:tkCS}=await httpsReq({hostname:"oauth2.googleapis.com",path:"/token",method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded","Content-Length":Buffer.byteLength(tbCS)}},tbCS);
         if(tkCS.error)return failCS(tkCS.error_description||tkCS.error);
         if(!tkCS.access_token)return failCS("Token não recebido.");
+        // Permissões granulares do Google: a pessoa pode DESMARCAR a caixinha "Enviar e-mail em seu nome" e o consentimento
+        // volta "ok" mas sem gmail.send — o envio depois falha sem ninguém entender por quê. Barra aqui, com instrução clara.
+        if(typeof tkCS.scope==="string"&&tkCS.scope&&!/gmail\.send/.test(tkCS.scope)){
+          _authEvent(ownerEmailCS,"consent_sem_gmail_send","Consentimento voltou SEM a permissão de envio (caixinha desmarcada). Escopos: "+String(tkCS.scope).slice(0,200));
+          return failCS("Faltou marcar a caixinha “Enviar e-mail em seu nome” (permissão do Gmail) na tela do Google. Toque em Reconectar Gmail de novo e MARQUE todas as caixinhas.");
+        }
         const{body:uiCS}=await httpsReq({hostname:"www.googleapis.com",path:"/oauth2/v2/userinfo",method:"GET",headers:{"Authorization":"Bearer "+tkCS.access_token}});
         const _emailCS=String(uiCS.email||"").toLowerCase().trim();
         if(!_emailCS)return failCS("E-mail não obtido.");

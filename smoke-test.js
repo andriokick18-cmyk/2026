@@ -6009,6 +6009,9 @@ async function drillAdminSettingsLegado() {
         _ramPl.includes("if (status === 400) {") && _ramPl.includes("consec400 >= 25") && _ramPl.includes("for (const c of recentes400) delete neg400[c];") && _ramPl.includes("enrich_400.json") && _ramPl.includes("7 * 86400_000") &&
         _ramPl.includes("await aguardaRam(enrichLog)") && !/saveSheet\(sheetKey, sheet\); enrichBot\.savedAt = Date\.now\(\);\n      if \(enrichBot\.done % 10/.test(_ramPl),
         "robô de enriquecimento ainda regrava a planilha inteira a cada vaga");
+      check("🔐 reautenticação: o callback de conectar o Gmail de envio recusa consentimento SEM a permissão gmail.send (caixinha desmarcada) com instrução clara, registra no raio-X e continua cravando o Gmail cadastrado (login_hint + recusa de outro e-mail)",
+        _ramSrv.includes("consent_sem_gmail_send") && _ramSrv.includes("Faltou marcar a caixinha") && _ramSrv.includes("const _expectedGmailCS=ownerCS.emailContato||resolveSendGmail(ownerCS)") && _ramSrv.includes("login_hint"),
+        "checagem de escopo ausente");
       check("RAM (vazamento?): caches ganharam teto (seo 150, contagem ao vivo 40, stats 3000, lugares 20) e há GC diagnóstico de 5 em 5 min que loga heap antes→depois e o tamanho das listas ([mem-gc])",
         _ramSrv.includes("_seoMemoMap.size>=150") && _ramSrv.includes("_VF_CACHE.size>=40") && _ramSrv.includes("_userStatsCache.size >= 3000") && _ramSrv.includes("[mem-gc]") && _ramSrv.includes("setInterval(()=>{try{\n    const a=process.memoryUsage()"),
         "tetos / diagnóstico ausentes");
