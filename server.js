@@ -5323,6 +5323,30 @@ function _dataISO(v){const s=String(v||"").slice(0,10);return /^\d{4}-\d{2}-\d{2
 // no padrão estável — ordenação aleatória por requisição quebra a paginação
 // (a mesma vaga aparece 2x e outra nunca aparece).
 const SORTS_VALIDOS = new Set(["random", "asc", "desc", "wage", "start"]);
+
+// ── 🗺️ Mapa de cadastros: coordenadas aproximadas por UF (centro do estado) e por grandes cidades do Brasil ──
+const _UF_XY={AC:[-9.0,-70.5],AL:[-9.6,-36.8],AP:[1.4,-51.8],AM:[-3.4,-65.0],BA:[-12.5,-41.7],CE:[-5.2,-39.3],DF:[-15.8,-47.9],ES:[-19.6,-40.6],GO:[-15.9,-49.8],MA:[-5.0,-45.3],MT:[-12.9,-56.1],MS:[-20.5,-54.5],MG:[-18.5,-44.6],PA:[-3.8,-52.3],PB:[-7.2,-36.8],PR:[-24.6,-51.6],PE:[-8.4,-37.9],PI:[-7.7,-42.7],RJ:[-22.2,-42.7],RN:[-5.8,-36.6],RS:[-29.7,-53.2],RO:[-10.9,-62.8],RR:[2.0,-61.4],SC:[-27.3,-50.5],SP:[-22.3,-48.7],SE:[-10.6,-37.4],TO:[-10.2,-48.3]};
+const _UF_NOME={acre:"AC",alagoas:"AL",amapa:"AP",amazonas:"AM",bahia:"BA",ceara:"CE","distrito federal":"DF","espirito santo":"ES",goias:"GO",maranhao:"MA","mato grosso":"MT","mato grosso do sul":"MS","minas gerais":"MG",para:"PA",paraiba:"PB",parana:"PR",pernambuco:"PE",piaui:"PI","rio de janeiro":"RJ","rio grande do norte":"RN","rio grande do sul":"RS",rondonia:"RO",roraima:"RR","santa catarina":"SC","sao paulo":"SP",sergipe:"SE",tocantins:"TO"};
+const _CIDADE_XY={"sao paulo":[-23.55,-46.63],"rio de janeiro":[-22.91,-43.17],"belo horizonte":[-19.92,-43.94],salvador:[-12.97,-38.51],fortaleza:[-3.73,-38.53],brasilia:[-15.79,-47.88],curitiba:[-25.43,-49.27],recife:[-8.05,-34.88],"porto alegre":[-30.03,-51.23],manaus:[-3.12,-60.02],belem:[-1.46,-48.5],goiania:[-16.68,-49.25],guarulhos:[-23.46,-46.53],campinas:[-22.91,-47.06],"sao luis":[-2.53,-44.3],maceio:[-9.67,-35.74],natal:[-5.79,-35.21],teresina:[-5.09,-42.8],"campo grande":[-20.47,-54.62],"joao pessoa":[-7.12,-34.86],florianopolis:[-27.6,-48.55],vitoria:[-20.32,-40.34],cuiaba:[-15.6,-56.1],aracaju:[-10.91,-37.07],londrina:[-23.31,-51.16],joinville:[-26.3,-48.85],uberlandia:[-18.92,-48.28],"ribeirao preto":[-21.18,-47.81],santos:[-23.96,-46.33],sorocaba:[-23.5,-47.46],niteroi:[-22.88,-43.1],"juiz de fora":[-21.76,-43.35],"feira de santana":[-12.27,-38.97],"caxias do sul":[-29.17,-51.18],maringa:[-23.42,-51.94],cascavel:[-24.96,-53.46],blumenau:[-26.92,-49.07],"foz do iguacu":[-25.55,-54.59],"governador valadares":[-18.85,-41.95],"montes claros":[-16.73,-43.86],anapolis:[-16.33,-48.95],pelotas:[-31.77,-52.34]};
+function _semAcento(x){return String(x||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9 ]+/g," ").replace(/\s+/g," ").trim();}
+function _mapaCadastros(){
+  const grupos=new Map();let total=0,semLocal=0,foraBR=0;
+  for(const u of Object.values(DB_USERS)){
+    if(!u||u.accountDeleted||isAdminEmail(String(u.email||""))||u.isAdmin)continue;
+    total++;
+    const cid=_semAcento(u.city),est=_semAcento(u.estado),pais=_semAcento(u.country);
+    const br=!pais||/^(brasil|brazil|br)$/.test(pais);
+    if(!br){foraBR++;continue;}
+    let uf=(est.length===2&&_UF_XY[est.toUpperCase()])?est.toUpperCase():(_UF_NOME[est]||null);
+    let xy=_CIDADE_XY[cid]||null,rot=null;
+    if(xy){rot=(u.city||"").trim();}
+    else if(uf){xy=_UF_XY[uf];rot=uf+" (estado)";}
+    if(!xy){semLocal++;continue;}
+    const k=xy.join(",");const g=grupos.get(k)||{lat:xy[0],lon:xy[1],n:0,rotulo:rot};g.n++;grupos.set(k,g);
+  }
+  const pontos=[...grupos.values()].sort((a,b)=>b.n-a.n);
+  return {total,noMapa:pontos.reduce((n,p)=>n+p.n,0),foraBR,semLocal,pontos};
+}
 function searchSheet(arr, q, state, category, skip, top, sort) {
   let list = arr;
   let sugestao = null;
@@ -9937,8 +9961,8 @@ filtrar();
       // 🚨 v172c-SEC: 8 é o mínimo aceitável sem exigir complexidade.
       if(senha.length<8)return json(res,400,{error:"A senha precisa ter pelo menos 8 caracteres."});
       if(!nome||!sobrenome)return json(res,400,{error:"Nome e sobrenome são obrigatórios."});
-      const nascISO=_parseNasc(d.dataNascimento);
-      if(!nascISO)return json(res,400,{error:"Informe sua data de nascimento (DD/MM/AAAA)."});
+      // Cadastro simples (dono, 09/11/2026): a data de nascimento NÃO é mais exigida. Se um front antigo em cache mandar, é aceita.
+      const nascISO=d.dataNascimento?(_parseNasc(d.dataNascimento)||null):null;
       if(!cidade||!estado||!pais)return json(res,400,{error:"Cidade, estado e país são obrigatórios."});
       if(whatsapp.replace(/\D/g,"").length<10)return json(res,400,{error:"Informe seu WhatsApp com DDD (só números, ex.: 5511999999999)."});
       if(!_isGmail(email))return json(res,400,{error:"Informe um Gmail válido (…@gmail.com) — é por ele que o site envia suas candidaturas."});
@@ -9973,7 +9997,7 @@ filtrar();
       setUser(username,{
         email:username,username,name:nomeCompleto,nome,sobrenome,
         emailContato:email,emailVerificadoEm:Date.now(),
-        dataNascimento:nascISO,
+        ...(nascISO?{dataNascimento:nascISO}:{}),
         city:cidade,estado,country:pais,
         phone:whatsapp,whatsapp,
         passwordSalt:salt,passwordHash:hash,
@@ -13896,6 +13920,13 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
     // API. Nunca reintroduzir a checagem crua; sempre isAdminVip(p).
     const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Acesso negado."});
     if(pathname==="/api/admin/stats"&&req.method==="GET"){const tu=Object.keys(DB_USERS).length;const ts=Object.values(DB_HIST).reduce((n,a)=>n+a.length,0);const ds=todayStr();const tt=Object.values(DB_HIST).reduce((n,a)=>n+a.filter(h=>h.dateStr===ds).length,0);const vu=Object.values(DB_USERS).filter(u=>isVipActive(u)).length;const au=Object.values(DB_AUTO).filter(j=>j.active).length;return json(res,200,{totalUsers:tu,totalSent:ts,todayTotal:tt,vipUsers:vu,activeAutoJobs:au,freeUsers:tu-vu,activeSessions:Object.keys(sessions).filter(k=>!k.startsWith("__")).length,dataDir:DATA_DIR,disk:fs.existsSync("/data"),sheetJan:SHEET_JAN.length,sheetJul:SHEET_JUL.length});}
+    // 🗺️ Mapa de cadastros (dono, 09/11/2026): de onde vêm as contas novas. SÓ agrega cidade/estado/país que a própria
+    // pessoa digitou no cadastro (sem GPS, sem IP, sem serviço externo de geocodificação) — nada de dado pessoal viaja.
+    if(pathname==="/api/admin/mapa-cadastros"&&req.method==="GET"){
+      const sx=getSess(req);if(!sx?.user_email)return json(res,401,{error:"Não autenticado"});
+      if(!isAdminVip(getUser(sx.user_email)))return json(res,403,{error:"Não autorizado"});
+      try{return json(res,200,{ok:true,..._mapaCadastros()});}catch(e){return json(res,500,{ok:false,error:e.message});}
+    }
     if(pathname==="/api/admin/users"&&req.method==="GET"){const list=Object.values(DB_USERS).map(u=>{const vok=isVipActive(u);const h=getHist(u.email);const autoJob=getAutoJob(u.email);return{email:u.email,name:u.name,picture:u.picture,country:u.country,phone:u.phone,created_at:u.created_at,cvCount:(u.cvs||[]).length,histCount:h.length,todaySent:countManualToday(h)+countAutoToday(h),plan:getPlan(u),isAdmin:!!u.isAdmin,vip:u.vip?{active:vok,expiresAt:u.vip.expiresAt,activatedAt:u.vip.activatedAt,days:u.vip.days||30,plan:u.vip.plan||"vip",manualExpires:u.vip.manualExpires||0,autoExpires:u.vip.autoExpires||0,source:u.vip.source||"admin",usedCode:u.vip.usedCode||null,codeNote:u.vip.codeNote||null,activatedBy:u.vip.activatedBy||null,note:u.vip.note||null}:null,autoJob:autoJob?{active:autoJob.active,status:autoJob.status,queueSize:autoJob.queue?.length||0}:null};}).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));return json(res,200,{users:list,total:list.length});}
     // ── 🎁 DIAS GRÁTIS (cortesia) — dono, 18/07/2026 ─────────────────────
     // Caso de uso: "o site ficou 2 dias com problema, quero dar 2 dias a mais

@@ -1195,8 +1195,7 @@ async function drillAdminSettingsLegado() {
     check("🔒 v175: token de um e-mail NÃO serve pra cadastrar outro e-mail (HMAC amarra e-mail + finalidade + validade)", _tokenOutro.status === 400, `status=${_tokenOutro.status}`);
     const _incompleto = await req2("POST", "/api/cadastro", { username: "novo_user_v172c", password: "12345678", nome: "Fulano", sobrenome: "Silva", email: "fulano.v175@gmail.com", emailToken: _tokenFulano });
     check("📝 v175: cadastro incompleto (sem nascimento/cidade/WhatsApp) → 400 — todos os campos são obrigatórios", _incompleto.status === 400, `status=${_incompleto.status} ${_incompleto.body.slice(0, 80)}`);
-    const _nascRuim = await cadastroCompleto({ username: "novo_user_v172c", email: "fulano.v175@gmail.com", emailToken: _tokenFulano, dataNascimento: "31/02/1990" });
-    check("📝 v175: data de nascimento que não existe (31/02) → 400", _nascRuim.status === 400 && /nascimento/.test(_nascRuim.json?.error || ""), _nascRuim.body.slice(0, 80));
+    // v-cadastro-simples (09/11/2026): data de nascimento NÃO é mais exigida nem validada no cadastro (campo opcional, ignorado se inválido)
     const _cadOk = await cadastroCompleto({ username: "novo_user_v172c", email: "fulano.v175@gmail.com", emailToken: _tokenFulano });
     check("🔐 v175: cadastro COMPLETO com e-mail confirmado cria a conta e já devolve sessão logada",
       _cadOk.status === 200 && _cadOk.json?.ok === true && _cadOk.json?.username === "novo_user_v172c" && _cadOk.json?.novaConta === true, JSON.stringify(_cadOk.json));

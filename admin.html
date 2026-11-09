@@ -359,6 +359,7 @@ tbody tr:hover{background:var(--glass2)}
           <div class="panel"><div class="panel-head"><div class="panel-title"><i class="ti ti-users-group"></i>Acerto entre os sócios</div></div><div class="panel-body" id="dono-socios"><div class="spin"></div></div></div>
           <div class="panel"><div class="panel-head"><div class="panel-title"><i class="ti ti-calendar-event"></i>Renovações da semana</div></div><div class="panel-body" id="dono-vencendo" style="font-size:13px"><div class="spin"></div></div></div>
         </div>
+        <div class="panel" style="margin-bottom:16px"><div class="panel-head"><div class="panel-title"><i class="ti ti-map-pin"></i>De onde vêm os cadastros</div></div><div class="panel-body" id="dono-mapa" style="font-size:13px"><div class="spin"></div></div></div>
         <div class="stat-grid" id="stat-grid">
           <div class="stat-card blue"><div class="ic"><i class="ti ti-cash-banknote"></i></div><div class="lbl">Total Recebido</div><div class="val skel">&nbsp;</div></div>
           <div class="stat-card amber"><div class="ic"><i class="ti ti-user"></i></div><div class="lbl">Gastos Andrio</div><div class="val skel">&nbsp;</div></div>
@@ -3000,9 +3001,30 @@ async function verAnexo(tipo,id,titulo){
 }
 
 /* ── VISÃO DO DONO ───────────────────────────────────────────────────── */
+// 🗺️ Mapa dos cadastros: azulejos do OpenStreetMap (zoom 4, Brasil) + um ponto por lugar, maior onde há mais contas.
+async function carregarMapaCadastros(){
+  var box=document.getElementById("dono-mapa");if(!box)return;
+  try{
+    var r=await api("/api/admin/mapa-cadastros");
+    var Z=4,T=256,X0=4,Y0=7,W=3*T,H=3*T,tiles="",i,j;
+    for(j=0;j<3;j++)for(i=0;i<3;i++)tiles+='<img alt="" loading="lazy" src="https://tile.openstreetmap.org/'+Z+'/'+(X0+i)+'/'+(Y0+j)+'.png" style="position:absolute;left:'+(i*T)+'px;top:'+(j*T)+'px;width:'+T+'px;height:'+T+'px">';
+    var max=1;(r.pontos||[]).forEach(function(p){if(p.n>max)max=p.n;});
+    var dots=(r.pontos||[]).map(function(p){
+      var x=((p.lon+180)/360*Math.pow(2,Z)-X0)*T;
+      var s=Math.sin(p.lat*Math.PI/180);var y=((1-Math.log((1+s)/(1-s))/(2*Math.PI))/2*Math.pow(2,Z)-Y0)*T;
+      var d=10+Math.round(26*Math.sqrt(p.n/max));
+      return '<div title="'+esc(p.rotulo)+': '+p.n+' cadastro(s)" style="position:absolute;left:'+(x-d/2)+'px;top:'+(y-d/2)+'px;width:'+d+'px;height:'+d+'px;border-radius:50%;background:rgba(239,68,68,.65);border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.3);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">'+(d>=20?p.n:'')+'</div>';
+    }).join("");
+    var top=(r.pontos||[]).slice(0,8).map(function(p){return esc(p.rotulo)+' <b>'+p.n+'</b>';}).join(' · ');
+    box.innerHTML='<div style="max-width:100%;overflow:auto"><div style="position:relative;width:'+W+'px;height:'+H+'px;background:#cfe3f0;margin:0 auto">'+tiles+dots+'</div></div>'
+      +'<div style="margin-top:8px;color:var(--t3)">'+(r.noMapa||0)+' de '+(r.total||0)+' contas no mapa'+(r.foraBR?' · '+r.foraBR+' fora do Brasil':'')+(r.semLocal?' · '+r.semLocal+' sem cidade/estado reconhecido':'')+'. Pontos de estado usam o centro do estado quando a cidade não está na lista. © OpenStreetMap.</div>'
+      +(top?'<div style="margin-top:6px">'+top+'</div>':'');
+  }catch(e){box.innerHTML='<span style="color:var(--red)">Não consegui carregar o mapa.</span>';}
+}
 async function carregarDono(){
   try{
     var r=await api("/api/admin/dono-resumo");DIN.dono=r;
+    carregarMapaCadastros();
     var e=r.entradas||{};
     _setCard("dono-grid",0,fmtMoney(e.hoje),"entrou hoje");
     _setCard("dono-grid",1,fmtMoney(e.dias7),"últimos 7 dias");

@@ -430,13 +430,11 @@ function agRender(step,data){
     _agEmailToken="";_agEmailOk=false;_agEmailSentTo="";clearTimeout(_agResendTimer);
     body.innerHTML=`
       <div class="ag-title">Criar conta grátis</div>
-      <div class="ag-sub">Sem cartão. Preencha tudo, confirme seu e-mail com o código que vai chegar nele e escolha usuário e senha. Campos com <b style="color:#f59e0b">*</b> são obrigatórios.</div>
+      <div class="ag-sub">Sem cartão e leva 1 minuto: seu nome, onde você mora, WhatsApp, Gmail com código de confirmação, usuário e senha. O resto você completa depois, no seu perfil.</div>
       <div class="ag-grid2">
-        <div><label class="ag-lbl" for="ag-s-nome">Nome <b>*</b></label><input class="ag-input" id="ag-s-nome" type="text" placeholder="Como no passaporte" autocomplete="given-name"></div>
+        <div><label class="ag-lbl" for="ag-s-nome">Nome <b>*</b></label><input class="ag-input" id="ag-s-nome" type="text" placeholder="Seu nome" autocomplete="given-name"></div>
         <div><label class="ag-lbl" for="ag-s-sobrenome">Sobrenome <b>*</b></label><input class="ag-input" id="ag-s-sobrenome" type="text" placeholder="Sobrenome" autocomplete="family-name"></div>
       </div>
-      <label class="ag-lbl" for="ag-s-nasc">Data de nascimento <b>*</b></label>
-      <input class="ag-input" id="ag-s-nasc" type="text" inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" autocomplete="bday" oninput="agMaskNasc(this)">
       <div class="ag-grid2">
         <div><label class="ag-lbl" for="ag-s-cidade">Cidade <b>*</b></label><input class="ag-input" id="ag-s-cidade" type="text" placeholder="Sua cidade" autocomplete="address-level2"></div>
         <div><label class="ag-lbl" for="ag-s-estado">Estado <b>*</b></label><input class="ag-input" id="ag-s-estado" type="text" placeholder="Ex.: SP" autocomplete="address-level1"></div>
@@ -479,12 +477,6 @@ function agRender(step,data){
   }
 }
 // ── 📧 v175: verificação do e-mail no cadastro ────────────────────────────
-function agMaskNasc(el){
-  let v=el.value.replace(/\D/g,"").slice(0,8);
-  if(v.length>4)v=v.slice(0,2)+"/"+v.slice(2,4)+"/"+v.slice(4);
-  else if(v.length>2)v=v.slice(0,2)+"/"+v.slice(2);
-  el.value=v;
-}
 const _agIsGmail=(e)=>/^[a-z0-9._%+-]+@(gmail|googlemail)\.com$/.test(String(e||"").trim().toLowerCase());
 // 🐛 v225 (achado do dono, teste ao vivo logo depois de um deploy): durante
 // o restart do servidor no Render, a API pode responder com a página de
@@ -674,21 +666,20 @@ async function agSubmitLogin(){
 function agSubmitSignup(){
   if(_agBusy)return;
   const val=sel=>{const e=g(sel);return e?e.value.trim():"";};
-  const nome=val("#ag-s-nome"),sobrenome=val("#ag-s-sobrenome"),nasc=val("#ag-s-nasc"),cidade=val("#ag-s-cidade"),estado=val("#ag-s-estado"),pais=val("#ag-s-pais");
+  const nome=val("#ag-s-nome"),sobrenome=val("#ag-s-sobrenome"),cidade=val("#ag-s-cidade"),estado=val("#ag-s-estado"),pais=val("#ag-s-pais");
   const whatsapp=val("#ag-s-whats").replace(/[^\d+]/g,""),email=val("#ag-s-email").toLowerCase();
   const username=val("#ag-s-user").toLowerCase(),senha=(g("#ag-s-pass")||{}).value||"";
   const err=g("#ag-err");
   const showErr=(m,sel)=>{if(err){err.style.display="block";err.textContent=m;}const e=sel?g(sel):null;if(e){e.focus();try{e.scrollIntoView({block:"center",behavior:"smooth"});}catch(x){}}};
   if(err)err.style.display="none";
   if(!nome||!sobrenome){showErr("⚠️ Preencha nome e sobrenome.",!nome?"#ag-s-nome":"#ag-s-sobrenome");return;}
-  if(!/^\d{2}\/\d{2}\/\d{4}$/.test(nasc)){showErr("⚠️ Data de nascimento no formato DD/MM/AAAA.","#ag-s-nasc");return;}
   if(!cidade||!estado||!pais){showErr("⚠️ Preencha cidade, estado e país.",!cidade?"#ag-s-cidade":!estado?"#ag-s-estado":"#ag-s-pais");return;}
   if(whatsapp.replace(/\D/g,"").length<10){showErr("⚠️ WhatsApp com DDD, só números (ex.: 11999999999).","#ag-s-whats");return;}
   if(!_agIsGmail(email)){showErr("⚠️ Digite um Gmail válido (…@gmail.com).","#ag-s-email");return;}
   if(!_agEmailOk||email!==_agEmailSentTo||!_agEmailToken){showErr("⚠️ Confirme seu e-mail primeiro: clique em \"Enviar verificação\" e digite o código que chegou no seu Gmail.","#ag-s-email");return;}
   if(!/^[a-z0-9_.]{3,30}$/.test(username)){showErr("⚠️ Nome de usuário: 3 a 30 letras, números, ponto ou underline — sem espaço, sem @.","#ag-s-user");return;}
   if(senha.length<8){showErr("⚠️ A senha precisa ter pelo menos 8 caracteres.","#ag-s-pass");return;}
-  const payload={username,password:senha,nome,sobrenome,dataNascimento:nasc,cidade,estado,pais,whatsapp,email,emailToken:_agEmailToken};
+  const payload={username,password:senha,nome,sobrenome,cidade,estado,pais,whatsapp,email,emailToken:_agEmailToken};
   const btn=g("#ag-submit");
   const doSubmit=async()=>{
     _agBusy=true;
