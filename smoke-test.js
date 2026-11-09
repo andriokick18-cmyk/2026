@@ -6012,6 +6012,9 @@ async function drillAdminSettingsLegado() {
       check("🔐 reautenticação: o callback de conectar o Gmail de envio recusa consentimento SEM a permissão gmail.send (caixinha desmarcada) com instrução clara, registra no raio-X e continua cravando o Gmail cadastrado (login_hint + recusa de outro e-mail)",
         _ramSrv.includes("consent_sem_gmail_send") && _ramSrv.includes("Faltou marcar a caixinha") && _ramSrv.includes("const _expectedGmailCS=ownerCS.emailContato||resolveSendGmail(ownerCS)") && _ramSrv.includes("login_hint"),
         "checagem de escopo ausente");
+      check("🔐 usuário pagante preso (07/11): automático pausado por autenticação mostra botão grande Reconectar meu Gmail, Retomar NÃO reusa o token morto (manda reconectar) e a reconexão sem refresh_token novo não reaproveita o velho inválido",
+        fs.readFileSync(path.join(__dirname, "app.js"), "utf8").includes("auto-reconnect-cta") && fs.readFileSync(path.join(__dirname, "app.js"), "utf8").includes("if(_autoPrecisaReconectar()){connectGmailForSending(\"auto\");return;}") && _ramSrv.includes("reconexao_sem_refresh_novo"),
+        "correções do pagante preso ausentes");
       check("RAM (vazamento?): caches ganharam teto (seo 150, contagem ao vivo 40, stats 3000, lugares 20) e há GC diagnóstico de 5 em 5 min que loga heap antes→depois e o tamanho das listas ([mem-gc])",
         _ramSrv.includes("_seoMemoMap.size>=150") && _ramSrv.includes("_VF_CACHE.size>=40") && _ramSrv.includes("_userStatsCache.size >= 3000") && _ramSrv.includes("[mem-gc]") && _ramSrv.includes("setInterval(()=>{try{\n    const a=process.memoryUsage()"),
         "tetos / diagnóstico ausentes");

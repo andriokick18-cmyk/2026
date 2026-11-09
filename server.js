@@ -10259,6 +10259,12 @@ filtrar();
           }
           return failCS(`Você entrou com ${_emailCS}, mas o e-mail da sua conta é ${_expectedGmailCS}. Saia do Google e entre com ${_expectedGmailCS} — é ele que envia suas candidaturas.`);
         }
+        // Se o Google NÃO devolveu refresh_token novo e o que está guardado já foi marcado como morto (rtInvalid), reaproveitar o velho
+        // "reconectava" de mentira: o robô voltava a pausar no mesmo segundo. Barra e explica o caminho que sempre resolve.
+        if(!tkCS.refresh_token && ownerCS.refresh_token && ownerCS.rtInvalid){
+          _authEvent(ownerEmailCS,"reconexao_sem_refresh_novo","Google não devolveu refresh_token novo e o antigo está marcado como inválido — reconexão recusada");
+          return failCS("O Google não renovou a permissão de envio. Abra myaccount.google.com/permissions, remova o acesso do H2BApply e toque em Reconectar Gmail de novo, marcando todas as caixinhas.");
+        }
         if(!tkCS.refresh_token && !ownerCS.refresh_token){
           // Google só manda refresh_token com prompt=consent (sempre pedido
           // acima) — mas se por algum motivo não veio E nunca existiu um
