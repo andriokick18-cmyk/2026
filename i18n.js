@@ -16,6 +16,7 @@
     var s = localStorage.getItem(KEY); if (LANGS.indexOf(s) >= 0) lang = s;
   } catch (e) {}
   window.H2B_LANG = lang;
+  window.H2B_LOCALE = { pt: "pt-BR", en: "en-US", es: "es-419" }[lang]; // locale para Intl/toLocale*String (horas 12h nos EUA)
   document.documentElement.lang = lang === "pt" ? "pt-BR" : lang;
   var NAMES = { pt: "Português", en: "English", es: "Español" }, FLAG = { pt: "🇧🇷", en: "🇺🇸", es: "🌎" };
 
@@ -99,10 +100,53 @@
     var i = 0; t = t.replace(/\{#\}/g, function () { return nums[i] !== undefined ? nums[i++] : ""; });
     return raw.slice(0, raw.indexOf(core)) + t + raw.slice(raw.indexOf(core) + core.length);
   }
+  // ── Formato regional: o site gera datas/números no padrão BRASILEIRO; em EN/ES converte para o padrão do idioma escolhido ──
+  //   EN: 12/25/2026 · December 25, 2026 · 9,240 · R$ 300.00      ES: 25/12/2026 · 25 de diciembre de 2026 · 9.240 · R$ 300,00
+  var PT_MES = { janeiro: 1, fevereiro: 2, "março": 3, marco: 3, abril: 4, maio: 5, junho: 6, julho: 7, agosto: 8, setembro: 9, outubro: 10, novembro: 11, dezembro: 12 };
+  var PT_ABR = { jan: 1, fev: 2, mar: 3, abr: 4, mai: 5, jun: 6, jul: 7, ago: 8, set: 9, out: 10, nov: 11, dez: 12 };
+  var EN_M = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  var EN_A = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  var ES_M = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+  var ES_A = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+  var RE_MES = "janeiro|fevereiro|mar[çc]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro";
+  function mesNome(i) { return lang === "en" ? EN_M[i - 1] : ES_M[i - 1]; }
+  function loc(t) {
+    if (lang === "pt" || typeof t !== "string" || t.length < 3) return t;
+    if (!/\d/.test(t) && !new RegExp("(" + RE_MES + ")", "i").test(t)) return t;
+    // texto de vaga/descrição do DOL já vem em inglês com datas e números dos EUA: não mexe
+    if ((t.match(/\b(the|and|will|you|of|to|for|is|are|with|have|must)\b/gi) || []).length >= 3) return t;
+    var r = t;
+    // "25 de dezembro de 2026" / "25 de dezembro"
+    r = r.replace(new RegExp("\\b(\\d{1,2}) de (" + RE_MES + ")(?: de (\\d{4}))?", "gi"), function (m, d, mes, y) {
+      var i = PT_MES[mes.toLowerCase().replace("ç", "ç")] || PT_MES[mes.toLowerCase().replace("ç", "c")]; if (!i) return m;
+      return lang === "en" ? mesNome(i) + " " + (+d) + (y ? ", " + y : "") : (+d) + " de " + mesNome(i) + (y ? " de " + y : "");
+    });
+    // "9 de nov." / "9 de nov"
+    r = r.replace(/\b(\d{1,2}) de (jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\b\.?/gi, function (m, d, ab) {
+      var i = PT_ABR[ab.toLowerCase()]; return lang === "en" ? EN_A[i - 1] + " " + (+d) : (+d) + " " + ES_A[i - 1];
+    });
+    // mês por extenso sozinho ("em dezembro", "janeiro de 2027")
+    r = r.replace(new RegExp("\\b(" + RE_MES + ")( de (\\d{4}))?\\b", "gi"), function (m, mes, rest, y) {
+      var i = PT_MES[mes.toLowerCase()] || PT_MES[mes.toLowerCase().replace("ç", "c")]; if (!i) return m;
+      return lang === "en" ? mesNome(i) + (y ? " " + y : "") : mesNome(i) + (y ? " de " + y : "");
+    });
+    if (lang === "en") {
+      // datas dd/mm/aaaa (padrão BR) → mm/dd/aaaa; se o 2º número passa de 12 já está no padrão dos EUA
+      r = r.replace(/(^|[^\d\/])(\d{1,2})\/(\d{1,2})\/(\d{4})(?![\d\/])/g, function (m, p, a, b, y) { return (+b > 12 || +a > 31) ? m : p + b + "/" + a + "/" + y; });
+      // dinheiro: R$ 1.234,50 → R$ 1,234.50 ; R$ 300,00 → R$ 300.00
+      r = r.replace(/(R\$|US\$)\s?(\d{1,3}(?:\.\d{3})*|\d+)(?:,(\d{1,2}))?(?![\d,])/g, function (m, cur, int, dec) { return cur + " " + int.replace(/\./g, ",") + (dec ? "." + dec : ""); });
+      // milhar com ponto: 9.240 → 9,240 (não mexe em telefone 555.123.4567 nem versão 1.2.3)
+      r = r.replace(/(^|[^\d.,])(\d{1,3}(?:\.\d{3})+)(,\d+)?(?![\d.])/g, function (m, p, n, dec) { return p + n.replace(/\./g, ",") + (dec ? "." + dec.slice(1) : ""); });
+      // percentual/hora com vírgula decimal: 12,5% → 12.5%
+      r = r.replace(/(\d),(\d{1,2})(?=\s?%)/g, "$1.$2");
+    }
+    return r;
+  }
+  window.H2B_loc = loc;
   function okEl(el) { for (var n = el; n && n.nodeType === 1; n = n.parentNode) { if (SKIP[n.tagName] || n.hasAttribute("translate") && n.getAttribute("translate") === "no" || n.isContentEditable) return false; } return true; }
-  function doText(n) { if (n.__i18n === n.nodeValue) return; var v = tr(n.nodeValue); if (v !== n.nodeValue) { n.nodeValue = v; } n.__i18n = n.nodeValue; }
+  function doText(n) { if (n.__i18n === n.nodeValue) return; var v = loc(tr(n.nodeValue)); if (v !== n.nodeValue) { n.nodeValue = v; } n.__i18n = n.nodeValue; }
   function doAttrs(el) {
-    for (var i = 0; i < ATTRS.length; i++) { var a = ATTRS[i]; if (el.hasAttribute && el.hasAttribute(a)) { var o = el.getAttribute(a), v = tr(o); if (v !== o) el.setAttribute(a, v); } }
+    for (var i = 0; i < ATTRS.length; i++) { var a = ATTRS[i]; if (el.hasAttribute && el.hasAttribute(a)) { var o = el.getAttribute(a), v = loc(tr(o)); if (v !== o) el.setAttribute(a, v); } }
     if (el.tagName === "INPUT" && /^(button|submit|reset)$/i.test(el.type || "") && el.value) { var vv = tr(el.value); if (vv !== el.value) el.value = vv; }
   }
   function walk(root) {
@@ -127,7 +171,7 @@
         else if (m.type === "attributes") { if (okEl(m.target)) doAttrs(m.target); }
       }
     }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ATTRS });
-    ["alert", "confirm", "prompt"].forEach(function (f) { var o = window[f]; window[f] = function (m, d) { return o.call(window, tr(String(m)), d); }; });
+    ["alert", "confirm", "prompt"].forEach(function (f) { var o = window[f]; window[f] = function (m, d) { return o.call(window, loc(tr(String(m))), d); }; });
   }
   window.H2B_tr = tr;
 

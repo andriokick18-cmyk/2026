@@ -5666,7 +5666,7 @@ function updateAutoUI(){
       if(_rest>0){
         const _fim=new Date(Date.now()+_rest);
         const _dias=_rest>86400000?` (+${Math.floor(_rest/86400000)}d)`:"";
-        _eta.textContent=`termina ≈ ${_fim.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}${_dias}`;
+        _eta.textContent=`termina ≈ ${_fim.toLocaleTimeString(window.H2B_LOCALE||"pt-BR",{hour:"2-digit",minute:"2-digit"})}${_dias}`;
       } else _eta.textContent="";
     }
     if(njl){

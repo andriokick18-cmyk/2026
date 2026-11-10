@@ -6020,6 +6020,20 @@ async function drillAdminSettingsLegado() {
       check("🔐 usuário pagante preso (07/11): automático pausado por autenticação mostra botão grande Reconectar meu Gmail, Retomar NÃO reusa o token morto (manda reconectar) e a reconexão sem refresh_token novo não reaproveita o velho inválido",
         fs.readFileSync(path.join(__dirname, "app.js"), "utf8").includes("auto-reconnect-cta") && fs.readFileSync(path.join(__dirname, "app.js"), "utf8").includes("if(_autoPrecisaReconectar()){connectGmailForSending(\"auto\");return;}") && _ramSrv.includes("reconexao_sem_refresh_novo"),
         "correções do pagante preso ausentes");
+      {
+        // Formato regional (ordem do dono, 10/11/2026): EN = padrão dos EUA; ES = padrão em espanhol — carrega o i18n.js de verdade num sandbox
+        const _vm = require("vm"), _srcI18n = fs.readFileSync(path.join(__dirname, "i18n.js"), "utf8");
+        const _mkLoc = (lang) => { const win = {}; _vm.runInNewContext(_srcI18n, { window: win, document: { documentElement: {}, readyState: "loading", addEventListener() { }, createElement() { return {}; }, head: {}, body: {} }, localStorage: { getItem() { return lang; }, setItem() { } }, location: { search: "", pathname: "/", hash: "" }, history: {}, setTimeout, fetch: () => Promise.reject(new Error("x")) }); return win.H2B_loc; };
+        const _en = _mkLoc("en"), _es = _mkLoc("es");
+        check("🌐 formato regional EN: data 05/10/2026 vira 10/05/2026 (mês/dia), mês por extenso em inglês, milhar com vírgula, dinheiro R$ 1,250.50 — e texto de vaga em inglês (datas dos EUA) fica intacto",
+          _en("Vence em 25/12/2026") === "Vence em 12/25/2026" && _en("Vale até 12 de dezembro de 2026") === "Vale até December 12, 2026" && _en("9 de nov.") === "Nov 9" &&
+          _en("9.240 vagas") === "9,240 vagas" && _en("R$ 1.250,50") === "R$ 1,250.50" && _en("R$ 300,00") === "R$ 300.00" && _en("Ligue 555.123.4567") === "Ligue 555.123.4567" &&
+          _en("Start date 06/15/2026 and the job will end on 08/30/2026 for the crew") === "Start date 06/15/2026 and the job will end on 08/30/2026 for the crew",
+          JSON.stringify([_en("Vence em 25/12/2026"), _en("9 de nov."), _en("R$ 1.250,50")]));
+        check("🌐 formato regional ES: data em dd/mm/aaaa e números como no padrão em espanhol, meses por extenso traduzidos ('12 de diciembre de 2026')",
+          _es("Vence em 25/12/2026") === "Vence em 25/12/2026" && _es("Vale até 12 de dezembro de 2026") === "Vale até 12 de diciembre de 2026" && _es("9 de nov.") === "9 nov" && _es("9.240 vagas") === "9.240 vagas" && _es("R$ 300,00") === "R$ 300,00",
+          JSON.stringify([_es("Vale até 12 de dezembro de 2026"), _es("9 de nov.")]));
+      }
       check("🗺️ mapa: o service worker NÃO intercepta requisições de outros sites (o fetch dele obedece o connect-src e quebrava os azulejos do mapa) e o mapa tem provedor reserva de azulejos",
         /if \(url\.origin !== self\.location\.origin\) return;\s*\/\/ ── Demais recursos|if \(url\.origin !== self\.location\.origin\) return;/.test(fs.readFileSync(path.join(__dirname, "sw.js"), "utf8")) && /basemaps\.cartocdn\.com/.test(fs.readFileSync(path.join(__dirname, "admin.html"), "utf8")) && /data-osm=/.test(fs.readFileSync(path.join(__dirname, "admin.html"), "utf8")),
         "sw/admin");
