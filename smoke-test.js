@@ -438,9 +438,10 @@ const req2 = (method, p, payload, extraHeaders) => new Promise((resolve, reject)
   }, (res) => {
     const sc = res.headers["set-cookie"];
     if (sc && sc.length) COOKIE = sc[0].split(";")[0];
-    let b = "";
-    res.on("data", (c) => (b += c));
+    const partes = []; // junta BYTES e decodifica no fim: caractere acentuado partido entre 2 pedaços de rede virava lixo (falha intermitente)
+    res.on("data", (c) => partes.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
     res.on("end", () => {
+      const b = Buffer.concat(partes).toString("utf8");
       let json = null; try { json = JSON.parse(b); } catch {}
       resolve({ status: res.statusCode, body: b, json, headers: res.headers });
     });
@@ -463,9 +464,10 @@ const reqBin = (method, p, buf, contentType) => new Promise((resolve, reject) =>
   }, (res) => {
     const sc = res.headers["set-cookie"];
     if (sc && sc.length) COOKIE = sc[0].split(";")[0];
-    let b = "";
-    res.on("data", (c) => (b += c));
+    const partes = []; // junta BYTES e decodifica no fim: caractere acentuado partido entre 2 pedaços de rede virava lixo (falha intermitente)
+    res.on("data", (c) => partes.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
     res.on("end", () => {
+      const b = Buffer.concat(partes).toString("utf8");
       let json = null; try { json = JSON.parse(b); } catch {}
       resolve({ status: res.statusCode, body: b, json, headers: res.headers });
     });
@@ -6018,6 +6020,9 @@ async function drillAdminSettingsLegado() {
       check("🔐 usuário pagante preso (07/11): automático pausado por autenticação mostra botão grande Reconectar meu Gmail, Retomar NÃO reusa o token morto (manda reconectar) e a reconexão sem refresh_token novo não reaproveita o velho inválido",
         fs.readFileSync(path.join(__dirname, "app.js"), "utf8").includes("auto-reconnect-cta") && fs.readFileSync(path.join(__dirname, "app.js"), "utf8").includes("if(_autoPrecisaReconectar()){connectGmailForSending(\"auto\");return;}") && _ramSrv.includes("reconexao_sem_refresh_novo"),
         "correções do pagante preso ausentes");
+      check("🗺️ mapa: o service worker NÃO intercepta requisições de outros sites (o fetch dele obedece o connect-src e quebrava os azulejos do mapa) e o mapa tem provedor reserva de azulejos",
+        /if \(url\.origin !== self\.location\.origin\) return;\s*\/\/ ── Demais recursos|if \(url\.origin !== self\.location\.origin\) return;/.test(fs.readFileSync(path.join(__dirname, "sw.js"), "utf8")) && /basemaps\.cartocdn\.com/.test(fs.readFileSync(path.join(__dirname, "admin.html"), "utf8")) && /data-osm=/.test(fs.readFileSync(path.join(__dirname, "admin.html"), "utf8")),
+        "sw/admin");
       {
         const _mp = await get("/api/admin/mapa-cadastros"), _mpP = await get("/api/admin/mapa-cadastros?pagantes=1"), _mpUf = await get("/api/admin/mapa-cadastros?uf=SP");
         check("🗺️ mapa de cadastros (admin): devolve total, pontos por lugar, estados com contagem e filtro de pagantes; o mapa de UM estado devolve centro/zoom e a lista de cidades — só região, nunca endereço",

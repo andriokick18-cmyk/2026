@@ -3010,7 +3010,7 @@ function _mapaHtml(r,Z,cx,cy){
   function px(lon){return (lon+180)/360*n;}
   function py(lat){var s=Math.sin(lat*Math.PI/180);return (1-Math.log((1+s)/(1-s))/(2*Math.PI))/2*n;}
   var X0=Math.floor(px(cx))-1,Y0=Math.floor(py(cy))-1,tiles="",i,j;
-  for(j=0;j<3;j++)for(i=0;i<3;i++){var tx=((X0+i)%n+n)%n,ty=Y0+j;if(ty<0||ty>=n)continue;tiles+='<img alt="" loading="lazy" src="https://tile.openstreetmap.org/'+Z+'/'+tx+'/'+ty+'.png" style="position:absolute;left:'+(i*T)+'px;top:'+(j*T)+'px;width:'+T+'px;height:'+T+'px">';}
+  for(j=0;j<3;j++)for(i=0;i<3;i++){var tx=((X0+i)%n+n)%n,ty=Y0+j;if(ty<0||ty>=n)continue;var sub="abcd".charAt((tx+ty)%4);tiles+='<img alt="" data-osm="https://tile.openstreetmap.org/'+Z+'/'+tx+'/'+ty+'.png" onerror="if(!this.dataset.t){this.dataset.t=1;this.src=this.dataset.osm;}" src="https://'+sub+'.basemaps.cartocdn.com/light_all/'+Z+'/'+tx+'/'+ty+'.png" style="position:absolute;left:'+(i*T)+'px;top:'+(j*T)+'px;width:'+T+'px;height:'+T+'px">';}
   var max=1;(r.pontos||[]).forEach(function(p){if(p.n>max)max=p.n;});
   var dots=(r.pontos||[]).map(function(p){
     var x=(px(p.lon)-X0)*T,y=(py(p.lat)-Y0)*T,d=10+Math.round(26*Math.sqrt(p.n/max));
@@ -3029,12 +3029,12 @@ async function carregarMapaCadastros(boxId,opt){
       +'<select onchange="carregarMapaCadastros(\''+boxId+'\',{pagantes:'+(opt.pagantes?'true':'false')+',uf:this.value})" aria-label="Estado"><option value="">🇧🇷 Brasil inteiro</option>'+(r.porUf||[]).map(function(x){return '<option value="'+x.uf+'"'+(opt.uf===x.uf?' selected':'')+'>'+x.uf+' — '+x.n+'</option>';}).join("")+(opt.uf&&!(r.porUf||[]).some(function(x){return x.uf===opt.uf;})?'<option value="'+opt.uf+'" selected>'+opt.uf+'</option>':'')+'</select></div>';
     if(opt.uf&&r.centro){
       var rows=(r.cidades||[]).map(function(c){return '<tr><td>'+esc(c.cidade)+'</td><td style="text-align:right"><b>'+c.n+'</b></td><td>'+(c.noMapa?'':'<span style="color:var(--t3)">sem ponto no mapa</span>')+'</td></tr>';}).join("");
-      box.innerHTML=ctl+_mapaHtml(r,r.centro.zoom,r.centro.lon,r.centro.lat)+'<div style="margin-top:8px;color:var(--t3)">'+r.total+' conta(s) em '+esc(opt.uf)+'. Só a região (cidade) — nunca o endereço. © OpenStreetMap.</div><div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th>Cidade</th><th style="text-align:right">Contas</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="3">Ninguém nesse estado ainda.</td></tr>')+'</tbody></table></div>';
+      box.innerHTML=ctl+_mapaHtml(r,r.centro.zoom,r.centro.lon,r.centro.lat)+'<div style="margin-top:8px;color:var(--t3)">'+r.total+' conta(s) em '+esc(opt.uf)+'. Só a região (cidade) — nunca o endereço. © OpenStreetMap © CARTO.</div><div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th>Cidade</th><th style="text-align:right">Contas</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="3">Ninguém nesse estado ainda.</td></tr>')+'</tbody></table></div>';
       return;
     }
     var top=(r.pontos||[]).slice(0,8).map(function(p){return esc(p.rotulo)+' <b>'+p.n+'</b>';}).join(' · ');
     box.innerHTML=ctl+_mapaHtml(r,4,-56,-14)
-      +'<div style="margin-top:8px;color:var(--t3)">'+(r.noMapa||0)+' de '+(r.total||0)+' contas no mapa'+(r.foraBR?' · '+r.foraBR+' fora do Brasil':'')+(r.semLocal?' · '+r.semLocal+' sem cidade/estado reconhecido':'')+'. Cidades grandes têm ponto próprio; as demais aparecem no centro do estado. © OpenStreetMap.</div>'
+      +'<div style="margin-top:8px;color:var(--t3)">'+(r.noMapa||0)+' de '+(r.total||0)+' contas no mapa'+(r.foraBR?' · '+r.foraBR+' fora do Brasil':'')+(r.semLocal?' · '+r.semLocal+' sem cidade/estado reconhecido':'')+'. Cidades grandes têm ponto próprio; as demais aparecem no centro do estado. © OpenStreetMap © CARTO.</div>'
       +(top?'<div style="margin-top:6px">'+top+'</div>':'');
   }catch(e){box.innerHTML='<span style="color:var(--red)">Não consegui carregar o mapa.</span>';}
 }
