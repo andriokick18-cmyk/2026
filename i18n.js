@@ -27,23 +27,30 @@
   }
   window.H2B_setLang = setLang;
 
-  function pill() {
-    if (document.getElementById("h2b-lang")) return;
-    var st = document.createElement("style");
-    st.textContent = "#h2b-lang{position:fixed;right:12px;bottom:86px;z-index:99990;font:600 13px/1 system-ui,sans-serif}@media(min-width:900px){#h2b-lang{bottom:16px}}" +
-      "#h2b-lang button.h2b-lb{display:flex;align-items:center;gap:6px;padding:9px 12px;border-radius:999px;border:1px solid rgba(0,0,0,.25);background:#fff;color:#111;box-shadow:0 2px 10px rgba(0,0,0,.25);cursor:pointer}" +
-      "#h2b-lang .h2b-lm{display:none;position:absolute;right:0;bottom:44px;background:#fff;color:#111;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.35);overflow:hidden;min-width:150px}" +
-      "#h2b-lang.open .h2b-lm{display:block}#h2b-lang .h2b-lm button{display:block;width:100%;text-align:left;padding:11px 14px;border:0;background:none;color:#111;font:inherit;cursor:pointer}" +
-      "#h2b-lang .h2b-lm button:hover,#h2b-lang .h2b-lm button.on{background:#eef2ff}html.i18n-wait body{visibility:hidden}";
-    document.head.appendChild(st);
-    var d = document.createElement("div"); d.id = "h2b-lang"; d.setAttribute("translate", "no");
-    var btn = document.createElement("button"); btn.type = "button"; btn.className = "h2b-lb"; btn.setAttribute("aria-label", "Language / Idioma / Idioma");
-    btn.innerHTML = "🌐 " + lang.toUpperCase() + " ▾";
+  // Botão de idioma: dentro do cabeçalho da landing e do app (ao lado de "Entrar"/menu); nas demais páginas, flutuante no canto.
+  var PILL_CSS = "#h2b-lang.h2b-fix{position:fixed;right:12px;bottom:86px;z-index:99990}@media(min-width:900px){#h2b-lang.h2b-fix{bottom:16px}}" +
+    ".h2b-lang{position:relative;display:inline-block;font:600 13px/1 system-ui,sans-serif;flex-shrink:0}" +
+    ".h2b-lang button.h2b-lb{display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:999px;border:1px solid rgba(0,0,0,.25);background:#fff;color:#111;box-shadow:0 2px 10px rgba(0,0,0,.25);cursor:pointer;font:inherit}" +
+    ".h2b-lang .h2b-lm{display:none;position:absolute;right:0;top:42px;background:#fff;color:#111;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.35);overflow:hidden;min-width:160px;z-index:99999}" +
+    ".h2b-lang.h2b-fix .h2b-lm{top:auto;bottom:44px}.h2b-lang.open .h2b-lm{display:block}" +
+    ".h2b-lang .h2b-lm button{display:block;width:100%;text-align:left;padding:11px 14px;border:0;background:none;color:#111;font:inherit;cursor:pointer}" +
+    ".h2b-lang .h2b-lm button:hover,.h2b-lang .h2b-lm button.on{background:#eef2ff}.h2b-lbc{display:none}@media(max-width:600px){.h2b-lbn{display:none}.h2b-lbc{display:inline}}" +
+    "html.i18n-wait body{visibility:hidden}";
+  function mkPill(fix) {
+    var d = document.createElement("div"); d.className = "h2b-lang" + (fix ? " h2b-fix" : ""); if (fix) d.id = "h2b-lang"; d.setAttribute("translate", "no");
+    var btn = document.createElement("button"); btn.type = "button"; btn.className = "h2b-lb"; btn.setAttribute("aria-label", "Language / Idioma");
+    btn.innerHTML = "🌐 <span class=\"h2b-lbn\">" + NAMES[lang] + "</span><span class=\"h2b-lbc\">" + lang.toUpperCase() + "</span> ▾";
     var menu = document.createElement("div"); menu.className = "h2b-lm";
-    LANGS.forEach(function (l) { var b = document.createElement("button"); b.type = "button"; if (l === lang) b.className = "on"; b.textContent = FLAG[l] + "  " + NAMES[l]; b.onclick = function () { if (l === lang) { d.classList.remove("open"); return; } setLang(l); }; menu.appendChild(b); });
+    LANGS.forEach(function (l) { var b = document.createElement("button"); b.type = "button"; if (l === lang) b.className = "on"; b.textContent = FLAG[l] + "  " + NAMES[l]; b.onclick = function (e) { e.stopPropagation(); if (l === lang) { d.classList.remove("open"); return; } setLang(l); }; menu.appendChild(b); });
     btn.onclick = function (e) { e.stopPropagation(); d.classList.toggle("open"); };
-    document.addEventListener("click", function () { d.classList.remove("open"); });
-    d.appendChild(btn); d.appendChild(menu); document.body.appendChild(d);
+    d.appendChild(btn); d.appendChild(menu); return d;
+  }
+  function pill() {
+    if (!document.getElementById("h2b-lang-css")) { var st = document.createElement("style"); st.id = "h2b-lang-css"; st.textContent = PILL_CSS; document.head.appendChild(st); document.addEventListener("click", function () { var o = document.querySelectorAll(".h2b-lang.open"); for (var i = 0; i < o.length; i++) o[i].classList.remove("open"); }); }
+    var hosts = document.querySelectorAll(".ln-nav-actions, #app-hdr .hdr-right"), placed = 0;
+    for (var i = 0; i < hosts.length; i++) { if (!hosts[i].querySelector(".h2b-lang")) { hosts[i].insertBefore(mkPill(false), hosts[i].firstChild); } placed++; }
+    var fixo = document.getElementById("h2b-lang");
+    if (!placed && !fixo) document.body.appendChild(mkPill(true));
   }
 
   var cat = null, SKIP = { SCRIPT: 1, STYLE: 1, TEXTAREA: 1, CODE: 1, PRE: 1, NOSCRIPT: 1 }, ATTRS = ["placeholder", "title", "aria-label", "alt"];
@@ -164,6 +171,7 @@
   function start() {
     walk(document.body); head();
     new MutationObserver(function (list) {
+      if (document.querySelector(".ln-nav-actions, #app-hdr .hdr-right") && !document.querySelector(".ln-nav-actions .h2b-lang, #app-hdr .hdr-right .h2b-lang")) pill();
       for (var i = 0; i < list.length; i++) {
         var m = list[i];
         if (m.type === "childList") { for (var j = 0; j < m.addedNodes.length; j++) walk(m.addedNodes[j]); }
@@ -177,7 +185,10 @@
 
   function boot() {
     pill();
-    if (lang === "pt") return;
+    if (lang === "pt") { // em português não há tradução, mas o app reescreve o cabeçalho depois do login: mantém o botão lá
+      new MutationObserver(function () { if (document.querySelector(".ln-nav-actions, #app-hdr .hdr-right") && !document.querySelector(".ln-nav-actions .h2b-lang, #app-hdr .hdr-right .h2b-lang")) pill(); }).observe(document.body, { childList: true, subtree: true });
+      return;
+    }
     var shown = false, reveal = function () { if (shown) return; shown = true; document.documentElement.classList.remove("i18n-wait"); };
     document.documentElement.classList.add("i18n-wait");
     setTimeout(reveal, 2500); // nunca deixa a tela escondida se o catálogo falhar
