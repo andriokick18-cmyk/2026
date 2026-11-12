@@ -4753,3 +4753,13 @@ Fonte dos catálogos: `i18n/<en|es>/chunk-NNN.json` + sementes do LANG_DICT → 
 http://127.0.0.1:PORT --chunks --from N`, traduzir os blocos de `i18n/todo/` (brief em `tools/i18n-brief.md`), validar com
 `node tools/i18n-validate.js all`, rodar `node tools/i18n-build.js` e COMITAR `i18n/en.json`/`es.json`. O smoke trava a
 cobertura em 100% (rotas renderizadas incluídas). Sem tradução o texto fica em português — nunca quebra.
+
+
+## 📧 E-mail de PLANO ATIVADO (ordem do dono, 12/11/2026 — exceção EXPRESSA à regra 10b)
+
+Na hora em que o admin confirma o pedido (PATCH /api/pedido/:id → status "ativo"), a conta de suporte (mod-notif, a mesma dos
+códigos de cadastro/senha) manda "Seu plano <X> está ativo" pro e-mail de contato cadastrado de quem comprou — 1x por pedido
+(`pd.emailAtivacaoEm`), fire-and-forget (`_emailPlanoAtivado`): nunca bloqueia a aprovação nem derruba nada se a conta de suporte
+estiver desconectada. Texto curto, sem caixa alta (anti-spam). Fora isso, usuário continua NUNCA recebendo e-mail do sistema.
+**Plano ao vivo**: o app confere /api/status a cada 20s e ao voltar pra aba (`planWatchTick`); mudou plano/dias/limites =
+atualiza cabeçalho/menu/tela aberta e avisa, sem deslogar. PROIBIDO voltar a ler o plano só no carregamento da página.

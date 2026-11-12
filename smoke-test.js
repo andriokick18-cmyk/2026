@@ -6035,6 +6035,12 @@ async function drillAdminSettingsLegado() {
           JSON.stringify([_es("Vale até 12 de dezembro de 2026"), _es("9 de nov.")]));
       }
       {
+        const _appJs = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+        check("🔄 plano ao vivo: o app confere /api/status a cada 20s e ao voltar pra aba, e quando plano/dias/limites mudam atualiza cabeçalho, menu e a tela aberta SEM deslogar, com aviso 'Seu plano foi ativado'",
+          /function planWatchTick\(\)/.test(_appJs) && /setInterval\(\(\)=>\{if\(!document\.hidden\)planWatchTick\(\);\},20000\)/.test(_appJs) && /visibilitychange/.test(_appJs) && /startPlanWatch\(\);/.test(_appJs) && /_planWatchSig=_planSig\(d\)/.test(_appJs) && /renderHdr\(\);renderSidebar\(\)/.test(_appJs) && /"pw_ativo"/.test(_appJs),
+          "app.js");
+      }
+      {
         const _gc = await get("/api/admin/gemini-cadeia-teste");
         check("🤖 pré-check: a IA não depende mais de UM modelo fixo — descobre os modelos flash estáveis da Google, pula o que foi aposentado (404) e usa o próximo; ignora preview/embedding",
           _gc.json?.ok === true && _gc.json.modeloUsado === "gemini-9.1-flash-lite" && _gc.json.status === 200 && (_gc.json.chamadas || []).some((c) => /GET .*models$/.test(c)) && (_gc.json.chamadas || []).filter((c) => /POST/.test(c)).length >= 2,
@@ -11071,6 +11077,15 @@ async function drillAdminSettingsLegado() {
     check("conteúdo do PDF íntegro (%PDF)", pdf.startsWith("%PDF"));
   } catch (e) {
     check("execução sem exceção", false, e.message);
+    // (no fim da suíte: as aprovações de pedido de todos os blocos anteriores já aconteceram)
+    {
+        const _box = (() => { try { return JSON.parse(fs.readFileSync(path.join(DATA, "notif_outbox.json"), "utf8")); } catch { return []; } })();
+        const _avisos = _box.filter((x) => x.tipo === "plano_ativado");
+        const _srvJs = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+        check("📧 plano ativado: ao confirmar um pedido, a conta de suporte manda e-mail pro Gmail cadastrado de quem comprou ('Seu plano … está ativo'), curto e sem caixa alta, 1x por pedido",
+          _avisos.length >= 1 && /^Seu plano .+ está ativo/.test(_avisos[0].subject || "") && /foi ativado e vale até/.test(_avisos[0].text || "") && !/[A-Z]{6,}/.test((_avisos[0].text || "").replace(/H2BApply|https?:\/\/\S+/g, "")) && /if\(!pd\|\|pd\.emailAtivacaoEm\)return;/.test(_srvJs) && /_emailPlanoAtivado\(pd,planoKey,dias\)/.test(_srvJs),
+          JSON.stringify(_avisos.slice(0, 1).map((x) => [x.to, x.subject])));
+    }
   } finally {
     srv.kill("SIGKILL");
     try { feedSrv.close(); } catch {}

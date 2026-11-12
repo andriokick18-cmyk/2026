@@ -197,9 +197,41 @@ function applyStatus(d){
   // Pedido pendente na Home: se o plano/gate mudou, o card em cache virou
   // mentira — força uma releitura na próxima renderização.
   if(_antes&&(_antes.needsPlan!==!!U.needsPlan||_antes.plan!==U.plan||_antes.gmail!==!!U.gmailConnected))_pendingOrderCache=undefined;
+  _planWatchSig=_planSig(d); // base de comparação do "plano ao vivo"
   try{updateGmailPrompts();}catch(e){}
 }
 
+// 🔄 PLANO AO VIVO (12/11/2026 — "ativei o plano e ele continua sem, só funciona se deslogar e logar"): o app só lia o plano ao abrir.
+// Agora confere a cada 20s (aba visível) e ao voltar pra aba; se plano/dias/limites mudaram, atualiza a tela na hora e avisa.
+let _planWatchBusy=false,_planWatchSig=null,_planWatchTmr=null;
+function _planSig(d){return [d.plan,(d.vip&&d.vip.manualExpires)||0,(d.vip&&d.vip.autoExpires)||0,!!d.needsPlan,d.manualLimit??0,d.autoLimit??0,!!d.gmailNeedsReconnect].join("|");}
+async function planWatchTick(){
+  if(_planWatchBusy||!U||!U.connected)return;
+  _planWatchBusy=true;
+  try{
+    const r=await fetch("/api/status",{credentials:"include"});const d=await jsonSafe(r);
+    if(d&&d.connected&&_planWatchSig!==null&&_planSig(d)!==_planWatchSig){
+      const tinhaGate=!!U.needsPlan;
+      applyStatus(d); // atualiza U e a assinatura
+      try{renderHdr();renderSidebar();}catch(e){}
+      try{
+        if(curView==="plans")loadPlanos();
+        else if(curView==="home")renderHome();
+        else if(curView==="auto")updateAutoUI();
+      }catch(e){}
+      try{updateGmailPrompts();}catch(e){}
+      if(tinhaGate&&!U.needsPlan)toast("🎉 "+t("pw_ativo"),"g",8000);
+      else toast("🔄 "+t("pw_atual"),"g",5000);
+    }
+  }catch(e){}
+  _planWatchBusy=false;
+}
+function startPlanWatch(){
+  if(_planWatchTmr)return;
+  _planWatchTmr=setInterval(()=>{if(!document.hidden)planWatchTick();},20000);
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden)planWatchTick();});
+  window.addEventListener("focus",()=>planWatchTick());
+}
 async function checkStatus(){
   // Esconde landing enquanto verifica sessão (evita flash para usuário já logado)
   const _land=g("#landing");if(_land)_land.style.visibility="hidden";
@@ -753,6 +785,7 @@ function showApp(){
   if(U.isAdmin){const e=g("#sb-admin-sec");if(e)e.style.display="block";const da=g("#d-admin");if(da)da.style.display="block";const mm=g("#mm-admin-link");if(mm)mm.style.display="flex";}
   _initAdminTab();
   loadTabCounts();
+  startPlanWatch(); // plano ao vivo: ativou no admin, aparece sem deslogar
   setTimeout(maybeShowScamAd,500); // anúncio "alerta contra golpes": 1x por dia, trava a tela até o contador zerar
   // Abre na HOME após login (não direto em Vagas)
   history.replaceState({view:"home"},"",location.pathname+location.search);
@@ -7533,6 +7566,7 @@ const LANG_DICT = {
     "rc_btn":"Reconectar meu Gmail","rc_sub":"Use o MESMO Gmail do seu cadastro e MARQUE todas as caixinhas na tela do Google. Sua fila continua salva e o robô volta sozinho.",
     "sm_retry":"O servidor está reiniciando — tentando de novo em instantes…","sm_fail":"Não consegui carregar a lista.","sm_again":"Tentar novamente",
     "sa_wait":"Leia com atenção — você poderá fechar em {s}s","sa_done":"Pronto! Toque no X para fechar.","sa_close":"Fechar","sa_wait_aria":"Aguarde o contador para poder fechar",
+    "pw_ativo":"Seu plano foi ativado! Já pode usar.","pw_atual":"Seu plano foi atualizado.",
     "mc_1":"Minha Conta","mc_13":"Comprovante recebido — aguardando confirmação","mc_14":"Renove seu plano na aba Planos.","mc_15":"ATENÇÃO: expira em","mp_pend":"⏳ Em análise","mp_pago":"💰 Pagamento recebido — aguardando confirmação","mp_canc":"✖ Cancelado","mp_canc_sub":"Se achar que foi engano, chame no WhatsApp","mp_motivo":"Motivo","mp_ileg":"⚠️ Não conseguimos ler seu comprovante — reenvie uma foto nítida.","mp_ok":"✅ Comprovante conferido pelo robô","mp_analise":"🔍 Comprovante em análise","mp_reenviar":"📤 Reenviar comprovante","mp_media":"confirmação média real","mp_sub24":"Analisamos e confirmamos — você recebe notificação", "mc_2":"Sem plano ativo","mc_7":"🧾 Último pedido:","mc_8":"aguardando confirmação do admin","mc_9":"confirmado — plano ativado","mc_10":"cancelado","mc_11":"Você ainda não fez nenhum pedido.","mc_12":"Assine um plano pra liberar o envio de candidaturas — manual e automático.", // 👤 2.0-P6: Minha Conta em 5s (v170: sem sistema de diamantes; v172-FIX 12/09: conta sem plano não envia NADA, nunca mais "limite grátis")
     "tut_t":"Central de Tutoriais","tut_s":"18 passo a passos — tudo o que dá pra fazer no H2BApply, explicado tela por tela (vários já com fotos reais)","tut_ph":"🔍 O que você quer aprender? Ex.: currículo, automático, planos...","tut_v":"Nada encontrado com essa palavra — tente outro termo (ex.: \"enviar\", \"plano\", \"perfil\").","tut_load":"⏳ Carregando os tutoriais...", // 📖 v160
     "apr_t":"🇺🇸 Aprenda tudo sobre as regras dos vistos H-2B e H-2A","apr_s":"Guia completo, educativo e baseado em fontes oficiais do governo dos EUA — pra você entender de verdade como o processo funciona e reconhecer golpes","apr_load":"⏳ Carregando o guia completo...","si_aprenda":"🇺🇸 Aprenda H-2B/H-2A","mm_aprenda":"🇺🇸 Aprenda H-2B/H-2A", // 🇺🇸 v961
@@ -7713,6 +7747,7 @@ const LANG_DICT = {
     "rc_btn":"Reconnect my Gmail","rc_sub":"Use the SAME Gmail you signed up with and TICK every box on the Google screen. Your queue stays saved and the robot resumes by itself.",
     "sm_retry":"The server is restarting — trying again in a moment…","sm_fail":"Could not load the list.","sm_again":"Try again",
     "sa_wait":"Read carefully — you can close this in {s}s","sa_done":"Done! Tap the X to close.","sa_close":"Close","sa_wait_aria":"Wait for the timer before you can close",
+    "pw_ativo":"Your plan is now active! You can use it right away.","pw_atual":"Your plan was updated.",
     "mc_1":"My Account","mc_13":"Receipt received — awaiting confirmation","mc_14":"Renew your plan in the Plans tab.","mc_15":"ATTENTION: expires in","mp_pend":"⏳ Under review","mp_pago":"💰 Payment received — awaiting confirmation","mp_canc":"✖ Cancelled","mp_canc_sub":"If you think it was a mistake, message us on WhatsApp","mp_motivo":"Reason","mp_ileg":"⚠️ We could not read your receipt — resend a clear photo.","mp_ok":"✅ Receipt verified by the robot","mp_analise":"🔍 Receipt under review","mp_reenviar":"📤 Resend receipt","mp_media":"real average confirmation","mp_sub24":"We review and confirm — you will get a notification", "mc_2":"No active plan","mc_7":"🧾 Last order:","mc_8":"awaiting admin confirmation","mc_9":"confirmed — plan activated","mc_10":"cancelled","mc_11":"You haven't placed any orders yet.","mc_12":"Subscribe to a plan to unlock sending applications — manual and automatic.", // 👤 2.0-P6 (v170: no more diamond system; v172-FIX 09/12: no-plan accounts send NOTHING, never a "free limit" again)
     "tut_t":"Tutorials Center","tut_s":"18 step-by-step guides — everything you can do on H2BApply, screen by screen (several already with real screenshots)","tut_ph":"🔍 What do you want to learn? E.g.: resume, automatic, plans...","tut_v":"Nothing found — try another word (e.g. \"send\", \"plan\", \"profile\").","tut_load":"⏳ Loading tutorials...", // 📖 v160
     "apr_t":"🇺🇸 Learn everything about H-2B and H-2A visa rules","apr_s":"A complete, educational guide based on official U.S. government sources — so you truly understand how the process works and how to recognize scams","apr_load":"⏳ Loading the complete guide...","si_aprenda":"🇺🇸 Learn H-2B/H-2A","mm_aprenda":"🇺🇸 Learn H-2B/H-2A", // 🇺🇸 v961
@@ -7866,6 +7901,7 @@ const LANG_DICT = {
     "rc_btn":"Reconectar mi Gmail","rc_sub":"Usa el MISMO Gmail de tu registro y MARCA todas las casillas en la pantalla de Google. Tu cola sigue guardada y el robot continúa solo.",
     "sm_retry":"El servidor se está reiniciando — reintentando en unos instantes…","sm_fail":"No pude cargar la lista.","sm_again":"Intentar de nuevo",
     "sa_wait":"Lee con atención — podrás cerrar en {s}s","sa_done":"¡Listo! Toca la X para cerrar.","sa_close":"Cerrar","sa_wait_aria":"Espera el contador para poder cerrar",
+    "pw_ativo":"¡Tu plan está activo! Ya puedes usarlo.","pw_atual":"Tu plan fue actualizado.",
     "mc_1":"Mi Cuenta","mc_13":"Comprobante recibido — esperando confirmación","mc_14":"Renueva tu plan en la pestaña Planes.","mc_15":"ATENCIÓN: expira en","mp_pend":"⏳ En revisión","mp_pago":"💰 Pago recibido — esperando confirmación","mp_canc":"✖ Cancelado","mp_canc_sub":"Si crees que fue un error, escríbenos por WhatsApp","mp_motivo":"Motivo","mp_ileg":"⚠️ No pudimos leer tu comprobante — reenvía una foto nítida.","mp_ok":"✅ Comprobante verificado por el robot","mp_analise":"🔍 Comprobante en revisión","mp_reenviar":"📤 Reenviar comprobante","mp_media":"confirmación media real","mp_sub24":"Revisamos y confirmamos — recibirás una notificación", "mc_2":"Sin plan activo","mc_7":"🧾 Último pedido:","mc_8":"esperando confirmación del admin","mc_9":"confirmado — plan activado","mc_10":"cancelado","mc_11":"Aún no hiciste ningún pedido.","mc_12":"Suscríbete a un plan para desbloquear el envío de solicitudes — manual y automático.", // 👤 2.0-P6 (v170: sin sistema de diamantes; v172-FIX 12/09: cuenta sin plan no envía NADA, nunca más un "límite gratis")
     "tut_t":"Central de Tutoriales","tut_s":"18 guías paso a paso — todo lo que puedes hacer en H2BApply, pantalla por pantalla (varias ya con fotos reales)","tut_ph":"🔍 ¿Qué quieres aprender? Ej.: currículum, automático, planes...","tut_v":"Nada encontrado — prueba otra palabra (ej. \"enviar\", \"plan\", \"perfil\").","tut_load":"⏳ Cargando los tutoriales...", // 📖 v160
     "apr_t":"🇺🇸 Aprende todo sobre las reglas de las visas H-2B y H-2A","apr_s":"Guía completa y educativa basada en fuentes oficiales del gobierno de EE. UU. — para que entiendas de verdad cómo funciona el proceso y cómo reconocer estafas","apr_load":"⏳ Cargando la guía completa...","si_aprenda":"🇺🇸 Aprende H-2B/H-2A","mm_aprenda":"🇺🇸 Aprende H-2B/H-2A", // 🇺🇸 v961

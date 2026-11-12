@@ -278,7 +278,17 @@ function createNotif(deps) {
     };
   }
 
-  return { status, conectar, desconectar, setAvisoPedidos, conectada, sendMail, accessToken, podeEnviar, gerarCodigo, confirmarCodigo, tokenVerificado, validarToken, templateCodigoCadastro, templateCodigoSenha, OUTBOX_FILE: OUTBOX, limites: { CODIGO_TTL_MS, MAX_TENTATIVAS, REENVIO_MS, MAX_ENVIOS, JANELA_ENVIOS_MS, TOKEN_TTL_MS } };
+  // 📧 Plano ativado (ordem do dono, 12/11/2026): sai pela conta de suporte pro Gmail cadastrado de quem comprou, na hora
+  // em que o admin confirma o pedido. Curto e sem caixa alta (anti-spam, mesma lição do v237q).
+  function templatePlanoAtivado({ nome, plano, dias, ate }) {
+    const oi = nome ? `Olá, ${nome}!` : "Olá!";
+    return {
+      subject: `Seu plano ${plano} está ativo — ${APP_NAME}`,
+      text: `${oi}\n\nSeu plano ${plano} (${dias} dias) foi ativado e vale até ${ate}.\n\nÉ só abrir o ${APP_NAME}: https://h2bapply.com\n\nQualquer dúvida, responda este e-mail.`,
+    };
+  }
+
+  return { status, conectar, desconectar, setAvisoPedidos, conectada, sendMail, accessToken, podeEnviar, gerarCodigo, confirmarCodigo, tokenVerificado, validarToken, templatePlanoAtivado, templateCodigoCadastro, templateCodigoSenha, OUTBOX_FILE: OUTBOX, limites: { CODIGO_TTL_MS, MAX_TENTATIVAS, REENVIO_MS, MAX_ENVIOS, JANELA_ENVIOS_MS, TOKEN_TTL_MS } };
 }
 
 module.exports = { createNotif };

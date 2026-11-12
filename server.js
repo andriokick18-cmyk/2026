@@ -12324,6 +12324,7 @@ filtrar();
         }
         addLog(pd.userEmail,{status:"sistema",jobTitle:`✅ Plano ${nomePlanoDisplay(planoKey)} ativado (${dias}d) — pedido #${pd.id.slice(-8).toUpperCase()} confirmado`,company:"Pedido #"+pd.id.slice(-8).toUpperCase()});
         persistPedidos();
+        _emailPlanoAtivado(pd,planoKey,dias); // aviso por e-mail (conta de suporte) pro Gmail cadastrado — não bloqueia a resposta do admin
         acordarRoboAposPlano(pd.userEmail); // v125: robô dormindo por limite antigo acorda já
         return json(res,200,{ok:true,pedido:(()=>{const{comprovante,..._l}=pd;return _l;})(),plano:planoKey,dias});
       }
@@ -16571,6 +16572,25 @@ async function preCheckComprovante(pedido, opts){
 // auditoria: essa checagem não existia antes, e o comentário aqui dizia
 // que ela existia). Não roda se o cliente JÁ tem VIP pago ativo
 // (renovação empilha dias — decisão que fica 100% com o admin).
+// 📧 PLANO ATIVADO → e-mail (ordem do dono, 12/11/2026 — exceção EXPRESSA à regra 10b): na hora em que o admin confirma o pedido, a
+// conta de suporte avisa a pessoa que comprou. 1x por pedido (pd.emailAtivacaoEm), nunca bloqueia a aprovação e nunca derruba nada se
+// falhar (conta de suporte desconectada, e-mail inválido…): o aviso na tela (atualização ao vivo) continua valendo.
+async function _emailPlanoAtivado(pd,planoKey,dias){
+  try{
+    if(!pd||pd.emailAtivacaoEm)return;
+    const u=getUser(pd.userEmail)||{};
+    const to=String(u.emailContato||"").trim().toLowerCase();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)){console.warn(`[plano-ativado] ${pd.userEmail}: sem e-mail de contato válido — aviso por e-mail pulado`);return;}
+    if(!NOTIF.conectada()){console.warn("[plano-ativado] conta de suporte não conectada — aviso por e-mail pulado (Admin → Notificações)");return;}
+    const nome=String(u.nome||u.name||"").trim().split(/\s+/)[0]||"";
+    const fim=Math.max((u.vip&&u.vip.manualExpires)||0,(u.vip&&u.vip.autoExpires)||0);
+    const ate=fim?new Date(fim).toLocaleDateString("pt-BR",{timeZone:"America/Sao_Paulo"}):"—";
+    const tpl=NOTIF.templatePlanoAtivado({nome,plano:nomePlanoDisplay(planoKey),dias,ate});
+    await NOTIF.sendMail({to,subject:tpl.subject,text:tpl.text,tipo:"plano_ativado"});
+    pd.emailAtivacaoEm=Date.now();persistPedidos();
+    console.log(`[plano-ativado] ✉️ aviso enviado pra ${to} (pedido ${pd.id})`);
+  }catch(e){console.warn("[plano-ativado] e-mail falhou:",e.message);}
+}
 const AUTO_ATIVA_DIAS = 3;
 function autoAtivarProvisorio(pedidoId){
   try{
