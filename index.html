@@ -5591,6 +5591,56 @@ html, body, #app, .bottom-nav, .sidebar{
   <a class="sf-soc" href="https://www.facebook.com/share/1PW1v9YNwk/" target="_blank" rel="noopener noreferrer" title="Facebook" aria-label="Facebook" style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;background:rgba(24,119,242,.15);color:#1877f2;text-decoration:none;transition:background .15s" onmouseover="this.style.background='rgba(24,119,242,.3)'" onmouseout="this.style.background='rgba(24,119,242,.15)'"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.994 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg></a>
 </footer>
 <div class="ft-spacer" style="height:48px"></div>
+<!-- 🛡️ ANÚNCIO "ALERTA CONTRA GOLPES" (ordem do dono, 12/11/2026): tela cheia que trava o resto do site, 1x por dia por aparelho,
+     contador verde de 10s e botão X redondo branco que só libera quando o contador zera. Em PT mostra a imagem; em EN/ES, o cartão
+     abaixo (mesmo conteúdo, texto traduzível). Lógica em app.js (maybeShowScamAd). -->
+<style>
+#scam-ad{position:fixed;inset:0;z-index:100100;background:rgba(2,6,23,.94);display:none;align-items:center;justify-content:center;padding:14px;box-sizing:border-box;overflow:auto}
+#scam-ad .sa-box{position:relative;width:min(96vw,1100px);margin:auto}
+#scam-ad .sa-img{display:block;width:100%;height:auto;border-radius:14px;box-shadow:0 12px 50px rgba(0,0,0,.6)}
+#scam-ad .sa-x{position:absolute;top:-6px;right:-6px;width:54px;height:54px;border-radius:50%;border:3px solid #fff;display:flex;align-items:center;justify-content:center;font:800 24px/1 system-ui,sans-serif;cursor:not-allowed;z-index:3;padding:0;box-shadow:0 4px 18px rgba(0,0,0,.55);background:#16a34a;color:#fff}
+#scam-ad .sa-x:disabled{opacity:1;color:#fff;font-size:28px;box-shadow:0 0 0 4px rgba(34,197,94,.35),0 0 22px rgba(34,197,94,.9)}
+#scam-ad .sa-x.ok{background:#fff;color:#111;cursor:pointer;font-size:30px}
+#scam-ad .sa-x.ok:hover{transform:scale(1.08)}
+#scam-ad .sa-wait{margin-top:12px;text-align:center;color:#4ade80;font:800 clamp(16px,3.6vw,22px)/1.3 system-ui,sans-serif;text-shadow:0 0 14px rgba(34,197,94,.55)}
+#scam-ad .sa-bar{height:10px;border-radius:99px;background:rgba(255,255,255,.18);margin:10px auto 0;overflow:hidden;max-width:520px}
+#scam-ad .sa-bar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,#22c55e,#86efac);box-shadow:0 0 12px #22c55e;transition:width .25s linear}
+#scam-ad .sa-card{display:none;color:#fff;font-family:system-ui,sans-serif;border-radius:14px;padding:clamp(14px,3vw,28px);background:linear-gradient(135deg,#071a3d,#0b2a63 60%,#0a1f4d);box-shadow:0 12px 50px rgba(0,0,0,.6);border:1px solid rgba(96,165,250,.35)}
+#scam-ad .sa-tag{font-weight:800;letter-spacing:.04em;font-size:clamp(11px,2vw,15px);border-left:4px solid #3b82f6;padding-left:10px}
+#scam-ad .sa-h{font-weight:900;font-size:clamp(24px,5.6vw,54px);line-height:1.05;margin:12px 0 6px}
+#scam-ad .sa-h b{display:inline-block;background:#fbbf24;color:#0b1220;border-radius:12px;padding:2px 14px;margin-left:6px}
+#scam-ad .sa-sub{font-size:clamp(14px,2.6vw,24px);font-weight:600;opacity:.95;margin-bottom:14px}
+#scam-ad .sa-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+#scam-ad .sa-warn{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.12);font-weight:700;font-size:clamp(13px,2.1vw,19px);line-height:1.3}
+#scam-ad .sa-warn span{font-size:1.6em;line-height:1;color:#fbbf24}
+#scam-ad .sa-rights{border:1.5px solid #3b82f6;border-radius:16px;padding:14px;background:rgba(37,99,235,.14);font-size:clamp(13px,2.1vw,19px);line-height:1.4}
+#scam-ad .sa-rights h3{display:inline-block;margin:0 0 8px;background:#2563eb;border-radius:10px;padding:4px 14px;font-size:1.25em;font-weight:900}
+#scam-ad .sa-foot{margin-top:14px;padding-top:12px;border-top:1px solid rgba(96,165,250,.4);font-size:clamp(13px,2.2vw,20px)}
+#scam-ad .sa-foot b{font-size:1.35em}#scam-ad .sa-foot em{display:block;margin-top:8px;opacity:.9;font-size:.9em}
+@media(max-width:700px){#scam-ad .sa-grid{grid-template-columns:1fr}#scam-ad .sa-x{top:2px;right:2px;width:46px;height:46px}}
+</style>
+<div id="scam-ad" role="dialog" aria-modal="true" aria-labelledby="sa-title">
+  <div class="sa-box">
+    <button type="button" class="sa-x" id="sa-x" aria-label="Fechar" disabled>10</button>
+    <img class="sa-img" id="sa-img" src="/img/alerta-golpes.jpg" width="1672" height="941" alt="Alerta contra golpes: vaga garantida? Desconfie. Ninguém pode vender ou garantir um visto H-2B ou H-2A.">
+    <div class="sa-card" id="sa-card">
+      <div class="sa-tag">H2B E H2A • ALERTA CONTRA GOLPES</div>
+      <div class="sa-h" id="sa-title">VAGA GARANTIDA? <b>DESCONFIE.</b></div>
+      <div class="sa-sub">Ninguém pode vender ou garantir um visto H-2B ou H-2A.</div>
+      <div class="sa-grid">
+        <div>
+          <div class="sa-warn"><span>⚠️</span>Não pague recrutador para conseguir uma vaga.</div>
+          <div class="sa-warn"><span>⚠️</span>Desconfie de influencer que promete emprego ou visto em troca de mensalidade ou pagamento único.</div>
+          <div class="sa-warn"><span>⚠️</span>Curso nenhum garante contratação, aprovação do visto ou viagem.</div>
+        </div>
+        <div class="sa-rights"><h3>🛡️ SEUS DIREITOS</h3><div>Taxas de recrutamento e custos do empregador não podem ser cobrados do trabalhador. No H-2B, o empregador deve pagar ou reembolsar as taxas de visto aplicáveis na primeira semana de trabalho.</div></div>
+      </div>
+      <div class="sa-foot"><b>H2BApply</b> — Candidatar-se pelo nosso site é grátis. Você só paga se escolher o serviço de envio automático de currículos.<em>Pesquise a oferta, confira o contrato e nunca pague por promessa de vaga.</em></div>
+    </div>
+    <div class="sa-wait" id="sa-wait" aria-live="polite"></div>
+    <div class="sa-bar"><i id="sa-bar"></i></div>
+  </div>
+</div>
 <script src="/app.js?v=2026-1" defer></script>
 <script src="h2b-extras-user.js?v=2026-1" defer></script>
 </html>

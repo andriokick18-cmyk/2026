@@ -2457,7 +2457,7 @@ async function drillAdminSettingsLegado() {
       // continuam provando isso por família e por regra mista), então o teto
       // sobe junto com margem, em vez de travar crescimento real do produto.
       check("🧹 v203-L21: o CSS do index.html encolheu de verdade e as regras VIVAS continuam lá (a poda foi por seletor, nunca por bloco inteiro)",
-        _estilos21.length < 147_000 && // v978: +1,2KB do bloco de guias da home (SEO) — crescimento real do produto, teto sobe com margem de propósito
+        _estilos21.length < 154_000 && // 12/11/2026: +4,4KB do anúncio "alerta contra golpes" (tela cheia + cartão EN/ES) — crescimento real do produto. v978: +1,2KB do bloco de guias da home (SEO) — crescimento real do produto, teto sobe com margem de propósito
         [".jcard", ".btn", ".view", ".sidebar", ".bottom-nav", ".profile-card", ".cv-slot", ".chip", ".banner"].every((c) => _estilos21.includes(c)),
         `tamanho do CSS inline: ${_estilos21.length}`);
 
@@ -6033,6 +6033,15 @@ async function drillAdminSettingsLegado() {
         check("🌐 formato regional ES: data em dd/mm/aaaa e números como no padrão em espanhol, meses por extenso traduzidos ('12 de diciembre de 2026')",
           _es("Vence em 25/12/2026") === "Vence em 25/12/2026" && _es("Vale até 12 de dezembro de 2026") === "Vale até 12 de diciembre de 2026" && _es("9 de nov.") === "9 nov" && _es("9.240 vagas") === "9.240 vagas" && _es("R$ 300,00") === "R$ 300,00",
           JSON.stringify([_es("Vale até 12 de dezembro de 2026"), _es("9 de nov.")]));
+      }
+      {
+        const _imgAd = await req2("GET", "/img/alerta-golpes.jpg"), _idx = fs.readFileSync(path.join(__dirname, "index.html"), "utf8"), _app = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+        check("🛡️ anúncio 'alerta contra golpes': a imagem é servida, o overlay cobre a tela toda (z-index acima de tudo), tem X redondo branco que nasce desativado e contador verde de 10s",
+          _imgAd.status === 200 && /id="scam-ad"/.test(_idx) && /#scam-ad\{position:fixed;inset:0;z-index:100100/.test(_idx) && /id="sa-x"[^>]*disabled/.test(_idx) && /\.sa-x\.ok\{background:#fff/.test(_idx) && /\.sa-wait\{[^}]*color:#4ade80/.test(_idx) && /SCAM_AD_SECS=10/.test(_app),
+          String(_imgAd.status));
+        check("🛡️ anúncio: aparece 1x POR DIA por aparelho (chave com a data local), só conta como visto quando a pessoa FECHA, Esc/Tab/clique fora não fecham antes do contador e o resto da tela fica inert",
+          /SCAM_AD_KEY="h2bAdGolpes"/.test(_app) && /function _scamAdVisto\(\)/.test(_app) && /function _scamAdMarca\(\)/.test(_app) && /if\(!pronto\)return;\s*clearInterval/.test(_app) && /ev\.key==="Escape"[\s\S]{0,120}if\(pronto\)fechar\(\)/.test(_app) && /e\.inert=true/.test(_app) && /setTimeout\(maybeShowScamAd,500\)/.test(_app),
+          "app.js");
       }
       check("🗺️ mapa: o service worker NÃO intercepta requisições de outros sites (o fetch dele obedece o connect-src e quebrava os azulejos do mapa) e o mapa tem provedor reserva de azulejos",
         /if \(url\.origin !== self\.location\.origin\) return;\s*\/\/ ── Demais recursos|if \(url\.origin !== self\.location\.origin\) return;/.test(fs.readFileSync(path.join(__dirname, "sw.js"), "utf8")) && /basemaps\.cartocdn\.com/.test(fs.readFileSync(path.join(__dirname, "admin.html"), "utf8")) && /data-osm=/.test(fs.readFileSync(path.join(__dirname, "admin.html"), "utf8")),
