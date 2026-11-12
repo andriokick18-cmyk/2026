@@ -1,0 +1,5 @@
+{
+ "Já existe uma reprocessagem rodando — acompanhe o contador.": "Ya hay un reprocesamiento en curso — sigue el contador.",
+ "A chave da IA (GEMINI_API_KEY) não está configurada no Render — sem ela nenhum comprovante pode ser lido.": "La clave de la IA (GEMINI_API_KEY) no está configurada en Render — sin ella no se puede leer ningún comprobante.",
+ "A IA falhou ao ler (HTTP {*}){*} — confira manualmente.": "La IA falló al leer (HTTP {*}){*} — revisa manualmente."
+}

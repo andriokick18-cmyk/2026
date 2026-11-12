@@ -6035,6 +6035,18 @@ async function drillAdminSettingsLegado() {
           JSON.stringify([_es("Vale até 12 de dezembro de 2026"), _es("9 de nov.")]));
       }
       {
+        const _gc = await get("/api/admin/gemini-cadeia-teste");
+        check("🤖 pré-check: a IA não depende mais de UM modelo fixo — descobre os modelos flash estáveis da Google, pula o que foi aposentado (404) e usa o próximo; ignora preview/embedding",
+          _gc.json?.ok === true && _gc.json.modeloUsado === "gemini-9.1-flash-lite" && _gc.json.status === 200 && (_gc.json.chamadas || []).some((c) => /GET .*models$/.test(c)) && (_gc.json.chamadas || []).filter((c) => /POST/.test(c)).length >= 2,
+          JSON.stringify(_gc.json));
+        check("🤖 pré-check: o ERRO agora explica o motivo real (chave inválida 403 / nenhum modelo 404) em vez de só 'HTTP N'",
+          /chave da IA inválida/.test(_gc.json?.motivo403 || "") && /API key not valid/.test(_gc.json?.motivo403 || "") && /nenhum modelo da IA disponível/.test(_gc.json?.motivo404 || ""),
+          JSON.stringify([_gc.json?.motivo403, _gc.json?.motivo404]));
+        const _rp = await req2("GET", "/api/admin/precheck/reprocessar"), _rpSem = await req2("GET", "/api/admin/precheck/reprocessar", undefined, { Cookie: "" });
+        check("🤖 reprocessar pré-checks com erro: rota admin com contador (GET) existe e sem sessão de admin é negada", _rp.json?.ok === true && typeof _rp.json.feitos === "number" && (_rpSem.status === 401 || _rpSem.status === 403), JSON.stringify([_rp.status, _rpSem.status]));
+        check("🤖 o botão 'Reprocessar pré-checks com erro' existe no painel de Pedidos", /id="btn-reproc-pre"/.test(fs.readFileSync(path.join(__dirname, "admin.html"), "utf8")) && /async function reprocessarPreChecks\(/.test(fs.readFileSync(path.join(__dirname, "admin.html"), "utf8")), "admin.html");
+      }
+      {
         const _imgAd = await req2("GET", "/img/alerta-golpes.jpg"), _idx = fs.readFileSync(path.join(__dirname, "index.html"), "utf8"), _app = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
         check("🛡️ anúncio 'alerta contra golpes': a imagem é servida, o overlay cobre a tela toda (z-index acima de tudo), tem X redondo branco que nasce desativado e contador verde de 10s",
           _imgAd.status === 200 && /id="scam-ad"/.test(_idx) && /#scam-ad\{position:fixed;inset:0;z-index:100100/.test(_idx) && /id="sa-x"[^>]*disabled/.test(_idx) && /\.sa-x\.ok\{background:#fff/.test(_idx) && /\.sa-wait\{[^}]*color:#4ade80/.test(_idx) && /SCAM_AD_SECS=10/.test(_app),

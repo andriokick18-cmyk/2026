@@ -1,0 +1,5 @@
+{
+ "Já existe uma reprocessagem rodando — acompanhe o contador.": "A reprocessing run is already in progress — follow the counter.",
+ "A chave da IA (GEMINI_API_KEY) não está configurada no Render — sem ela nenhum comprovante pode ser lido.": "The AI key (GEMINI_API_KEY) is not set on Render — without it no receipt can be read.",
+ "A IA falhou ao ler (HTTP {*}){*} — confira manualmente.": "The AI failed to read it (HTTP {*}){*} — please check manually."
+}

@@ -8796,6 +8796,44 @@ ul li{margin-bottom:6px}
       return json(res,r.skipped?409:r.ok?200:500,r);
     }catch(e){return json(res,500,{ok:false,error:e.message});}
   }
+  // 🤖 Reprocessar os pré-checks com ERRO (12/11/2026): refaz a leitura da IA, um por vez, em segundo plano. NUNCA ativa plano
+  // (ativar:false); valor divergente em pedido ainda pendente cancela como sempre (v178), pedido já aprovado nunca é mexido.
+  if(pathname==="/api/admin/precheck/reprocessar"&&(req.method==="POST"||req.method==="GET")){
+    const sx=getSess(req);if(!sx?.user_email)return json(res,401,{error:"Não autenticado"});
+    if(!isAdminVip(getUser(sx.user_email)))return json(res,403,{error:"Não autorizado"});
+    if(req.method==="GET")return json(res,200,{ok:true,..._reprocPre});
+    if(_reprocPre.rodando)return json(res,409,{ok:false,error:"Já existe uma reprocessagem rodando — acompanhe o contador."});
+    if(!process.env.GEMINI_API_KEY&&!process.env.TEST_LOGIN_TOKEN)return json(res,400,{ok:false,error:"A chave da IA (GEMINI_API_KEY) não está configurada no Render — sem ela nenhum comprovante pode ser lido."});
+    const alvo=DB_PEDIDOS.filter(p=>!p.canceladoEm&&temComprovante(p)&&(!p.preCheck||p.preCheck.veredito==="ERRO"));
+    _reprocPre={rodando:true,total:alvo.length,feitos:0,resultados:{},iniciadoEm:Date.now(),modelo:null};
+    (async()=>{
+      for(const p of alvo){
+        try{const pc=await preCheckComprovante(p,{ativar:false});const v=(pc&&pc.veredito)||(p.preCheck&&p.preCheck.veredito)||"ERRO";_reprocPre.resultados[v]=(_reprocPre.resultados[v]||0)+1;}
+        catch(e){_reprocPre.resultados.ERRO=(_reprocPre.resultados.ERRO||0)+1;}
+        _reprocPre.feitos++;_reprocPre.modelo=_gmOk;
+        await new Promise(r=>setTimeout(r,process.env.TEST_LOGIN_TOKEN?20:2500)); // educado com a IA (cota)
+      }
+      _reprocPre.rodando=false;_reprocPre.fimEm=Date.now();
+      try{persistPedidos();}catch(e){}
+    })();
+    return json(res,200,{ok:true,total:alvo.length});
+  }
+  // (só teste) prova a cadeia de modelos da IA sem rede: lista da Google → modelo aposentado (404) → próximo funciona
+  if(pathname==="/api/admin/gemini-cadeia-teste"&&process.env.TEST_LOGIN_TOKEN){
+    const sx=getSess(req);if(!sx?.user_email||!isAdminVip(getUser(sx.user_email)))return json(res,403,{error:"Não autorizado"});
+    const chaveAntes=process.env.GEMINI_API_KEY;process.env.GEMINI_API_KEY="chave-de-teste";const modAntes=process.env.GEMINI_MODEL;delete process.env.GEMINI_MODEL;
+    const chamadas=[];
+    const fake=async(o)=>{chamadas.push((o.method||"POST")+" "+String(o.path).split("?")[0]);
+      if(o.method==="GET")return {status:200,body:{models:[{name:"models/gemini-9.9-flash",supportedGenerationMethods:["generateContent"]},{name:"models/gemini-9.1-flash-lite",supportedGenerationMethods:["generateContent"]},{name:"models/gemini-9.9-flash-preview-x",supportedGenerationMethods:["generateContent"]},{name:"models/embedding-001",supportedGenerationMethods:["embedContent"]}]}};
+      if(/gemini-9\.9-flash:/.test(o.path))return {status:404,body:{error:{message:"models/gemini-9.9-flash is not found"}}};
+      return {status:200,body:{candidates:[{content:{parts:[{text:"{}"}]}}]}};};
+    _gmListaEm=0;_gmOk=null;
+    const r=await _geminiGenerateContent({},fake);
+    const motivo403=_geminiMotivoErro({status:403,body:{error:{message:"API key not valid"}}}),motivo404=_geminiMotivoErro({status:404,body:{}});
+    process.env.GEMINI_API_KEY=chaveAntes;if(chaveAntes===undefined)delete process.env.GEMINI_API_KEY;if(modAntes!==undefined)process.env.GEMINI_MODEL=modAntes;
+    const modeloUsado=r&&r.model;_gmOk=null;_gmListaEm=0;_gmLista=[];
+    return json(res,200,{ok:true,modeloUsado,status:r&&r.r.status,chamadas,motivo403,motivo404});
+  }
   if(pathname==="/api/admin/sheet/h2a-roll-toggle"&&req.method==="POST"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
     const p=getUser(s.user_email);if(!isAdminVip(p))return json(res,403,{error:"Não autorizado"});
@@ -16375,6 +16413,46 @@ function _comprovanteJaUsado(pd){
     &&((_hash&&x.comprovanteHash===_hash)
       ||(_tx.length>=6&&String((x.preCheck||{}).transacaoIdLida||"").replace(/\s+/g,"").toUpperCase()===_tx)));
 }
+// 🤖 IA do pré-check (12/11/2026 — "muitos pedidos com ERRO"): o código chamava UM modelo fixo (gemini-2.0-flash). Quando a Google
+// aposenta um modelo, TODA leitura vira HTTP 404 → "ERRO" e nenhum comprovante é conferido. Agora: modelo do env (se houver) →
+// o último que funcionou → os modelos "flash" estáveis que a própria Google lista pra esta chave → lista fixa de reserva.
+// Tenta o próximo se o modelo sumiu/está sobrecarregado; para na hora se o problema é a CHAVE (401/403).
+let _reprocPre={rodando:false,total:0,feitos:0,resultados:{}}; // estado da reprocessagem dos pré-checks com erro
+const GEMINI_RESERVA=["gemini-2.5-flash","gemini-2.5-flash-lite","gemini-flash-latest","gemini-flash-lite-latest","gemini-2.0-flash"];
+let _gmOk=null,_gmLista=[],_gmListaEm=0;
+async function _geminiModelosDisponiveis(reqFn){
+  if(Date.now()-_gmListaEm<6*3600_000)return _gmLista;
+  try{
+    const r=await reqFn({hostname:"generativelanguage.googleapis.com",path:`/v1beta/models?pageSize=200&key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`,method:"GET",headers:{}});
+    if(r.status===200&&Array.isArray(r.body&&r.body.models)){
+      const ok=r.body.models.filter(m=>(m.supportedGenerationMethods||[]).includes("generateContent")&&/^models\/gemini-[\d.]+-flash(-lite)?$/.test(m.name)).map(m=>m.name.replace("models/",""));
+      // mais novo primeiro; "flash" antes de "flash-lite"
+      ok.sort((a,b)=>{const va=parseFloat(a.match(/gemini-([\d.]+)/)[1]),vb=parseFloat(b.match(/gemini-([\d.]+)/)[1]);return (vb-va)||((/lite/.test(a)?1:0)-(/lite/.test(b)?1:0));});
+      _gmLista=ok;_gmListaEm=Date.now();
+    }
+  }catch(e){}
+  return _gmLista;
+}
+async function _geminiGenerateContent(body,reqFn){
+  reqFn=reqFn||httpsReq;
+  const cand=[...new Set([process.env.GEMINI_MODEL,_gmOk,...(await _geminiModelosDisponiveis(reqFn)),...GEMINI_RESERVA].filter(Boolean))].slice(0,6);
+  let ultimo=null;
+  for(const m of cand){
+    const r=await reqFn({hostname:"generativelanguage.googleapis.com",path:`/v1beta/models/${encodeURIComponent(m)}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`,method:"POST",headers:{"Content-Type":"application/json"}},body);
+    if(r.status===200){_gmOk=m;return {r,model:m};}
+    ultimo={r,model:m};
+    console.warn(`[precheck] modelo ${m} respondeu ${r.status}: ${JSON.stringify(r.body).slice(0,140)}`);
+    if(r.status===401||r.status===403)break; // chave inválida/sem permissão: trocar de modelo não resolve
+    if(r.status===404||r.status===400)_gmListaEm=0; // modelo sumiu: relê a lista da Google na próxima
+  }
+  return ultimo;
+}
+function _geminiMotivoErro(r){
+  const msg=String((r&&r.body&&r.body.error&&r.body.error.message)||"").replace(/\s+/g," ").slice(0,140);
+  const st=r?r.status:0;
+  const dica=st===401||st===403?"chave da IA inválida ou sem permissão (confira GEMINI_API_KEY no Render)":st===404?"nenhum modelo da IA disponível pra esta chave":st===429?"limite de uso da IA atingido (tente de novo mais tarde)":st>=500?"IA da Google fora do ar agora":"";
+  return `A IA falhou ao ler (HTTP ${st}${dica?" — "+dica:""})${msg?": "+msg:""} — confira manualmente.`;
+}
 async function preCheckComprovante(pedido, opts){
   const ativar=!!(opts&&opts.ativar);
   // ── 🧾 2.0-P2: IMPRESSÃO DIGITAL SEMPRE — o hash SHA-256 do comprovante é
@@ -16456,11 +16534,11 @@ async function preCheckComprovante(pedido, opts){
   if(!_compB64) return null;
   try{
     const body=_geminiComprovanteRequestBody(pedido,_compB64);
-    const model=process.env.GEMINI_MODEL||"gemini-2.0-flash";
-    const r=await httpsReq({hostname:"generativelanguage.googleapis.com",path:`/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`,method:"POST",headers:{"Content-Type":"application/json"}},body);
+    const _gg=await _geminiGenerateContent(body);
+    const r=_gg.r;
     if(r.status!==200){
       console.warn("[precheck] Gemini respondeu",r.status,JSON.stringify(r.body).slice(0,200));
-      setPedidoPreCheck(pedido.id,{veredito:"ERRO",valorLido:null,dataLida:null,horaLida:null,pagadorLido:null,recebedorLido:null,instituicaoLida:null,transacaoIdLida:null,bateComEsperado:false,resumo:`A IA falhou ao ler (HTTP ${r.status}) — confira manualmente.`,alertas:[],precoEsperado:pedido.valorTotal||0,valorInformado:pedido.valorTotal||0});
+      setPedidoPreCheck(pedido.id,{veredito:"ERRO",valorLido:null,dataLida:null,horaLida:null,pagadorLido:null,recebedorLido:null,instituicaoLida:null,transacaoIdLida:null,bateComEsperado:false,resumo:_geminiMotivoErro(r),alertas:[],precoEsperado:pedido.valorTotal||0,valorInformado:pedido.valorTotal||0});
       return null;
     }
     const pc=_geminiComprovanteParse(r.body,pedido);

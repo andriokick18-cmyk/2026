@@ -693,6 +693,7 @@ tbody tr:hover{background:var(--glass2)}
               <select id="pend-plano" aria-label="Plano" onchange="renderPendentes(STATE.pendentes)" style="width:auto"><option value="">Todos os planos</option><option value="vip">Manual</option><option value="vipro">Turbo</option><option value="doublepro">Máximo</option></select>
               <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--t2);white-space:nowrap"><input type="checkbox" id="pend-alerta" style="width:auto" onchange="renderPendentes(STATE.pendentes)"> só com alerta</label>
               <button class="btn btn-sm" onclick="carregarPendentes()"><i class="ti ti-refresh"></i> Atualizar lista</button>
+              <button class="btn btn-sm" id="btn-reproc-pre" onclick="reprocessarPreChecks()" title="Refaz a leitura da IA dos comprovantes que ficaram com ERRO (um por vez, em segundo plano)"><i class="ti ti-robot"></i> Reprocessar pré-checks com erro</button>
               <button class="btn btn-sm btn-primary" onclick="abrirModalRegularizar()" title="Cliente pagou por fora (PIX direto, sem passar pelo site)? Registre aqui com a data do pagamento"><i class="ti ti-file-plus"></i> Registrar pagamento feito por fora</button>
             </div>
           </div>
@@ -2533,6 +2534,23 @@ function copiarMsgReconectar(i){
     :"Oi, "+nome+"! Aqui é do H2BApply. Vi que o seu envio automático está parado. Entre em h2bapply.com, abra a aba Envio Automático e confira se está ligado. Se aparecer algum aviso, me manda um print que eu te ajudo. Os seus dias de plano continuam valendo.";
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(msg).then(function(){toast&&toast("Mensagem copiada — cole no WhatsApp do cliente");},function(){prompt("Copie a mensagem:",msg);});}
   else prompt("Copie a mensagem:",msg);
+}
+// 🤖 refaz a leitura da IA dos comprovantes com ERRO, com contador ao vivo; ao terminar recarrega a lista
+async function reprocessarPreChecks(){
+  var b=document.getElementById("btn-reproc-pre");
+  if(!confirm("Refazer a leitura da IA de todos os comprovantes que ficaram com ERRO?\n\nNada é ativado por aqui. Pedido ainda pendente cujo valor lido NÃO bate com o plano é cancelado, como sempre. Pedido já aprovado nunca é mexido."))return;
+  try{
+    var r=await api("/api/admin/precheck/reprocessar",{method:"POST",body:{}});
+    if(!r||!r.ok){alert((r&&r.error)||"Não consegui iniciar.");return;}
+    if(!r.total){toast("Nenhum pré-check com erro pra refazer.","ok");return;}
+    var t=setInterval(async function(){
+      try{var s=await api("/api/admin/precheck/reprocessar");
+        if(b)b.innerHTML='<i class="ti ti-robot"></i> Reprocessando '+s.feitos+'/'+s.total+'…';
+        if(!s.rodando){clearInterval(t);if(b)b.innerHTML='<i class="ti ti-robot"></i> Reprocessar pré-checks com erro';
+          var rs=s.resultados||{};toast("Pronto: "+Object.keys(rs).map(function(k){return rs[k]+" "+k;}).join(" · "),"ok");carregarPendentes();}
+      }catch(e){clearInterval(t);}
+    },3000);
+  }catch(e){alert("Erro: "+(e&&e.message||e));}
 }
 async function h2aRollToggle(desligar){
   try{await api("/api/admin/sheet/h2a-roll-toggle",{method:"POST",body:{desligado:!!desligar}});}catch(e){alert("Não consegui mudar: "+(e&&e.message||e));}
