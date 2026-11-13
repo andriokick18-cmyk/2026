@@ -2630,7 +2630,8 @@ setInterval(()=>{
 function _adsCfg(){const a=(DB_ADMIN_SETTINGS&&DB_ADMIN_SETTINGS.ads)||{};const sp=a.sponsor||{};
   return{enabled:a.enabled===true,every:Math.min(500,Math.max(2,parseInt(a.every)||20)),secs:Math.min(30,Math.max(3,parseInt(a.secs)||10)),
     sponsor:{title:String(sp.title||""),text:String(sp.text||""),cta:String(sp.cta||""),img:String(sp.img||""),url:String(sp.url||"")}};}
-function _adsAtivo(c){return !!(c&&c.enabled&&c.sponsor&&c.sponsor.url&&(c.sponsor.img||c.sponsor.text));}
+// Trava mestra (dono, 13/11/2026: "se o AD não funciona, cópia ILIMITADA"): sem ADS_COPY_GATE=1 no ambiente o limite NUNCA vale, mesmo que alguém ligue no painel.
+function _adsAtivo(c){return !!(process.env.ADS_COPY_GATE==="1"&&c&&c.enabled&&c.sponsor&&c.sponsor.url&&(c.sponsor.img||c.sponsor.text));}
 function isAdminVip(u) {
   // Admin sempre tem VIP ativo infinito (sem expiração)
   return !!(u?.isAdmin || isAdminEmail(u?.email||""));

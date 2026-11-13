@@ -1036,7 +1036,7 @@ async function drillAdminSettingsLegado() {
   // PRODUÇÃO hoje (interruptor de emergência desligado, compra normal). O
   // interruptor LIGADO tem drill isolado próprio (drillBloqueioComprasNovas,
   // servidor+env dele).
-  const ENV_SRV = { PORT: String(PORT), DATA_DIR: DATA, STORAGE: "json", TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890", DOL_FEED_BASE: `http://127.0.0.1:${FEED_PORT}/feed`, DOL_API_BASE: `http://127.0.0.1:${FEED_PORT}/dol/`, H2A_BIM_MIN_PUBLICAR: "10", GOOGLE_FAKE_BASE: `http://127.0.0.1:${GOOGLE_PORT}`, ADMIN_PANEL_PASS_ANDRIO: "teste-smoke-andrio-2026", ADMIN_PANEL_PASS_DIEGO: "teste-smoke-diego-2026" };
+  const ENV_SRV = { ADS_COPY_GATE: "1", PORT: String(PORT), DATA_DIR: DATA, STORAGE: "json", TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890", DOL_FEED_BASE: `http://127.0.0.1:${FEED_PORT}/feed`, DOL_API_BASE: `http://127.0.0.1:${FEED_PORT}/dol/`, H2A_BIM_MIN_PUBLICAR: "10", GOOGLE_FAKE_BASE: `http://127.0.0.1:${GOOGLE_PORT}`, ADMIN_PANEL_PASS_ANDRIO: "teste-smoke-andrio-2026", ADMIN_PANEL_PASS_DIEGO: "teste-smoke-diego-2026" };
   let log = "";
   let srv = spawnServidor(ENV_SRV, (t) => (log += t));
 
@@ -6092,7 +6092,7 @@ async function drillAdminSettingsLegado() {
         await req2("POST", "/api/admin/ads/config", { enabled: false, every: 20, secs: 10, sponsor: {} });
         const _srvA = fs.readFileSync(path.join(__dirname, "server.js"), "utf8"), _appA = fs.readFileSync(path.join(__dirname, "app.js"), "utf8"), _admA = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
         check("💰 anúncio por cópias (estrutura): clipboard copia no gesto do clique (sem await antes), falha de rede = deixa copiar, painel admin tem o card, privacidade menciona AdSense",
-          /function lrCopiar\(email\)\{[\s\S]{0,260}_lrCopiarAgora\(em\)/.test(_appA) && /\.catch\(\(\)=>\{\}\)/.test(_appA) && /id="ads-panel"/.test(_admA) && /async function adsSalvar\(/.test(_admA) && /function _adsAtivo\(c\)/.test(_srvA) && /!isAdminVip\(u\)&&!isVipActive\(u\)/.test(_srvA),
+          /function lrCopiar\(email\)\{[\s\S]{0,260}_lrCopiarAgora\(em\)/.test(_appA) && /\.catch\(\(\)=>\{\}\)/.test(_appA) && /id="ads-panel"/.test(_admA) && /async function adsSalvar\(/.test(_admA) && /function _adsAtivo\(c\)\{return !!\(process\.env\.ADS_COPY_GATE==="1"/.test(_srvA) && /!isAdminVip\(u\)&&!isVipActive\(u\)/.test(_srvA),
           "app/admin/server");
       }
       {
