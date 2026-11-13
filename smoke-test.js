@@ -6053,6 +6053,49 @@ async function drillAdminSettingsLegado() {
         check("🤖 o botão 'Reprocessar pré-checks com erro' existe no painel de Pedidos", /id="btn-reproc-pre"/.test(fs.readFileSync(path.join(__dirname, "admin.html"), "utf8")) && /async function reprocessarPreChecks\(/.test(fs.readFileSync(path.join(__dirname, "admin.html"), "utf8")), "admin.html");
       }
       {
+        // 💰 Anúncio a cada N cópias de e-mail (dono, 13/11/2026): só conta grátis, plano pago NUNCA, desligado = fail-open.
+        const _adm = COOKIE, _ads = await req2("GET", "/ads.txt"), _rb = await req2("GET", "/robots.txt"), _pv = await req2("GET", "/privacidade"), _lp = await req2("GET", "/guia");
+        check("💰 AdSense: /ads.txt serve a linha oficial do publisher, o robots.txt não o bloqueia, a tag está no <head> das páginas públicas e a CSP libera só o Google",
+          _ads.status === 200 && /^google\.com, pub-6904000311376189, DIRECT, f08c47fec0942fa0\s*$/.test(String(_ads.body || _ads.text || "")) && /Allow: \/ads\.txt/.test(String(_rb.body || _rb.text || "")) &&
+          /pagead2\.googlesyndication\.com\/pagead\/js\/adsbygoogle\.js\?client=ca-pub-6904000311376189/.test(String(_pv.body || _pv.text || "")) && /adsbygoogle\.js/.test(String(_lp.body || _lp.text || "")) &&
+          /pagead2\.googlesyndication\.com/.test(String(_pv.headers?.["content-security-policy"] || "")) && /Publicidade e cookies/.test(String(_pv.body || _pv.text || "")),
+          JSON.stringify([_ads.status, _pv.status, _lp.status]));
+        const _cfg0 = await req2("GET", "/api/admin/ads/config");
+        check("💰 anúncio por cópias: nasce DESLIGADO e o admin lê a config", _cfg0.json?.cfg?.enabled === false && _cfg0.json.cfg.every === 20 && _cfg0.json.ativoEfetivo === false, JSON.stringify(_cfg0.json));
+        await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "gratis-ads@test.com", name: "Grátis Ads", isAdmin: false });
+        const _fr = COOKIE;
+        const _st0 = await req2("GET", "/api/ads/status"), _cp0 = await req2("POST", "/api/ads/copy");
+        check("💰 anúncio por cópias: desligado = FAIL-OPEN (conta grátis copia sem anúncio nenhum)", _st0.json?.enabled === false && _cp0.json?.gate === false, JSON.stringify([_st0.json, _cp0.json]));
+        COOKIE = _adm;
+        const _bad = await req2("POST", "/api/admin/ads/config", { enabled: true, every: 3, secs: 3, sponsor: { title: "x" } });
+        check("💰 ligar SEM patrocinador de verdade não ativa nada (fail-open)", _bad.json?.ok === true && _bad.json.ativoEfetivo === false, JSON.stringify(_bad.json));
+        const _set = await req2("POST", "/api/admin/ads/config", { enabled: true, every: 3, secs: 3, sponsor: { title: "Curso de inglês", text: "Aprenda antes de viajar", url: "https://exemplo.com/ingles?ref=h2b", img: "javascript:alert(1)", cta: "Ver" } });
+        check("💰 admin liga com patrocinador https → ativo; imagem não-https é descartada (sem javascript:)", _set.json?.ativoEfetivo === true && _set.json.cfg.sponsor.img === "" && _set.json.cfg.every === 3, JSON.stringify(_set.json));
+        COOKIE = _fr;
+        const _c = [];
+        for (let i = 0; i < 3; i++) _c.push((await req2("POST", "/api/ads/copy")).json);
+        check("💰 conta grátis: cópias 1 e 2 passam; na 3ª (limite) o servidor marca o anúncio como pendente", _c[0].gate === false && _c[1].gate === false && _c[2].gate === true && _c[2].every === 3, JSON.stringify(_c));
+        const _early = await req2("POST", "/api/ads/done");
+        check("💰 liberar sem ter visto o anúncio (sem /start) é recusado (409) e segue pendente", _early.status === 409 && (await req2("GET", "/api/ads/status")).json?.pending === true, JSON.stringify([_early.status, _early.json]));
+        await req2("POST", "/api/ads/start");
+        const _cheat = await req2("POST", "/api/ads/done");
+        check("💰 pular o tempo do anúncio (done logo após start) também é recusado", _cheat.status === 409, String(_cheat.status));
+        await new Promise((r) => setTimeout(r, 3200));
+        const _ok = await req2("POST", "/api/ads/done"), _after = await req2("GET", "/api/ads/status");
+        check("💰 vendo o tempo inteiro: libera, zera o contador e o próximo bloco de cópias começa limpo", _ok.json?.ok === true && _ok.json.pending === false && _after.json?.pending === false && _after.json.n === 0, JSON.stringify([_ok.json, _after.json]));
+        await req2("POST", "/api/test/login", { token: TEST_TOKEN, email: "pago-ads@test.com", name: "Pago Ads", isAdmin: false, plan: "vipro", vip: { active: true, plan: "vipro", source: "payment", manualExpires: Date.now() + 30 * 86400_000, autoExpires: Date.now() + 30 * 86400_000 } });
+        const _pg = [await req2("GET", "/api/ads/status"), await req2("POST", "/api/ads/copy"), await req2("POST", "/api/ads/copy"), await req2("POST", "/api/ads/copy"), await req2("POST", "/api/ads/copy")];
+        check("💰 PLANO PAGO NUNCA vê anúncio: com o anúncio ligado, 4 cópias seguidas → sem anúncio, sem pendência", _pg[0].json?.enabled === false && _pg.slice(1).every((x) => x.json?.gate === false) && _pg[0].json?.sponsor == null, JSON.stringify(_pg.map((x) => x.json)));
+        const _anon = await req2("POST", "/api/ads/copy", undefined, { Cookie: "" }), _nadm = await req2("POST", "/api/admin/ads/config", { enabled: false });
+        check("💰 sem login não conta cópia (401) e conta comum não mexe na config do admin (403)", _anon.status === 401 && _nadm.status === 403, JSON.stringify([_anon.status, _nadm.status]));
+        COOKIE = _adm;
+        await req2("POST", "/api/admin/ads/config", { enabled: false, every: 20, secs: 10, sponsor: {} });
+        const _srvA = fs.readFileSync(path.join(__dirname, "server.js"), "utf8"), _appA = fs.readFileSync(path.join(__dirname, "app.js"), "utf8"), _admA = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
+        check("💰 anúncio por cópias (estrutura): clipboard copia no gesto do clique (sem await antes), falha de rede = deixa copiar, painel admin tem o card, privacidade menciona AdSense",
+          /function lrCopiar\(email\)\{[\s\S]{0,260}_lrCopiarAgora\(em\)/.test(_appA) && /\.catch\(\(\)=>\{\}\)/.test(_appA) && /id="ads-panel"/.test(_admA) && /async function adsSalvar\(/.test(_admA) && /function _adsAtivo\(c\)/.test(_srvA) && /!isAdminVip\(u\)&&!isVipActive\(u\)/.test(_srvA),
+          "app/admin/server");
+      }
+      {
         const _imgAd = await req2("GET", "/img/alerta-golpes.jpg"), _idx = fs.readFileSync(path.join(__dirname, "index.html"), "utf8"), _app = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
         check("🛡️ anúncio 'alerta contra golpes': a imagem é servida, o overlay cobre a tela toda (z-index acima de tudo), tem X redondo branco que nasce desativado e contador verde de 10s",
           _imgAd.status === 200 && /id="scam-ad"/.test(_idx) && /#scam-ad\{position:fixed;inset:0;z-index:100100/.test(_idx) && /id="sa-x"[^>]*disabled/.test(_idx) && /\.sa-x\.ok\{background:#fff/.test(_idx) && /\.sa-wait\{[^}]*color:#4ade80/.test(_idx) && /SCAM_AD_SECS=10/.test(_app),

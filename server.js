@@ -42,7 +42,11 @@ const _assetCache = {}; // { file: { mtime, raw, gz, br, etag } }
 // (Render), o servidor troca na hora de servir — analytics liga em TODAS as
 // páginas de uma vez, sem tocar em arquivo. Sem a env, tudo fica como era.
 const GA_MEASUREMENT_ID = String(process.env.GA_MEASUREMENT_ID || "").trim();
-const _I18N_TAG = '<script src="/i18n.js"></script>';
+// 💰 AdSense (dono, 13/11/2026): publisher da conta aprovada. A tag entra em toda página HTML pública (menos admin);
+// ANÚNCIO NENHUM aparece sozinho — só os espaços manuais que o app monta, e nunca pra plano pago (ver /api/ads/*).
+const ADSENSE_PUB = String(process.env.ADSENSE_PUB || "pub-6904000311376189").trim();
+const _ADS_TAG = /^pub-\d{10,20}$/.test(ADSENSE_PUB) ? `<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-${ADSENSE_PUB}" crossorigin="anonymous"></script>` : "";
+const _I18N_TAG = '<script src="/i18n.js"></script>' + _ADS_TAG;
 // 🌐 Tradutor do site (PT/EN/ES): entra no <head> de TODA página HTML servida, menos as marcadas com h2b-no-i18n (admin).
 function _injectI18n(raw){
   const txt = raw.toString("utf8");
@@ -2622,6 +2626,11 @@ setInterval(()=>{
 
 
 // Verifica se manual VIP está ativo
+// 💰 Config do anúncio por cópia (ver rota /api/ads/*): desligado por padrão; "ativo" exige patrocinador de verdade.
+function _adsCfg(){const a=(DB_ADMIN_SETTINGS&&DB_ADMIN_SETTINGS.ads)||{};const sp=a.sponsor||{};
+  return{enabled:a.enabled===true,every:Math.min(500,Math.max(2,parseInt(a.every)||20)),secs:Math.min(30,Math.max(3,parseInt(a.secs)||10)),
+    sponsor:{title:String(sp.title||""),text:String(sp.text||""),cta:String(sp.cta||""),img:String(sp.img||""),url:String(sp.url||"")}};}
+function _adsAtivo(c){return !!(c&&c.enabled&&c.sponsor&&c.sponsor.url&&(c.sponsor.img||c.sponsor.text));}
 function isAdminVip(u) {
   // Admin sempre tem VIP ativo infinito (sem expiração)
   return !!(u?.isAdmin || isAdminEmail(u?.email||""));
@@ -7797,11 +7806,12 @@ const server=http.createServer(async(req,res)=>{
     "default-src 'self'",
     // v34-GA: googletagmanager liberado — o funil inteiro tinha gaEvent()
     // instrumentado mas a CSP bloqueava o script do Analytics em silêncio.
-    "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com",
+    "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://pagead2.googlesyndication.com https://*.googlesyndication.com https://*.adtrafficquality.google https://www.google.com https://*.doubleclick.net",
+    "frame-src https://googleads.g.doubleclick.net https://*.googlesyndication.com https://*.doubleclick.net https://*.adtrafficquality.google https://www.google.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://unpkg.com",
     "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://unpkg.com",
     "img-src 'self' data: https:",
-    "connect-src 'self' https://oauth2.googleapis.com https://gmail.googleapis.com https://fcm.googleapis.com https://www.google-analytics.com https://*.google-analytics.com https://www.googletagmanager.com",
+    "connect-src 'self' https://oauth2.googleapis.com https://gmail.googleapis.com https://fcm.googleapis.com https://www.google-analytics.com https://*.google-analytics.com https://www.googletagmanager.com https://pagead2.googlesyndication.com https://*.googlesyndication.com https://*.doubleclick.net https://*.adtrafficquality.google",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -7950,9 +7960,13 @@ const server=http.createServer(async(req,res)=>{
 
   // ── SEO: robots.txt + sitemap.xml (KB-SEO-01: site não tinha nenhum dos dois,
   // dificultando indexação/descoberta pelo Google) ──────────────────────────
+  if(pathname==="/ads.txt"){
+    res.writeHead(200,{"Content-Type":"text/plain; charset=utf-8","Cache-Control":"public, max-age=3600"});
+    return res.end(/^pub-\d{10,20}$/.test(ADSENSE_PUB)?`google.com, ${ADSENSE_PUB}, DIRECT, f08c47fec0942fa0\n`:"");
+  }
   if(pathname==="/robots.txt"){
     res.writeHead(200,{"Content-Type":"text/plain; charset=utf-8","Cache-Control":"public, max-age=3600"});
-    return res.end("User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /admin-reviews\nDisallow: /ad\nAllow: /api/public-wage-stats\nDisallow: /api/\nDisallow: /diagnostico\n\nSitemap: https://h2bapply.com/sitemap.xml\n");
+    return res.end("User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /admin-reviews\nDisallow: /ad\nAllow: /ads.txt\nAllow: /api/public-wage-stats\nDisallow: /api/\nDisallow: /diagnostico\n\nSitemap: https://h2bapply.com/sitemap.xml\n");
   }
   // 🗺️ v979 (SEO): /sitemap.xml continua sendo a URL de entrada (o dono pode já ter enviado ao Search Console) mas
   // virou ÍNDICE de 2 sitemaps — conteúdo (páginas fixas, estados, categorias) e vagas (só as que passam em
@@ -8181,7 +8195,10 @@ const server=http.createServer(async(req,res)=>{
       <li>Revogar o acesso ao Gmail a qualquer momento em <a href="https://myaccount.google.com/permissions" target="_blank">myaccount.google.com/permissions</a></li>
     </ul>
 
-    <h2>8. Contato</h2>
+    <h2>8. Publicidade e cookies</h2>
+    <p>O H2BApply pode exibir anúncios de terceiros, como o Google AdSense, e links de parceiros ou patrocinadores, para manter o serviço gratuito. Quem tem plano pago ativo não vê anúncios. Fornecedores terceiros, incluindo o Google, usam cookies para exibir anúncios com base em visitas anteriores a este e a outros sites. O uso de cookies de publicidade pelo Google permite que ele e seus parceiros exibam anúncios para você. Você pode desativar a publicidade personalizada em <a href="https://adssettings.google.com" rel="noopener" target="_blank">adssettings.google.com</a> e saber mais em <a href="https://policies.google.com/technologies/ads" rel="noopener" target="_blank">policies.google.com/technologies/ads</a>. Nunca compartilhamos o conteúdo do seu Gmail, seu currículo nem seus e-mails enviados com anunciantes. Usamos também cookies essenciais de sessão e, quando configurado, o Google Analytics para medir o uso do site.</p>
+
+    <h2>9. Contato</h2>
     <p>Para dúvidas sobre privacidade, entre em contato:</p>
     <ul>
       <li>Email: <a href="mailto:suporte@h2bapply.com">suporte@h2bapply.com</a></li>
@@ -10690,6 +10707,52 @@ filtrar();
       persist(ADMIN_SETTINGS_FILE,DB_ADMIN_SETTINGS);
       logAdminAction(s.user_email,"socios_recebedor","(config)",{recebedorPadrao:antes},{recebedorPadrao:r},`Recebedor padrão de entradas → ${r||"(desligado: sem dono)"}`);
       return json(res,200,{ok:true,recebedorPadrao:r});
+    }catch(e){return json(res,500,{error:e.message});}
+  }
+  // 💰 ANÚNCIO A CADA N CÓPIAS DE E-MAIL (dono, 13/11/2026) — SÓ conta grátis. Plano pago (e admin) NUNCA entra aqui.
+  // Desligado por padrão e FAIL-OPEN: sem patrocinador configurado (ou toggle off) ninguém é barrado. O contador mora no
+  // servidor (limpar cache não zera); liberar exige o tempo mínimo do anúncio visto (/start → /done).
+  if(pathname.startsWith("/api/ads/")&&(req.method==="GET"||req.method==="POST")){
+    const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado."});
+    try{
+      const u=getUser(s.user_email)||{};const cfg=_adsCfg();
+      const free=!isAdminVip(u)&&!isVipActive(u);const on=_adsAtivo(cfg)&&free;
+      const st=u.adCopy||{n:0,pending:false,views:0};
+      const put=x=>setUser(s.user_email,{adCopy:{...st,...x}});
+      const view=()=>({enabled:on,every:cfg.every,secs:cfg.secs,pending:on&&!!st.pending,n:st.n||0,sponsor:on?cfg.sponsor:null});
+      if(pathname==="/api/ads/status"&&req.method==="GET")return json(res,200,view());
+      if(!on)return json(res,200,{enabled:false,gate:false,pending:false});
+      if(pathname==="/api/ads/copy"&&req.method==="POST"){
+        const n=(st.n||0)+1;const pending=!!st.pending||n>=cfg.every;
+        put({n,pending,total:(st.total||0)+1});
+        return json(res,200,{enabled:true,gate:pending,n,every:cfg.every});
+      }
+      if(pathname==="/api/ads/start"&&req.method==="POST"){put({viewAt:Date.now()});return json(res,200,{ok:true,secs:cfg.secs});}
+      if(pathname==="/api/ads/done"&&req.method==="POST"){
+        if(!st.pending)return json(res,200,{ok:true,pending:false});
+        if(!st.viewAt||Date.now()-st.viewAt<Math.max(1000,cfg.secs*1000-1500))return json(res,409,{error:"Assista o anúncio até o fim.",wait:true});
+        put({n:0,pending:false,viewAt:0,views:(st.views||0)+1,lastViewAt:Date.now()});
+        return json(res,200,{ok:true,pending:false,released:cfg.every});
+      }
+      return json(res,404,{error:"Rota inexistente."});
+    }catch(e){return json(res,500,{error:e.message});}
+  }
+  if(pathname==="/api/admin/ads/config"){
+    const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
+    if(!(adm?.isAdmin||isAdminEmail(_sessAdminEmail(s))))return json(res,403,{error:"Só admin."});
+    try{
+      if(req.method==="GET")return json(res,200,{cfg:_adsCfg(),ativoEfetivo:_adsAtivo(_adsCfg()),pub:ADSENSE_PUB});
+      if(req.method!=="POST")return json(res,405,{error:"Método inválido."});
+      const d=JSON.parse(await readBody(req));const antes=_adsCfg();
+      const url=v=>{v=String(v||"").trim().slice(0,500);return /^https:\/\//i.test(v)||v.startsWith("/")?v:"";};
+      const sp=d.sponsor||{};
+      const novo={enabled:d.enabled===true,
+        every:Math.min(500,Math.max(2,parseInt(d.every)||20)),
+        secs:Math.min(30,Math.max(3,parseInt(d.secs)||10)),
+        sponsor:{title:String(sp.title||"").slice(0,80),text:String(sp.text||"").slice(0,240),cta:String(sp.cta||"").slice(0,40),img:url(sp.img),url:url(sp.url)}};
+      DB_ADMIN_SETTINGS.ads=novo;persist(ADMIN_SETTINGS_FILE,DB_ADMIN_SETTINGS);
+      logAdminAction(s.user_email,"ads_config","(config)",antes,novo,`Anúncio a cada ${novo.every} cópias → ${novo.enabled?"LIGADO":"desligado"}`);
+      return json(res,200,{ok:true,cfg:novo,ativoEfetivo:_adsAtivo(novo)});
     }catch(e){return json(res,500,{error:e.message});}
   }
   if(pathname==="/api/admin/socios/split"&&req.method==="POST"){

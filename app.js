@@ -196,6 +196,8 @@ function applyStatus(d){
   UPROFILES=d.profiles||[];U.profiles=UPROFILES;
   // Pedido pendente na Home: se o plano/gate mudou, o card em cache virou
   // mentira — força uma releitura na próxima renderização.
+  if(_antes&&_antes.needsPlan!==!!U.needsPlan)_adsSt=null; // virou/deixou de ser grátis → recarrega o estado do anúncio
+  if(_isFreeApplier())adsCarrega();
   if(_antes&&(_antes.needsPlan!==!!U.needsPlan||_antes.plan!==U.plan||_antes.gmail!==!!U.gmailConnected))_pendingOrderCache=undefined;
   _planWatchSig=_planSig(d); // base de comparação do "plano ao vivo"
   try{updateGmailPrompts();}catch(e){}
@@ -2418,11 +2420,66 @@ function updSheetCounter(){
 // ═══════════════════════════════════════════════════════════════════════
 function _isFreeApplier(){return !!U&&!U.isAdmin&&!!U.needsPlan;}
 
-function lrCopiar(email){
+// 💰 Anúncio a cada N cópias (dono, 13/11/2026): SÓ conta grátis (plano pago nunca vê). O servidor conta e decide; aqui só
+// guardamos o último estado. A cópia acontece NA HORA (clipboard exige o gesto do clique); na cópia N+1 abre o anúncio e,
+// terminado o tempo, libera mais N. Qualquer falha de rede = deixa copiar (fail-open) — o anúncio nunca trava o site.
+let _adsSt=null; // {enabled,every,secs,pending,sponsor}
+function _adsAplica(){return _isFreeApplier()&&_adsSt&&_adsSt.enabled;}
+async function adsCarrega(){
+  if(!_isFreeApplier()||_adsSt!==null)return;
+  _adsSt=false;
+  try{const r=await fetch("/api/ads/status",{credentials:"include"});if(r.ok)_adsSt=await r.json();}catch(e){}
+}
+function _adsAbre(email){
+  const sp=(_adsSt&&_adsSt.sponsor)||{};
+  let ov=document.getElementById("ads-ov");if(ov)ov.remove();
+  ov=document.createElement("div");ov.id="ads-ov";ov.setAttribute("role","dialog");ov.setAttribute("aria-modal","true");
+  ov.style.cssText="position:fixed;inset:0;z-index:99998;background:rgba(2,6,12,.88);display:flex;align-items:center;justify-content:center;padding:16px";
+  ov.innerHTML=`<div style="background:var(--s1,#0f1720);color:var(--t1,#fff);border:1px solid var(--border,#243040);border-radius:16px;max-width:420px;width:100%;padding:18px;text-align:center">
+    <div style="font-size:12px;color:var(--t3,#94a3b8);margin-bottom:8px">Anúncio · ajuda a manter o H2BApply grátis</div>
+    <div id="ads-img"></div>
+    ${sp.title?`<div style="font-weight:700;font-size:17px;margin-bottom:6px">${esc(sp.title)}</div>`:""}
+    ${sp.text?`<div style="font-size:14px;color:var(--t2,#cbd5e1);margin-bottom:12px">${esc(sp.text)}</div>`:""}
+    ${sp.url?`<a href="${esc(sp.url)}" target="_blank" rel="sponsored noopener noreferrer" class="btn btn-secondary" style="display:inline-flex;margin-bottom:12px">${esc(sp.cta||"Saiba mais")}</a>`:""}
+    <div id="ads-wait" style="font-size:13px;color:var(--t3,#94a3b8);margin-bottom:10px"></div>
+    <button type="button" id="ads-go" class="btn btn-primary w100" disabled style="justify-content:center;padding:12px">Copiar e-mail</button>
+    <button type="button" id="ads-no" class="btn btn-ghost" style="margin-top:8px;font-size:12px">Agora não</button>
+  </div>`;
+  document.body.appendChild(ov);
+  if(sp.img){const im=document.createElement("img");im.src=sp.img;im.alt="";im.loading="lazy";im.style.cssText="width:100%;max-height:220px;object-fit:cover;border-radius:10px;margin-bottom:12px";ov.querySelector("#ads-img").appendChild(im);}
+  const wait=ov.querySelector("#ads-wait"),go=ov.querySelector("#ads-go");
+  const secs=Math.max(3,parseInt(_adsSt.secs)||10);let left=secs,tmr=null;
+  const fecha=()=>{clearInterval(tmr);ov.remove();};
+  ov.querySelector("#ads-no").onclick=fecha;
+  fetch("/api/ads/start",{method:"POST",credentials:"include"}).catch(()=>{});
+  const tick=()=>{
+    if(left>0){wait.textContent="Liberando em "+left+"s…";left--;return;}
+    clearInterval(tmr);wait.textContent="Pronto! Seu próximo bloco de e-mails está liberado.";go.disabled=false;
+  };
+  tick();tmr=setInterval(tick,1000);
+  go.onclick=async()=>{
+    go.disabled=true;
+    try{
+      const r=await fetch("/api/ads/done",{method:"POST",credentials:"include"});
+      if(r.status===409){toast("Assista o anúncio até o fim.","r");go.disabled=false;return;}
+      if(r.ok){const d=await r.json();_adsSt.pending=!!d.pending;}
+    }catch(e){}
+    fecha();_lrCopiarAgora(email);
+  };
+}
+function _lrCopiarAgora(email){
   const em=String(email||"").trim();if(!em)return;
   const ok=()=>toast("📋 E-mail copiado — cole no seu Gmail e envie.","g");
   const fb=()=>{try{const ta=document.createElement("textarea");ta.value=em;ta.setAttribute("readonly","");ta.style.cssText="position:fixed;top:-100px;opacity:0";document.body.appendChild(ta);ta.select();const r=document.execCommand("copy");ta.remove();r?ok():toast("Não deu pra copiar sozinho. Selecione o e-mail e copie.","r");}catch(e){toast("Não deu pra copiar sozinho. Selecione o e-mail e copie.","r");}};
   if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(em).then(ok).catch(fb);else fb();
+}
+function lrCopiar(email){
+  const em=String(email||"").trim();if(!em)return;
+  if(_adsAplica()&&_adsSt.pending){_adsAbre(em);return;}
+  _lrCopiarAgora(em);
+  if(_adsAplica()){
+    fetch("/api/ads/copy",{method:"POST",credentials:"include"}).then(r=>r.ok?r.json():null).then(d=>{if(d&&_adsSt)_adsSt.pending=!!d.gate;}).catch(()=>{});
+  }else if(_isFreeApplier()&&_adsSt===null){adsCarrega();}
 }
 
 // Linha extra do CARD da lista (só quem não tem plano): e-mail + copiar + caixinha

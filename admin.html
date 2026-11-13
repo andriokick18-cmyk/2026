@@ -755,6 +755,23 @@ tbody tr:hover{background:var(--glass2)}
           <div class="panel-head"><div class="panel-title"><i class="ti ti-bug"></i>Erros graves do servidor</div><div class="panel-actions"><span style="font-size:12px;color:var(--t3)">uncaughtException / unhandledRejection — guardados em disco, sobrevivem ao reinício</span></div></div>
           <div class="panel-body" id="sis-crashes" style="font-size:13px"><div class="spin"></div></div>
         </div>
+        <div class="panel" id="ads-panel">
+          <div class="panel-head"><div class="panel-title"><i class="ti ti-ad"></i>Anúncios (monetização do plano grátis)</div><div class="panel-actions"><button class="btn btn-sm btn-primary" onclick="adsSalvar()"><i class="ti ti-device-floppy"></i> Salvar</button></div></div>
+          <div class="panel-body" style="font-size:13px;color:var(--t2)">
+            <p style="margin-bottom:10px">A cada N e-mails copiados, quem está no <b>plano grátis</b> vê um anúncio antes de continuar. <b>Plano pago e admin nunca veem.</b> Fica desligado até você ligar e preencher o patrocinador (sem patrocinador, ninguém é barrado).</p>
+            <label style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="ads-on"> Ligar o anúncio por cópias</label>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+              <label>A cada <input type="number" id="ads-every" min="2" max="500" value="20" style="width:70px"> cópias</label>
+              <label>Tempo do anúncio <input type="number" id="ads-secs" min="3" max="30" value="10" style="width:60px"> s</label>
+            </div>
+            <input id="ads-title" placeholder="Título do patrocinador" maxlength="80" style="width:100%;margin-bottom:6px">
+            <input id="ads-text" placeholder="Texto curto" maxlength="240" style="width:100%;margin-bottom:6px">
+            <input id="ads-img" placeholder="Link da imagem (https://…)" style="width:100%;margin-bottom:6px">
+            <input id="ads-url" placeholder="Link do patrocinador/afiliado (https://…)" style="width:100%;margin-bottom:6px">
+            <input id="ads-cta" placeholder="Texto do botão (ex.: Saiba mais)" maxlength="40" style="width:100%;margin-bottom:8px">
+            <div id="ads-info" style="font-size:12px;color:var(--t3)"></div>
+          </div>
+        </div>
         <div class="panel">
           <div class="panel-head"><div class="panel-title"><i class="ti ti-report"></i>Resumo de ontem</div><div class="panel-actions"><button class="btn btn-sm" onclick="rodarResumoOntem()"><i class="ti ti-player-play"></i> Gerar agora</button></div></div>
           <div class="panel-body" id="sis-resumo" style="font-size:13px;color:var(--t2)">O resumo roda sozinho às 8h (BRT). Clique pra ver os números de ontem agora: vendas, pedidos na mesa, envios e cadastros.</div>
@@ -3621,7 +3638,29 @@ async function reiniciarTravados(){
    segurança antes, servidor reinicia depois. SEM alertas (ordem do dono).
    ════════════════════════════════════════════════════════════════════════ */
 var SIS={bk:null,cr:null,alvo:null};
+// 💰 Anúncio por cópias (plano grátis): config no servidor, nenhuma regra duplicada aqui.
+async function adsCarregar(){
+  try{
+    var r=await fetch("/api/admin/ads/config",{credentials:"include"});var d=await r.json();if(!d.cfg)return;
+    var c=d.cfg,sp=c.sponsor||{};
+    document.getElementById("ads-on").checked=!!c.enabled;document.getElementById("ads-every").value=c.every;document.getElementById("ads-secs").value=c.secs;
+    document.getElementById("ads-title").value=sp.title||"";document.getElementById("ads-text").value=sp.text||"";document.getElementById("ads-img").value=sp.img||"";
+    document.getElementById("ads-url").value=sp.url||"";document.getElementById("ads-cta").value=sp.cta||"";
+    document.getElementById("ads-info").textContent=(d.ativoEfetivo?"✅ Ativo para contas grátis.":"⏸️ Inativo (desligado ou sem patrocinador preenchido).")+" Conta AdSense: ca-"+d.pub;
+  }catch(e){}
+}
+async function adsSalvar(){
+  var g=function(i){return document.getElementById(i).value;};
+  var body={enabled:document.getElementById("ads-on").checked,every:g("ads-every"),secs:g("ads-secs"),sponsor:{title:g("ads-title"),text:g("ads-text"),img:g("ads-img"),url:g("ads-url"),cta:g("ads-cta")}};
+  try{
+    var r=await fetch("/api/admin/ads/config",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    var d=await r.json();if(!r.ok){toast(d.error||"Erro ao salvar","r");return;}
+    toast("Anúncios salvos"+(d.ativoEfetivo?" — ATIVO":" — inativo (falta patrocinador)"),"g");adsCarregar();
+  }catch(e){toast("Erro ao salvar","r");}
+}
+
 async function carregarSistema(){
+  adsCarregar();
   try{
     var b=await api("/api/admin/backups");SIS.bk=b;
     var c=await api("/api/admin/crashes");SIS.cr=c;
