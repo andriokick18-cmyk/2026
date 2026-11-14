@@ -7377,6 +7377,15 @@ async function drillAdminSettingsLegado() {
         _nativos === 0 && /function confirmar\(/.test(_adm977) && /function avisar\(/.test(_adm977) && (_adm977.match(/await confirmar\(/g) || []).length >= 20,
         "nativos=" + _nativos);
     }
+    {
+      // 🔒 LGPD nos logs: em produção e-mail sai mascarado em console.*; no teste fica cru (a suíte lê o log); LOG_EMAILS_FULL liga o cru
+      const _srvLog = fs.readFileSync(path.join(__dirname, "server.js"), "utf8").slice(0, 3000);
+      const _re = /([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*@([A-Za-z0-9-])[A-Za-z0-9.-]*(\.[A-Za-z]{2,})/g;
+      check("🔒 logs sem dado pessoal: console.log/info/warn/error mascaram e-mail em produção (maria.silva@gmail.com → m***@g***.com), exceto com LOG_EMAILS_FULL=1 ou no npm test",
+        /!process\.env\.TEST_LOGIN_TOKEN && process\.env\.LOG_EMAILS_FULL !== "1"/.test(_srvLog) && /for \(const _lvl of \["log", "info", "warn", "error"\]\)/.test(_srvLog) &&
+        "pedido de maria.silva@gmail.com ok".replace(_re, "$1***@$2***$3") === "pedido de m***@g***.com ok" && fs.readFileSync(path.join(__dirname, ".env.example"), "utf8").includes("LOG_EMAILS_FULL"),
+        "server.js topo");
+    }
     // 🧭 Painel "de empresa" (ordem do dono, 14/11/2026): grupos claros, faixa de orientação em toda tela, aviso de gasto zerado,
     // glossário recebido × MRR × renovação prevista, Operação separada em cadastros × alertas, cadastros por estado/país sem mapa,
     // Avaliações dentro do painel e checklist de conformidade (lembrete, nunca aconselhamento jurídico).

@@ -21,6 +21,16 @@
 //    • IDs únicos por candidatura (appId) + índice de vinculação
 // ═══════════════════════════════════════════════════════════
 "use strict";
+// 🔒 LGPD nos logs (dono, 14/11/2026: "sem vazar dados pessoais nos logs"): em PRODUÇÃO todo e-mail que aparece em console.log/warn/error/info
+// sai mascarado (m***@g***.com). Nenhum custo de RAM (só troca o texto de cada linha). LOG_EMAILS_FULL=1 devolve o e-mail inteiro pra
+// depurar um caso; no npm test (TEST_LOGIN_TOKEN) fica desligado pra a suíte continuar lendo o log cru.
+if (!process.env.TEST_LOGIN_TOKEN && process.env.LOG_EMAILS_FULL !== "1") {
+  const _reEmailLog = /([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*@([A-Za-z0-9-])[A-Za-z0-9.-]*(\.[A-Za-z]{2,})/g;
+  for (const _lvl of ["log", "info", "warn", "error"]) {
+    const _orig = console[_lvl].bind(console);
+    console[_lvl] = (...a) => _orig(...a.map((x) => (typeof x === "string" ? x.replace(_reEmailLog, "$1***@$2***$3") : x)));
+  }
+}
 const http   = require("http");
 const https  = require("https");
 const fs     = require("fs");
