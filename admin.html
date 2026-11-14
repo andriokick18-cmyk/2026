@@ -3292,7 +3292,7 @@ async function carregarDono(){
     _setCard("dono-grid",0,fmtMoney(e.hoje),"entrou hoje");
     _setCard("dono-grid",1,fmtMoney(e.dias7),"últimos 7 dias");
     _setCard("dono-grid",2,fmtMoney(e.dias30),"últimos 30 dias · ticket médio "+fmtMoney(e.ticketMedio30));
-    _setCard("dono-grid",3,fmtMoney(e.total),"desde o começo · "+(r.pagantes||0)+" pagante(s)");
+    _setCard("dono-grid",3,fmtMoney(e.total),"desde o começo · "+(r.pagantes||0)+" com plano ativo hoje · "+(r.pagantesJaPagaram||0)+" já pagaram (mesma conta da aba Pagantes)"+((e.testes&&e.testes.n)?" · 🧪 Testes (fora do caixa): "+fmtMoney(e.testes.total)+" em "+e.testes.n+" lançamento(s)":""));
     _setCard("dono-grid",4,fmtMoney(r.gastos30),"gastos nos últimos 30 dias");
     _setCard("dono-grid",5,fmtMoney(r.liquido30),r.gastos30>0?"receita recebida 30d − gastos 30d":"⚠️ sem gastos lançados — lucro pode estar errado");
     _setCard("dono-grid",6,fmtMoney((r.pendentes||{}).valor),((r.pendentes||{}).qtd||0)+" pedido(s) esperando decisão");
@@ -3608,7 +3608,7 @@ async function salvarGift(ev){
 async function carregarPagantes(){
   try{var r=await api("/api/admin/pagantes");DIN.pagantes=r;
     var sm=r.summary||{};
-    _setCard("pg-grid",0,String(sm.totalPagantes||0),"receita total "+fmtMoney(sm.receitaTotal));
+    _setCard("pg-grid",0,String(sm.totalPagantes||0),"já pagaram alguma vez · receita total (caixa, sem testes) "+fmtMoney(sm.receitaTotal));
     _setCard("pg-grid",1,String(sm.ativos||0),"receita recebida no mês (caixa) "+fmtMoney(sm.receitaMes));
     _setCard("pg-grid",2,String(sm.vencendo||0),"hora de lembrar de renovar");
     _setCard("pg-grid",3,String(sm.vencidos||0),(sm.semData||0)+" sem data de vencimento");

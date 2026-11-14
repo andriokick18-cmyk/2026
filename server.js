@@ -798,6 +798,12 @@ function computeEntradasJanelas(){
   const _ts=x=>{if(!x)return 0;if(typeof x==="number")return x;const t=Date.parse(x);return isNaN(t)?0:t;};
   const _pedById={};for(const ped of (DB_PEDIDOS||[])){if(ped&&ped.id)_pedById[ped.id]=ped;}
   const pags=(DB_FINANCEIRO.pagamentos||[]).filter(p=>!_pgNaoEhReceita(p,_pedById));
+  // 🧪 linha separada "Testes (fora do caixa)": entradas de TESTE (não de admin) que ficaram de fora dos totais — transparência, nunca somam
+  let testesN=0,testesTotal=0;
+  for(const p of (DB_FINANCEIRO.pagamentos||[])){
+    if(!p||p.anuladoPor||p.tipo==="ajuste"||naoEhReceita(p.email))continue;
+    if(_pgNaoEhReceita(p,_pedById)){testesN++;testesTotal+=_finValorEfetivo(p,_pedById);}
+  }
   let hoje=0,dias7=0,dias30=0,total=0,n30=0;
   for(const p of pags){
     const t=_ts(p.dataPagamento||p.data);
@@ -816,7 +822,7 @@ function computeEntradasJanelas(){
     const exp=Math.max(u2.vip.manualExpires||0,u2.vip.autoExpires||0);
     if(exp>now)pagantes++;
   }
-  return {hoje,dias7,dias30,total,n30,pagantes};
+  return {hoje,dias7,dias30,total,n30,pagantes,testes:{n:testesN,total:Math.round(testesTotal*100)/100}};
 }
 // ══════════════════════════════════════════════════════════════════════════
 // 💼 MC4-P1 — SÓCIOS & ACERTO (MASTER COMMAND 4, dono, 28/08/2026):
@@ -1560,7 +1566,26 @@ function _pgNaoEhReceita(p,pedById){
   if(!p)return true;
   if(naoEhReceita(p.email)||p.isTeste===true)return true;
   const ped=p.pedidoId&&pedById?pedById[p.pedidoId]:null;
-  return !!ped&&_pedidoEhTeste(ped);
+  if(ped&&_pedidoEhTeste(ped))return true;
+  // 🧪 o lançamento HERDA o teste mesmo sem pedidoId (caso real 20/09: R$300 do pedido de teste seguia somado): por conta de teste
+  // (emailContato de teste) ou, sem pedidoId, por pedido de teste da MESMA conta com o MESMO valor.
+  const ix=_testeIndice(),em=String(p.email||"").toLowerCase();
+  if(ix.contas.has(em))return true;
+  if(!p.pedidoId&&ix.emVal.has(em+"|"+(parseFloat(p.valor)||0).toFixed(2)))return true;
+  return false;
+}
+let _testeIdx=null,_testeIdxAt=0; // índice curto (3s) dos pedidos/contas de teste — recalculado sozinho; a rota de marcar zera na hora
+function _testeIndice(){
+  if(_testeIdx&&Date.now()-_testeIdxAt<1000)return _testeIdx;
+  const contas=new Set(),emVal=new Set();
+  for(const ped of (DB_PEDIDOS||[])){
+    if(!ped||!ped.userEmail||!_pedidoEhTeste(ped))continue;
+    emVal.add(String(ped.userEmail).toLowerCase()+"|"+(parseFloat(ped.valorTotal)||0).toFixed(2));
+  }
+  for(const u of Object.values(DB_USERS||{})){
+    if(u&&u.email&&isTestAccountEmail(u.emailContato))contas.add(String(u.email).toLowerCase());
+  }
+  _testeIdx={contas,emVal};_testeIdxAt=Date.now();return _testeIdx;
 }
 // naoEhReceita pelo USUÁRIO — pra loops que já têm o objeto carregado
 // (Object.entries(DB_USERS) etc.): confere o Gmail de contato real, nunca
@@ -8893,9 +8918,21 @@ ul li{margin-bottom:6px}
     const fakeSoTO=async(o)=>{if(o.method==="GET")return {status:200,body:{models:[]}};const e=new Error("Timeout");e.noResponse=true;throw e;};
     _gmListaEm=0;_gmOk=null;_gmLista=[];
     let erroDiag=null;try{await _geminiGenerateContent({},fakeSoTO);}catch(e){erroDiag={msg:e.message,n:(e.diag||[]).length};}
+    // cenário 4 (memória de saúde): modelo marcado "ruim" vai pro FIM da fila com 1 tentativa de 20s; os bons vêm antes com os 60s normais
+    _gmRuim.clear();_gmMarcaRuim("gemini-2.5-flash");_gmOk=null;_gmListaEm=0;_gmLista=[];
+    const ordem4=[];
+    const fake4=async(o)=>{if(o.method==="GET")return {status:200,body:{models:[]}};const mm=decodeURIComponent(String(o.path).match(/models\/([^:]+):/)[1]);ordem4.push({m:mm,t:o.timeoutMs});
+      return mm==="gemini-2.5-flash"?{status:200,body:{candidates:[{content:{parts:[{text:"{}"}]}}]}}:{status:503,body:{error:{message:"overloaded"}}};};
+    const r4=await _geminiGenerateContent({},fake4);
+    const ruimUltimo=ordem4.length>0&&ordem4[ordem4.length-1].m==="gemini-2.5-flash"&&ordem4[ordem4.length-1].t===GEMINI_RUIM_TENTATIVA_MS&&ordem4[0].m!=="gemini-2.5-flash"&&ordem4[0].t===GEMINI_TENTATIVA_MS;
+    // depois de funcionar, o modelo sai da lista de ruins e passa a ser o PRIMEIRO da próxima chamada
+    const ordem5=[];const fake5=async(o)=>{if(o.method==="GET")return {status:200,body:{models:[]}};ordem5.push(decodeURIComponent(String(o.path).match(/models\/([^:]+):/)[1]));return {status:200,body:{candidates:[{content:{parts:[{text:"{}"}]}}]}};};
+    await _geminiGenerateContent({},fake5);
+    const lembrou=ordem5[0]==="gemini-2.5-flash"&&!_gmEhRuim("gemini-2.5-flash");
+    _gmRuim.clear();
     process.env.GEMINI_API_KEY=chaveAntes;if(chaveAntes===undefined)delete process.env.GEMINI_API_KEY;if(modAntes!==undefined)process.env.GEMINI_MODEL=modAntes;
     const modeloUsado=r&&r.model;_gmOk=null;_gmListaEm=0;_gmLista=[];
-    return json(res,200,{ok:true,modeloUsado,status:r&&r.r.status,chamadas,motivo403,motivo404,retry:{ok:r2&&r2.r.status===200,tentativas:(r2&&r2.diag||[]).length,timeoutMs:tos[0],tetoMs:GEMINI_TENTATIVA_MS},erroDiag});
+    return json(res,200,{ok:true,modeloUsado,status:r&&r.r.status,chamadas,motivo403,motivo404,retry:{ok:r2&&r2.r.status===200,tentativas:(r2&&r2.diag||[]).length,timeoutMs:tos[0],tetoMs:GEMINI_TENTATIVA_MS},erroDiag,memoria:{ruimUltimo,lembrou,usou:r4&&r4.model}});
   }
   if(pathname==="/api/admin/sheet/h2a-roll-toggle"&&req.method==="POST"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
@@ -10812,6 +10849,7 @@ filtrar();
       if(!pd)return json(res,404,{error:"Pedido não encontrado."});
       const novo=d.teste!==false,antes=pd.isTeste===true;
       pd.isTeste=novo;pd.testeMarcadoPor=s.user_email;pd.testeMarcadoEm=Date.now();
+      _testeIdx=null;
       persistPedidos();
       logAdminAction(s.user_email,"pedido_teste",pd.id,{isTeste:antes},{isTeste:novo},`Pedido ${pd.id} ${novo?"marcado como TESTE (fora de receita, pagantes, MRR e acerto)":"desmarcado como teste"}`);
       return json(res,200,{ok:true,id:pd.id,isTeste:novo});
@@ -14453,15 +14491,19 @@ const job={active:true,startedAt:Date.now(),queue,originalCount:queue.length,fil
         if(c>=now-7*DAY)novos7++;
         if(c&&new Date(c-3*3600_000).toISOString().slice(0,10)===hojeISO)novosHoje++;
       }
+      const _pgRes=_computePagantes().summary; // mesma função da aba Pagantes
       return json(res,200,{ok:true,
-        entradas:{hoje:janelas.hoje,dias7:janelas.dias7,dias30:janelas.dias30,total:janelas.total,ticketMedio30:janelas.n30?Math.round(janelas.dias30/janelas.n30):0},
+        entradas:{hoje:janelas.hoje,dias7:janelas.dias7,dias30:janelas.dias30,total:janelas.total,ticketMedio30:janelas.n30?Math.round(janelas.dias30/janelas.n30):0,testes:janelas.testes},
         gastos30:g30,liquido30:janelas.dias30-g30,
         pendentes:{qtd:pend.length,valor:pendValor},
-        pagantes:janelas.pagantes,vencendo7d:vencendo.slice(0,8),vencendoQtd:vencendo.length,
+        // 👥 UMA definição: "pagantes ativos" = com plano pago valendo hoje; "já pagaram" = quem pagou alguma vez (mesma conta da aba Pagantes)
+        pagantes:_pgRes.ativos,pagantesJaPagaram:_pgRes.totalPagantes,vencendo7d:vencendo.slice(0,8),vencendoQtd:vencendo.length,
         novos:{hoje:novosHoje,dias7:novos7,total:totalUsers}});
     }
     // ── Admin: PAGANTES — visão única "quem pagou + dias de VIP" (calculada no servidor = fonte única) ──
-if(pathname==="/api/admin/pagantes"&&req.method==="GET"){try{
+// 👥 UMA definição de "pagante" pra TODAS as telas (14/11/2026: Resumo dizia 8, a aba Pagantes dizia 11): esta função é a fonte; a rota
+// /api/admin/pagantes e o Resumo (dono-resumo) chamam ela — nunca uma segunda contagem.
+function _computePagantes(){
   const now=Date.now();
   const parseVal=v=>{if(typeof v==="number")return v||0;if(!v)return 0;const n=parseFloat(String(v).replace(/[^0-9,.-]/g,"").replace(",","."));return isNaN(n)?0:n;};
   const toTs=x=>{if(!x)return null;if(typeof x==="number")return x;const t=Date.parse(x);return isNaN(t)?null:t;};
@@ -14563,8 +14605,9 @@ if(pathname==="/api/admin/pagantes"&&req.method==="GET"){try{
   const _r2=(x)=>Math.round(x*100)/100;
   const renovacoes={proximos7d:{n:renov7,valorEsperado:_r2(valor7)},proximos30d:{n:renov30,valorEsperado:_r2(valor30)},mrr:_r2(mrr),lista:renovLista.slice(0,200),formula:"valor esperado = preço de tabela (PLANO_PRECO_TAB) do plano no período que a pessoa já tem (vip.days, senão 30d); MRR = soma dos planos ativos × 30 / dias do período"};
   const churn={ultimos30d:churn30,ultimos60d:churn60,valorPerdido:_r2(churnValor),taxa30d:(summary.ativos+churn30)>0?Math.round(churn30/(summary.ativos+churn30)*1000)/10:0,lista:churnLista.slice(0,200),formula:"churn = pagante com plano vencido há 1–60 dias sem pagamento posterior ao vencimento; taxa 30d = vencidos nos últimos 30d ÷ (ativos + vencidos 30d)"};
-  return json(res,200,{ok:true,rows,summary,renovacoes,churn,generatedAt:now});
-}catch(e){return json(res,500,{error:e.message});}}
+  return {ok:true,rows,summary,renovacoes,churn,generatedAt:now};
+}
+if(pathname==="/api/admin/pagantes"&&req.method==="GET"){try{return json(res,200,_computePagantes());}catch(e){return json(res,500,{error:e.message});}}
 
 // ══════════════════════════════════════════════════════════════════════════
 // 🧮 CONTABILIDADE (admin-only) — 100% DETERMINÍSTICA, ZERO IA/Cérebro.
@@ -16569,27 +16612,36 @@ async function _geminiModelosDisponiveis(reqFn){
 // ⏱️ 14/11/2026 (achado: 8 pedidos de 27/10 a 12/11 em "ERRO — Timeout"): httpsReq tinha 15s fixos (feito pro Gmail) e a IA lendo uma FOTO
 // passa disso. Agora a leitura tem 60s por tentativa, até 2 tentativas por modelo em timeout/429/5xx (espera 3s→8s) e um teto de 150s no total;
 // cada tentativa vira uma linha do diagnóstico (modelo, status HTTP ou erro, tempo) que o pedido guarda e o painel mostra em Detalhes.
-const GEMINI_TENTATIVA_MS=60000,GEMINI_TETO_MS=150000;
+const GEMINI_TENTATIVA_MS=60000,GEMINI_TETO_MS=150000,GEMINI_RUIM_TTL_MS=30*60000,GEMINI_RUIM_TENTATIVA_MS=20000;
+// 🧠 memória de saúde dos modelos (14/11/2026 — em produção a cadeia gastava ~3 min por pedido: o 3.8 dava Timeout 2x, o 3.7 dava 503 2x e só o 3.6
+// respondia): o último modelo que funcionou vai SEMPRE primeiro; quem falhou fica "ruim" por 30 min — vai pro fim da fila, com 1 tentativa de
+// 20s — e depois disso é reavaliado de verdade. Só RAM (Map pequeno, teto 20). Fixar GEMINI_MODEL no Render pula até a primeira descoberta.
+const _gmRuim=new Map();
+function _gmMarcaRuim(m){if(_gmRuim.size>=20)_gmRuim.delete(_gmRuim.keys().next().value);_gmRuim.set(m,Date.now()+GEMINI_RUIM_TTL_MS);}
+function _gmEhRuim(m){const ate=_gmRuim.get(m);if(!ate)return false;if(Date.now()>ate){_gmRuim.delete(m);return false;}return true;}
 async function _geminiGenerateContent(body,reqFn){
   reqFn=reqFn||httpsReq;
   const t0=Date.now(),diag=[],teste=!!process.env.TEST_LOGIN_TOKEN;
-  const cand=[...new Set([process.env.GEMINI_MODEL,_gmOk,...(await _geminiModelosDisponiveis(reqFn)),...GEMINI_RESERVA].filter(Boolean))].slice(0,6);
+  const todos=[...new Set([process.env.GEMINI_MODEL,_gmOk,...(await _geminiModelosDisponiveis(reqFn)),...GEMINI_RESERVA].filter(Boolean))];
+  const cand=[...todos.filter(m=>!_gmEhRuim(m)),...todos.filter(m=>_gmEhRuim(m))].slice(0,6);
   let ultimo=null;
   for(const m of cand){
-    for(let tent=1;tent<=2;tent++){
+    const ruim=_gmEhRuim(m);
+    for(let tent=1;tent<=(ruim?1:2);tent++){
       if(Date.now()-t0>GEMINI_TETO_MS)break;
       const ti=Date.now();let r=null,erro=null;
-      try{r=await reqFn({hostname:"generativelanguage.googleapis.com",path:`/v1beta/models/${encodeURIComponent(m)}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`,method:"POST",headers:{"Content-Type":"application/json"},timeoutMs:GEMINI_TENTATIVA_MS},body);}
+      try{r=await reqFn({hostname:"generativelanguage.googleapis.com",path:`/v1beta/models/${encodeURIComponent(m)}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`,method:"POST",headers:{"Content-Type":"application/json"},timeoutMs:(ruim||tent>1)?GEMINI_RUIM_TENTATIVA_MS:GEMINI_TENTATIVA_MS},body);}
       catch(e){erro=e.message||String(e);}
-      diag.push({modelo:m,tentativa:tent,status:r?r.status:null,erro:erro,ms:Date.now()-ti});
-      if(r&&r.status===200){_gmOk=m;return {r,model:m,diag};}
+      diag.push({modelo:m,tentativa:tent,status:r?r.status:null,erro:erro,ms:Date.now()-ti,ruim:ruim||undefined});
+      if(r&&r.status===200){_gmOk=m;_gmRuim.delete(m);return {r,model:m,diag};}
+      if(!r||r.status===429||r.status>=500)_gmMarcaRuim(m);
       if(r){ultimo={r,model:m,diag};console.warn(`[precheck] modelo ${m} respondeu ${r.status} em ${Date.now()-ti}ms: ${JSON.stringify(r.body).slice(0,140)}`);}
       else console.warn(`[precheck] modelo ${m} falhou em ${Date.now()-ti}ms (tentativa ${tent}/2): ${erro}`);
       if(r&&(r.status===401||r.status===403))return ultimo; // chave inválida/sem permissão: trocar de modelo não resolve
       if(r&&(r.status===404||r.status===400)){_gmListaEm=0;break;} // modelo sumiu: relê a lista da Google na próxima e vai pro próximo modelo
       const transit=!r||r.status===429||r.status>=500; // timeout/limite/queda: vale tentar de novo
       if(!transit)break;
-      if(tent<2)await new Promise(ok=>setTimeout(ok,teste?30:(tent===1?3000:8000)));
+      if(!ruim&&tent<2)await new Promise(ok=>setTimeout(ok,teste?30:3000));
     }
     if(Date.now()-t0>GEMINI_TETO_MS)break;
   }

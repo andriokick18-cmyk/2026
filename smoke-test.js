@@ -3438,6 +3438,10 @@ async function drillAdminSettingsLegado() {
         !!_alvo && _mk?.json?.ok === true && _tot1 < _tot0 && _soc1 < _soc0 && Math.abs((_tot0 - _tot1) - (_soc0 - _soc1)) < 0.01 && _un?.json?.ok === true && _tot2 === _tot0 && _soc2 === _soc0 &&
         (await req2("POST", "/api/admin/pedido-teste", { id: "x", teste: true }, { Cookie: "" })).status >= 401,
         JSON.stringify({ alvo: _alvo?.id, tot: [_tot0, _tot1, _tot2], soc: [_soc0, _soc1, _soc2] }));
+      const _drT = (await get("/api/admin/dono-resumo")).json, _pgT = (await get("/api/admin/pagantes")).json;
+      check("🧪👥 caso de produção (20/09): o lançamento do caixa HERDA o teste (por pedido, por conta de teste e — sem pedidoId — por pedido de teste da mesma conta e mesmo valor); o resumo traz a linha 'Testes (fora do caixa)' separada; e 'já pagaram' do Resumo é a MESMA conta da aba Pagantes",
+        typeof _drT?.entradas?.testes?.total === "number" && typeof _drT.entradas.testes.n === "number" && typeof _drT.pagantesJaPagaram === "number" && _drT.pagantesJaPagaram === _pgT?.summary?.totalPagantes && _drT.pagantes <= _drT.pagantesJaPagaram,
+        JSON.stringify({ t: _drT?.entradas?.testes, ja: _drT?.pagantesJaPagaram, pg: _pgT?.summary?.totalPagantes, ativos: _drT?.pagantes }));
       const _srvT = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
       check("🧪 teste fora de TODAS as réguas: o resumo do pré-check de conta de teste ('conta de teste — comprovante aceito sem OCR') também vale como marca (pedido de antes do carimbo), e canônico/janelas/sócios/DRE/CSV/pagantes usam a MESMA função _pgNaoEhReceita (nenhum filtro por e-mail solto sobrou)",
         /_pedidoEhTeste\(pd\)\{[^}]*conta de teste/.test(_srvT) && (_srvT.match(/_pgNaoEhReceita\(/g) || []).length >= 8 && !/filter\(p=>p&&!naoEhReceita\(p\.email\)\)/.test(_srvT) && /_emailsSoTeste\(\)/.test(_srvT),
@@ -6069,6 +6073,9 @@ async function drillAdminSettingsLegado() {
         check("⏱️ pré-check 'ERRO — Timeout' (14/11/2026): cada leitura da IA tem 60s (antes 15s fixos, feitos pro Gmail), uma queda por Timeout é TENTADA DE NOVO e funciona, e se tudo falhar o erro traz o diagnóstico (modelo, tentativa, tempo) em vez de 'Timeout' seco",
           _gc.json?.retry?.ok === true && _gc.json.retry.tentativas === 2 && _gc.json.retry.timeoutMs === 60000 && _gc.json.erroDiag?.n >= 4 && /#1: Timeout em \d+\.\ds/.test(_gc.json.erroDiag?.msg || ""),
           JSON.stringify([_gc.json?.retry, _gc.json?.erroDiag]));
+        check("🧠 pré-check com memória de saúde dos modelos: quem falhou (Timeout/429/5xx) vai pro FIM da fila com 1 tentativa de 20s, os bons vêm antes com 60s, e o modelo que voltou a funcionar vira o PRIMEIRO da próxima leitura (antes cada pedido gastava ~3 min re-testando os lentos)",
+          _gc.json?.memoria?.ruimUltimo === true && _gc.json.memoria.lembrou === true && _gc.json.memoria.usou === "gemini-2.5-flash",
+          JSON.stringify(_gc.json?.memoria));
         {
           const _srvTO = fs.readFileSync(path.join(__dirname, "server.js"), "utf8"), _gmTO = fs.readFileSync(path.join(__dirname, "mod-gmail.js"), "utf8"), _admTO = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
           check("⏱️ pré-check: httpsReq aceita timeoutMs por chamada (padrão 15s do Gmail intocado), o pedido guarda o diagnóstico (diag: kb + tentativas) e Detalhes mostra 'Diagnóstico da IA'; 'Reprocessar' usa modal da página (confirmar/avisar), não confirm()/alert() nativos",
