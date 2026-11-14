@@ -720,7 +720,7 @@ function computeFinanceCanonico(){
     // (dinheiro de teste nunca é receita — v53) e lançamento ANULADO/AJUSTE
     // (o par ±0 do AJUSTE do cérebro; antes o negativo era descartado e o
     // anulado seguia somando — receita fantasma).
-    if(naoEhReceita(e))continue;
+    if(_pgNaoEhReceita(pg,_pedById))continue;
     if(pg.anuladoPor||pg.tipo==="ajuste")continue;
     let v=pv(pg.valor);
     const _ped=pg.pedidoId?_pedById[pg.pedidoId]:null;
@@ -733,13 +733,14 @@ function computeFinanceCanonico(){
     if(_pedidoNaoEhReceita(ped))continue; // 💼 MC5-P3 + 🎬 v237v-FIX: admin/teste nunca é receita (pelo isTeste do pedido, nunca pela chave crua)
     (pedBy[e]=pedBy[e]||[]).push({valor:pv(ped.valorTotal),date:ts(ped.ativadoEm)||ts(ped.pagoEm)||0});
   }
+  const _soTesteC=_emailsSoTeste();
   const ms=new Date();ms.setDate(1);ms.setHours(0,0,0,0);const monthStart=ms.getTime();
   let receitaTotal=0,receitaMes=0,qtdPagantes=0,novosMes=0,vencendo7=0,vencendo7Valor=0,vencidos=0,trials=0,gift=0,giftDias=0;
   const porPlano={vip:0,vipro:0,doublepro:0,pro:0}, porPlanoQtd={vip:0,vipro:0,doublepro:0,pro:0};
   const topPagantes=[];
   for(const u of Object.values(DB_USERS||{})){
     if(!u||!u.email)continue;const elc=u.email.toLowerCase();const vip=u.vip||{};const src=String(vip.source||"").toLowerCase();
-    if(_usuarioNaoEhReceita(elc,u))continue; // 💼 MC5-P3 + 🎬 v237v-FIX: admin/teste nunca é receita/pagante (confere emailContato, não a chave de login)
+    if(_usuarioNaoEhReceita(elc,u)||_soTesteC.has(elc))continue; // 💼 MC5-P3 + 🎬 v237v-FIX: admin/teste nunca é receita/pagante (confere emailContato, não a chave de login) + 🧪 só pedido de teste
     if(src==="trial"){ if(isVipActive(u)) trials++; continue; }
     if(src==="code"){ gift++; giftDias+=(vip.days||0); continue; }
     let pags=finBy[elc]||[];if(!pags.length)pags=pedBy[elc]||[];if(!pags.length&&u.paymentAmount)pags=[{valor:pv(u.paymentAmount),date:ts(vip.activatedAt)||0}];
@@ -763,7 +764,7 @@ function computeFinanceCanonico(){
     if(!pg) continue;
     const e=String(pg.email||"").toLowerCase();
     if(e&&_uEm.has(e)) continue;
-    if(naoEhReceita(e)||pg.anuladoPor||pg.tipo==="ajuste") continue; // 💼 MC5-P3 + 🎬 v237v
+    if(_pgNaoEhReceita(pg,_pedById)||pg.anuladoPor||pg.tipo==="ajuste") continue; // 💼 MC5-P3 + 🎬 v237v + 🧪 teste por pedido
     const v=pv(pg.valor); if(v<=0) continue;
     const dt=ts(pg.dataPagamento)||ts(pg.data)||pg.criadoEm||0;
     receitaAvulsa+=v; receitaTotal+=v; avulsas.push({valor:v,date:dt});
@@ -786,7 +787,7 @@ function computeEntradasJanelas(){
   const hojeISO=new Date(now-3*3600_000).toISOString().slice(0,10);
   const _ts=x=>{if(!x)return 0;if(typeof x==="number")return x;const t=Date.parse(x);return isNaN(t)?0:t;};
   const _pedById={};for(const ped of (DB_PEDIDOS||[])){if(ped&&ped.id)_pedById[ped.id]=ped;}
-  const pags=(DB_FINANCEIRO.pagamentos||[]).filter(p=>!naoEhReceita(p.email));
+  const pags=(DB_FINANCEIRO.pagamentos||[]).filter(p=>!_pgNaoEhReceita(p,_pedById));
   let hoje=0,dias7=0,dias30=0,total=0,n30=0;
   for(const p of pags){
     const t=_ts(p.dataPagamento||p.data);
@@ -798,9 +799,9 @@ function computeEntradasJanelas(){
     if(t>=now-30*DAY){dias30+=v;n30++;}
     if(t&&new Date(t-3*3600_000).toISOString().slice(0,10)===hojeISO)hoje+=v;
   }
-  let pagantes=0;
+  let pagantes=0;const _soTesteJ=_emailsSoTeste();
   for(const[em,u2]of Object.entries(DB_USERS)){
-    if(_usuarioNaoEhReceita(em,u2))continue; // 🎬 v237v-FIX: confere emailContato, não a chave de login
+    if(_usuarioNaoEhReceita(em,u2)||_soTesteJ.has(String(em).toLowerCase()))continue; // 🎬 v237v-FIX: confere emailContato, não a chave de login
     if(!u2?.vip?.active||u2.vip.source==="trial"||u2.vip.source==="code")continue;
     const exp=Math.max(u2.vip.manualExpires||0,u2.vip.autoExpires||0);
     if(exp>now)pagantes++;
@@ -865,7 +866,7 @@ function _finDonoDe(p,byId,depth){
 function computeSocios(){
   const _round=v=>Math.round(v*100)/100;
   const _pedById={};for(const ped of (DB_PEDIDOS||[])){if(ped&&ped.id)_pedById[ped.id]=ped;}
-  const pags=(DB_FINANCEIRO.pagamentos||[]).filter(p=>p&&!naoEhReceita(p.email));
+  const pags=(DB_FINANCEIRO.pagamentos||[]).filter(p=>p&&!_pgNaoEhReceita(p,_pedById));
   const _byId={};for(const p of pags){if(p.id)_byId[p.id]=p;}
   const S=()=>({recebido:0,n:0,derivado:0,derivadoValor:0,padrao:0,padraoValor:0,gastosPagos:0,repassou:0,recebeuRepasse:0,posicao:0,direito:0,acerto:0});
   const socios={andrio:S(),diego:S()};
@@ -968,7 +969,7 @@ function computeDreMensal(){
   // fechamento mensal herda o corte por usar esta mesma função (fonte única).
   const _mes=t=>{if(!t)return null;const d=new Date(t);if(isNaN(d.getTime()))return null;return new Date(d.getTime()-3*3600*1000).toISOString().slice(0,7);};
   const _pedById={};for(const ped of (DB_PEDIDOS||[])){if(ped&&ped.id)_pedById[ped.id]=ped;}
-  const pags=(DB_FINANCEIRO.pagamentos||[]).filter(p=>p&&!naoEhReceita(p.email));
+  const pags=(DB_FINANCEIRO.pagamentos||[]).filter(p=>p&&!_pgNaoEhReceita(p,_pedById));
   const _byId={};for(const p of pags){if(p.id)_byId[p.id]=p;}
   const meses={};
   const M=k=>meses[k]=meses[k]||{mes:k,receita:0,gastos:0,resultado:0,porSocio:{andrio:0,diego:0,semDono:0},porPlano:{},gastosPorCategoria:{},gastosPorPagador:{andrio:0,diego:0,empresa:0}};
@@ -1525,7 +1526,32 @@ function _emailContatoReal(loginKey){
 // naoEhReceita (mod-config.js) pelo PEDIDO — usa o carimbo isTeste gravado
 // na criação (fonte única, nunca re-deriva por e-mail numa leitura tardia,
 // que erraria pra pedido de conta nova por causa do problema acima).
-function _pedidoNaoEhReceita(pd){ return naoEhReceita(pd&&pd.userEmail)||!!(pd&&pd.isTeste); }
+// 🧪 14/11/2026 (dono: pedido de R$300 de 20/09 "conta de teste — comprovante aceito sem OCR" estava somado na receita e no acerto
+// entre sócios): teste NUNCA é receita — pelo carimbo isTeste, pelo marcador que o pré-check de conta de teste grava no resumo
+// (pedido de antes do carimbo existir) ou pela marcação manual do admin (POST /api/admin/pedido-teste).
+function _pedidoEhTeste(pd){ return !!pd&&(pd.isTeste===true||/conta de teste/i.test(String((pd.preCheck||{}).resumo||""))); }
+function _pedidoNaoEhReceita(pd){ return naoEhReceita(pd&&pd.userEmail)||_pedidoEhTeste(pd); }
+// e-mails cujo ÚNICO dinheiro é de teste (pedido de teste/lançamento preso a ele): nunca contam como pagante, MRR nem churn
+function _emailsSoTeste(){
+  const pedById={};for(const ped of (DB_PEDIDOS||[])){if(ped&&ped.id)pedById[ped.id]=ped;}
+  const teste=new Set(),real=new Set();
+  for(const pg of ((DB_FINANCEIRO&&DB_FINANCEIRO.pagamentos)||[])){
+    if(!pg||!pg.email||pg.anuladoPor||pg.tipo==="ajuste")continue;const e=String(pg.email).toLowerCase();
+    (_pgNaoEhReceita(pg,pedById)?teste:real).add(e);
+  }
+  for(const ped of (DB_PEDIDOS||[])){
+    if(!ped||!ped.userEmail)continue;const st=String(ped.status||"").toLowerCase();if(st!=="pago"&&st!=="ativo")continue;
+    (_pedidoEhTeste(ped)?teste:real).add(String(ped.userEmail).toLowerCase());
+  }
+  const out=new Set();for(const e of teste)if(!real.has(e))out.add(e);return out;
+}
+// lançamento do caixa que NÃO é receita: e-mail de admin/teste, marca própria, ou preso a um pedido de teste (pedById = mapa id→pedido)
+function _pgNaoEhReceita(p,pedById){
+  if(!p)return true;
+  if(naoEhReceita(p.email)||p.isTeste===true)return true;
+  const ped=p.pedidoId&&pedById?pedById[p.pedidoId]:null;
+  return !!ped&&_pedidoEhTeste(ped);
+}
 // naoEhReceita pelo USUÁRIO — pra loops que já têm o objeto carregado
 // (Object.entries(DB_USERS) etc.): confere o Gmail de contato real, nunca
 // a chave de login crua.
@@ -5355,14 +5381,14 @@ function _ehPaganteMapa(u){
 }
 function _mapaCadastros(opts){
   opts=opts||{};const ufSel=String(opts.uf||"").toUpperCase();
-  const grupos=new Map(),porUf={},cidades={};let total=0,semLocal=0,foraBR=0;
+  const grupos=new Map(),porUf={},cidades={},porPais={};let total=0,semLocal=0,foraBR=0;
   for(const u of Object.values(DB_USERS)){
     if(!u||u.accountDeleted||isAdminEmail(String(u.email||""))||u.isAdmin)continue;
     if(opts.soPagantes&&!_ehPaganteMapa(u))continue;
     total++;
     const cid=_semAcento(u.city),est=_semAcento(u.estado),pais=_semAcento(u.country);
     const br=!pais||/^(brasil|brazil|br)$/.test(pais);
-    if(!br){foraBR++;continue;}
+    if(!br){foraBR++;const pn=(u.country||"").trim().slice(0,40)||"(sem país)";porPais[pn]=(porPais[pn]||0)+1;continue;}
     const uf=(est.length===2&&_UF_XY[est.toUpperCase()])?est.toUpperCase():(_UF_NOME[est]||null);
     if(uf)porUf[uf]=(porUf[uf]||0)+1;
     if(ufSel){ // visão de UM estado: contagem por cidade (só região — sem endereço)
@@ -5384,7 +5410,7 @@ function _mapaCadastros(opts){
       cidades:lista.map(x=>({cidade:x.cidade,n:x.n,noMapa:!!x.xy}))};
   }
   const pontos=[...grupos.values()].sort((a,b)=>b.n-a.n);
-  return {total,noMapa:pontos.reduce((n,p)=>n+p.n,0),foraBR,semLocal,pontos,porUf:Object.entries(porUf).sort((a,b)=>b[1]-a[1]).map(([uf,n])=>({uf,n}))};
+  return {total,noMapa:pontos.reduce((n,p)=>n+p.n,0),foraBR,semLocal,paises:Object.entries(porPais).sort((a,b)=>b[1]-a[1]).slice(0,30).map(([pais,n])=>({pais,n})),pontos,porUf:Object.entries(porUf).sort((a,b)=>b[1]-a[1]).map(([uf,n])=>({uf,n}))};
 }
 function searchSheet(arr, q, state, category, skip, top, sort) {
   let list = arr;
@@ -7808,7 +7834,7 @@ const server=http.createServer(async(req,res)=>{
     // v34-GA: googletagmanager liberado — o funil inteiro tinha gaEvent()
     // instrumentado mas a CSP bloqueava o script do Analytics em silêncio.
     "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://pagead2.googlesyndication.com https://*.googlesyndication.com https://*.adtrafficquality.google https://www.google.com https://*.doubleclick.net",
-    "frame-src https://googleads.g.doubleclick.net https://*.googlesyndication.com https://*.doubleclick.net https://*.adtrafficquality.google https://www.google.com",
+    "frame-src 'self' https://googleads.g.doubleclick.net https://*.googlesyndication.com https://*.doubleclick.net https://*.adtrafficquality.google https://www.google.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://unpkg.com",
     "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://unpkg.com",
     "img-src 'self' data: https:",
@@ -8848,9 +8874,18 @@ ul li{margin-bottom:6px}
     _gmListaEm=0;_gmOk=null;
     const r=await _geminiGenerateContent({},fake);
     const motivo403=_geminiMotivoErro({status:403,body:{error:{message:"API key not valid"}}}),motivo404=_geminiMotivoErro({status:404,body:{}});
+    // cenário 2 (14/11/2026): 1ª tentativa estoura Timeout, a 2ª funciona — a leitura NÃO pode virar ERRO, e o tempo por tentativa tem que ser o novo (60s)
+    let n2=0;const tos=[];
+    const fakeTO=async(o)=>{if(o.method==="GET")return {status:200,body:{models:[]}};tos.push(o.timeoutMs);n2++;if(n2===1){const e=new Error("Timeout");e.noResponse=true;throw e;}return {status:200,body:{candidates:[{content:{parts:[{text:"{}"}]}}]}};};
+    _gmListaEm=0;_gmOk=null;_gmLista=[];
+    const r2=await _geminiGenerateContent({},fakeTO);
+    // cenário 3: TODAS as tentativas dão Timeout → erro com diagnóstico legível (modelo, tentativa, tempo), nunca "Timeout" seco
+    const fakeSoTO=async(o)=>{if(o.method==="GET")return {status:200,body:{models:[]}};const e=new Error("Timeout");e.noResponse=true;throw e;};
+    _gmListaEm=0;_gmOk=null;_gmLista=[];
+    let erroDiag=null;try{await _geminiGenerateContent({},fakeSoTO);}catch(e){erroDiag={msg:e.message,n:(e.diag||[]).length};}
     process.env.GEMINI_API_KEY=chaveAntes;if(chaveAntes===undefined)delete process.env.GEMINI_API_KEY;if(modAntes!==undefined)process.env.GEMINI_MODEL=modAntes;
     const modeloUsado=r&&r.model;_gmOk=null;_gmListaEm=0;_gmLista=[];
-    return json(res,200,{ok:true,modeloUsado,status:r&&r.r.status,chamadas,motivo403,motivo404});
+    return json(res,200,{ok:true,modeloUsado,status:r&&r.r.status,chamadas,motivo403,motivo404,retry:{ok:r2&&r2.r.status===200,tentativas:(r2&&r2.diag||[]).length,timeoutMs:tos[0],tetoMs:GEMINI_TENTATIVA_MS},erroDiag});
   }
   if(pathname==="/api/admin/sheet/h2a-roll-toggle"&&req.method==="POST"){
     const s=getSess(req);if(!s?.user_email)return json(res,401,{error:"Não autenticado"});
@@ -10756,6 +10791,22 @@ filtrar();
       return json(res,200,{ok:true,cfg:novo,ativoEfetivo:_adsAtivo(novo)});
     }catch(e){return json(res,500,{error:e.message});}
   }
+  // 🧪 Marcar/desmarcar um pedido como TESTE (dono, 14/11/2026): teste nunca é receita, pagante, MRR nem lucro a dividir entre sócios.
+  // Só mexe no carimbo do pedido (plano/dias do cliente ficam intocados) e deixa trilha no Audit Log — reversível pelo mesmo botão.
+  if(pathname==="/api/admin/pedido-teste"&&req.method==="POST"){
+    try{
+      const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
+      if(!(adm?.isAdmin||isAdminEmail(_sessAdminEmail(s))))return json(res,403,{error:"Só admin."});
+      const d=JSON.parse(await readBody(req));
+      const pd=DB_PEDIDOS.find(x=>x&&x.id===String(d.id||""));
+      if(!pd)return json(res,404,{error:"Pedido não encontrado."});
+      const novo=d.teste!==false,antes=pd.isTeste===true;
+      pd.isTeste=novo;pd.testeMarcadoPor=s.user_email;pd.testeMarcadoEm=Date.now();
+      persistPedidos();
+      logAdminAction(s.user_email,"pedido_teste",pd.id,{isTeste:antes},{isTeste:novo},`Pedido ${pd.id} ${novo?"marcado como TESTE (fora de receita, pagantes, MRR e acerto)":"desmarcado como teste"}`);
+      return json(res,200,{ok:true,id:pd.id,isTeste:novo});
+    }catch(e){return json(res,500,{error:e.message});}
+  }
   if(pathname==="/api/admin/socios/split"&&req.method==="POST"){
     const s=getSess(req);const adm=s?.user_email?getUser(s.user_email):null;
     if(!(adm?.isAdmin||isAdminEmail(_sessAdminEmail(s))))return json(res,403,{error:"Só admin."});
@@ -10798,7 +10849,7 @@ filtrar();
       const n2=v=>String((Number(v)||0).toFixed(2)).replace(".",",");
       const cel=v=>{const t2=String(v==null?"":v).replace(/"/g,'""');return /[",;\n]/.test(t2)?'"'+t2+'"':t2;};
       const _pedById={};for(const ped of (DB_PEDIDOS||[])){if(ped&&ped.id)_pedById[ped.id]=ped;}
-      const pags=(DB_FINANCEIRO.pagamentos||[]).filter(p2=>p2&&!naoEhReceita(p2.email));
+      const pags=(DB_FINANCEIRO.pagamentos||[]).filter(p2=>p2&&!_pgNaoEhReceita(p2,_pedById));
       const _byId={};for(const p2 of pags){if(p2.id)_byId[p2.id]=p2;}
       const linhas=["tipo;data;cliente_descricao;plano_categoria;valor_lancado;valor_efetivo;dono;origem_dono;anulado;nota"];
       for(const p2 of pags){
@@ -14406,9 +14457,13 @@ if(pathname==="/api/admin/pagantes"&&req.method==="GET"){try{
   const toTs=x=>{if(!x)return null;if(typeof x==="number")return x;const t=Date.parse(x);return isNaN(t)?null:t;};
   // Livro-caixa (fonte primária de pagamentos) por email
   const finByEmail={};
+  const _pedMapPg={};for(const ped of (DB_PEDIDOS||[])){if(ped&&ped.id)_pedMapPg[ped.id]=ped;}
+  const _soTeste=new Set(),_temReal=new Set(); // 🧪 quem só tem pedido de TESTE nunca é pagante (nem entra em MRR/renovação/churn)
   for(const pg of ((DB_FINANCEIRO&&DB_FINANCEIRO.pagamentos)||[])){
     if(!pg||!pg.email)continue;
     const e=String(pg.email).toLowerCase();
+    if(_pgNaoEhReceita(pg,_pedMapPg)){_soTeste.add(e);continue;}
+    _temReal.add(e);
     (finByEmail[e]=finByEmail[e]||[]).push({valor:parseVal(pg.valor),date:toTs(pg.dataPagamento)||toTs(pg.data)||pg.criadoEm||null,id:pg.id||null,source:"financeiro"});
   }
   // Pedidos pagos/ativos (fallback) por email
@@ -14418,6 +14473,8 @@ if(pathname==="/api/admin/pagantes"&&req.method==="GET"){try{
     const st=String(ped.status||"").toLowerCase();
     if(st!=="pago"&&st!=="ativo")continue;
     const e=String(ped.userEmail).toLowerCase();
+    if(_pedidoEhTeste(ped)){_soTeste.add(e);continue;}
+    _temReal.add(e);
     (pedByEmail[e]=pedByEmail[e]||[]).push({valor:parseVal(ped.valorTotal),date:ped.ativadoEm||ped.pagoEm||ped.createdAt||null,id:ped.id||null,source:"pedido"});
   }
   const PLAN_LABELS={free:"Grátis",vip:"✋ Manual",pro:"🤖 Pro",vipro:"⚡ Turbo",doublepro:"🚀 Máximo"};
@@ -14429,6 +14486,7 @@ if(pathname==="/api/admin/pagantes"&&req.method==="GET"){try{
     // (username pra conta nova, nunca bate contra TEST_ACCOUNT_EMAIL) —
     // confere o Gmail de CONTATO real (emailContato).
     if(isTestAccountEmail(u.emailContato))continue;
+    if(_soTeste.has(String(u.email).toLowerCase())&&!_temReal.has(String(u.email).toLowerCase()))continue; // 🧪 só pedido de teste
     const email=u.email;const elc=email.toLowerCase();const vip=u.vip||{};
     const src=String(vip.source||"").toLowerCase();
     // Pagamentos: Financeiro (primário) -> Pedidos (fallback) -> paymentAmount do usuário (último recurso)
@@ -16498,19 +16556,39 @@ async function _geminiModelosDisponiveis(reqFn){
   }catch(e){}
   return _gmLista;
 }
+// ⏱️ 14/11/2026 (achado: 8 pedidos de 27/10 a 12/11 em "ERRO — Timeout"): httpsReq tinha 15s fixos (feito pro Gmail) e a IA lendo uma FOTO
+// passa disso. Agora a leitura tem 60s por tentativa, até 2 tentativas por modelo em timeout/429/5xx (espera 3s→8s) e um teto de 150s no total;
+// cada tentativa vira uma linha do diagnóstico (modelo, status HTTP ou erro, tempo) que o pedido guarda e o painel mostra em Detalhes.
+const GEMINI_TENTATIVA_MS=60000,GEMINI_TETO_MS=150000;
 async function _geminiGenerateContent(body,reqFn){
   reqFn=reqFn||httpsReq;
+  const t0=Date.now(),diag=[],teste=!!process.env.TEST_LOGIN_TOKEN;
   const cand=[...new Set([process.env.GEMINI_MODEL,_gmOk,...(await _geminiModelosDisponiveis(reqFn)),...GEMINI_RESERVA].filter(Boolean))].slice(0,6);
   let ultimo=null;
   for(const m of cand){
-    const r=await reqFn({hostname:"generativelanguage.googleapis.com",path:`/v1beta/models/${encodeURIComponent(m)}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`,method:"POST",headers:{"Content-Type":"application/json"}},body);
-    if(r.status===200){_gmOk=m;return {r,model:m};}
-    ultimo={r,model:m};
-    console.warn(`[precheck] modelo ${m} respondeu ${r.status}: ${JSON.stringify(r.body).slice(0,140)}`);
-    if(r.status===401||r.status===403)break; // chave inválida/sem permissão: trocar de modelo não resolve
-    if(r.status===404||r.status===400)_gmListaEm=0; // modelo sumiu: relê a lista da Google na próxima
+    for(let tent=1;tent<=2;tent++){
+      if(Date.now()-t0>GEMINI_TETO_MS)break;
+      const ti=Date.now();let r=null,erro=null;
+      try{r=await reqFn({hostname:"generativelanguage.googleapis.com",path:`/v1beta/models/${encodeURIComponent(m)}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`,method:"POST",headers:{"Content-Type":"application/json"},timeoutMs:GEMINI_TENTATIVA_MS},body);}
+      catch(e){erro=e.message||String(e);}
+      diag.push({modelo:m,tentativa:tent,status:r?r.status:null,erro:erro,ms:Date.now()-ti});
+      if(r&&r.status===200){_gmOk=m;return {r,model:m,diag};}
+      if(r){ultimo={r,model:m,diag};console.warn(`[precheck] modelo ${m} respondeu ${r.status} em ${Date.now()-ti}ms: ${JSON.stringify(r.body).slice(0,140)}`);}
+      else console.warn(`[precheck] modelo ${m} falhou em ${Date.now()-ti}ms (tentativa ${tent}/2): ${erro}`);
+      if(r&&(r.status===401||r.status===403))return ultimo; // chave inválida/sem permissão: trocar de modelo não resolve
+      if(r&&(r.status===404||r.status===400)){_gmListaEm=0;break;} // modelo sumiu: relê a lista da Google na próxima e vai pro próximo modelo
+      const transit=!r||r.status===429||r.status>=500; // timeout/limite/queda: vale tentar de novo
+      if(!transit)break;
+      if(tent<2)await new Promise(ok=>setTimeout(ok,teste?30:(tent===1?3000:8000)));
+    }
+    if(Date.now()-t0>GEMINI_TETO_MS)break;
   }
-  return ultimo;
+  if(ultimo){ultimo.diag=diag;return ultimo;}
+  const e=new Error(_geminiResumoDiag(diag));e.diag=diag;throw e; // nenhuma resposta HTTP de nenhum modelo (só timeout/rede)
+}
+function _geminiResumoDiag(diag){
+  if(!diag||!diag.length)return "sem tentativas";
+  return diag.map(d=>`${d.modelo} #${d.tentativa}: ${d.status!=null?"HTTP "+d.status:(d.erro||"erro")} em ${(d.ms/1000).toFixed(1)}s`).join(" · ");
 }
 function _geminiMotivoErro(r){
   const msg=String((r&&r.body&&r.body.error&&r.body.error.message)||"").replace(/\s+/g," ").slice(0,140);
@@ -16599,14 +16677,17 @@ async function preCheckComprovante(pedido, opts){
   if(!_compB64) return null;
   try{
     const body=_geminiComprovanteRequestBody(pedido,_compB64);
+    var _kb=Math.round(String(_compB64).length*0.75/1024); // tamanho do comprovante: entra no diagnóstico (foto enorme = leitura lenta)
     const _gg=await _geminiGenerateContent(body);
     const r=_gg.r;
+    const _diag={kb:_kb,tentativas:(_gg.diag||[]).slice(0,12),em:Date.now()};
     if(r.status!==200){
       console.warn("[precheck] Gemini respondeu",r.status,JSON.stringify(r.body).slice(0,200));
-      setPedidoPreCheck(pedido.id,{veredito:"ERRO",valorLido:null,dataLida:null,horaLida:null,pagadorLido:null,recebedorLido:null,instituicaoLida:null,transacaoIdLida:null,bateComEsperado:false,resumo:_geminiMotivoErro(r),alertas:[],precoEsperado:pedido.valorTotal||0,valorInformado:pedido.valorTotal||0});
+      setPedidoPreCheck(pedido.id,{veredito:"ERRO",valorLido:null,dataLida:null,horaLida:null,pagadorLido:null,recebedorLido:null,instituicaoLida:null,transacaoIdLida:null,bateComEsperado:false,resumo:_geminiMotivoErro(r)+` [${_geminiResumoDiag(_diag.tentativas)} · comprovante ${_kb} KB]`,diag:_diag,alertas:[],precoEsperado:pedido.valorTotal||0,valorInformado:pedido.valorTotal||0});
       return null;
     }
     const pc=_geminiComprovanteParse(r.body,pedido);
+    pc.diag=_diag;
     setPedidoPreCheck(pedido.id,pc);
     _autoCancelarSeDivergente(pedido,pc);
     if(ativar&&pc.veredito==="CONFERE"){
@@ -16617,7 +16698,7 @@ async function preCheckComprovante(pedido, opts){
     return pc;
   }catch(e){
     console.warn("[precheck] erro chamando Gemini:",e.message);
-    try{setPedidoPreCheck(pedido.id,{veredito:"ERRO",valorLido:null,dataLida:null,horaLida:null,pagadorLido:null,recebedorLido:null,instituicaoLida:null,transacaoIdLida:null,bateComEsperado:false,resumo:"Erro de rede/tempo lendo o comprovante — confira manualmente. ("+e.message+")",alertas:[],precoEsperado:pedido.valorTotal||0,valorInformado:pedido.valorTotal||0});}catch{}
+    try{const _kb2=Math.round(String(_compB64).length*0.75/1024);setPedidoPreCheck(pedido.id,{veredito:"ERRO",valorLido:null,dataLida:null,horaLida:null,pagadorLido:null,recebedorLido:null,instituicaoLida:null,transacaoIdLida:null,bateComEsperado:false,resumo:"Erro de rede/tempo lendo o comprovante — confira manualmente. ("+e.message+" · comprovante "+_kb2+" KB)",diag:{kb:_kb2,tentativas:(e.diag||[]).slice(0,12),em:Date.now()},alertas:[],precoEsperado:pedido.valorTotal||0,valorInformado:pedido.valorTotal||0});}catch{}
     return null;
   }
 }

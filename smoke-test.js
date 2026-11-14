@@ -2296,9 +2296,9 @@ async function drillAdminSettingsLegado() {
         _rvSend.json?.ok === true && !!_rvPending && _rvPending.status === "pending" && (_rvAdm?.counts?.pending || 0) >= 1,
         JSON.stringify({ send: _rvSend.json, pending: _rvPending, counts: _rvAdm?.counts }).slice(0, 260));
       const _admHtml320 = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
-      check("🩺 v320: a sidebar do admin.html tem um link de verdade pra /admin-reviews com pill de pendentes vindo de counts.pending (antes: nenhum link em lugar nenhum, achado por auditoria)",
-        _admHtml320.includes("location.href='/admin-reviews'") && _admHtml320.includes('id="pill-reviews"') && _admHtml320.includes("d.counts&&d.counts.pending"),
-        "temLink=" + _admHtml320.includes("location.href='/admin-reviews'"));
+      check("🩺 v320 (atualizado 14/11/2026): Avaliações abrem DENTRO do painel (view-reviews + switchTab, nada de página solta), com pill de pendentes vindo de counts.pending e as mesmas rotas de moderação",
+        _admHtml320.includes("onclick=\"switchTab('reviews')\"") && !_admHtml320.includes("location.href='/admin-reviews'") && _admHtml320.includes('id="view-reviews"') && _admHtml320.includes('id="pill-reviews"') && _admHtml320.includes("d.counts&&d.counts.pending") && _admHtml320.includes("async function rvCarregar(") && _admHtml320.includes('"/api/admin/reviews/status"'),
+        "view=" + _admHtml320.includes('id="view-reviews"'));
       const _rvPage = await get("/admin-reviews");
       check("🩺 v320: /admin-reviews (a tela pra onde o link novo leva) responde 200 de verdade",
         _rvPage.status === 200 && _rvPage.body.length > 500,
@@ -3425,6 +3425,24 @@ async function drillAdminSettingsLegado() {
     const dr = await get("/api/admin/dono-resumo");
     check("💰 Visão do Dono: a ativação de R$300 aparece nas entradas de hoje",
       dr.json?.ok === true && dr.json?.entradas?.total >= 300 && dr.json?.entradas?.hoje >= 300, dr.body.slice(0, 140));
+    {
+      // 🧪 pedido de TESTE nunca é receita (dono, 14/11/2026): marcar tira da receita/pagantes/acerto; desmarcar devolve EXATO; só admin; plano do cliente intocado
+      const _ps = (await get("/api/pedidos")).json, _lp = Array.isArray(_ps) ? _ps : (_ps?.pedidos || []);
+      const _alvo = _lp.find((x) => ["ativo", "pago"].includes(String(x.status).toLowerCase()) && (x.valorTotal || 0) >= 300 && !x.isTeste);
+      const _tot0 = (await get("/api/admin/dono-resumo")).json?.entradas?.total, _soc0 = (await get("/api/admin/socios")).json?.liquidoContabil;
+      const _mk = _alvo ? await req2("POST", "/api/admin/pedido-teste", { id: _alvo.id, teste: true }) : null;
+      const _tot1 = (await get("/api/admin/dono-resumo")).json?.entradas?.total, _soc1 = (await get("/api/admin/socios")).json?.liquidoContabil;
+      const _un = _alvo ? await req2("POST", "/api/admin/pedido-teste", { id: _alvo.id, teste: false }) : null;
+      const _tot2 = (await get("/api/admin/dono-resumo")).json?.entradas?.total, _soc2 = (await get("/api/admin/socios")).json?.liquidoContabil;
+      check("🧪 pedido de TESTE: marcar tira o valor da receita (Visão do Dono) E do lucro a dividir entre sócios; desmarcar devolve EXATAMENTE; sem sessão de admin é negado",
+        !!_alvo && _mk?.json?.ok === true && _tot1 < _tot0 && _soc1 < _soc0 && Math.abs((_tot0 - _tot1) - (_soc0 - _soc1)) < 0.01 && _un?.json?.ok === true && _tot2 === _tot0 && _soc2 === _soc0 &&
+        (await req2("POST", "/api/admin/pedido-teste", { id: "x", teste: true }, { Cookie: "" })).status >= 401,
+        JSON.stringify({ alvo: _alvo?.id, tot: [_tot0, _tot1, _tot2], soc: [_soc0, _soc1, _soc2] }));
+      const _srvT = fs.readFileSync(path.join(__dirname, "server.js"), "utf8");
+      check("🧪 teste fora de TODAS as réguas: o resumo do pré-check de conta de teste ('conta de teste — comprovante aceito sem OCR') também vale como marca (pedido de antes do carimbo), e canônico/janelas/sócios/DRE/CSV/pagantes usam a MESMA função _pgNaoEhReceita (nenhum filtro por e-mail solto sobrou)",
+        /_pedidoEhTeste\(pd\)\{[^}]*conta de teste/.test(_srvT) && (_srvT.match(/_pgNaoEhReceita\(/g) || []).length >= 8 && !/filter\(p=>p&&!naoEhReceita\(p\.email\)\)/.test(_srvT) && /_emailsSoTeste\(\)/.test(_srvT),
+        "server.js");
+    }
 
     // 💰 v317 (achado de auditoria contínua) — a lista "vencendo em 7 dias" do
     // dono-resumo calculava diasRestantes com Math.ceil((exp-now)/DAY), o
@@ -6048,6 +6066,17 @@ async function drillAdminSettingsLegado() {
         check("🤖 pré-check: o ERRO agora explica o motivo real (chave inválida 403 / nenhum modelo 404) em vez de só 'HTTP N'",
           /chave da IA inválida/.test(_gc.json?.motivo403 || "") && /API key not valid/.test(_gc.json?.motivo403 || "") && /nenhum modelo da IA disponível/.test(_gc.json?.motivo404 || ""),
           JSON.stringify([_gc.json?.motivo403, _gc.json?.motivo404]));
+        check("⏱️ pré-check 'ERRO — Timeout' (14/11/2026): cada leitura da IA tem 60s (antes 15s fixos, feitos pro Gmail), uma queda por Timeout é TENTADA DE NOVO e funciona, e se tudo falhar o erro traz o diagnóstico (modelo, tentativa, tempo) em vez de 'Timeout' seco",
+          _gc.json?.retry?.ok === true && _gc.json.retry.tentativas === 2 && _gc.json.retry.timeoutMs === 60000 && _gc.json.erroDiag?.n >= 4 && /#1: Timeout em \d+\.\ds/.test(_gc.json.erroDiag?.msg || ""),
+          JSON.stringify([_gc.json?.retry, _gc.json?.erroDiag]));
+        {
+          const _srvTO = fs.readFileSync(path.join(__dirname, "server.js"), "utf8"), _gmTO = fs.readFileSync(path.join(__dirname, "mod-gmail.js"), "utf8"), _admTO = fs.readFileSync(path.join(__dirname, "admin.html"), "utf8");
+          check("⏱️ pré-check: httpsReq aceita timeoutMs por chamada (padrão 15s do Gmail intocado), o pedido guarda o diagnóstico (diag: kb + tentativas) e Detalhes mostra 'Diagnóstico da IA'; 'Reprocessar' usa modal da página (confirmar/avisar), não confirm()/alert() nativos",
+            /opts\.timeoutMs>0\)\?Math\.min\(opts\.timeoutMs,120000\):15000/.test(_gmTO) &&
+            /diag:_diag/.test(_srvTO) && /Diagnóstico da IA/.test(_admTO) && /async function confirmar\(|function confirmar\(/.test(_admTO) && /function avisar\(/.test(_admTO) &&
+            !/confirm\("Refazer a leitura/.test(_admTO) && !/alert\(\(r&&r\.error\)/.test(_admTO) && /await confirmar\("Refazer a leitura da IA/.test(_admTO),
+            "server/mod-gmail/admin");
+        }
         const _rp = await req2("GET", "/api/admin/precheck/reprocessar"), _rpSem = await req2("GET", "/api/admin/precheck/reprocessar", undefined, { Cookie: "" });
         check("🤖 reprocessar pré-checks com erro: rota admin com contador (GET) existe e sem sessão de admin é negada", _rp.json?.ok === true && typeof _rp.json.feitos === "number" && (_rpSem.status === 401 || _rpSem.status === 403), JSON.stringify([_rp.status, _rpSem.status]));
         check("🤖 o botão 'Reprocessar pré-checks com erro' existe no painel de Pedidos", /id="btn-reproc-pre"/.test(fs.readFileSync(path.join(__dirname, "admin.html"), "utf8")) && /async function reprocessarPreChecks\(/.test(fs.readFileSync(path.join(__dirname, "admin.html"), "utf8")), "admin.html");
@@ -6104,13 +6133,13 @@ async function drillAdminSettingsLegado() {
           /SCAM_AD_KEY="h2bAdGolpes"/.test(_app) && /function _scamAdVisto\(\)/.test(_app) && /function _scamAdMarca\(\)/.test(_app) && /if\(!pronto\)return;\s*clearInterval/.test(_app) && /ev\.key==="Escape"[\s\S]{0,120}if\(pronto\)fechar\(\)/.test(_app) && /e\.inert=true/.test(_app) && /setTimeout\(maybeShowScamAd,500\)/.test(_app),
           "app.js");
       }
-      check("🗺️ mapa: o service worker NÃO intercepta requisições de outros sites (o fetch dele obedece o connect-src e quebrava os azulejos do mapa) e o mapa tem provedor reserva de azulejos",
-        /if \(url\.origin !== self\.location\.origin\) return;\s*\/\/ ── Demais recursos|if \(url\.origin !== self\.location\.origin\) return;/.test(fs.readFileSync(path.join(__dirname, "sw.js"), "utf8")) && /basemaps\.cartocdn\.com/.test(fs.readFileSync(path.join(__dirname, "admin.html"), "utf8")) && /data-osm=/.test(fs.readFileSync(path.join(__dirname, "admin.html"), "utf8")),
+      check("🗺️ cadastros por região: o service worker NÃO intercepta requisições de outros sites e o painel NÃO usa mais mapa/azulejos de terceiros (mostrava 'API KEY REQUIRED') — é uma tabela por estado/país",
+        /if \(url\.origin !== self\.location\.origin\) return;\s*\/\/ ── Demais recursos|if \(url\.origin !== self\.location\.origin\) return;/.test(fs.readFileSync(path.join(__dirname, "sw.js"), "utf8")) && !/basemaps\.cartocdn\.com|tile\.openstreetmap\.org|function _mapaHtml\(/.test(fs.readFileSync(path.join(__dirname, "admin.html"), "utf8")) && /function _cadTabela\(/.test(fs.readFileSync(path.join(__dirname, "admin.html"), "utf8")) && /País \(fora do Brasil\)/.test(fs.readFileSync(path.join(__dirname, "admin.html"), "utf8")),
         "sw/admin");
       {
         const _mp = await get("/api/admin/mapa-cadastros"), _mpP = await get("/api/admin/mapa-cadastros?pagantes=1"), _mpUf = await get("/api/admin/mapa-cadastros?uf=SP");
         check("🗺️ mapa de cadastros (admin): devolve total, pontos por lugar, estados com contagem e filtro de pagantes; o mapa de UM estado devolve centro/zoom e a lista de cidades — só região, nunca endereço",
-          _mp.json?.ok === true && Array.isArray(_mp.json.pontos) && Array.isArray(_mp.json.porUf) && typeof _mp.json.total === "number" &&
+          _mp.json?.ok === true && Array.isArray(_mp.json.pontos) && Array.isArray(_mp.json.porUf) && Array.isArray(_mp.json.paises) && typeof _mp.json.total === "number" &&
           _mpP.json?.ok === true && _mpP.json.total <= _mp.json.total && _mpUf.json?.ok === true && _mpUf.json.uf === "SP" && _mpUf.json.centro?.zoom >= 5 && Array.isArray(_mpUf.json.cidades) &&
           !JSON.stringify(_mp.json).includes("@"),
           JSON.stringify({ t: _mp.json?.total, p: _mpP.json?.total, uf: _mpUf.json?.uf }));
@@ -7236,7 +7265,7 @@ async function drillAdminSettingsLegado() {
       Array.isArray(_crash974?.crashes) && typeof _crash974?.bootAt === "number" &&
       /DB_CRASHES\.unshift/.test(_pge974) && /persist\(CRASH_FILE, DB_CRASHES\)/.test(_pge974) && /DB_CRASHES\.length>200/.test(_pge974) && /DB_CRASHES = load\(CRASH_FILE, \[\]\)/.test(_srv974) &&
       _rsRota.length > 200 && /criarBackupCompleto\(\)/.test(_rsRota) && /congelarGravacoes\(/.test(_rsRota) && /storagePersist\(path\.join\(DATA_DIR,f\),data\)/.test(_rsRota) && /process\.exit\(0\)/.test(_rsRota) && _rsRota.indexOf("criarBackupCompleto()") < _rsRota.indexOf("congelarGravacoes(") && _rsRota.indexOf("congelarGravacoes(") < _rsRota.indexOf("storagePersist(path.join(DATA_DIR,f),data)") &&
-      _adm974.includes('v:"sistema"') && ["view-sistema", "sis-grid", "sis-backups", "sis-crashes", "sis-resumo", "modal-restaurar", "rs-confirma", "rs-plano"].every((id) => _adm974.includes('id="' + id + '"')) &&
+      _adm974.includes('data-view="sistema"') && ["view-sistema", "sis-grid", "sis-backups", "sis-crashes", "sis-resumo", "modal-restaurar", "rs-confirma", "rs-plano"].every((id) => _adm974.includes('id="' + id + '"')) &&
       ["carregarSistema", "criarBackup", "verPlanoRestauro", "abrirRestaurar", "restaurarBackupConfirmar", "rodarResumoOntem"].every((f) => new RegExp("async function " + f + "\\(").test(_adm974)) &&
       _adm974.includes('"/api/admin/backup/restaurar"') && _adm974.includes("dryRun:true") && _adm974.includes("confirmar:dig") && /if\(nome==="sistema"\)carregarSistema\(\);/.test(_adm974),
       "faltou peça da F5 (backups) — " + JSON.stringify({ cr: Array.isArray(_crash974?.crashes), pge: _pge974.length, rota: _rsRota.length }));
@@ -7334,12 +7363,46 @@ async function drillAdminSettingsLegado() {
     const _views977 = [..._adm977.matchAll(/<div class="view(?: active)?" id="view-([a-z]+)"/g)].map((m) => m[1]);
     const _orfas977 = _views977.filter((v) => !_botoes977.includes(v) && !_sub977.includes(v));
     check("🧭 v977: o menu do admin tem no máximo 10 botões (regra 14 — o secundário mora DENTRO da tela-mãe), toda view tem botão OU sub-aba (nenhuma tela órfã), o botão do pai fica aceso nas telas-filhas e a barra de sub-abas é desenhada pela switchTab",
-      _botoes977.length >= 7 && _botoes977.length <= 10 && _orfas977.length === 0 && _views977.length >= 12 &&
-      ["overview", "caixa", "pagantes", "usuarios", "pendentes", "operacao", "planilhas"].every((v) => _botoes977.includes(v)) &&
-      ["socios", "conferencia", "dre", "sistema", "notificacoes"].every((v) => _sub977.includes(v) && !_botoes977.includes(v)) &&
-      /var PAI_ABA=\{socios:"caixa",conferencia:"caixa",dre:"caixa",sistema:"operacao",notificacoes:"operacao"\}/.test(_adm977) &&
+      _botoes977.length >= 7 && _botoes977.length <= 11 && _orfas977.length === 0 && _views977.length >= 12 &&
+      ["overview", "caixa", "pagantes", "usuarios", "pendentes", "operacao", "planilhas", "reviews", "conformidade", "sistema"].every((v) => _botoes977.includes(v)) &&
+      ["socios", "conferencia", "dre", "notificacoes"].every((v) => _sub977.includes(v) && !_botoes977.includes(v)) &&
+      /var PAI_ABA=\{socios:"caixa",conferencia:"caixa",dre:"caixa",notificacoes:"operacao"\}/.test(_adm977) &&
       _adm977.includes('(PAI_ABA[nome]||nome)') && _adm977.includes("_renderSubtabs(nome);") && _adm977.includes('id="pill-notif"') && _adm977.includes('id="pill-operacao"'),
       JSON.stringify({ botoes: _botoes977, sub: _sub977, orfas: _orfas977, views: _views977.length }));
+    {
+      // 🪟 NENHUM diálogo nativo no admin (dono, 14/11/2026: confirm()/alert()/prompt() travam a automação do navegador e o celular) — tudo é modal da página
+      const _semCom = _adm977.replace(/<!--[\s\S]*?-->/g, "").replace(/\/\*[\s\S]*?\*\//g, "").split("\n").map((l) => l.replace(/(^|\s)\/\/.*$/, "")).join("\n");
+      const _nativos = [..._semCom.matchAll(/(?<![\w.$])(confirm|alert|prompt)\(/g)].length;
+      check("🪟 admin sem diálogos nativos: zero confirm()/alert()/prompt() — confirmar()/avisar()/pedirMotivo() (modais da página) no lugar, e o botão Reprocessar roda sem travar a automação",
+        _nativos === 0 && /function confirmar\(/.test(_adm977) && /function avisar\(/.test(_adm977) && (_adm977.match(/await confirmar\(/g) || []).length >= 20,
+        "nativos=" + _nativos);
+    }
+    // 🧭 Painel "de empresa" (ordem do dono, 14/11/2026): grupos claros, faixa de orientação em toda tela, aviso de gasto zerado,
+    // glossário recebido × MRR × renovação prevista, Operação separada em cadastros × alertas, cadastros por estado/país sem mapa,
+    // Avaliações dentro do painel e checklist de conformidade (lembrete, nunca aconselhamento jurídico).
+    {
+      const _secs = [..._nav977.matchAll(/<div class="sb-section">([^<]+)<\/div>/g)].map((m) => m[1]);
+      const _tg = (_adm977.match(/var TELA_GUIA=\{[\s\S]*?\n\};/) || [""])[0];
+      const _tit = (_adm977.match(/var TITULOS=\{[\s\S]*?\n\};/) || [""])[0];
+      const _viewsTit = [..._tit.matchAll(/\n\s{2}([a-z]+):\{t:/g)].map((m) => m[1]);
+      check("🧭 painel de empresa: menu em 5 grupos (Dinheiro/Clientes/Operação/Conteúdo/Controle), TODA tela tem faixa 'o que é / o que fazer / base dos números' e status verde-amarelo-vermelho onde há dado",
+        JSON.stringify(_secs) === JSON.stringify(["Dinheiro", "Clientes", "Operação", "Conteúdo", "Controle"]) &&
+        _viewsTit.filter((v) => _views977.includes(v)).every((v) => new RegExp("\\b" + v + ":\\{oq:").test(_tg)) &&
+        /oq:"[^"]+",fazer:"[^"]+",base:"[^"]+"/.test(_tg) && _adm977.includes('id="tela-guia"') && _adm977.includes("_renderGuia(nome);") && /function _guiaStatus\(/.test(_adm977) && /tg-status\.verde/.test(_adm977) && /tg-status\.vermelho/.test(_adm977),
+        JSON.stringify({ secs: _secs, semGuia: _viewsTit.filter((v) => _views977.includes(v) && !new RegExp("\\b" + v + ":\\{oq:").test(_tg)) }));
+      check("💸 gastos zerados: a Visão do Dono AVISA 'sem gastos lançados, lucro pode estar errado' (faixa, card Líquido e card do repasse entre sócios) e oferece lançar Render/domínio/Google/taxas com recorrência — sem inventar valores",
+        /function _donoAvisoGastos\(/.test(_adm977) && _adm977.includes("sem gastos lançados — lucro pode estar errado") && /abrirGastoFixo\(\\'Servidor \/ Hospedagem\\',true,true\)/.test(_adm977) && _adm977.includes("Nenhum gasto lançado: este repasse está calculado SEM custos") && /function abrirGastoFixo\(/.test(_adm977) && !/abrirGastoFixo\([^)]*\d{2,}/.test(_adm977),
+        "admin.html");
+      check("📖 glossário financeiro: Receita recebida (caixa) × MRR (previsão) × Renovação prevista (previsão) × Lucro, cada um com fórmula visível, na Visão do Dono E em Pagantes; cards rotulados PREVISÃO",
+        /var GLOSSARIO_FIN=/.test(_adm977) && ["Receita recebida (caixa)", "Receita recorrente mensal (MRR)", "Renovação prevista", "Lucro (líquido)"].every((t) => _adm977.includes(t)) && _adm977.includes('id="dono-gloss"') && _adm977.includes('id="pg-gloss"') && _adm977.includes("Receita recorrente mensal (MRR) · PREVISÃO") && _adm977.includes("Renovação prevista (30d) · PREVISÃO") && _adm977.includes("fórmula: Σ preço × 30 ÷ dias do plano"),
+        "admin.html");
+      check("🛰️ Operação: 'Cadastros novos' (informativo) separados dos 'Avisos dos robôs' (só aviso/erro) e do histórico normal — antes vinham misturados",
+        _adm977.includes('id="op-avisos"') && _adm977.includes('id="op-cadastros"') && _adm977.includes('id="op-eventos"') && /e\.type==="new_user"/.test(_adm977) && /level==="error"\|\|e\.level==="warn"/.test(_adm977),
+        "admin.html");
+      check("🛡️ conformidade: checklist com os 7 pontos (termos, privacidade, cookies/anúncios, reembolso, LGPD, sociedade 50/50, CNPJ/nota) e o aviso de que NÃO é aconselhamento jurídico; DRE ganhou Imprimir/PDF",
+        _adm977.includes('id="view-conformidade"') && ["termos", "priv", "cookies", "reembolso", "lgpd", "sociedade", "cnpj"].every((k) => _adm977.includes('{k:"' + k + '"')) && _adm977.includes("Não é aconselhamento jurídico nem contábil") && /onclick="window\.print\(\)"/.test(_adm977) && _adm977.includes("@media print"),
+        "admin.html");
+    }
     // 🔎 v978 (SEO — dono, 15/10/2026: "quando pesquiso h2b ou h2b apply nosso site não aparece"). A auditoria de
     // 7 lentes achou que a home (a) não tinha H-2B no H1/H2, (b) nunca escrevia "H2B Apply" com espaço, (c) não tinha
     // WebSite/Organization e (d) alcançava só ~13 URLs por link HTML. Guarda permanente de cada ponto.

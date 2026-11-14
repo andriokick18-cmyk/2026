@@ -53,6 +53,13 @@ a{color:inherit;text-decoration:none}
 .sb-item.active{background:var(--blueg);color:var(--blue);border:1px solid var(--blueb)}
 .sb-item i{font-size:17px;flex-shrink:0;width:17px;text-align:center}
 /* v977: sub-abas — o que é parente mora DENTRO da tela-mãe (regra 14), não no menu */
+.tela-guia{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;margin-bottom:14px;padding:11px 14px;background:var(--glass);border:1px solid var(--border2);border-radius:10px;font-size:13px;line-height:1.55;color:var(--t2)}
+.tela-guia b{color:var(--text)}.tela-guia .tg-txt{flex:1;min-width:240px}
+.tg-status{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-weight:700;font-size:12px;white-space:nowrap}
+.tg-status.verde{background:rgba(34,197,94,.15);color:var(--green)}.tg-status.amarelo{background:rgba(245,158,11,.16);color:var(--amber)}.tg-status.vermelho{background:rgba(239,68,68,.16);color:var(--red)}
+.gloss{font-size:12.5px;line-height:1.6;color:var(--t2)}.gloss div{padding:4px 0;border-bottom:1px solid var(--border)}.gloss code{color:var(--cyan)}
+@media print{.sidebar,.topbar,.subtabs,.tela-guia,.panel-actions,.hamburger,.btn{display:none!important}.main{margin:0!important;padding:0!important}body{background:#fff!important;color:#000!important}.panel{border:1px solid #bbb!important;box-shadow:none!important;break-inside:avoid}}
+.rvtabs{display:flex;gap:6px;flex-wrap:wrap;padding:5px;background:var(--glass);border:1px solid var(--border2);border-radius:10px;width:fit-content;max-width:100%}
 .subtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;padding:5px;background:var(--glass);border:1px solid var(--border2);border-radius:10px;width:fit-content;max-width:100%}
 .subtab{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:7px;font-size:13px;font-weight:700;color:var(--t2);background:none;border:1px solid transparent;cursor:pointer;white-space:nowrap}
 .subtab:hover{color:var(--text);background:var(--glass2)}
@@ -292,13 +299,13 @@ tbody tr:hover{background:var(--glass2)}
     </div>
     <nav class="sb-nav">
       <div class="sb-section">Dinheiro</div>
-      <button class="sb-item active" data-view="overview" onclick="switchTab('overview')"><i class="ti ti-layout-dashboard"></i> Visão do Dono</button>
-      <button class="sb-item" data-view="caixa" onclick="switchTab('caixa')"><i class="ti ti-book"></i> Caixa &amp; Sócios</button>
-      <button class="sb-item" data-view="pagantes" onclick="switchTab('pagantes')"><i class="ti ti-credit-card"></i> Pagantes</button>
+      <button class="sb-item active" data-view="overview" onclick="switchTab('overview')"><i class="ti ti-layout-dashboard"></i> Resumo (Visão do Dono)</button>
+      <button class="sb-item" data-view="caixa" onclick="switchTab('caixa')"><i class="ti ti-book"></i> Livro-caixa, Sócios &amp; DRE</button>
+      <button class="sb-item" data-view="pagantes" onclick="switchTab('pagantes')"><i class="ti ti-credit-card"></i> Pagantes &amp; renovações</button>
       <div class="sb-section">Clientes</div>
       <button class="sb-item" data-view="usuarios" onclick="switchTab('usuarios')"><i class="ti ti-users"></i> Usuários</button>
       <button class="sb-item" data-view="pendentes" onclick="switchTab('pendentes')"><i class="ti ti-hourglass"></i> Pedidos Pendentes <span class="pill" id="pill-pendentes" style="display:none">0</span></button>
-      <div class="sb-section">Sistema</div>
+      <div class="sb-section">Operação</div>
       <button class="sb-item" data-view="operacao" onclick="switchTab('operacao')"><i class="ti ti-activity"></i> Operação <span class="pill" id="pill-operacao" style="display:none;background:var(--red)">0</span><span class="pill" id="pill-notif" style="display:none;background:var(--red)" title="O e-mail do sistema precisa de atenção">!</span></button>
       <button class="sb-item" data-view="planilhas" onclick="switchTab('planilhas')"><i class="ti ti-table-import"></i> Planilhas de vagas</button>
       <!-- 🩺 achado de auditoria contínua: /admin-reviews (moderação de avaliações
@@ -306,7 +313,9 @@ tbody tr:hover{background:var(--glass2)}
            landing/JSON-LD) existia há ~150 releases sem NENHUM link na sidebar —
            só quem já conhecia a URL de cor achava a tela. Avaliações ficavam
            pendentes pra sempre, a seção de prova social da landing nunca populava. -->
-      <button class="sb-item" data-view="reviews" onclick="location.href='/admin-reviews'"><i class="ti ti-star"></i> Avaliações <span class="pill" id="pill-reviews" style="display:none">0</span></button>
+      <div class="sb-section">Conteúdo</div>
+      <button class="sb-item" data-view="reviews" onclick="switchTab('reviews')"><i class="ti ti-star"></i> Avaliações <span class="pill" id="pill-reviews" style="display:none">0</span></button>
+      <div class="sb-section">Controle</div>
       <!-- 🩺 achado de auditoria contínua: GET /api/admin/audit + POST
            /api/admin/audit/revert existem desde o v19 (15/07/2026), com 16
            pontos do sistema gravando nele (inclusive promover admin, banir
@@ -315,6 +324,8 @@ tbody tr:hover{background:var(--glass2)}
            NENHUMA tela lia o log nem chamava o revert. Um admin que errasse
            a mão num VIP não tinha como desfazer, apesar do que a tela dizia. -->
       <button class="sb-item" data-view="auditoria" onclick="carregarAuditoria()"><i class="ti ti-history"></i> Auditoria</button>
+      <button class="sb-item" data-view="conformidade" onclick="switchTab('conformidade')"><i class="ti ti-shield-check"></i> Conformidade</button>
+      <button class="sb-item" data-view="sistema" onclick="switchTab('sistema')"><i class="ti ti-settings"></i> Configurações &amp; Anúncios</button>
     </nav>
     <div class="sb-foot">
       <div class="sb-user">
@@ -342,9 +353,11 @@ tbody tr:hover{background:var(--glass2)}
     </div>
 
     <div class="content">
+      <div id="tela-guia" class="tela-guia" style="display:none"></div>
 
       <div class="view active" id="view-overview">
         <!-- 💼 v970: Visão do Dono — janelas canônicas (fonte única dono-resumo) -->
+        <div id="dono-aviso-gastos" class="tela-guia" style="display:none;border-color:var(--amber);flex-direction:column"></div>
         <div class="stat-grid" id="dono-grid">
           <div class="stat-card green"><div class="ic"><i class="ti ti-sun"></i></div><div class="lbl">Hoje</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
           <div class="stat-card green"><div class="ic"><i class="ti ti-calendar-week"></i></div><div class="lbl">7 dias</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
@@ -359,7 +372,8 @@ tbody tr:hover{background:var(--glass2)}
           <div class="panel"><div class="panel-head"><div class="panel-title"><i class="ti ti-users-group"></i>Acerto entre os sócios</div></div><div class="panel-body" id="dono-socios"><div class="spin"></div></div></div>
           <div class="panel"><div class="panel-head"><div class="panel-title"><i class="ti ti-calendar-event"></i>Renovações da semana</div></div><div class="panel-body" id="dono-vencendo" style="font-size:13px"><div class="spin"></div></div></div>
         </div>
-        <div class="panel" style="margin-bottom:16px"><div class="panel-head"><div class="panel-title"><i class="ti ti-map-pin"></i>De onde vêm os cadastros</div></div><div class="panel-body" id="dono-mapa" style="font-size:13px"><div class="spin"></div></div></div>
+        <div class="panel" style="margin-bottom:16px"><div class="panel-head"><div class="panel-title"><i class="ti ti-book-2"></i>Entenda os números: recebido × MRR × renovação prevista</div></div><div class="panel-body" id="dono-gloss"></div></div>
+        <div class="panel" style="margin-bottom:16px"><div class="panel-head"><div class="panel-title"><i class="ti ti-map-pin"></i>De onde vêm os cadastros (por estado e país)</div></div><div class="panel-body" id="dono-mapa" style="font-size:13px"><div class="spin"></div></div></div>
         <div class="stat-grid" id="stat-grid">
           <div class="stat-card blue"><div class="ic"><i class="ti ti-cash-banknote"></i></div><div class="lbl">Total Recebido</div><div class="val skel">&nbsp;</div></div>
           <div class="stat-card amber"><div class="ic"><i class="ti ti-user"></i></div><div class="lbl">Gastos Andrio</div><div class="val skel">&nbsp;</div></div>
@@ -448,10 +462,11 @@ tbody tr:hover{background:var(--glass2)}
         </div>
         <!-- 📈 v975 (F6 da lista de 100): renovações previstas, MRR e churn — itens 9 e 10 -->
         <div class="stat-grid" id="pg-grid2">
-          <div class="stat-card green"><div class="ic"><i class="ti ti-calendar-dollar"></i></div><div class="lbl">Renovações nos próximos 30 dias</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
-          <div class="stat-card purple"><div class="ic"><i class="ti ti-chart-line"></i></div><div class="lbl">Receita recorrente (MRR)</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card green"><div class="ic"><i class="ti ti-calendar-dollar"></i></div><div class="lbl">Renovação prevista (30d) · PREVISÃO</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
+          <div class="stat-card purple"><div class="ic"><i class="ti ti-chart-line"></i></div><div class="lbl">Receita recorrente mensal (MRR) · PREVISÃO</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
           <div class="stat-card red"><div class="ic"><i class="ti ti-user-minus"></i></div><div class="lbl">Perderam o plano (30 dias)</div><div class="val skel">&nbsp;</div><div class="sub"></div></div>
         </div>
+        <div class="panel"><div class="panel-head"><div class="panel-title"><i class="ti ti-book-2"></i>Entenda os números: recebido × MRR × renovação prevista</div></div><div class="panel-body" id="pg-gloss"></div></div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px">
           <div class="panel"><div class="panel-head"><div class="panel-title"><i class="ti ti-calendar-dollar" style="color:var(--green)"></i>Renovações previstas (30 dias)</div></div><div class="panel-body" id="pg-renov" style="font-size:13px"><div class="spin"></div></div></div>
           <div class="panel"><div class="panel-head"><div class="panel-title"><i class="ti ti-user-minus" style="color:var(--red)"></i>Venceram e não renovaram (60 dias)</div></div><div class="panel-body" id="pg-churn" style="font-size:13px"><div class="spin"></div></div></div>
@@ -518,6 +533,7 @@ tbody tr:hover{background:var(--glass2)}
               <a class="btn btn-sm" href="/api/admin/dre?fmt=csv" target="_blank" rel="noopener"><i class="ti ti-download"></i> DRE em CSV</a>
               <a class="btn btn-sm" href="/api/admin/financeiro/exportar" target="_blank" rel="noopener"><i class="ti ti-download"></i> Livro-caixa em CSV</a>
               <a class="btn btn-sm" href="/api/admin/conferencia/exportar" target="_blank" rel="noopener"><i class="ti ti-download"></i> Conferência em CSV</a>
+              <button class="btn btn-sm" type="button" onclick="window.print()" title="Abre a impressão: escolha 'Salvar como PDF'"><i class="ti ti-printer"></i> Imprimir / PDF</button>
             </div>
           </div>
           <div class="panel-body"><pre id="dre-exec" style="white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.6;color:var(--t2);margin:0">Carregando…</pre></div>
@@ -550,7 +566,7 @@ tbody tr:hover{background:var(--glass2)}
                 <i class="ti ti-search"></i>
                 <input type="search" id="usr-search" placeholder="Buscar por nome, usuário, e-mail ou telefone…" oninput="filtrarUsuarios()">
               </div>
-              <button class="btn btn-sm" type="button" onclick="usrToggleMapa()"><i class="ti ti-map-2"></i> Mapa</button>
+              <button class="btn btn-sm" type="button" onclick="usrToggleMapa()"><i class="ti ti-map-2"></i> Por estado</button>
               <select id="usr-filtro" aria-label="Filtrar usuários" onchange="USR_LIMIT=100;filtrarUsuarios()" style="width:auto">
                 <option value="">Todos</option>
                 <option value="pagantes">Já pagaram</option>
@@ -664,8 +680,13 @@ tbody tr:hover{background:var(--glass2)}
           </div>
         </div>
         <div class="panel">
-          <div class="panel-head"><div class="panel-title"><i class="ti ti-timeline"></i>Últimos acontecimentos dos robôs</div><div class="panel-actions"><span style="font-size:12px;color:var(--t3)">reinícios, paradas, pausas e reparos — os 40 mais recentes</span></div></div>
-          <div class="panel-body" id="op-eventos" style="font-size:13px"><div class="spin"></div></div>
+          <div class="panel-head"><div class="panel-title"><i class="ti ti-alert-triangle"></i>Avisos dos robôs — o que exige ação</div><div class="panel-actions"><span style="font-size:12px;color:var(--t3)">só avisos e erros desde o último reinício do servidor</span></div></div>
+          <div class="panel-body" id="op-avisos" style="font-size:13px"><div class="spin"></div></div>
+          <details style="padding:0 16px 12px"><summary style="cursor:pointer;color:var(--t3);font-size:12px">Ver também o histórico normal dos robôs (reinícios, pausas, reparos)</summary><div id="op-eventos" style="font-size:13px;margin-top:6px"></div></details>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title"><i class="ti ti-user-plus"></i>Cadastros novos</div><div class="panel-actions"><span style="font-size:12px;color:var(--t3)">informativo — não exige ação</span></div></div>
+          <div class="panel-body" id="op-cadastros" style="font-size:13px"><div class="spin"></div></div>
         </div>
       </div>
 
@@ -775,6 +796,28 @@ tbody tr:hover{background:var(--glass2)}
         <div class="panel">
           <div class="panel-head"><div class="panel-title"><i class="ti ti-report"></i>Resumo de ontem</div><div class="panel-actions"><button class="btn btn-sm" onclick="rodarResumoOntem()"><i class="ti ti-player-play"></i> Gerar agora</button></div></div>
           <div class="panel-body" id="sis-resumo" style="font-size:13px;color:var(--t2)">O resumo roda sozinho às 8h (BRT). Clique pra ver os números de ontem agora: vendas, pedidos na mesa, envios e cadastros.</div>
+        </div>
+      </div>
+
+      <!-- ⭐ Avaliações DENTRO do painel (antes abria /admin-reviews numa página solta) -->
+      <div class="view" id="view-reviews">
+        <div class="rvtabs" id="rv-tabs" style="margin-bottom:12px">
+          <button type="button" class="subtab active" data-f="pending" onclick="rvCarregar('pending')">Pendentes <span class="badge amber" id="rv-c-pending">0</span></button>
+          <button type="button" class="subtab" data-f="approved" onclick="rvCarregar('approved')">Aprovadas <span class="badge green" id="rv-c-approved">0</span></button>
+          <button type="button" class="subtab" data-f="rejected" onclick="rvCarregar('rejected')">Rejeitadas <span class="badge red" id="rv-c-rejected">0</span></button>
+          <button type="button" class="subtab" data-f="all" onclick="rvCarregar('all')">Todas</button>
+        </div>
+        <div id="rv-list"><div class="spin"></div></div>
+      </div>
+
+      <!-- 🛡️ Conformidade: lembrete visual (NÃO é aconselhamento jurídico) -->
+      <div class="view" id="view-conformidade">
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title"><i class="ti ti-shield-check"></i>Checklist de conformidade</div><div class="panel-actions"><span id="cf2-prog" style="font-size:12px;color:var(--t3)"></span></div></div>
+          <div class="panel-body">
+            <div style="font-size:12.5px;color:var(--amber);margin-bottom:10px">⚖️ Isto é só um lembrete visual do que costuma precisar de atenção num negócio digital como este. <b>Não é aconselhamento jurídico nem contábil</b> — confirme cada item com seu advogado e seu contador. As marcações ficam só neste navegador.</div>
+            <div id="cf2-lista"></div>
+          </div>
         </div>
       </div>
 
@@ -1181,6 +1224,14 @@ tbody tr:hover{background:var(--glass2)}
 </div>
 
 <!-- 💼 v970: motivo obrigatório (substitui prompt() do navegador) -->
+<!-- ✅ confirmação/aviso DENTRO da página (substitui confirm()/alert() nativos, que travam a automação e o celular) -->
+<div class="modal-bg" id="modal-confirmar">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-head"><div class="modal-title" id="cfm-title">Confirmar</div><button class="modal-close" onclick="_cfmFim(false)" aria-label="Fechar"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body"><div id="cfm-texto" style="font-size:13.5px;color:var(--t2);white-space:pre-wrap;line-height:1.6"></div></div>
+    <div class="modal-foot"><button type="button" class="btn" id="cfm-nao" onclick="_cfmFim(false)">Cancelar</button><button type="button" class="btn btn-primary" id="cfm-sim" onclick="_cfmFim(true)">Confirmar</button></div>
+  </div>
+</div>
 <!-- 🛠️ v974: restaurar backup — confirmação digitando o nome -->
 <div class="modal-bg" id="modal-restaurar">
   <div class="modal" style="max-width:560px">
@@ -1447,17 +1498,121 @@ var TITULOS={
   pendentes:{t:"Pedidos",s:"Pendentes, aprovados e cancelados — com quem aprovou e por quê"},
   operacao:{t:"Robôs & Envios",s:"Quem está online, quem está enviando, quem travou e por quê — com o botão pra consertar"},
   planilhas:{t:"Planilhas de vagas",s:"Coleta e enriquecimento do DOL — 100% manual, clique quando sair temporada nova"},
-  sistema:{t:"Backups &amp; Saúde",s:"Cópias de segurança (criar, ver, restaurar), erros graves do servidor e o resumo de ontem"},
+  sistema:{t:"Configurações &amp; Anúncios",s:"Anúncios do plano grátis, cópias de segurança (criar, ver, restaurar), erros graves do servidor e o resumo de ontem"},
+  reviews:{t:"Avaliações",s:"Moderação das avaliações que aparecem na página pública"},
+  conformidade:{t:"Conformidade",s:"Checklist visual de pendências legais e contábeis — lembrete, não aconselhamento jurídico"},
+  auditoria:{t:"Auditoria",s:"Quem fez o quê no painel, com reversão"},
   notificacoes:{t:"Notificações por e-mail",s:"A conta Google que envia os códigos e avisos do sistema"}
 };
 
+/* 🧭 Faixa de orientação no topo de TODA tela: o que significa, o que fazer agora, e a base dos números
+   (moeda, caixa × previsão, período). Status verde/amarelo/vermelho só onde há dado carregado pra julgar. */
+var TELA_GUIA={
+  overview:{oq:"Dinheiro que ENTROU (caixa), o que SAIU e o que está esperando decisão.",fazer:"Aprove pedidos pendentes, lance os gastos do mês e confira o acerto entre os sócios.",base:"R$ · caixa (dinheiro recebido) · janelas hoje/7d/30d/total"},
+  caixa:{oq:"O livro-caixa: toda entrada, gasto e repasse, cada um com comprovante, dono e trilha de quem mexeu.",fazer:"Lance o que faltar e anexe o comprovante. Nada é apagado: erro vira anulação com motivo.",base:"R$ · caixa (fatos já ocorridos)"},
+  socios:{oq:"Quanto cada sócio tem a receber ou a repassar, pela divisão acordada.",fazer:"Quem deve repassar faz o PIX e registra o repasse com comprovante.",base:"R$ · caixa − gastos, pelo split da sociedade"},
+  conferencia:{oq:"Compara pedido × caixa × comprovante lido e aponta divergências.",fazer:"Resolva cada divergência (corrigir valor, anular duplicado ou confirmar que está certo).",base:"R$ · caixa"},
+  dre:{oq:"Resultado mês a mês (receita − custos = lucro), com fechamento que congela o mês.",fazer:"Feche o mês depois de conferir e exporte o CSV para o contador.",base:"R$ · caixa por mês (fuso de Brasília)"},
+  pagantes:{oq:"Quem pagou, quanto, quando e até quando o plano vale — mais renovações e perdas.",fazer:"Lembre quem vence em breve e chame quem perdeu o plano.",base:"R$ · recebido = caixa · MRR e renovação = PREVISÃO pela tabela de preços"},
+  usuarios:{oq:"Todas as contas: plano, Gmail, robô e uso.",fazer:"Abra a ficha de quem tem problema (Gmail caído, robô parado, divergência).",base:"contagens de contas · sem valores em R$"},
+  pendentes:{oq:"Doações/pedidos esperando decisão, com comprovante lido pela IA.",fazer:"Confira valor e comprovante e aprove ou cancele (com motivo).",base:"R$ · valor declarado × valor lido no comprovante"},
+  operacao:{oq:"Quem está enviando, quem travou e por quê — o robô de cada cliente.",fazer:"Trate primeiro os robôs com problema; cadastros novos são só informativos.",base:"estado em tempo real · sem valores em R$"},
+  planilhas:{oq:"As listas de vagas do DOL que alimentam o site.",fazer:"Publique a planilha nova quando sair a temporada.",base:"vagas · período = temporada da planilha"},
+  sistema:{oq:"Cópias de segurança, erros graves do servidor e anúncios do plano grátis.",fazer:"Crie backup antes de mudanças grandes e leia os erros graves.",base:"sistema · sem valores em R$"},
+  notificacoes:{oq:"A conta Google de suporte que envia os avisos do sistema.",fazer:"Mantenha conectada; sem ela os avisos de plano ativado não saem.",base:"sistema"},
+  auditoria:{oq:"Trilha de TODA ação de admin (quem fez, o quê e quando), com reversão.",fazer:"Revise ações estranhas e reverta o que foi engano.",base:"registro de ações"},
+  reviews:{oq:"Avaliações de clientes que aparecem na página pública depois de aprovadas.",fazer:"Aprove só avaliações reais; recuse spam.",base:"conteúdo público"},
+  conformidade:{oq:"Lembrete visual do que um negócio como o H2BApply precisa manter em dia.",fazer:"Marque o que já está feito e leve o resto ao seu contador/advogado.",base:"checklist · não é aconselhamento jurídico"}
+};
+function _guiaStatus(nome){
+  try{
+    if(nome==="overview"&&DIN.dono){var d=DIN.dono;
+      if(!(d.gastos30>0))return ["amarelo","Sem gastos lançados — o lucro pode estar errado"];
+      if(((d.pendentes||{}).qtd||0)>0)return ["amarelo",((d.pendentes||{}).qtd)+" pedido(s) esperando decisão"];
+      return ["verde","Em dia"];}
+    if(nome==="pagantes"&&DIN.pagantes){var s=DIN.pagantes.summary||{};
+      if((s.vencidos||0)>0)return ["amarelo",s.vencidos+" plano(s) vencido(s)"];return ["verde","Sem vencidos"];}
+    if(nome==="pendentes"||nome==="operacao"){var p=document.getElementById(nome==="pendentes"?"pill-pendentes":"pill-operacao");
+      var n=p&&p.style.display!=="none"?parseInt(p.textContent,10)||0:0;
+      return n>0?["amarelo",n+" item(ns) pedindo atenção"]:["verde","Nada pendente"];}
+  }catch(e){}
+  return null;
+}
+function _renderGuia(nome){
+  var box=document.getElementById("tela-guia");if(!box)return;
+  var g=TELA_GUIA[nome];if(!g){box.style.display="none";return;}
+  var st=_guiaStatus(nome);
+  box.innerHTML='<div class="tg-txt"><b>O que é:</b> '+esc(g.oq)+'<br><b>O que fazer agora:</b> '+esc(g.fazer)+'<br><span style="color:var(--t3)"><b>Base dos números:</b> '+esc(g.base)+'</span></div>'
+    +(st?'<span class="tg-status '+st[0]+'" id="tg-status">'+(st[0]==="verde"?"🟢":st[0]==="amarelo"?"🟡":"🔴")+' '+esc(st[1])+'</span>':'');
+  box.style.display="";
+}
+/* 📖 Glossário financeiro: 3 números que pareciam o mesmo e NÃO são. Fórmula sempre à vista. */
+var GLOSSARIO_FIN='<div class="gloss">'
+  +'<div><b>Receita recebida (caixa)</b> — dinheiro que de fato entrou (PIX/doações confirmadas), sem contas de admin/teste. <code>soma dos lançamentos de entrada no período</code>. É FATO.</div>'
+  +'<div><b>Receita recorrente mensal (MRR)</b> — previsão do que os planos ATIVOS valem por 30 dias, pela tabela oficial de preços. <code>Σ preço do plano × 30 ÷ dias do plano</code>. É PREVISÃO, não dinheiro na conta.</div>'
+  +'<div><b>Renovação prevista</b> — o que entraria SE cada plano que vence nos próximos 30 dias for renovado ao preço de tabela. <code>Σ preço do plano dos que vencem em 30d</code>. É PREVISÃO e depende do cliente renovar.</div>'
+  +'<div><b>Lucro (líquido)</b> — <code>receita recebida − gastos lançados</code>. Só é confiável se os gastos (Render, domínio, Google, taxas) estiverem lançados.</div>'
+  +'</div>';
+function _glossarioFin(id){var b=document.getElementById(id);if(b)b.innerHTML=GLOSSARIO_FIN;}
+/* ⭐ Avaliações dentro do painel (mesmas rotas da página antiga /admin-reviews, que continua existindo) */
+async function rvCarregar(filtro){
+  filtro=filtro||"pending";
+  document.querySelectorAll("#rv-tabs .subtab").forEach(function(b){b.classList.toggle("active",b.dataset.f===filtro);});
+  var box=document.getElementById("rv-list");box.innerHTML='<div class="spin"></div>';
+  try{
+    var d=await api("/api/admin/reviews?status="+encodeURIComponent(filtro));
+    ["pending","approved","rejected"].forEach(function(k){var e=document.getElementById("rv-c-"+k);if(e)e.textContent=(d.counts&&d.counts[k])||0;});
+    var pill=document.getElementById("pill-reviews");if(pill){var n=(d.counts&&d.counts.pending)||0;pill.style.display=n>0?"inline-block":"none";pill.textContent=n;}
+    var lista=d.reviews||[];
+    if(!lista.length){box.innerHTML='<div class="empty">Nenhuma avaliação aqui.</div>';return;}
+    box.innerHTML=lista.map(function(rv){
+      var est="★".repeat(rv.rating||0)+"☆".repeat(5-(rv.rating||0));
+      var cor=rv.status==="approved"?"green":rv.status==="rejected"?"red":"amber";
+      return '<div class="panel" style="margin-bottom:10px"><div class="panel-body"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><div><span style="color:var(--amber);font-size:16px">'+est+'</span> <span class="badge '+cor+'">'+esc(rv.status)+'</span><div class="cell-sub">'+esc(rv.displayName||"Usuário")+(rv.location?" · "+esc(rv.location):"")+' · '+esc(rv.email||"")+' · plano '+esc(rv.plan||"free")+' · '+esc(fmtData(rv.createdAt))+'</div></div></div>'
+        +'<div style="margin:8px 0;white-space:pre-wrap">'+esc(rv.text)+'</div>'
+        +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
+        +(rv.status!=="approved"?'<button class="btn btn-sm btn-green" data-id="'+esc(rv.id)+'" onclick="rvStatus(this.dataset.id,\'approved\')">✅ Aprovar</button>':'')
+        +(rv.status!=="rejected"?'<button class="btn btn-sm btn-red" data-id="'+esc(rv.id)+'" onclick="rvStatus(this.dataset.id,\'rejected\')">🚫 Rejeitar</button>':'')
+        +(rv.status!=="pending"?'<button class="btn btn-sm" data-id="'+esc(rv.id)+'" onclick="rvStatus(this.dataset.id,\'pending\')">↩️ Voltar p/ pendente</button>':'')
+        +'</div></div></div>';
+    }).join("");
+  }catch(e){box.innerHTML='<div class="empty">Erro: '+esc(e.message)+'</div>';}
+}
+async function rvStatus(id,status){
+  try{await api("/api/admin/reviews/status",{method:"POST",body:{id:id,status:status}});toast("Avaliação atualizada.","ok");}
+  catch(e){toast(e.message,"err");}
+  var ativo=document.querySelector("#rv-tabs .subtab.active");rvCarregar(ativo?ativo.dataset.f:"pending");
+}
+/* 🛡️ Conformidade: lembrete visual (não é aconselhamento jurídico). Marcações só no navegador deste admin. */
+var CONF_ITENS=[
+  {k:"termos",t:"Termos de uso publicados e atualizados",d:"Revise quando mudar planos, diamantes ou regras do serviço.",l:"/termos"},
+  {k:"priv",t:"Política de privacidade atualizada (inclui Gmail, anúncios e cookies)",d:"Já cita Google AdSense e cookies de publicidade; revise com seu advogado.",l:"/privacidade"},
+  {k:"cookies",t:"Aviso de cookies/anúncios",d:"Para público no Brasil a política cobre o aviso; se atrair visitantes da Europa/Reino Unido, a Google exige um banner de consentimento (CMP)."},
+  {k:"reembolso",t:"Regra de reembolso/estorno escrita e visível",d:"Como funcionam doação, troca por diamantes e cancelamento — escreva e publique."},
+  {k:"lgpd",t:"LGPD: guarda de comprovantes e dados pessoais",d:"Defina por quanto tempo guarda, quem acessa e como atende pedido de exclusão (a política já descreve a retenção)."},
+  {k:"sociedade",t:"Contrato de sociedade 50/50 e repasse documentado",d:"Divisão, quem recebe, quem repassa e como se resolve divergência — por escrito e assinado."},
+  {k:"cnpj",t:"CNPJ e emissão de nota fiscal, quando aplicável",d:"Veja com seu contador se, e quando, o negócio precisa de CNPJ e de nota."}
+];
+function confRender(){
+  var f={};try{f=JSON.parse(localStorage.getItem("h2bConfAdm")||"{}")||{};}catch(e){}
+  var feitos=CONF_ITENS.filter(function(i){return f[i.k];}).length;
+  document.getElementById("cf2-prog").textContent=feitos+" de "+CONF_ITENS.length+" marcados";
+  document.getElementById("cf2-lista").innerHTML=CONF_ITENS.map(function(i){
+    return '<label style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer"><input type="checkbox" style="width:auto;margin-top:4px" data-k="'+esc(i.k)+'" '+(f[i.k]?'checked':'')+' onchange="confMarcar(this)"><span><b>'+esc(i.t)+'</b>'+(i.l?' <a href="'+esc(i.l)+'" target="_blank" rel="noopener">abrir</a>':'')+'<br><span class="cell-sub">'+esc(i.d)+'</span></span></label>';
+  }).join("");
+}
+function confMarcar(el){
+  var f={};try{f=JSON.parse(localStorage.getItem("h2bConfAdm")||"{}")||{};}catch(e){}
+  f[el.dataset.k]=el.checked;try{localStorage.setItem("h2bConfAdm",JSON.stringify(f));}catch(e){}
+  confRender();
+}
 /* v977: 14 abas -> 9. Cada tela-filha continua sendo uma view própria (mesmos ids, mesmos
    carregadores) — só o MENU encolheu: o botão do pai fica aceso e uma barra de sub-abas
    no topo da view leva às irmãs. */
-var PAI_ABA={socios:"caixa",conferencia:"caixa",dre:"caixa",sistema:"operacao",notificacoes:"operacao"};
+var PAI_ABA={socios:"caixa",conferencia:"caixa",dre:"caixa",notificacoes:"operacao"};
 var SUBABAS={
-  caixa:[{v:"caixa",t:"Livro-caixa",i:"ti-book"},{v:"socios",t:"Sócios 50/50",i:"ti-users-group"},{v:"conferencia",t:"Conferência",i:"ti-list-check"},{v:"dre",t:"DRE & Fechamento",i:"ti-report-analytics"}],
-  operacao:[{v:"operacao",t:"Robôs & Envios",i:"ti-activity"},{v:"sistema",t:"Backups & Saúde",i:"ti-database"},{v:"notificacoes",t:"Notificações",i:"ti-mail-forward"}]
+  caixa:[{v:"caixa",t:"Livro-caixa",i:"ti-book"},{v:"socios",t:"Sócios e repasses",i:"ti-users-group"},{v:"conferencia",t:"Conferência",i:"ti-list-check"},{v:"dre",t:"DRE e fechamento mensal",i:"ti-report-analytics"}],
+  operacao:[{v:"operacao",t:"Robôs & Envios",i:"ti-activity"},{v:"notificacoes",t:"Notificações",i:"ti-mail-forward"}]
 };
 function _renderSubtabs(nome){
   document.querySelectorAll(".subtabs").forEach(function(x){x.remove();});
@@ -1483,10 +1638,13 @@ function switchTab(nome){
   var tit=TITULOS[nome]||{t:"",s:""};
   document.getElementById("tb-title").textContent=String(tit.t).replace("&amp;","&");
   document.getElementById("tb-sub").textContent=tit.s;
+  _renderGuia(nome);
   toggleSidebar(false);
   if(nome==="planilhas")loadPlanilhas();else _plStop();
   if(nome==="notificacoes")loadNotificacoes();
   if(nome==="sistema")carregarSistema();
+  if(nome==="reviews")rvCarregar("pending");
+  if(nome==="conformidade")confRender();
   // 🩺 v188 LOTE 6: o vigia é lido quando a aba abre (nunca no boot — o
   // relatório vive em memória do servidor e a varredura sozinha já roda).
   // 🛠️ v973: o vigia (robôs parados de quem paga) mudou de Usuários pra Operação
@@ -1735,7 +1893,7 @@ async function vipAplicar(modo){
   var txt=modo==="activate"
     ?("SOMAR "+manual+" dia(s) manual e "+auto+" dia(s) automático ao plano de "+email+" (plano "+plano+")?")
     :("DEFINIR o vencimento de "+email+" para daqui a "+manual+" dia(s) manual e "+auto+" dia(s) automático (plano "+plano+")?\n\nIsso IGNORA os dias que ele já tem — o plano passa a vencer exatamente nessas datas.");
-  if(!confirm(txt))return;
+  if(!(await confirmar(txt,"Plano do cliente","Aplicar")))return;
   try{
     if(modo==="activate"){
       await api("/api/admin/vip/activate",{method:"POST",body:{email:email,days:manual,autoDays:auto,plan:plano,note:nota}});
@@ -1754,7 +1912,7 @@ async function vipAplicar(modo){
 async function vipRevogar(){
   if(!_vipAlvo)return;
   var email=_vipAlvo.email;
-  if(!confirm("REVOGAR o plano de "+email+"?\n\nO plano vira free na hora, o robô automático dele é parado e o extrato de dias concedidos é preservado. A ação fica no Audit Log."))return;
+  if(!(await confirmar("REVOGAR o plano de "+email+"?\n\nO plano vira free na hora, o robô automático dele é parado e o extrato de dias concedidos é preservado. A ação fica no Audit Log.","Revogar plano","Revogar")))return;
   try{
     await api("/api/admin/vip/revoke",{method:"POST",body:{email:email}});
     toast("Plano revogado.","ok");
@@ -1857,8 +2015,8 @@ async function responderDivergencia(concordo){
 // pra destrancar (ou pra repor senha esquecida de conta nova).
 async function definirSenhaUsuario(email){
   if(!email)return;
-  var novaSenha=prompt("Definir senha nova para "+email+"\n\nPode ser só números, mínimo 8 caracteres. A pessoa entra em h2bapply.com com este usuário+senha.");
-  if(novaSenha===null)return; // cancelou
+  var novaSenha=await pedirMotivo("Definir senha nova","Para "+email+". Pode ser só números, mínimo 8 caracteres. A pessoa entra em h2bapply.com com este usuário+senha.");
+  if(novaSenha===null||novaSenha===undefined)return; // cancelou
   if(novaSenha.length<8){toast("Senha precisa ter pelo menos 8 caracteres.","err");return;}
   try{
     await api("/api/admin/set-password",{method:"POST",body:{email:email,novaSenha:novaSenha}});
@@ -2092,8 +2250,11 @@ async function detalhesPedido(id){
         +(pc.instituicaoLida?('<div>Instituição: '+esc(pc.instituicaoLida)+'</div>'):'')
         +(pc.dataLida?('<div>Data no comprovante: '+esc(pc.dataLida)+(pc.horaLida?(" "+esc(pc.horaLida)):"")+'</div>'):'')
         +(pc.transacaoIdLida?('<div>Transação: '+esc(pc.transacaoIdLida)+'</div>'):'')
-        +(pc.resumo?('<div style="color:var(--t2)">'+esc(pc.resumo)+'</div>'):'');
+        +(pc.resumo?('<div style="color:var(--t2)">'+esc(pc.resumo)+'</div>'):'')
+        +((pc.diag&&(pc.diag.tentativas||[]).length)?('<div style="margin-top:6px;font-size:12px;color:var(--t3)"><b>Diagnóstico da IA</b> · comprovante '+esc(pc.diag.kb)+' KB'+(pc.diag.tentativas.map(function(d){return '<br>'+esc(d.modelo)+' #'+esc(d.tentativa)+': '+(d.status!=null?'HTTP '+esc(d.status):esc(d.erro||"erro"))+' em '+esc((d.ms/1000).toFixed(1))+'s';}).join(""))+'</div>'):'');
     }
+    h+='<div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+(pd.isTeste?'<span class="badge amber">🧪 PEDIDO DE TESTE — fora de receita, pagantes, MRR e acerto</span>':'')
+      +'<button class="btn btn-sm" data-id="'+esc(pd.id)+'" onclick="marcarTeste(this.dataset.id,'+(pd.isTeste?'false':'true')+')">'+(pd.isTeste?'Desmarcar teste':'🧪 Marcar como teste')+'</button></div>';
     if(us){
       h+='<div style="margin-top:10px"><b style="color:#fff">Plano do usuário hoje</b></div>'
         +'<div>'+esc(us.plan||"free")+' · restam '+esc(us.diasRestantes||0)+' dia(s)</div>'
@@ -2117,7 +2278,7 @@ async function detalhesPedido(id){
 // 🧾 v188 LOTE 6: o confirm genérico ("Aprovar este pedido?") não dizia de
 // QUEM nem de QUANTO — aprovar o pedido errado numa lista de vários é
 // dinheiro e dias de plano no cliente errado.
-function confirmarAprovarPedido(id){
+async function confirmarAprovarPedido(id){
   var pd=(STATE.pendentes||[]).find(function(x){return x.id===id;})||{};
   var quem=pd.contaNome||pd.userName||pd.userEmail||"este usuário";
   var txt="Aprovar o pedido de "+quem
@@ -2125,7 +2286,7 @@ function confirmarAprovarPedido(id){
     +"\nValor: "+fmtMoney(pd.valorTotal)
     +"\nE-mail: "+(pd.userEmail||"—")
     +"\n\nIsso ativa o plano na hora e lança a entrada no caixa.";
-  if(!confirm(txt))return;
+  if(!(await confirmar(txt,"Aprovar pedido","Aprovar")))return;
   aprovarPedido(id);
 }
 
@@ -2145,19 +2306,19 @@ async function aprovarPedido(id,extra){
         return;
       }
       if(b.duplicado&&!extra.confirmarDuplicado){
-        if(confirm((b.error||"Possível pedido duplicado.")+"\n\nConfirmar aprovação mesmo assim?")){
+        if(await confirmar((b.error||"Possível pedido duplicado.")+"\n\nConfirmar aprovação mesmo assim?","Possível duplicado","Aprovar mesmo assim")){
           return aprovarPedido(id,Object.assign({},extra,{confirmarDuplicado:true}));
         }
         return;
       }
       if(b.divergencia&&!extra.confirmarDivergencia){
-        if(confirm((b.error||"O comprovante não confere com o valor do pedido.")+"\n\nConfirmar aprovação mesmo assim?")){
+        if(await confirmar((b.error||"O comprovante não confere com o valor do pedido.")+"\n\nConfirmar aprovação mesmo assim?","Comprovante não confere","Aprovar mesmo assim")){
           return aprovarPedido(id,Object.assign({},extra,{confirmarDivergencia:true}));
         }
         return;
       }
       if(b.comprovanteUsado&&!extra.confirmarComprovanteUsado){
-        if(confirm((b.error||"Este comprovante já foi usado em outro pedido.")+"\n\nConfirmar aprovação mesmo assim?")){
+        if(await confirmar((b.error||"Este comprovante já foi usado em outro pedido.")+"\n\nConfirmar aprovação mesmo assim?","Comprovante já usado","Aprovar mesmo assim")){
           return aprovarPedido(id,Object.assign({},extra,{confirmarComprovanteUsado:true}));
         }
         return;
@@ -2344,8 +2505,8 @@ function renderDetalheUsuario(d,jour){
 }
 
 async function reverterAuditoria(id){
-  var motivo=prompt("Motivo da reversão (fica registrado na auditoria):");
-  if(motivo===null)return;
+  var motivo=await pedirMotivo("Reverter ação","Motivo da reversão (fica registrado na auditoria).");
+  if(motivo===null||motivo===undefined)return;
   if(motivo.trim().length<3){toast("Motivo precisa ter pelo menos 3 caracteres.","err");return;}
   try{
     await api("/api/admin/audit/revert",{method:"POST",body:{id:id,motivo:motivo.trim()}});
@@ -2549,28 +2710,28 @@ function copiarMsgReconectar(i){
   var msg=x.tokenOk===false
     ?"Oi, "+nome+"! Aqui é do H2BApply. Vi que o seu Gmail desconectou do site, por isso o seu envio parou. Para voltar a enviar: entre em h2bapply.com, clique em \"Reconectar Gmail\" (aparece no topo da tela) e escolha a mesma conta. Leva 1 minuto e os seus dias de plano continuam valendo. Qualquer dúvida é só responder aqui."
     :"Oi, "+nome+"! Aqui é do H2BApply. Vi que o seu envio automático está parado. Entre em h2bapply.com, abra a aba Envio Automático e confira se está ligado. Se aparecer algum aviso, me manda um print que eu te ajudo. Os seus dias de plano continuam valendo.";
-  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(msg).then(function(){toast&&toast("Mensagem copiada — cole no WhatsApp do cliente");},function(){prompt("Copie a mensagem:",msg);});}
-  else prompt("Copie a mensagem:",msg);
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(msg).then(function(){toast&&toast("Mensagem copiada — cole no WhatsApp do cliente");},function(){avisar(msg,"Copie a mensagem");});}
+  else avisar(msg,"Copie a mensagem");
 }
 // 🤖 refaz a leitura da IA dos comprovantes com ERRO, com contador ao vivo; ao terminar recarrega a lista
 async function reprocessarPreChecks(){
   var b=document.getElementById("btn-reproc-pre");
-  if(!confirm("Refazer a leitura da IA de todos os comprovantes que ficaram com ERRO?\n\nNada é ativado por aqui. Pedido ainda pendente cujo valor lido NÃO bate com o plano é cancelado, como sempre. Pedido já aprovado nunca é mexido."))return;
+  if(!(await confirmar("Refazer a leitura da IA de todos os comprovantes que ficaram com ERRO?\n\nNada é ativado por aqui e nenhum plano é mexido. Pedido ainda pendente cujo valor lido NÃO bate com o plano é cancelado, como sempre. Pedido já aprovado nunca é mexido (só a leitura é refeita).","Reprocessar pré-checks","Refazer leitura")))return;
   try{
     var r=await api("/api/admin/precheck/reprocessar",{method:"POST",body:{}});
-    if(!r||!r.ok){alert((r&&r.error)||"Não consegui iniciar.");return;}
-    if(!r.total){toast("Nenhum pré-check com erro pra refazer.","ok");return;}
+    if(!r||!r.ok){await avisar((r&&r.error)||"Não consegui iniciar.","Reprocessar pré-checks");return;}
+    if(!r.total){await avisar("Nenhum pré-check com erro pra refazer.","Reprocessar pré-checks");return;}
     var t=setInterval(async function(){
       try{var s=await api("/api/admin/precheck/reprocessar");
         if(b)b.innerHTML='<i class="ti ti-robot"></i> Reprocessando '+s.feitos+'/'+s.total+'…';
         if(!s.rodando){clearInterval(t);if(b)b.innerHTML='<i class="ti ti-robot"></i> Reprocessar pré-checks com erro';
-          var rs=s.resultados||{};toast("Pronto: "+Object.keys(rs).map(function(k){return rs[k]+" "+k;}).join(" · "),"ok");carregarPendentes();}
+          var rs=s.resultados||{};avisar("Pronto: "+Object.keys(rs).map(function(k){return rs[k]+" "+k;}).join(" · ")+"\n\nO motivo de cada leitura aparece em Detalhes do pedido.","Reprocessamento concluído");carregarPendentes();}
       }catch(e){clearInterval(t);}
     },3000);
-  }catch(e){alert("Erro: "+(e&&e.message||e));}
+  }catch(e){await avisar("Erro: "+(e&&e.message||e),"Reprocessar pré-checks");}
 }
 async function h2aRollToggle(desligar){
-  try{await api("/api/admin/sheet/h2a-roll-toggle",{method:"POST",body:{desligado:!!desligar}});}catch(e){alert("Não consegui mudar: "+(e&&e.message||e));}
+  try{await api("/api/admin/sheet/h2a-roll-toggle",{method:"POST",body:{desligado:!!desligar}});}catch(e){await avisar("Não consegui mudar: "+(e&&e.message||e));}
   loadPlanilhas();
 }
 async function loadPlanilhas(){
@@ -2720,7 +2881,7 @@ function _plRenderColeta(d){
 async function plColetaStart(){
   var visa=_plG("dc-visa").value,key=(_plG("dc-key").value||"").trim().toLowerCase(),name=(_plG("dc-name").value||"").trim();
   if(!key)return toast("Informe a chave da planilha.","err");
-  if(!confirm("Coletar do DOL agora a planilha \""+(name||key)+"\" ("+visa+")?\n\nEla fica em RASCUNHO — só aparece pros usuários depois que você publicar."))return;
+  if(!(await confirmar("Coletar do DOL agora a planilha \""+(name||key)+"\" ("+visa+")?\n\nEla fica em RASCUNHO — só aparece pros usuários depois que você publicar.","Coletar planilha","Coletar")))return;
   var btn=_plG("dc-start-btn");btn.disabled=true;
   try{
     await api("/api/admin/sheet/coleta-start",{method:"POST",body:{visa:visa,sheetKey:key,sheetName:name,beginFrom:_plG("dc-from").value,beginTo:_plG("dc-to").value}});
@@ -2729,13 +2890,13 @@ async function plColetaStart(){
   }catch(e){toast(e.message,"err");btn.disabled=false;}
 }
 async function plPublicar(key){
-  if(!confirm("Publicar a planilha \""+key+"\" pra TODOS os usuários agora (Manual + Automático)?"))return;
+  if(!(await confirmar("Publicar a planilha \""+key+"\" pra TODOS os usuários agora (Manual + Automático)?","Publicar planilha","Publicar")))return;
   try{var d=await api("/api/admin/sheet/coleta-publish",{method:"POST",body:{key:key}});toast("📢 Publicada: "+_plNum(d.count)+" vagas no ar.","ok");loadPlanilhas();}
   catch(e){toast(e.message,"err");}
 }
 async function plMensalRun(tipo){
   var h2a=tipo==="h2a";var btn=_plG(h2a?"pl-btn-h2a-mes":"pl-btn-h2b-mes");
-  if(!confirm(h2a?"Gerar/refazer a planilha H-2A deste mês agora?\n\nSe passar na guarda de qualidade ela PUBLICA sozinha.":"Gerar/refazer a planilha H-2B deste mês agora?\n\nEla fica em RASCUNHO até você publicar."))return;
+  if(!(await confirmar(h2a?"Gerar/refazer a planilha H-2A deste mês agora?\n\nSe passar na guarda de qualidade ela PUBLICA sozinha.":"Gerar/refazer a planilha H-2B deste mês agora?\n\nEla fica em RASCUNHO até você publicar.","Gerar planilha do mês","Gerar")))return;
   if(btn)btn.disabled=true;
   try{
     var d=await api("/api/admin/sheet/"+(h2a?"h2a-bimestral-run":"h2b-mensal-run"),{method:"POST",body:{force:true}});
@@ -2795,7 +2956,7 @@ function _plRenderH2a(d){
   }else if(rodou&&!_plH2aRodava)_plH2aRodava=Date.now();
 }
 async function plEnrichStart(key){
-  if(!confirm("Enriquecer \""+key+"\" pelo DOL agora?\n\n1 vaga por vez, educado com o DOL — pode levar horas numa planilha grande. Salva a cada vaga; dá pra parar e retomar quando quiser."))return;
+  if(!(await confirmar("Enriquecer \""+key+"\" pelo DOL agora?\n\n1 vaga por vez, educado com o DOL — pode levar horas numa planilha grande. Salva a cada vaga; dá pra parar e retomar quando quiser.","Enriquecer planilha","Enriquecer")))return;
   try{await api("/api/admin/enrich/start",{method:"POST",body:{sheetKey:key,resume:true}});toast("🤖 Bot iniciado em \""+key+"\".","ok");_plStop();plStatusTick();}
   catch(e){toast(e.message,"err");}
 }
@@ -2861,7 +3022,7 @@ async function plImportarEnviar(){
   var msg=_plNum(_ipVagas.length)+" linha(s) · "+_plNum(comEmail)+" com e-mail\nChave: "+key+"\n\n";
   msg+=atual?("Vai SUBSTITUIR a planilha atual \""+(atual.name||key)+"\" ("+_plNum(atual.count)+" vagas, "+_plNum(atual.withEmail)+" com e-mail).\nCada vaga fica com a versão mais completa das duas e nenhuma some.")
             :("Chave nova — vai CRIAR a planilha e publicar pros usuários na hora.");
-  if(!confirm(msg+"\n\nConfirma?"))return;
+  if(!(await confirmar(msg+"\n\nConfirma?","Importar planilha","Importar")))return;
   var btn=_plG("ip-btn");btn.disabled=true;
   _plG("ip-resumo").innerHTML='<span class="spin"></span> Enviando '+_plNum(_ipVagas.length)+' linha(s)…';
   try{
@@ -2880,7 +3041,7 @@ async function plImportarEnviar(){
   }
 }
 async function plRemover(key,name){
-  if(!confirm("Remover a planilha \""+name+"\" ("+key+")?\n\nAs vagas dela somem do Manual e do Automático. Não dá pra desfazer."))return;
+  if(!(await confirmar("Remover a planilha \""+name+"\" ("+key+")?\n\nAs vagas dela somem do Manual e do Automático. Não dá pra desfazer.","Remover planilha","Remover")))return;
   try{await api("/api/admin/sheet/"+encodeURIComponent(key),{method:"DELETE"});toast("Planilha removida.","ok");loadPlanilhas();}
   catch(e){toast(e.message,"err");}
 }
@@ -2935,17 +3096,17 @@ function _notifPrecisaAtencao(d){
   var falhou=d.lastErrorAt&&d.lastErrorAt>(d.lastSendAt||0)&&(Date.now()-d.lastErrorAt)<86400000;
   return !!falhou;
 }
-function notifConectar(){
-  if(!confirm("Vai abrir a tela do Google. Entre com a conta SuporteH2bapply@gmail.com (a conta de suporte, não a sua pessoal) e permita \"Enviar e-mail em seu nome\".\n\nContinuar?"))return;
+async function notifConectar(){
+  if(!(await confirmar("Vai abrir a tela do Google. Entre com a conta de SUPORTE do H2BApply (não a sua pessoal) e permita \"Enviar e-mail em seu nome\".\n\nContinuar?","Conectar conta de notificações","Continuar")))return;
   location.href="/oauth/notif-connect";
 }
 async function notifDesconectar(){
-  if(!confirm("Desconectar a conta de notificações?\n\nCódigos de cadastro, recuperação de senha e avisos de pedido param de sair até conectar outra."))return;
+  if(!(await confirmar("Desconectar a conta de notificações?\n\nCódigos de cadastro, recuperação de senha e avisos de pedido param de sair até conectar outra.","Desconectar notificações","Desconectar")))return;
   try{await api("/api/admin/notificacoes/desconectar",{method:"POST",body:{}});toast("Conta desconectada.","ok");loadNotificacoes();}catch(e){toast(e.message,"err");}
 }
 async function notifTeste(){
   var to=(STATE.me&&STATE.me.email)||"";
-  if(!to||to.indexOf("@")<0){to=prompt("Pra qual e-mail mandar o teste?")||"";if(!to)return;}
+  if(!to||to.indexOf("@")<0){to=(await pedirMotivo("E-mail de teste","Pra qual e-mail mandar o teste?"))||"";if(!to)return;}
   try{var d=await api("/api/admin/notificacoes/teste",{method:"POST",body:{to:to}});toast("📨 E-mail de teste enviado pra "+d.to+" — confira a caixa de entrada.","ok");loadNotificacoes();}
   catch(e){toast(e.message,"err");loadNotificacoes();}
 }
@@ -2981,6 +3142,37 @@ function _setCard(gridId,i,val,sub){
 }
 function _dnPedidoCurto(id){return id?("#"+String(id).slice(-8).toUpperCase()):"";}
 
+async function marcarTeste(id,teste){
+  var ok=await confirmar(teste?"Marcar este pedido como TESTE?\n\nEle sai da receita, dos pagantes, do MRR e do lucro a dividir entre sócios. O plano e os dias do cliente NÃO mudam. Fica registrado na Auditoria e você pode desmarcar.":"Desmarcar este pedido como teste?\n\nEle volta a contar na receita, nos pagantes e no acerto entre sócios.",teste?"Marcar como teste":"Desmarcar teste",teste?"Marcar como teste":"Desmarcar");
+  if(!ok)return;
+  try{await api("/api/admin/pedido-teste",{method:"POST",body:{id:id,teste:!!teste}});toast(teste?"Pedido marcado como teste.":"Marcação de teste removida.","ok");carregarPendentes();if(typeof carregarDono==="function")carregarDono();}
+  catch(e){await avisar("Não consegui: "+(e&&e.message||e));}
+}
+/* ── confirmar()/avisar() (Promise) — substituem confirm()/alert() nativos ─────────── */
+var _cfmResolve=null;
+function _cfmFim(v){var r=_cfmResolve;_cfmResolve=null;fecharModal("modal-confirmar");if(r)r(v);}
+function confirmar(texto,titulo,rotuloSim){
+  return new Promise(function(resolve){
+    if(_cfmResolve)_cfmResolve(false);
+    _cfmResolve=resolve;
+    document.getElementById("cfm-title").textContent=titulo||"Confirmar";
+    document.getElementById("cfm-texto").textContent=texto||"";
+    document.getElementById("cfm-sim").textContent=rotuloSim||"Confirmar";
+    document.getElementById("cfm-nao").style.display="";
+    abrirModal("modal-confirmar");
+  });
+}
+function avisar(texto,titulo){
+  return new Promise(function(resolve){
+    if(_cfmResolve)_cfmResolve(false);
+    _cfmResolve=resolve;
+    document.getElementById("cfm-title").textContent=titulo||"Aviso";
+    document.getElementById("cfm-texto").textContent=texto||"";
+    document.getElementById("cfm-sim").textContent="OK";
+    document.getElementById("cfm-nao").style.display="none";
+    abrirModal("modal-confirmar");
+  });
+}
 /* ── motivo obrigatório (Promise) — substitui prompt() ───────────────── */
 function pedirMotivo(titulo,texto){
   return new Promise(function(resolve){
@@ -3038,20 +3230,12 @@ async function verAnexo(tipo,id,titulo){
 }
 
 /* ── VISÃO DO DONO ───────────────────────────────────────────────────── */
-// 🗺️ Mapa dos cadastros: azulejos do OpenStreetMap + um ponto por lugar (maior = mais contas). Só região, nunca endereço.
-// boxId = onde desenhar; opt = {pagantes:bool, uf:"SP"|""}. Brasil inteiro no zoom 4; um estado centrado no próprio estado.
-function _mapaHtml(r,Z,cx,cy){
-  var T=256,n=Math.pow(2,Z);
-  function px(lon){return (lon+180)/360*n;}
-  function py(lat){var s=Math.sin(lat*Math.PI/180);return (1-Math.log((1+s)/(1-s))/(2*Math.PI))/2*n;}
-  var X0=Math.floor(px(cx))-1,Y0=Math.floor(py(cy))-1,tiles="",i,j;
-  for(j=0;j<3;j++)for(i=0;i<3;i++){var tx=((X0+i)%n+n)%n,ty=Y0+j;if(ty<0||ty>=n)continue;var sub="abcd".charAt((tx+ty)%4);tiles+='<img alt="" data-osm="https://tile.openstreetmap.org/'+Z+'/'+tx+'/'+ty+'.png" onerror="if(!this.dataset.t){this.dataset.t=1;this.src=this.dataset.osm;}" src="https://'+sub+'.basemaps.cartocdn.com/light_all/'+Z+'/'+tx+'/'+ty+'.png" style="position:absolute;left:'+(i*T)+'px;top:'+(j*T)+'px;width:'+T+'px;height:'+T+'px">';}
-  var max=1;(r.pontos||[]).forEach(function(p){if(p.n>max)max=p.n;});
-  var dots=(r.pontos||[]).map(function(p){
-    var x=(px(p.lon)-X0)*T,y=(py(p.lat)-Y0)*T,d=10+Math.round(26*Math.sqrt(p.n/max));
-    return '<div title="'+esc(p.rotulo)+': '+p.n+'" style="position:absolute;left:'+(x-d/2)+'px;top:'+(y-d/2)+'px;width:'+d+'px;height:'+d+'px;border-radius:50%;background:rgba(239,68,68,.65);border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.3);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">'+(d>=20?p.n:'')+'</div>';
-  }).join("");
-  return '<div style="max-width:100%;overflow:auto"><div style="position:relative;width:'+(3*T)+'px;height:'+(3*T)+'px;background:#cfe3f0;margin:0 auto">'+tiles+dots+'</div></div>';
+// 🗺️ De onde vêm os cadastros: TABELA por estado/país (sem mapa nem tiles de terceiros — o mapa mostrava "API KEY REQUIRED").
+// boxId = onde desenhar; opt = {pagantes:bool, uf:"SP"|""}. Só região (estado/cidade) — nunca endereço.
+function _cadTabela(cab,linhas,tot){
+  return '<div class="tbl-wrap"><table><thead><tr><th>'+cab+'</th><th style="text-align:right">Contas</th><th style="text-align:right">% do total</th></tr></thead><tbody>'
+    +(linhas.length?linhas.map(function(l){return '<tr><td>'+l.rot+'</td><td style="text-align:right"><b>'+l.n+'</b></td><td style="text-align:right">'+String(tot?Math.round(l.n*1000/tot)/10:0).replace(".",",")+'%</td></tr>';}).join(""):'<tr><td colspan="3">Ninguém ainda.</td></tr>')
+    +'</tbody></table></div>';
 }
 async function carregarMapaCadastros(boxId,opt){
   boxId=boxId||"dono-mapa";opt=opt||{};
@@ -3062,20 +3246,43 @@ async function carregarMapaCadastros(boxId,opt){
     var ctl='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">'
       +'<select onchange="carregarMapaCadastros(\''+boxId+'\',{pagantes:this.value===\'1\',uf:\''+(opt.uf||'')+'\'})" aria-label="Quem mostrar"><option value="0"'+(opt.pagantes?'':' selected')+'>Todos os cadastros</option><option value="1"'+(opt.pagantes?' selected':'')+'>Só quem já pagou</option></select>'
       +'<select onchange="carregarMapaCadastros(\''+boxId+'\',{pagantes:'+(opt.pagantes?'true':'false')+',uf:this.value})" aria-label="Estado"><option value="">🇧🇷 Brasil inteiro</option>'+(r.porUf||[]).map(function(x){return '<option value="'+x.uf+'"'+(opt.uf===x.uf?' selected':'')+'>'+x.uf+' — '+x.n+'</option>';}).join("")+(opt.uf&&!(r.porUf||[]).some(function(x){return x.uf===opt.uf;})?'<option value="'+opt.uf+'" selected>'+opt.uf+'</option>':'')+'</select></div>';
-    if(opt.uf&&r.centro){
-      var rows=(r.cidades||[]).map(function(c){return '<tr><td>'+esc(c.cidade)+'</td><td style="text-align:right"><b>'+c.n+'</b></td><td>'+(c.noMapa?'':'<span style="color:var(--t3)">sem ponto no mapa</span>')+'</td></tr>';}).join("");
-      box.innerHTML=ctl+_mapaHtml(r,r.centro.zoom,r.centro.lon,r.centro.lat)+'<div style="margin-top:8px;color:var(--t3)">'+r.total+' conta(s) em '+esc(opt.uf)+'. Só a região (cidade) — nunca o endereço. © OpenStreetMap © CARTO.</div><div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th>Cidade</th><th style="text-align:right">Contas</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="3">Ninguém nesse estado ainda.</td></tr>')+'</tbody></table></div>';
+    var pg=opt.pagantes?"true":"false";
+    if(opt.uf){
+      var tot=r.total||0;
+      box.innerHTML=ctl+_cadTabela("Cidade em "+esc(opt.uf),(r.cidades||[]).map(function(c){return {rot:esc(c.cidade),n:c.n};}),tot)
+        +'<div style="margin-top:8px;color:var(--t3)">'+tot+' conta(s) em '+esc(opt.uf)+'. Só a cidade — nunca o endereço.</div>';
       return;
     }
-    var top=(r.pontos||[]).slice(0,8).map(function(p){return esc(p.rotulo)+' <b>'+p.n+'</b>';}).join(' · ');
-    box.innerHTML=ctl+_mapaHtml(r,4,-56,-14)
-      +'<div style="margin-top:8px;color:var(--t3)">'+(r.noMapa||0)+' de '+(r.total||0)+' contas no mapa'+(r.foraBR?' · '+r.foraBR+' fora do Brasil':'')+(r.semLocal?' · '+r.semLocal+' sem cidade/estado reconhecido':'')+'. Cidades grandes têm ponto próprio; as demais aparecem no centro do estado. © OpenStreetMap © CARTO.</div>'
-      +(top?'<div style="margin-top:6px">'+top+'</div>':'');
-  }catch(e){box.innerHTML='<span style="color:var(--red)">Não consegui carregar o mapa.</span>';}
+    var total=r.total||0,ufs=r.porUf||[];
+    var linhas=ufs.map(function(x){return {rot:'<a href="#" onclick="carregarMapaCadastros(\''+boxId+'\',{pagantes:'+pg+',uf:\''+esc(x.uf)+'\'});return false">'+esc(x.uf)+'</a>',n:x.n};});
+    var paises=r.paises||[];
+    box.innerHTML=ctl+_cadTabela("Estado (Brasil)",linhas,total)
+      +(paises.length?'<div style="margin-top:10px">'+_cadTabela("País (fora do Brasil)",paises.map(function(p){return {rot:esc(p.pais),n:p.n};}),total)+'</div>':'')
+      +'<div style="margin-top:8px;color:var(--t3)">'+total+' conta(s)'+(opt.pagantes?' que já pagaram':'')+(r.foraBR?' · '+r.foraBR+' fora do Brasil':'')+(r.semLocal?' · '+r.semLocal+' com cidade/estado não reconhecido':'')+'. Só região — nunca endereço.</div>';
+  }catch(e){box.innerHTML='<span style="color:var(--red)">Não consegui carregar a lista de cadastros.</span>';}
 }
 function usrToggleMapa(){
   var b=document.getElementById("usr-mapa");if(!b)return;
   if(b.style.display==="none"){b.style.display="block";carregarMapaCadastros("usr-mapa",{pagantes:true,uf:""});}else b.style.display="none";
+}
+// ⚠️ Sem gasto lançado o "Líquido 30d" e o repasse entre sócios SUPERESTIMAM o lucro: avisa e oferece lançamento rápido dos custos fixos.
+function _donoAvisoGastos(r){
+  var box=document.getElementById("dono-aviso-gastos");if(!box)return;
+  if(r.gastos30>0){box.style.display="none";box.innerHTML="";return;}
+  box.style.display="";
+  box.innerHTML='<b>⚠️ Nenhum gasto lançado nos últimos 30 dias.</b> O lucro e o repasse entre sócios estão contando que o negócio não teve custo nenhum (Render, domínio, Google, taxas…), então podem estar ACIMA do real. Lance os custos fixos abaixo — os recorrentes se repetem todo mês sozinhos (sem comprovante, o sistema cobra o anexo).'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'
+    +'<button class="btn btn-sm btn-red" onclick="abrirGastoFixo(\'Servidor / Hospedagem\',true,true)">🔁 Render (US$/mês)</button>'
+    +'<button class="btn btn-sm btn-red" onclick="abrirGastoFixo(\'Domínio\',false,false)">🌐 Domínio (anual)</button>'
+    +'<button class="btn btn-sm btn-red" onclick="abrirGastoFixo(\'Google Workspace\',true,false)">🔁 Google / Gemini</button>'
+    +'<button class="btn btn-sm btn-red" onclick="abrirGastoFixo(\'Taxas\',false,false)">💳 Taxas</button>'
+    +'<button class="btn btn-sm" onclick="abrirGastoFixo(\'Geral\',false,false)">➕ Outro gasto</button></div>';
+}
+function abrirGastoFixo(categoria,recorrente,usd){
+  abrirModalGasto();
+  var c=document.getElementById("gs-categoria");if(c)c.value=categoria;
+  var rc=document.getElementById("gs-recorrente");if(rc)rc.checked=!!recorrente;
+  var u=document.getElementById("gs-usd");if(u){u.checked=!!usd;var row=document.getElementById("gs-usd-row");if(row)row.style.display=usd?"flex":"none";}
 }
 async function carregarDono(){
   try{
@@ -3087,11 +3294,12 @@ async function carregarDono(){
     _setCard("dono-grid",2,fmtMoney(e.dias30),"últimos 30 dias · ticket médio "+fmtMoney(e.ticketMedio30));
     _setCard("dono-grid",3,fmtMoney(e.total),"desde o começo · "+(r.pagantes||0)+" pagante(s)");
     _setCard("dono-grid",4,fmtMoney(r.gastos30),"gastos nos últimos 30 dias");
-    _setCard("dono-grid",5,fmtMoney(r.liquido30),"entradas 30d − gastos 30d");
+    _setCard("dono-grid",5,fmtMoney(r.liquido30),r.gastos30>0?"receita recebida 30d − gastos 30d":"⚠️ sem gastos lançados — lucro pode estar errado");
     _setCard("dono-grid",6,fmtMoney((r.pendentes||{}).valor),((r.pendentes||{}).qtd||0)+" pedido(s) esperando decisão");
     _setCard("dono-grid",7,String(r.vencendoQtd||0),"planos vencendo em 7 dias · "+((r.novos||{}).dias7||0)+" cadastros novos (7d)");
     var v=r.vencendo7d||[];var box=document.getElementById("dono-vencendo");
     box.innerHTML=v.length?v.map(function(x){return '<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)"><span><b>'+esc(x.nome)+'</b> <span class="cell-sub">'+esc(x.email)+'</span></span><span><span class="badge blue">'+esc(NOME_PLANO_ADM[x.plano]||x.plano)+'</span> <span class="badge amber">'+esc(x.diasRestantes)+'d</span></span></div>';}).join(""):'<div class="cell-sub">Ninguém vence nos próximos 7 dias.</div>';
+    _donoAvisoGastos(r);_glossarioFin("dono-gloss");_renderGuia("overview");
   }catch(e){toast("Visão do Dono: "+e.message,"err");}
   try{
     var s=await api("/api/admin/socios");DIN.socios=s;
@@ -3101,7 +3309,8 @@ async function carregarDono(){
     var valor=Math.abs(Math.min(dg.acerto,a.acerto));
     box2.innerHTML='<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center"><div><div class="lbl" style="font-size:11.5px;color:var(--t2);font-weight:700;text-transform:uppercase">'+esc(quemDeve)+'</div><div style="font-family:Sora,sans-serif;font-size:26px;font-weight:800;color:'+(valor>0.004?"var(--amber)":"var(--green)")+'">'+esc(fmtMoney(valor))+'</div></div>'
       +'<div class="cell-sub" style="flex:1;min-width:220px;line-height:1.6">Lucro distribuível <b>'+esc(fmtMoney(s.lucroDistribuivel))+'</b> (entradas '+esc(fmtMoney(s.liquidoContabil))+' − gastos '+esc(fmtMoney(s.gastos.total))+') · direito de cada um pelo split '+esc(s.split.andrio)+'/'+esc(s.split.diego)+' · Diego já repassou <b>'+esc(fmtMoney(s.repasses.diegoParaAndrio))+'</b></div>'
-      +'<button class="btn btn-sm" onclick="switchTab(\'socios\')"><i class="ti ti-arrow-right"></i> Ver conta aberta</button></div>';
+      +'<button class="btn btn-sm" onclick="switchTab(\'socios\')"><i class="ti ti-arrow-right"></i> Ver conta aberta</button></div>'
+      +((s.gastos&&s.gastos.total>0)?'':'<div style="margin-top:8px;color:var(--amber);font-size:12.5px">⚠️ Nenhum gasto lançado: este repasse está calculado SEM custos e pode estar acima do real. Lance Render, domínio, Google e taxas antes de repassar.</div>');
   }catch(e){}
 }
 
@@ -3157,7 +3366,7 @@ async function salvarRecebedor(){
 }
 async function salvarSplit(){
   var a=parseFloat(document.getElementById("soc-split-a").value),d=parseFloat(document.getElementById("soc-split-d").value);
-  if(!confirm("Mudar a divisão do lucro pra Andrio "+a+"% · Diego "+d+"%?"))return;
+  if(!(await confirmar("Mudar a divisão do lucro pra Andrio "+a+"% · Diego "+d+"%?","Divisão societária","Mudar divisão")))return;
   try{await api("/api/admin/socios/split",{method:"POST",body:{andrio:a,diego:d}});toast("Divisão salva.","ok");carregarSocios();}
   catch(e){toast(e.message,"err");}
 }
@@ -3346,7 +3555,7 @@ async function salvarRegularizar(ev){
   var body={userEmail:email,plano:plano,dias:dias,valorTotal:valor,pagoEm:new Date(pagoEm+"T12:00:00").toISOString(),consentimento:true,notaAdmin:nota||"Pagamento feito por fora (registrado pelo admin)"};
   var f=document.getElementById("rg-comprovante").files[0];
   if(f){if(f.size>8*1024*1024){toast("Máximo 8MB.","err");return;}var lido=await arquivoParaBase64(f);body.comprovante=lido.base64;body.comprovanteType=lido.mime;}
-  if(!confirm("Criar o pedido de "+email+" ("+(NOME_PLANO_ADM[plano]||plano)+" · "+dias+" dias · "+fmtMoney(valor)+", pago em "+new Date(pagoEm+"T12:00:00").toLocaleDateString("pt-BR")+") e APROVAR agora?\n\nO plano ativa na hora e a entrada vai pro caixa."))return;
+  if(!(await confirmar("Criar o pedido de "+email+" ("+(NOME_PLANO_ADM[plano]||plano)+" · "+dias+" dias · "+fmtMoney(valor)+", pago em "+new Date(pagoEm+"T12:00:00").toLocaleDateString("pt-BR")+") e APROVAR agora?\n\nO plano ativa na hora e a entrada vai pro caixa.","Regularizar pagamento","Criar e aprovar")))return;
   var btn=document.getElementById("rg-submit");btn.disabled=true;
   try{
     var r=await api("/api/pedido",{method:"POST",body:body});
@@ -3400,18 +3609,19 @@ async function carregarPagantes(){
   try{var r=await api("/api/admin/pagantes");DIN.pagantes=r;
     var sm=r.summary||{};
     _setCard("pg-grid",0,String(sm.totalPagantes||0),"receita total "+fmtMoney(sm.receitaTotal));
-    _setCard("pg-grid",1,String(sm.ativos||0),"receita do mês "+fmtMoney(sm.receitaMes));
+    _setCard("pg-grid",1,String(sm.ativos||0),"receita recebida no mês (caixa) "+fmtMoney(sm.receitaMes));
     _setCard("pg-grid",2,String(sm.vencendo||0),"hora de lembrar de renovar");
     _setCard("pg-grid",3,String(sm.vencidos||0),(sm.semData||0)+" sem data de vencimento");
     renderRenovacoesChurn(r);
     renderPagantes();
+    _glossarioFin("pg-gloss");_renderGuia("pagantes");
   }catch(e){toast("Pagantes: "+e.message,"err");}
 }
 function _pgWa(w){return w?'<a class="btn btn-sm" href="https://wa.me/'+esc(String(w).replace(/\D/g,""))+'" target="_blank" rel="noopener" title="Chamar no WhatsApp"><i class="ti ti-brand-whatsapp"></i></a>':'';}
 function renderRenovacoesChurn(r){
   var rv=r.renovacoes||{},ch=r.churn||{};
-  _setCard("pg-grid2",0,fmtMoney((rv.proximos30d||{}).valorEsperado||0),((rv.proximos30d||{}).n||0)+" plano(s) vencem em 30d · "+((rv.proximos7d||{}).n||0)+" em 7d ("+fmtMoney((rv.proximos7d||{}).valorEsperado||0)+") — valor pela tabela do plano");
-  _setCard("pg-grid2",1,fmtMoney(rv.mrr||0),"soma dos planos ativos normalizada pra 30 dias (tabela oficial)");
+  _setCard("pg-grid2",0,fmtMoney((rv.proximos30d||{}).valorEsperado||0),((rv.proximos30d||{}).n||0)+" plano(s) vencem em 30d · "+((rv.proximos7d||{}).n||0)+" em 7d ("+fmtMoney((rv.proximos7d||{}).valorEsperado||0)+") · fórmula: Σ preço de tabela de quem vence — se renovar");
+  _setCard("pg-grid2",1,fmtMoney(rv.mrr||0),"fórmula: Σ preço × 30 ÷ dias do plano, só planos ativos · NÃO é dinheiro recebido");
   _setCard("pg-grid2",2,String(ch.ultimos30d||0),(ch.ultimos60d||0)+" em 60d · "+fmtMoney(ch.valorPerdido||0)+" de tabela parados · taxa 30d "+(ch.taxa30d||0)+"%");
   var a=document.getElementById("pg-renov");
   a.innerHTML=(rv.lista||[]).length?(rv.lista.slice(0,40).map(function(x){return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)"><div style="min-width:0;flex:1"><div class="cell-main">'+esc(x.name||x.email)+'</div><div class="cell-sub">'+esc(x.email)+' · '+esc(NOME_PLANO_ADM[x.plan]||x.plan)+' '+esc(x.dias)+'d · pagou '+esc(fmtMoney(x.totalPago||0))+' até hoje</div></div><span class="badge '+(x.daysLeft<=3?"amber":"green")+'">vence em '+esc(x.daysLeft)+'d</span><b style="white-space:nowrap">'+esc(fmtMoney(x.valorEsperado||0))+(x.foraTabela?' <span title="plano fora da tabela — valor desconhecido">?</span>':'')+'</b>'+_pgWa(x.whatsapp)+'</div>';}).join("")+((rv.lista||[]).length>40?'<div class="cell-sub" style="margin-top:6px">mostrando 40 de '+rv.lista.length+'</div>':''))
@@ -3511,12 +3721,12 @@ function renderDreChart(meses){
   box.innerHTML=g+'<div class="cell-sub" style="margin-top:6px"><span style="color:var(--green)">■</span> receita · <span style="color:var(--red)">■</span> gastos · <span style="color:var(--blue)">■</span> resultado (<span style="color:var(--amber)">■</span> prejuízo) — passe o mouse pra ver o valor</div>';
 }
 async function fecharMes(mes){
-  if(!confirm("Fechar o mês "+mes+"? O DRE dele fica CONGELADO (imutável). Se alguém lançar dinheiro nesse mês depois, aparece como divergência."))return;
+  if(!(await confirmar("Fechar o mês "+mes+"? O DRE dele fica CONGELADO (imutável). Se alguém lançar dinheiro nesse mês depois, aparece como divergência.","Fechar mês","Fechar mês")))return;
   try{await api("/api/admin/fechamento",{method:"POST",body:{mes:mes}});toast("Mês "+mes+" fechado.","ok");carregarDre();}
   catch(e){toast(e.message,"err");}
 }
 async function fecharMesesAntigos(){
-  if(!confirm("Fechar TODOS os meses antigos ainda abertos (nunca o mês atual)?"))return;
+  if(!(await confirmar("Fechar TODOS os meses antigos ainda abertos (nunca o mês atual)?","Fechar meses antigos","Fechar todos")))return;
   try{var r=await api("/api/admin/fechamento/auto",{method:"POST",body:{ignorarDia3:true}});toast("Fechados: "+((r.fechados||[]).length||0)+".","ok");carregarDre();}
   catch(e){toast(e.message,"err");}
 }
@@ -3598,18 +3808,30 @@ function renderOperacao(){
   }).join("");
   document.getElementById("op-mais").style.display=lista.length>OP_LIMIT?"":"none";
 }
+function _opLinhaEvento(e){
+  var cor=e.level==="error"?"var(--red)":e.level==="warn"?"var(--amber)":"var(--t2)";
+  return '<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)"><span style="color:var(--t3);white-space:nowrap;min-width:120px">'+esc(fmtData(e.ts))+'</span><span style="color:'+cor+';min-width:110px;font-weight:700">'+esc(String(e.type||"").replace(/_/g," "))+'</span><span style="color:var(--text)">'+esc(e.msg||"")+'</span>'+(e.email?'<span class="cell-sub" style="margin-left:auto">'+esc(e.email)+'</span>':'')+'</div>';
+}
+// Operação separa 3 coisas que antes vinham misturadas: cadastros novos (informativo), avisos (exigem ação) e histórico normal dos robôs.
 function renderEventosOperacao(){
-  var box=document.getElementById("op-eventos");var ev=(OP.live&&OP.live.globalEvents||[]).slice(0,40);
-  if(!ev.length){box.innerHTML='<div style="color:var(--t3)">Nenhum acontecimento registrado desde o último reinício do servidor.</div>';return;}
-  box.innerHTML=ev.map(function(e){var cor=e.level==="error"?"var(--red)":e.level==="warn"?"var(--amber)":"var(--t2)";return '<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)"><span style="color:var(--t3);white-space:nowrap;min-width:120px">'+esc(fmtData(e.ts))+'</span><span style="color:'+cor+';min-width:110px;font-weight:700">'+esc(String(e.type||"").replace(/_/g," "))+'</span><span style="color:var(--text)">'+esc(e.msg||"")+'</span>'+(e.email?'<span class="cell-sub" style="margin-left:auto">'+esc(e.email)+'</span>':'')+'</div>';}).join("");
+  var todos=(OP.live&&OP.live.globalEvents||[]);
+  var cad=todos.filter(function(e){return e.type==="new_user";});
+  var rob=todos.filter(function(e){return e.type!=="new_user";});
+  var avisos=rob.filter(function(e){return e.level==="error"||e.level==="warn";});
+  var normais=rob.filter(function(e){return !(e.level==="error"||e.level==="warn");});
+  var vazio=function(t){return '<div style="color:var(--t3)">'+t+'</div>';};
+  var a=document.getElementById("op-avisos"),h=document.getElementById("op-eventos"),c=document.getElementById("op-cadastros");
+  if(a)a.innerHTML=avisos.length?avisos.slice(0,40).map(_opLinhaEvento).join(""):vazio("✅ Nenhum aviso dos robôs desde o último reinício do servidor.");
+  if(h)h.innerHTML=normais.length?normais.slice(0,40).map(_opLinhaEvento).join(""):vazio("Sem histórico normal registrado.");
+  if(c)c.innerHTML=cad.length?cad.slice(0,20).map(_opLinhaEvento).join(""):vazio("Nenhum cadastro novo desde o último reinício do servidor.");
 }
 async function reiniciarRobo(email){
-  if(!confirm("Reiniciar o robô de "+email+" agora? Ele reagenda o próximo envio e volta a rodar."))return;
+  if(!(await confirmar("Reiniciar o robô de "+email+" agora? Ele reagenda o próximo envio e volta a rodar.","Reiniciar robô","Reiniciar")))return;
   try{var r=await api("/api/admin/force-restart",{method:"POST",body:{email:email}});toast("Robô reiniciado (reinício #"+(r.restarts||1)+").","ok");carregarOperacao();}
   catch(e){toast(e.message,"err");}
 }
 async function pararRobo(email){
-  if(!confirm("PARAR o robô de "+email+"? A fila dele é apagada — o usuário precisa ligar de novo pelo site. O sistema NÃO avisa o usuário."))return;
+  if(!(await confirmar("PARAR o robô de "+email+"? A fila dele é apagada — o usuário precisa ligar de novo pelo site. O sistema NÃO avisa o usuário.","Parar robô","Parar robô")))return;
   try{await api("/api/admin/force-stop",{method:"POST",body:{email:email}});toast("Robô parado.","ok");carregarOperacao();}
   catch(e){toast(e.message,"err");}
 }
@@ -3622,12 +3844,12 @@ async function corrigirRobo(email){
   catch(e){toast(e.message,"err");}
 }
 async function corrigirTodos(){
-  if(!confirm("Rodar o reparo automático em TODOS os robôs? Ele só mexe no que está errado (timer perdido, fila vazia, limite já liberado, robô travado há 10min+) — quem está rodando certo não é tocado."))return;
+  if(!(await confirmar("Rodar o reparo automático em TODOS os robôs? Ele só mexe no que está errado (timer perdido, fila vazia, limite já liberado, robô travado há 10min+) — quem está rodando certo não é tocado.","Reparar robôs","Reparar")))return;
   try{var r=await api("/api/admin/fix-auto",{method:"POST",body:{}});abrirModalInfo("🔧 Reparo geral — "+(r.fixed||0)+" de "+(r.total||0)+" robô(s) consertado(s)",_opResumoFix(r));carregarOperacao();}
   catch(e){toast(e.message,"err");}
 }
 async function reiniciarTravados(){
-  if(!confirm("Reiniciar todos os robôs TRAVADOS? Quem está esperando o limite do dia ou a pausa do Google é pulado (não é travamento)."))return;
+  if(!(await confirmar("Reiniciar todos os robôs TRAVADOS? Quem está esperando o limite do dia ou a pausa do Google é pulado (não é travamento).","Reiniciar travados","Reiniciar")))return;
   try{var r=await api("/api/admin/restart-all-stalled",{method:"POST",body:{}});toast((r.restarted||0)+" reiniciado(s) · "+(r.skipped||0)+" em espera legítima pulado(s)"+((r.tokensFailed||0)?" · "+r.tokensFailed+" token(s) falharam":""),"ok");carregarOperacao();}
   catch(e){toast(e.message,"err");}
 }

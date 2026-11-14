@@ -79,7 +79,10 @@ function httpsReq(opts,body){
       });
     });
     r.on("error",rejNoResponse);
-    r.setTimeout(15000,()=>{r.destroy();rejNoResponse(new Error("Timeout"));});
+    // 15s é o padrão (Gmail/OAuth). Chamadas lentas por natureza — ex.: a IA lendo a FOTO de um comprovante — pedem mais via opts.timeoutMs
+    // (era o que derrubava os pré-checks em "ERRO — Timeout": o Gemini com imagem grande passa dos 15s).
+    const _to=(opts&&opts.timeoutMs>0)?Math.min(opts.timeoutMs,120000):15000;
+    r.setTimeout(_to,()=>{r.destroy();rejNoResponse(new Error("Timeout"));});
     if(p)r.write(p);
     r.end();
   });
