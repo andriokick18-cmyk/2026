@@ -4798,4 +4798,4 @@ original: 74.357 caracteres idênticos, 11 seções, 41 `<details>`, 8 perguntas
 PÚBLICAS /aprenda/* (SEO, v981) continuam — usam o mesmo fragmento. **Dois caminhos**: cards grandes "📖 Aprenda lendo" e "Aprenda com vídeo" (play pulsando,
 vermelho forte, contorno dourado quando ativo), cada um com SETINHA animada apontando (`@keyframes tvSeta`; `prefers-reduced-motion` desliga); o guia
 tem botão "Prefere assistir? Veja os vídeos do Diego". i18n: tut_t/tv_tab (novos valores) + tut_tab_sub/tv_tab_sub/tv_b0/tv_b1/tv_pref nas 3 línguas; chaves
-mortas si_aprenda/mm_aprenda removidas. sw v247.
+mortas si_aprenda/mm_aprenda removidas. sw v248.
