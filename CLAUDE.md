@@ -4784,3 +4784,18 @@ nas 3 línguas (regra 6f); o TEXTO dos vídeos (JSON/RSS) é PT, como o canal. T
 (`^[A-Za-z0-9_-]{11}$`) no servidor E no front antes de virar URL. A rede do sandbox NÃO alcança o YouTube (proxy 403): o RSS real só é conferido
 em produção (o smoke prova o leitor/merge com RSS falso). PROIBIDO: baixar/hospedar vídeo do YouTube, trocar o embed por player próprio,
 prometer vaga/resultado nas descrições (e nada de dar "aval de verdade" a conteúdo de visto: sempre mandar conferir DOL/USCIS). **Revisão independente (24 agentes) achou e eu corrigi antes do deploy**: o botão Voltar (popstate) não parava o vídeo; degradê laranja-claro reprovava contraste WCAG (agora #c2410c→#dc2626→#6d28d9); botão do menu do Perfil cortava o texto grande; 40 botões iguais sem nome pro leitor de tela (aria-label com o título); foco do teclado perdido ao criar o iframe; `channelId` solto da página podia gravar canal relacionado (só canonical/externalId); resposta gotejada prendia o refresh (prazo total). Suíte: 1205+ checks verdes. sw v244.
+
+## 🎓 v989 — "Aprenda H-2B/H-2A" deixa de ser aba; a aba "TUDO QUE AGÊNCIAS COBRAM" ganha 2 caminhos (Andrio, voz, 18/11/2026)
+
+A aba/menu separado "🇺🇸 Aprenda H-2B/H-2A" **não existe mais** no app (sem item na sidebar, sem item no menu Mais, `aprenda` saiu de `VIEWS`/`BN_MORE_VIEWS`).
+Todo o conteúdo mora na aba tutorial → **📖 Aprenda lendo**: **BLOCO 0 — Comece por aqui: entenda os vistos H-2B e H-2A** (o guia, na ordem lógica das
+abas internas: Visão Geral → Do zero ao embarque → H-2B → H-2A → H-2B x H-2A → Mito ou Verdade → Checklist → Glossário → Fontes Oficiais → Quiz →
+Histórias) e depois **BLOCOS 1 a 6 — Como usar o H2BApply** (os 18 passo a passos de sempre). **Nada de texto foi perdido por construção:** o fragmento
+`aprenda-conteudo.html` ficou BYTE A BYTE igual (git diff vazio) e o `#v-aprenda` virou um `<div class="apr-embed">` dentro de `#tv-pane-aulas` (os
+seletores `#v-aprenda .apr-*`, o progresso por tópico, quiz e glossário seguem iguais); a verificação no Chromium comparou o texto renderizado com o
+original: 74.357 caracteres idênticos, 11 seções, 41 `<details>`, 8 perguntas de quiz. **Redirecionamentos**: `sv("aprenda")`, `?tab=aprenda` (via
+`_pendingTab`) e entrada antiga do histórico (popstate `view:"aprenda"`) caem na aba tutorial, abrem "Aprenda lendo" e rolam até o BLOCO 0. As páginas
+PÚBLICAS /aprenda/* (SEO, v981) continuam — usam o mesmo fragmento. **Dois caminhos**: cards grandes "📖 Aprenda lendo" e "Aprenda com vídeo" (play pulsando,
+vermelho forte, contorno dourado quando ativo), cada um com SETINHA animada apontando (`@keyframes tvSeta`; `prefers-reduced-motion` desliga); o guia
+tem botão "Prefere assistir? Veja os vídeos do Diego". i18n: tut_t/tv_tab (novos valores) + tut_tab_sub/tv_tab_sub/tv_b0/tv_b1/tv_pref nas 3 línguas; chaves
+mortas si_aprenda/mm_aprenda removidas. sw v247.

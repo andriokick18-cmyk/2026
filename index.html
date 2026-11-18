@@ -2687,7 +2687,6 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
       <div class="sb-sec" style="margin-top:6px">
         <button class="sb-item active" id="si-home" onclick="sv('home')"><i class="ti ti-home-2"></i><span data-i18n="inicio">Início</span></button>
         <button class="sb-item sb-edu" id="si-tutorial" onclick="sv('tutorial')"><i class="ti ti-school"></i><span class="sb-edu-t"><b data-i18n="tv_sb1">🎓 TUDO QUE AGÊNCIAS COBRAM</b><em data-i18n="tv_sb2">AQUI É GRÁTIS</em></span></button>
-        <button class="sb-item" id="si-aprenda" onclick="sv('aprenda')" style="background:linear-gradient(135deg,rgba(29,78,216,.14),rgba(185,28,28,.14));border:1.5px solid rgba(29,78,216,.25)"><i class="ti ti-flag-3" style="color:#1d4ed8"></i><span data-i18n="si_aprenda">🇺🇸 Aprenda H-2B/H-2A</span></button>
         <button class="sb-item" id="si-profile" onclick="sv('profile')"><i class="ti ti-user"></i>Meu Perfil</button>
         <button class="sb-item" id="si-cvs" onclick="sv('profile');setTimeout(()=>{if(typeof switchProfileTab==='function')switchProfileTab('profiles')},120)"><i class="ti ti-file-cv"></i>Currículos</button>
         <button class="sb-item" id="sb-auto-btn" onclick="openAutoModal()"><i class="ti ti-robot"></i>Envio Automático</button>
@@ -4027,10 +4026,106 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
       </div></div>
 
 
-      <!-- ══ TUTORIAL COMPLETO ══ -->
-      <!-- ══ APRENDA — vistos H-2B/H-2A ══ -->
-      <div class="view gone" id="v-aprenda"><div class="view-scroll" style="padding:0 0 80px">
+      <div class="view gone" id="v-tutorial"><div class="view-scroll" style="padding:0 0 80px">
         <style>
+        .tut-bloco{padding:14px 16px 2px}
+        .tut-bloco-t{font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:#065f46;background:#ecfdf5;border:1.5px solid #86efac;border-radius:10px;padding:9px 12px;margin-bottom:10px}
+        .tut-d{background:#fff;border:1.5px solid #e2e8f0;border-radius:14px;margin-bottom:10px;overflow:hidden}
+        .tut-d[open]{border-color:#4f46e5}
+        .tut-d summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:13px 14px;font-size:13.5px;font-weight:700;color:#1e293b}
+        .tut-d summary::-webkit-details-marker{display:none}
+        .tut-num{flex-shrink:0;width:26px;height:26px;border-radius:8px;background:#eef2ff;color:#4f46e5;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center}
+        .tut-d[open] .tut-num{background:#4f46e5;color:#fff}
+        .tut-corpo{padding:2px 16px 16px;font-size:13px;color:#334155;line-height:1.65}
+        .tut-corpo ol{margin:8px 0;padding-left:20px}
+        .tut-corpo li{margin-bottom:7px}
+        .tut-corpo img{width:100%;max-width:330px;display:block;margin:10px auto;border-radius:14px;border:1px solid #e2e8f0;box-shadow:0 4px 14px rgba(15,23,42,.08)}
+        .tut-dica{background:#f0fdf4;border-left:3px solid #22c55e;border-radius:8px;padding:8px 11px;margin:9px 0;font-size:12.5px;color:#166534}
+        .tut-prob{background:#fffbeb;border-left:3px solid #f59e0b;border-radius:8px;padding:8px 11px;margin:9px 0;font-size:12.5px;color:#92400e}
+        .tut-oculto{display:none!important}
+        /* 🎓 v988 — hero + sub-abas + vídeos do Diego (tema claro/escuro pelas variáveis do app) */
+        .tv-hero{background:linear-gradient(135deg,#c2410c 0%,#dc2626 52%,#6d28d9 100%);color:#fff;padding:24px 18px 22px;text-align:center}
+        .tv-hero-ic{width:64px;height:64px;border-radius:20px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:34px}
+        .tv-hero-t{font-family:'Sora',sans-serif;font-size:24px;font-weight:900;line-height:1.18;margin-bottom:8px;text-shadow:0 2px 10px rgba(0,0,0,.22)}
+        .tv-hero-s{font-size:13.5px;opacity:.95;line-height:1.45;max-width:560px;margin:0 auto}
+        .tv-paths{display:flex;gap:10px;padding:8px 14px 0;align-items:flex-end}
+        .tv-path{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center}
+        .tv-seta{font-size:30px;line-height:1;color:#dc2626;animation:tvSeta 1s ease-in-out infinite}
+        .tv-seta-v{color:#b91c1c}
+        @keyframes tvSeta{0%,100%{transform:translateY(0)}50%{transform:translateY(7px)}}
+        @keyframes tvPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.25)}}
+        .tv-pulse{animation:tvPulse 1.2s ease-in-out infinite}
+        @media(prefers-reduced-motion:reduce){.tv-seta,.tv-pulse{animation:none}}
+        .tv-path .tv-tab{width:100%;flex-direction:column;gap:3px;padding:14px 8px}
+        .tv-tab-t{font-size:15px;font-weight:900;display:flex;align-items:center;justify-content:center;gap:6px;line-height:1.2}
+        .tv-tab small{font-size:11px;font-weight:700;opacity:.85;line-height:1.25}
+        .tv-tab-video,.tv-tab-video.active{background:linear-gradient(135deg,#dc2626,#9f1239);color:#fff;border-color:#fecaca;box-shadow:0 6px 18px rgba(220,38,38,.45)}
+        .tv-tab-video .tv-tab-t{font-size:16px}
+        .tv-tab-video .tv-tab-t i{font-size:22px}
+        .tv-tab-video.active{outline:3px solid #facc15;outline-offset:1px}
+        .apr-embed{margin:6px 0 4px;border-top:1.5px solid var(--border);border-bottom:1.5px solid var(--border)}
+        .apr-embed-head{background:linear-gradient(135deg,#0b1535,#1e3a8a,#b91c1c);color:#fff;padding:18px 16px;text-align:center}
+        .apr-embed-t{font-family:'Sora',sans-serif;font-size:17px;font-weight:800;margin-bottom:5px}
+        .apr-embed-s{font-size:12.5px;opacity:.88;line-height:1.45}
+        .tv-pref{margin-top:12px;font-family:inherit;font-size:12.5px;font-weight:800;border:none;border-radius:99px;padding:9px 14px;background:#fff;color:#b91c1c;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+        .tv-tab{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;gap:7px;font-family:inherit;font-size:13.5px;font-weight:800;padding:12px 8px;border-radius:14px;border:2px solid var(--border);background:var(--surface);color:var(--t2);cursor:pointer;line-height:1.2}
+        .tv-tab i{font-size:20px;flex-shrink:0}
+        .tv-tab.active{background:linear-gradient(135deg,#dc2626,#6d28d9);border-color:transparent;color:#fff;box-shadow:0 4px 14px rgba(124,58,237,.30)}
+        .tv-intro{margin:14px 14px 0;font-size:13px;line-height:1.55;color:var(--t2);background:var(--surface);border:1.5px solid var(--border);border-radius:14px;padding:12px 14px}
+        .tv-chips{display:flex;gap:7px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:12px 14px 8px;position:sticky;top:0;z-index:5;background:var(--bg,var(--surface));scrollbar-width:none}
+        .tv-chips::-webkit-scrollbar{display:none}
+        .tv-chip{flex-shrink:0;font-family:inherit;font-size:12.5px;font-weight:800;padding:8px 12px;border-radius:99px;border:1.5px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;white-space:nowrap}
+        .tv-sec{padding:6px 14px 6px;scroll-margin-top:58px}
+        .tv-sec-t{font-family:'Sora',sans-serif;font-size:17px;font-weight:900;color:var(--text);margin:10px 0 2px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+        .tv-sec-n{font-family:inherit;font-size:11px;font-weight:800;color:var(--t3);background:var(--sf2);border-radius:99px;padding:3px 9px}
+        .tv-sec-d{font-size:12.5px;color:var(--t2);line-height:1.5;margin:0 0 10px}
+        .tv-grid{display:grid;grid-template-columns:1fr;gap:14px}
+        @media(min-width:760px){.tv-grid{grid-template-columns:1fr 1fr}}
+        @media(min-width:1180px){.tv-grid{grid-template-columns:1fr 1fr 1fr}}
+        .tv-card{background:var(--surface);border:1.5px solid var(--border);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 4px 14px rgba(15,23,42,.06)}
+        .tv-media{position:relative;aspect-ratio:16/9;background:#0f172a;overflow:hidden}
+        .tv-media iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+        .tv-thumb{position:absolute;inset:0;width:100%;height:100%;padding:0;border:0;background:linear-gradient(135deg,#1e293b,#4c1d95);cursor:pointer;display:block}
+        .tv-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+        .tv-play-ic{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:62px;height:62px;border-radius:50%;background:rgba(220,38,38,.94);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 6px 18px rgba(0,0,0,.4)}
+        .tv-dur{position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.78);color:#fff;font-size:11px;font-weight:800;padding:2px 7px;border-radius:6px}
+        .tv-body{padding:12px 14px 14px;display:flex;flex-direction:column;gap:9px;flex:1}
+        .tv-meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+        .tv-n{font-size:11px;font-weight:900;color:#4f46e5;background:rgba(99,102,241,.12);border-radius:99px;padding:3px 9px}
+        .tv-novo{font-size:10.5px;font-weight:900;color:#fff;background:#15803d;border-radius:99px;padding:3px 8px}
+        .tv-title{font-size:14.5px;font-weight:800;color:var(--text);line-height:1.3;margin:0}
+        .tv-assista{display:flex;gap:8px;align-items:flex-start;background:rgba(250,204,21,.16);border:1.5px solid rgba(234,179,8,.55);border-radius:12px;padding:9px 11px;font-size:12.5px;line-height:1.5;color:var(--text)}
+        .tv-assista i{font-size:17px;color:#b45309;flex-shrink:0;margin-top:1px}
+        .tv-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto}
+        .tv-btn-play,.tv-btn-yt{flex:1;min-width:130px;justify-content:center;font-size:12.5px;font-weight:800;padding:10px 10px;border-radius:12px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-family:inherit}
+        .tv-btn-play{background:#dc2626;color:#fff;border:none}
+        .tv-btn-yt{background:var(--sf2);color:var(--text);border:1.5px solid var(--border2,var(--border))}
+        .tv-thumb:focus-visible,.tv-btn-play:focus-visible,.tv-btn-yt:focus-visible,.tv-tab:focus-visible,.tv-chip:focus-visible{outline:3px solid #facc15;outline-offset:-4px}
+        [data-theme="dark"] .tv-n{color:#a5b4fc;background:rgba(129,140,248,.18)}
+        .tv-aviso{margin:14px 14px 0;font-size:11.5px;line-height:1.5;color:var(--t3);text-align:center}
+        .tv-canal{display:flex;justify-content:center;padding:6px 14px 0}
+        .tv-btn-canal{flex:0 1 auto;min-width:220px}
+        </style>
+
+        <!-- 🎓 v988 — hero grande: "TUDO QUE AGÊNCIAS COBRAM — AQUI É GRÁTIS" + sub-abas (aulas / vídeos do Diego) -->
+        <div class="tv-hero">
+          <div class="tv-hero-ic" aria-hidden="true"><i class="ti ti-school"></i></div>
+          <div class="tv-hero-t" data-i18n="tv_h">🎓 TUDO QUE AGÊNCIAS COBRAM — AQUI É GRÁTIS</div>
+          <div class="tv-hero-s" data-i18n="tv_hs">Aulas passo a passo e todos os vídeos do Diego, de graça, dentro do H2BApply. Somos gratuitos e não somos agência.</div>
+        </div>
+        <div class="tv-paths" role="group" aria-label="Escolha como aprender">
+          <div class="tv-path">
+            <span class="tv-seta" aria-hidden="true"><i class="ti ti-arrow-big-down-filled"></i></span>
+            <button type="button" class="tv-tab active" id="tv-tab-aulas" aria-pressed="true" onclick="tutAba('aulas')"><span class="tv-tab-t" data-i18n="tut_t">📖 Aprenda lendo</span><small data-i18n="tut_tab_sub">Guia dos vistos + passo a passo do site</small></button>
+          </div>
+          <div class="tv-path">
+            <span class="tv-seta tv-seta-v" aria-hidden="true"><i class="ti ti-arrow-big-down-filled"></i></span>
+            <button type="button" class="tv-tab tv-tab-video" id="tv-tab-videos" aria-pressed="false" onclick="tutAba('videos')"><span class="tv-tab-t"><i class="ti ti-player-play-filled tv-pulse" aria-hidden="true"></i> <span data-i18n="tv_tab">Aprenda com vídeo</span></span><small data-i18n="tv_tab_sub">Todos os vídeos do Diego</small></button>
+          </div>
+        </div>
+
+        <div id="tv-pane-aulas">
+<style>
         .apr-disclaimer{display:flex;gap:10px;align-items:flex-start;background:var(--amberl);border-bottom:1.5px solid var(--amberb);color:#b45309;padding:12px 16px;font-size:12px;line-height:1.5}
         .apr-disclaimer i{font-size:18px;flex-shrink:0;margin-top:1px}
         .apr-tabs{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:10px 14px;background:#0f172a;position:sticky;top:0;z-index:5;scrollbar-width:none}
@@ -4132,97 +4227,22 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
         .apr-hist-real h4,.apr-hist-hip h4{font-family:'Sora',sans-serif;font-size:13.5px;font-weight:800;color:#0f172a;margin:0 0 6px}
         .apr-hist-real p,.apr-hist-hip p{font-size:12.5px;color:#334155;line-height:1.6;margin:0}
         </style>
-
-        <!-- Header -->
-        <div style="background:linear-gradient(135deg,#0b1535,#1e3a8a,#b91c1c);color:#fff;padding:26px 20px;text-align:center">
-          <div style="width:64px;height:64px;border-radius:20px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
-            <i class="ti ti-flag-3" style="font-size:32px"></i>
+          <!-- 🎓 v989 — o antigo "Aprenda H-2B/H-2A" (aba separada, REMOVIDA) mora aqui: BLOCO 0 da Aprenda lendo. O fragmento aprenda-conteudo.html
+               segue IDÊNTICO (nenhum texto perdido); #v-aprenda virou um bloco embutido (os seletores #v-aprenda .apr-* continuam valendo). -->
+          <div class="tut-bloco"><div class="tut-bloco-t" data-i18n="tv_b0">📘 BLOCO 0 — Comece por aqui: entenda os vistos H-2B e H-2A</div></div>
+          <div id="v-aprenda" class="apr-embed">
+            <div class="apr-embed-head">
+              <div class="apr-embed-t" data-i18n="apr_t">🇺🇸 Aprenda tudo sobre as regras dos vistos H-2B e H-2A</div>
+              <div class="apr-embed-s" data-i18n="apr_s">Guia completo, educativo e baseado em fontes oficiais do governo dos EUA — pra você entender de verdade como o processo funciona e reconhecer golpes</div>
+              <button type="button" class="tv-pref" onclick="tutAba('videos')"><i class="ti ti-player-play-filled" aria-hidden="true"></i> <span data-i18n="tv_pref">Prefere assistir? Veja os vídeos do Diego</span></button>
+            </div>
+            <div id="aprenda-conteudo">
+              <div style="text-align:center;color:#64748b;font-size:13px;padding:34px 0" data-i18n="apr_load">⏳ Carregando o guia completo...</div>
+            </div>
           </div>
-          <div style="font-family:'Sora',sans-serif;font-size:21px;font-weight:800;margin-bottom:6px" data-i18n="apr_t">🇺🇸 Aprenda tudo sobre as regras dos vistos H-2B e H-2A</div>
-          <div style="font-size:13px;opacity:.85" data-i18n="apr_s">Guia completo, educativo e baseado em fontes oficiais do governo dos EUA — pra você entender de verdade como o processo funciona e reconhecer golpes</div>
-        </div>
 
-        <div id="aprenda-conteudo">
-          <div style="text-align:center;color:#64748b;font-size:13px;padding:34px 0" data-i18n="apr_load">⏳ Carregando o guia completo...</div>
-        </div>
-
-      </div></div>
-
-      <div class="view gone" id="v-tutorial"><div class="view-scroll" style="padding:0 0 80px">
-        <style>
-        .tut-bloco{padding:14px 16px 2px}
-        .tut-bloco-t{font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:#065f46;background:#ecfdf5;border:1.5px solid #86efac;border-radius:10px;padding:9px 12px;margin-bottom:10px}
-        .tut-d{background:#fff;border:1.5px solid #e2e8f0;border-radius:14px;margin-bottom:10px;overflow:hidden}
-        .tut-d[open]{border-color:#4f46e5}
-        .tut-d summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:13px 14px;font-size:13.5px;font-weight:700;color:#1e293b}
-        .tut-d summary::-webkit-details-marker{display:none}
-        .tut-num{flex-shrink:0;width:26px;height:26px;border-radius:8px;background:#eef2ff;color:#4f46e5;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center}
-        .tut-d[open] .tut-num{background:#4f46e5;color:#fff}
-        .tut-corpo{padding:2px 16px 16px;font-size:13px;color:#334155;line-height:1.65}
-        .tut-corpo ol{margin:8px 0;padding-left:20px}
-        .tut-corpo li{margin-bottom:7px}
-        .tut-corpo img{width:100%;max-width:330px;display:block;margin:10px auto;border-radius:14px;border:1px solid #e2e8f0;box-shadow:0 4px 14px rgba(15,23,42,.08)}
-        .tut-dica{background:#f0fdf4;border-left:3px solid #22c55e;border-radius:8px;padding:8px 11px;margin:9px 0;font-size:12.5px;color:#166534}
-        .tut-prob{background:#fffbeb;border-left:3px solid #f59e0b;border-radius:8px;padding:8px 11px;margin:9px 0;font-size:12.5px;color:#92400e}
-        .tut-oculto{display:none!important}
-        /* 🎓 v988 — hero + sub-abas + vídeos do Diego (tema claro/escuro pelas variáveis do app) */
-        .tv-hero{background:linear-gradient(135deg,#c2410c 0%,#dc2626 52%,#6d28d9 100%);color:#fff;padding:24px 18px 22px;text-align:center}
-        .tv-hero-ic{width:64px;height:64px;border-radius:20px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:34px}
-        .tv-hero-t{font-family:'Sora',sans-serif;font-size:24px;font-weight:900;line-height:1.18;margin-bottom:8px;text-shadow:0 2px 10px rgba(0,0,0,.22)}
-        .tv-hero-s{font-size:13.5px;opacity:.95;line-height:1.45;max-width:560px;margin:0 auto}
-        .tv-tabs{display:flex;gap:8px;padding:12px 14px 0}
-        .tv-tab{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;gap:7px;font-family:inherit;font-size:13.5px;font-weight:800;padding:12px 8px;border-radius:14px;border:2px solid var(--border);background:var(--surface);color:var(--t2);cursor:pointer;line-height:1.2}
-        .tv-tab i{font-size:20px;flex-shrink:0}
-        .tv-tab.active{background:linear-gradient(135deg,#dc2626,#6d28d9);border-color:transparent;color:#fff;box-shadow:0 4px 14px rgba(124,58,237,.30)}
-        .tv-intro{margin:14px 14px 0;font-size:13px;line-height:1.55;color:var(--t2);background:var(--surface);border:1.5px solid var(--border);border-radius:14px;padding:12px 14px}
-        .tv-chips{display:flex;gap:7px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:12px 14px 8px;position:sticky;top:0;z-index:5;background:var(--bg,var(--surface));scrollbar-width:none}
-        .tv-chips::-webkit-scrollbar{display:none}
-        .tv-chip{flex-shrink:0;font-family:inherit;font-size:12.5px;font-weight:800;padding:8px 12px;border-radius:99px;border:1.5px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;white-space:nowrap}
-        .tv-sec{padding:6px 14px 6px;scroll-margin-top:58px}
-        .tv-sec-t{font-family:'Sora',sans-serif;font-size:17px;font-weight:900;color:var(--text);margin:10px 0 2px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-        .tv-sec-n{font-family:inherit;font-size:11px;font-weight:800;color:var(--t3);background:var(--sf2);border-radius:99px;padding:3px 9px}
-        .tv-sec-d{font-size:12.5px;color:var(--t2);line-height:1.5;margin:0 0 10px}
-        .tv-grid{display:grid;grid-template-columns:1fr;gap:14px}
-        @media(min-width:760px){.tv-grid{grid-template-columns:1fr 1fr}}
-        @media(min-width:1180px){.tv-grid{grid-template-columns:1fr 1fr 1fr}}
-        .tv-card{background:var(--surface);border:1.5px solid var(--border);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 4px 14px rgba(15,23,42,.06)}
-        .tv-media{position:relative;aspect-ratio:16/9;background:#0f172a;overflow:hidden}
-        .tv-media iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
-        .tv-thumb{position:absolute;inset:0;width:100%;height:100%;padding:0;border:0;background:linear-gradient(135deg,#1e293b,#4c1d95);cursor:pointer;display:block}
-        .tv-thumb img{width:100%;height:100%;object-fit:cover;display:block}
-        .tv-play-ic{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:62px;height:62px;border-radius:50%;background:rgba(220,38,38,.94);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 6px 18px rgba(0,0,0,.4)}
-        .tv-dur{position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.78);color:#fff;font-size:11px;font-weight:800;padding:2px 7px;border-radius:6px}
-        .tv-body{padding:12px 14px 14px;display:flex;flex-direction:column;gap:9px;flex:1}
-        .tv-meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-        .tv-n{font-size:11px;font-weight:900;color:#4f46e5;background:rgba(99,102,241,.12);border-radius:99px;padding:3px 9px}
-        .tv-novo{font-size:10.5px;font-weight:900;color:#fff;background:#15803d;border-radius:99px;padding:3px 8px}
-        .tv-title{font-size:14.5px;font-weight:800;color:var(--text);line-height:1.3;margin:0}
-        .tv-assista{display:flex;gap:8px;align-items:flex-start;background:rgba(250,204,21,.16);border:1.5px solid rgba(234,179,8,.55);border-radius:12px;padding:9px 11px;font-size:12.5px;line-height:1.5;color:var(--text)}
-        .tv-assista i{font-size:17px;color:#b45309;flex-shrink:0;margin-top:1px}
-        .tv-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto}
-        .tv-btn-play,.tv-btn-yt{flex:1;min-width:130px;justify-content:center;font-size:12.5px;font-weight:800;padding:10px 10px;border-radius:12px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-family:inherit}
-        .tv-btn-play{background:#dc2626;color:#fff;border:none}
-        .tv-btn-yt{background:var(--sf2);color:var(--text);border:1.5px solid var(--border2,var(--border))}
-        .tv-thumb:focus-visible,.tv-btn-play:focus-visible,.tv-btn-yt:focus-visible,.tv-tab:focus-visible,.tv-chip:focus-visible{outline:3px solid #facc15;outline-offset:-4px}
-        [data-theme="dark"] .tv-n{color:#a5b4fc;background:rgba(129,140,248,.18)}
-        .tv-aviso{margin:14px 14px 0;font-size:11.5px;line-height:1.5;color:var(--t3);text-align:center}
-        .tv-canal{display:flex;justify-content:center;padding:6px 14px 0}
-        .tv-btn-canal{flex:0 1 auto;min-width:220px}
-        </style>
-
-        <!-- 🎓 v988 — hero grande: "TUDO QUE AGÊNCIAS COBRAM — AQUI É GRÁTIS" + sub-abas (aulas / vídeos do Diego) -->
-        <div class="tv-hero">
-          <div class="tv-hero-ic" aria-hidden="true"><i class="ti ti-school"></i></div>
-          <div class="tv-hero-t" data-i18n="tv_h">🎓 TUDO QUE AGÊNCIAS COBRAM — AQUI É GRÁTIS</div>
-          <div class="tv-hero-s" data-i18n="tv_hs">Aulas passo a passo e todos os vídeos do Diego, de graça, dentro do H2BApply. Somos gratuitos e não somos agência.</div>
-        </div>
-        <div class="tv-tabs">
-          <button type="button" class="tv-tab active" id="tv-tab-aulas" aria-pressed="true" onclick="tutAba('aulas')"><i class="ti ti-book-2" aria-hidden="true"></i><span data-i18n="tut_t">Central de Tutoriais</span></button>
-          <button type="button" class="tv-tab" id="tv-tab-videos" aria-pressed="false" onclick="tutAba('videos')"><i class="ti ti-brand-youtube" aria-hidden="true"></i><span data-i18n="tv_tab">Todos os vídeos do Diego</span></button>
-        </div>
-
-        <div id="tv-pane-aulas">
-          <div style="padding:12px 16px 0;text-align:center;font-size:12.5px;color:var(--t2)" data-i18n="tut_s">18 passo a passos — tudo o que dá pra fazer no H2BApply, explicado tela por tela (vários já com fotos reais)</div>
+          <div class="tut-bloco"><div class="tut-bloco-t" data-i18n="tv_b1">📱 BLOCOS 1 a 6 — Como usar o H2BApply, passo a passo</div></div>
+          <div style="padding:2px 16px 0;text-align:center;font-size:12.5px;color:var(--t2)" data-i18n="tut_s">18 passo a passos — tudo o que dá pra fazer no H2BApply, explicado tela por tela (vários já com fotos reais)</div>
 
         <!-- Busca -->
         <div style="padding:14px 16px 0">
@@ -4339,7 +4359,6 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
     <div class="mbody" style="padding-top:2px">
       <div style="display:flex;flex-direction:column;gap:2px">
         <button class="mm-item" onclick="g('#more-menu-overlay').classList.add('gone');sv('plans')"><i class="ti ti-diamond"></i><span data-i18n="plans">💎 Planos</span></button>
-        <button class="mm-item" onclick="g('#more-menu-overlay').classList.add('gone');sv('aprenda')"><i class="ti ti-flag-3"></i><span data-i18n="mm_aprenda">🇺🇸 Aprenda H-2B/H-2A</span></button>
         <button class="mm-item" onclick="g('#more-menu-overlay').classList.add('gone');openAutoModal()"><i class="ti ti-robot"></i><span data-i18n="bn_auto">Envio Automático</span></button>
         <button class="mm-item mm-edu" onclick="g('#more-menu-overlay').classList.add('gone');sv('tutorial')"><i class="ti ti-school"></i><span data-i18n="bn_tutorial">🎓 TUDO QUE AGÊNCIAS COBRAM — AQUI É GRÁTIS</span></button>
         <button class="mm-item" onclick="g('#more-menu-overlay').classList.add('gone');sv('settings')"><i class="ti ti-settings"></i><span data-i18n="bn_settings">Configurações</span></button>

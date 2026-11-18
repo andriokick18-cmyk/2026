@@ -1081,7 +1081,8 @@ async function drillAdminSettingsLegado() {
     // voltar a ZERO — a própria view (e qualquer wrapper interno dela) tem
     // que fechar por completo antes da próxima começar. Saldo > 0 = sobrou
     // div aberta = a próxima view nasce aninhada (filha) da anterior.
-    const viewTags = [...home.body.matchAll(/<div\b[^>]*\bid="v-([a-zA-Z]+)"/g)];
+    // v989: #v-aprenda é de propósito um bloco EMBUTIDO dentro de #tv-pane-aulas (BLOCO 0 da aba tutorial), não uma view — fora desta varredura
+    const viewTags = [...home.body.matchAll(/<div\b[^>]*\bid="v-([a-zA-Z]+)"/g)].filter((m) => m[1] !== "aprenda");
     let nestingBug = null;
     for (let i = 0; i < viewTags.length - 1; i++) {
       const seg = home.body.slice(viewTags[i].index, viewTags[i + 1].index);
@@ -7795,7 +7796,7 @@ async function drillAdminSettingsLegado() {
         (_frag160.match(/data-kw="/g) || []).length >= _tuts.length &&
         _idx160.includes('id="tut-conteudo"') && _idx160.includes('oninput="tutFiltra()"') &&
         _appJs160.includes("function tutFiltra") && _appJs160.includes("function loadTutorial") &&
-        _appJs160.includes('if(v==="tutorial"){loadTutorial();}'),
+        /if\(v==="tutorial"\)\{\s*loadTutorial\(\);loadAprenda\(\);/.test(_appJs160),
         `tuts=${_tuts.length}`);
       // 🌐 regra 6f/catraca: as strings de UI da aba passam pelo dicionário nas 3 línguas
       check("📖 v160: strings de UI da aba (título/busca/vazio/carregando) no LANG_DICT em pt+en+es — a catraca de tradução continua zerada",
@@ -7862,6 +7863,14 @@ async function drillAdminSettingsLegado() {
         check("🎬 v988: _tvNb troca o hífen de H-2B/H-2A por hífen que não quebra linha SEM mexer no resto do texto (regressão real: virou 'H-22B')",
           _nb("Como aplicar H-2B e H-2A") === "Como aplicar H‑2B e H‑2A" && _nb("EB-3 e H-4") === "EB-3 e H-4",
           JSON.stringify(_nb("Como aplicar H-2B e H-2A")));
+        // 🎓 v989: dois caminhos bem claros (Aprenda com vídeo / Aprenda lendo) com setinha ANIMADA e play no de vídeo; o guia dos vistos segue COMPLETO (11 seções)
+        const _apr989 = (await get("/aprenda-conteudo")).body || "";
+        check("🎓 v989: a aba tem 2 caminhos destacados — '📖 Aprenda lendo' e '▶ Aprenda com vídeo' (ícone de play pulsando, setinha animada apontando pra cada um, respeitando prefers-reduced-motion) — e o guia dos vistos segue completo (as 11 seções e a ordem lógica das abas internas)",
+          _tab988.includes('id="tv-tab-aulas"') && _tab988.includes('id="tv-tab-videos"') && (_tab988.match(/class="tv-seta/g) || []).length === 2 && _tab988.includes("ti-player-play-filled tv-pulse") &&
+          /@keyframes tvSeta/.test(_idx160) && /prefers-reduced-motion:reduce\)\{\.tv-seta/.test(_idx160) && _tab988.includes('data-i18n="tut_t">📖 Aprenda lendo') && _tab988.includes('data-i18n="tv_tab">Aprenda com vídeo') && _tab988.includes('class="tv-tab-t"><i class="ti ti-player-play-filled tv-pulse"') &&
+          (_apr989.match(/class="apr-sub/g) || []).length === 11 &&
+          ["hub", "jornada", "h2b", "h2a", "comp", "mitos", "check", "gloss", "fontes", "quiz", "historias"].map((k) => _apr989.indexOf('data-sub="' + k + '" onclick')).every((v, i, a) => v > 0 && (i === 0 || v > a[i - 1])),
+          JSON.stringify({ subs: (_apr989.match(/class="apr-sub/g) || []).length }));
       }
       const _imgsRef = [...new Set((_frag160.match(/\/tut-img\/[a-z0-9-]+\.jpg/g) || []))];
       const _faltando = _imgsRef.filter((u2) => !fs.existsSync(path.join(__dirname, "tutorial-img", u2.split("/").pop())));
@@ -7910,16 +7919,19 @@ async function drillAdminSettingsLegado() {
         "textos obrigatórios ausentes");
       check('🇺🇸 v961: regra "zero texto pré-preenchido" do site inteiro (regra 7 do CLAUDE.md) não foi violada — a página É conteúdo educativo estático, nunca um formulário de e-mail pro usuário',
         !_frag173.includes("<textarea") && !_frag173.includes('type="email"'));
-      check("🇺🇸 v961: a aba vive na navegação (sidebar destacada + sheet 'Mais' do mobile), a view existe no HTML e o roteamento carrega sob demanda (loadAprenda) com abas internas (aprendaIr)",
-        _idx173.includes('id="v-aprenda"') && _idx173.includes('id="aprenda-conteudo"') &&
-        _idx173.includes('id="si-aprenda"') && _idx173.includes("sv('aprenda')") &&
-        _appJs173.includes('VIEWS=["home","jobs","logs","profile","auto","plans","tutorial","settings","hist","aprenda"]') &&
+      // 🎓 v989 (Andrio, 18/11/2026): a ABA/MENU separado "Aprenda H-2B/H-2A" deixou de existir — o guia virou o BLOCO 0 da aba
+      // "TUDO QUE AGÊNCIAS COBRAM" (Aprenda lendo). O fragmento aprenda-conteudo.html segue o mesmo (nenhum texto perdido).
+      check("🇺🇸 v989: o guia dos vistos mora DENTRO da aba tutorial (BLOCO 0, #v-aprenda embutido como <div> dentro de #tv-pane-aulas, carregado sob demanda por loadAprenda), SEM view própria, SEM item na sidebar e SEM item no menu Mais; sv('aprenda')/?tab=aprenda/histórico antigo redirecionam pra aba nova",
+        /<div id="tv-pane-aulas">[\s\S]*<div id="v-aprenda" class="apr-embed">[\s\S]*<div id="aprenda-conteudo">[\s\S]*<div id="tut-conteudo">/.test(_idx173) &&
+        !_idx173.includes('class="view gone" id="v-aprenda"') && !_idx173.includes('id="si-aprenda"') && !/sv\('aprenda'\)/.test(_idx173) &&
+        _appJs173.includes('VIEWS=["home","jobs","logs","profile","auto","plans","tutorial","settings","hist"]') &&
         _appJs173.includes("function loadAprenda") && _appJs173.includes("function aprendaIr") &&
-        _appJs173.includes('if(v==="aprenda"){loadAprenda();}'));
-      check("🇺🇸 v961: strings de UI da aba (título/subtítulo/carregando/menus) no LANG_DICT em pt+en+es — a catraca de tradução (regra 6f) continua zerada",
-        ["apr_t", "apr_s", "apr_load", "si_aprenda", "mm_aprenda"].every((k) => (_appJs173.match(new RegExp('"' + k + '":"', "g")) || []).length === 3) &&
-        _idx173.includes('data-i18n="apr_t"'),
-        "chaves apr_/si_aprenda/mm_aprenda ausentes em alguma língua");
+        _appJs173.includes('if(v==="aprenda"){v="tutorial";window._tutIrApr=true;}') && _appJs173.includes('if(v==="aprenda")v="tutorial";') &&
+        _appJs173.includes("loadTutorial();loadAprenda();"));
+      check("🇺🇸 v989: strings de UI do guia/blocos (título/subtítulo/carregando/BLOCO 0/BLOCOS 1-6/prefere assistir) no LANG_DICT em pt+en+es — a catraca de tradução (regra 6f) continua zerada, e as chaves mortas do menu antigo saíram",
+        ["apr_t", "apr_s", "apr_load", "tv_b0", "tv_b1", "tv_pref", "tut_tab_sub", "tv_tab_sub"].every((k) => (_appJs173.match(new RegExp('"' + k + '":"', "g")) || []).length === 3) &&
+        _idx173.includes('data-i18n="apr_t"') && !/"si_aprenda":|"mm_aprenda":/.test(_appJs173),
+        "chaves ausentes em alguma língua");
       // Progresso por tópico: rota exige sessão, aceita só IDs no formato
       // esperado e devolve no /api/status pra sobreviver troca de aparelho.
       const _progNoAuth = await (async () => { const _ck173 = COOKIE; COOKIE = ""; const r = await req2("POST", "/api/aprenda-progresso", { opened: ["apr-b1"] }); COOKIE = _ck173; return r; })();
