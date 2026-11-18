@@ -4763,3 +4763,24 @@ códigos de cadastro/senha) manda "Seu plano <X> está ativo" pro e-mail de cont
 estiver desconectada. Texto curto, sem caixa alta (anti-spam). Fora isso, usuário continua NUNCA recebendo e-mail do sistema.
 **Plano ao vivo**: o app confere /api/status a cada 20s e ao voltar pra aba (`planWatchTick`); mudou plano/dias/limites =
 atualiza cabeçalho/menu/tela aberta e avisa, sem deslogar. PROIBIDO voltar a ler o plano só no carregamento da página.
+
+## 🎓 v988 — "TUDO QUE AGÊNCIAS COBRAM — AQUI É GRÁTIS" + "Todos os vídeos do Diego" (pedido do Andrio via chat, 18/11/2026)
+
+A Central de Tutoriais (view `tutorial`, a mesma de sempre — nada do que funcionava foi mexido) virou a aba GRANDE e colorida do app:
+hero em gradiente com o conceito "tudo que agências cobram, aqui é grátis" (+ aviso de que somos gratuitos e não somos agência), item
+gigante `#si-tutorial` na sidebar (mais alto/colorido que qualquer outro, destaque dourado quando ativo), item gradiente no menu "Mais" (celular
+e popover) e card `#home-edu` na Home (celular não tem sidebar). Duas sub-abas: **Central de Tutoriais** (conteúdo antigo, intacto) e
+**Todos os vídeos do Diego** (canal @diegopelomundo). **Vídeo = EMBED OFICIAL do YouTube, nunca baixar/copiar** (cada view conta no canal do
+Diego): o card só mostra a miniatura `i.ytimg.com/vi/ID/hqdefault.jpg` (lazy) e o iframe `youtube.com/embed/ID` nasce NO CLIQUE; 1 vídeo por vez
+(o anterior volta pra miniatura) e sair da aba para tudo (iframe escondido continuaria com áudio — `tvPararTodos` no `sv()`); cada card tem
+"Assistir aqui" e "Assistir no YouTube" (`watch?v=ID`, `_blank`, `noopener noreferrer`) e a caixa amarela "Assista se..." (português simples,
+SEM prometer vaga/resultado — teste proíbe garant*/certeza/100%). **Dados**: `videos-diego.json` (categorias + 40 vídeos: id, titulo,
+categoria, ordem, assista, duracao opcional) — pra adicionar vídeo é copiar um objeto, trocar id/titulo/categoria/ordem/assista e subir.
+`mod-videos-diego.js` serve `GET /api/videos-diego` (público, noindex) e mescla, em SEGUNDO PLANO (6h; 1h após falha; a resposta nunca espera o
+YouTube), os vídeos novos do feed RSS do canal na seção "Outros vídeos do canal" (selo NOVO por 30 dias); o id do canal (UC...) é resolvido
+da página @handle (canonical primeiro) ou fixado por env `DIEGO_CHANNEL_ID`/campo `canal.channelId` do JSON. Sem internet/RSS = só o JSON. CSP:
+`frame-src` ganhou só `https://www.youtube.com`; `frame-ancestors 'none'` e `default-src 'self'` intactos; a Política de Privacidade ganhou o parágrafo do YouTube (cookies ao tocar). i18n: 20 chaves `tv_*`
+nas 3 línguas (regra 6f); o TEXTO dos vídeos (JSON/RSS) é PT, como o canal. Todo texto do JSON/RSS passa por `esc()`; o id é validado
+(`^[A-Za-z0-9_-]{11}$`) no servidor E no front antes de virar URL. A rede do sandbox NÃO alcança o YouTube (proxy 403): o RSS real só é conferido
+em produção (o smoke prova o leitor/merge com RSS falso). PROIBIDO: baixar/hospedar vídeo do YouTube, trocar o embed por player próprio,
+prometer vaga/resultado nas descrições (e nada de dar "aval de verdade" a conteúdo de visto: sempre mandar conferir DOL/USCIS). **Revisão independente (24 agentes) achou e eu corrigi antes do deploy**: o botão Voltar (popstate) não parava o vídeo; degradê laranja-claro reprovava contraste WCAG (agora #c2410c→#dc2626→#6d28d9); botão do menu do Perfil cortava o texto grande; 40 botões iguais sem nome pro leitor de tela (aria-label com o título); foco do teclado perdido ao criar o iframe; `channelId` solto da página podia gravar canal relacionado (só canonical/externalId); resposta gotejada prendia o refresh (prazo total). Suíte: 1205+ checks verdes. sw v244.

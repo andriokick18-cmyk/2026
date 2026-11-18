@@ -89,6 +89,17 @@ const DOL_DETALHE = {
 };
 const feedSrv = http.createServer((rq, rs) => {
   const url = rq.url || "";
+  // 🎬 v988: YouTube falso — RSS do canal (2 vídeos novos + 1 que já está no JSON + 1 id inválido) e a página @handle com o id do canal
+  if (url.startsWith("/yt/page")) { rs.writeHead(200, { "Content-Type": "text/html" }); return rs.end('<html><head><link rel="canonical" href="https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv"></head><body>"channelId":"UCzzzzzzzzzzzzzzzzzzzzzz"</body></html>'); }
+  if (url.startsWith("/yt/feed")) {
+    const agora = new Date().toISOString(), velho = new Date(Date.now() - 90 * 86400_000).toISOString();
+    rs.writeHead(200, { "Content-Type": "application/atom+xml" });
+    return rs.end(`<?xml version="1.0"?><feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns="http://www.w3.org/2005/Atom"><title>Canal</title>`
+      + `<entry><yt:videoId>AAAAAAAAAA1</yt:videoId><title>Novo vídeo &amp; teste &quot;aspas&quot;</title><published>${agora}</published></entry>`
+      + `<entry><yt:videoId>uKDNkqakFb4</yt:videoId><title>Já existe no JSON</title><published>${agora}</published></entry>`
+      + `<entry><yt:videoId>BBBBBBBBBB2</yt:videoId><title>Vlog antigo</title><published>${velho}</published></entry>`
+      + `<entry><yt:videoId>bad</yt:videoId><title>id inválido</title></entry></feed>`);
+  }
   if (url.startsWith("/dol/")) {
     // URLSearchParams decodifica "+" como espaço (decodeURIComponent não).
     const filtro = new URLSearchParams(url.split("?")[1] || "").get("$filter") || "";
@@ -1036,7 +1047,7 @@ async function drillAdminSettingsLegado() {
   // PRODUÇÃO hoje (interruptor de emergência desligado, compra normal). O
   // interruptor LIGADO tem drill isolado próprio (drillBloqueioComprasNovas,
   // servidor+env dele).
-  const ENV_SRV = { ADS_COPY_GATE: "1", PORT: String(PORT), DATA_DIR: DATA, STORAGE: "json", TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890", DOL_FEED_BASE: `http://127.0.0.1:${FEED_PORT}/feed`, DOL_API_BASE: `http://127.0.0.1:${FEED_PORT}/dol/`, H2A_BIM_MIN_PUBLICAR: "10", GOOGLE_FAKE_BASE: `http://127.0.0.1:${GOOGLE_PORT}`, ADMIN_PANEL_PASS_ANDRIO: "teste-smoke-andrio-2026", ADMIN_PANEL_PASS_DIEGO: "teste-smoke-diego-2026" };
+  const ENV_SRV = { ADS_COPY_GATE: "1", PORT: String(PORT), DATA_DIR: DATA, STORAGE: "json", TEST_LOGIN_TOKEN: TEST_TOKEN, DATA_ENC_KEY: "smoke-enc-key-1234567890", DOL_FEED_BASE: `http://127.0.0.1:${FEED_PORT}/feed`, DOL_API_BASE: `http://127.0.0.1:${FEED_PORT}/dol/`, YT_FEED_BASE: `http://127.0.0.1:${FEED_PORT}/yt/feed`, YT_CHANNEL_PAGE_URL: `http://127.0.0.1:${FEED_PORT}/yt/page`, H2A_BIM_MIN_PUBLICAR: "10", GOOGLE_FAKE_BASE: `http://127.0.0.1:${GOOGLE_PORT}`, ADMIN_PANEL_PASS_ANDRIO: "teste-smoke-andrio-2026", ADMIN_PANEL_PASS_DIEGO: "teste-smoke-diego-2026" };
   let log = "";
   let srv = spawnServidor(ENV_SRV, (t) => (log += t));
 
@@ -2457,7 +2468,7 @@ async function drillAdminSettingsLegado() {
       // continuam provando isso por família e por regra mista), então o teto
       // sobe junto com margem, em vez de travar crescimento real do produto.
       check("🧹 v203-L21: o CSS do index.html encolheu de verdade e as regras VIVAS continuam lá (a poda foi por seletor, nunca por bloco inteiro)",
-        _estilos21.length < 154_000 && // 12/11/2026: +4,4KB do anúncio "alerta contra golpes" (tela cheia + cartão EN/ES) — crescimento real do produto. v978: +1,2KB do bloco de guias da home (SEO) — crescimento real do produto, teto sobe com margem de propósito
+        _estilos21.length < 162_000 && // v988 (18/11/2026): +5KB do CSS da aba "TUDO QUE AGÊNCIAS COBRAM" (destaque na sidebar/Home + sub-aba de vídeos) — crescimento real do produto. 12/11/2026: +4,4KB do anúncio "alerta contra golpes" (tela cheia + cartão EN/ES) — crescimento real do produto. v978: +1,2KB do bloco de guias da home (SEO) — crescimento real do produto, teto sobe com margem de propósito
         [".jcard", ".btn", ".view", ".sidebar", ".bottom-nav", ".profile-card", ".cv-slot", ".chip", ".banner"].every((c) => _estilos21.includes(c)),
         `tamanho do CSS inline: ${_estilos21.length}`);
 
@@ -7791,6 +7802,67 @@ async function drillAdminSettingsLegado() {
         ["tut_t", "tut_s", "tut_ph", "tut_v", "tut_load"].every((k) => (_appJs160.match(new RegExp('"' + k + '":"', "g")) || []).length === 3) &&
         _idx160.includes('data-i18n="tut_t"') && _idx160.includes('data-i18n-ph="tut_ph"'),
         "chaves tut_ ausentes em alguma língua");
+      // ═══ 🎬 v988 (pedido do Andrio via chat, 18/11/2026) — aba "🎓 TUDO QUE AGÊNCIAS COBRAM — AQUI É GRÁTIS" + sub-aba "Todos os vídeos do Diego" ═══
+      {
+        const _ids988 = ["uKDNkqakFb4", "f2ZrgVi5n80", "e5Z3of7SiJ4", "0u2bF1E2D20", "J2HtcZluSY8", "mqEKqbH8kk4", "BWUuaUuG56Q", "SwW8vNxcO3Q", "6WRgiMQFwA0", "KL5BuJIA9XY", "B3jd2NBmeBw", "McyGpDmSFdE", "CQtHK4OTEtE", "1oDyYngR8Gg", "6xboO44Elzo", "9_B2UGvP4-o", "z-zzc_MfyZs", "fxMGMRPFe2E", "HJs9TDwnpWo", "qvkkJQxdrIM", "LMytcTCm4OU", "97UbP3iJir8", "Z524ZGahklk", "UFpPb9H0G5Y", "qGCivCQ4gpw", "wa6RhFfdRfo", "iriMlwDhlNI", "f7QiqBbJ8V8", "v_6dkwOyQj4", "za318z6O2Y8", "wUz9ijDO_qg", "PekIyykTiWQ", "a2qzezfy8NQ", "PIrvXkcmRrk", "tq-pmG2vRns", "CDNOrukJewU", "uXvVuEghlH4", "ffScQ3xVBpo", "0smz0zPi2b8", "dhW8QPNEPZE"];
+        const _vd = JSON.parse(fs.readFileSync(path.join(__dirname, "videos-diego.json"), "utf8"));
+        const _catIds = _vd.categorias.map((c) => c.id), _vidIds = _vd.videos.map((v) => v.id);
+        const _comece = _vd.videos.filter((v) => v.categoria === "comece").sort((a, b) => a.ordem - b.ordem);
+        check("🎬 v988: videos-diego.json tem os 40 vídeos pedidos (ids únicos de 11 caracteres), as 7 categorias do pedido + 'Outros', todo vídeo numa categoria que existe, com título e explicação 'Assista se...' em português simples sem prometer vaga/resultado, e 'Comece por aqui' em ordem 1..5 começando pelo vídeo nº 1 (uKDNkqakFb4)",
+          _ids988.every((i) => _vidIds.includes(i)) && new Set(_vidIds).size === _vidIds.length && _vidIds.every((i) => /^[A-Za-z0-9_-]{11}$/.test(i)) &&
+          ["comece", "candidatura", "vagas", "entrevistas", "duvidas", "eb3", "vida", "outros"].every((c) => _catIds.includes(c)) &&
+          _vd.categorias.find((c) => c.id === "comece").titulo === "Comece por aqui" && _vd.categorias.find((c) => c.id === "eb3").titulo === "Green Card EB-3" && _vd.categorias.find((c) => c.id === "outros").titulo === "Outros vídeos do canal" &&
+          _vd.videos.every((v) => _catIds.includes(v.categoria) && v.titulo && /^Assista se /.test(v.assista) && v.assista.length <= 260 && !/garant|certeza|100%/i.test(v.assista) && Number.isFinite(v.ordem)) &&
+          _comece.map((v) => v.id).join() === "uKDNkqakFb4,f2ZrgVi5n80,e5Z3of7SiJ4,0u2bF1E2D20,J2HtcZluSY8" && _comece.map((v) => v.ordem).join() === "1,2,3,4,5",
+          JSON.stringify({ n: _vidIds.length, faltam: _ids988.filter((i) => !_vidIds.includes(i)) }));
+        const _vm = require("./mod-videos-diego.js");
+        const _xml = `<feed><entry><yt:videoId>AAAAAAAAAA1</yt:videoId><title>A &amp; B &quot;c&quot; &#39;d&#39;</title><published>2026-11-01T10:00:00+00:00</published></entry><entry><yt:videoId>nao-valido</yt:videoId><title>x</title></entry><entry><yt:videoId>BBBBBBBBBB2</yt:videoId><title><![CDATA[Com CDATA]]></title></entry></feed>`;
+        const _pf = _vm.parseFeed(_xml);
+        check("🎬 v988: o leitor do feed RSS do YouTube decodifica entidades/CDATA, ignora id inválido e a página do canal resolve o id UC... pelo canonical (não pelo primeiro channelId solto)",
+          _pf.length === 2 && _pf[0].titulo === `A & B "c" 'd'` && _pf[0].publicado > 0 && _pf[1].titulo === "Com CDATA" &&
+          _vm.extractChannelId('<link rel="canonical" href="https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv"> "channelId":"UCzzzzzzzzzzzzzzzzzzzzzz"') === "UCabcdefghijklmnopqrstuv" && _vm.extractChannelId("<html>sem canal</html>") === null &&
+          _vm.extractChannelId('<html>"channelId":"UCzzzzzzzzzzzzzzzzzzzzzz"</html>') === null,   // "channelId" solto pode ser de canal RELACIONADO — nunca vira o id gravado
+          JSON.stringify(_pf));
+        let _api988 = (await get("/api/videos-diego?sync=1")).json;
+        for (let i = 0; i < 20 && _api988?.fonte?.extras !== 2; i++) { await new Promise((r) => setTimeout(r, 200)); _api988 = (await get("/api/videos-diego?sync=1")).json; }
+        const _outros = (_api988?.videos || []).filter((v) => v.categoria === "outros");
+        check("🎬 v988: GET /api/videos-diego (público) entrega o JSON + os vídeos NOVOS do canal vindos do RSS (aqui o RSS falso): entram em 'Outros vídeos do canal' com título decodificado, 'novo' só pra quem tem <30 dias, SEM duplicar o que já está no JSON e sem o id inválido",
+          _api988?.ok === true && _api988.videos.length === _vidIds.length + 2 && _api988.fonte.rss === true && _api988.categorias.length === 8 &&
+          _outros.length === 2 && _outros[0].id === "AAAAAAAAAA1" && _outros[0].titulo === 'Novo vídeo & teste "aspas"' && _outros[0].novo === true && _outros[1].id === "BBBBBBBBBB2" && !_outros[1].novo &&
+          _api988.videos.filter((v) => v.id === "uKDNkqakFb4").length === 1 && !_api988.videos.some((v) => v.id === "bad"),
+          JSON.stringify({ n: _api988?.videos?.length, fonte: _api988?.fonte, outros: _outros.map((v) => v.id) }));
+        const _home988 = await get("/");
+        const _csp988 = String(_home988.headers?.["content-security-policy"] || "");
+        const _apiH = await get("/api/videos-diego");
+        const _fs988 = _csp988.match(/frame-src ([^;]*)/);
+        check("🎬 v988: a CSP libera o player oficial no frame-src (www.youtube.com) sem afrouxar o resto (frame-ancestors 'none' e default-src 'self' continuam); a rota de vídeos é noindex",
+          !!_fs988 && /https:\/\/www\.youtube\.com/.test(_fs988[1]) && !/nocookie/.test(_fs988[1]) && /frame-ancestors 'none'/.test(_csp988) && /default-src 'self'/.test(_csp988) && /noindex/.test(String(_apiH.headers?.["x-robots-tag"] || "")),
+          _csp988.slice(0, 300));
+        const _tab988 = _idx160.slice(_idx160.indexOf('<div class="view gone" id="v-tutorial"'), _idx160.indexOf("Aba Indicar Amigos removida"));
+        const _abre = (_tab988.match(/<div[\s>]/g) || []).length, _fecha = (_tab988.match(/<\/div>/g) || []).length;
+        const _rend = _appJs160.slice(_appJs160.indexOf("function _tvCard"), _appJs160.indexOf("function tvIr"));
+        const _keys988 = ["tv_sb1", "tv_sb2", "tv_h", "tv_hs", "tv_tab", "tv_load", "tv_err", "tv_retry", "tv_intro", "tv_aviso", "tv_play", "tv_yt", "tv_canal", "tv_novo", "tv_n", "tv_vids", "tv_ir", "tv_home_t", "tv_home_s", "tv_home_cta"];
+        check("🎬 v988 (estrutural/front): hero 'TUDO QUE AGÊNCIAS COBRAM — AQUI É GRÁTIS' + sub-abas, item gigante na sidebar/menu Mais/Home, view balanceada (regra 6d), player LAZY (o card só tem miniatura i.ytimg.com — o iframe oficial youtube.com/embed nasce no clique), 1 vídeo por vez, para ao sair da aba, link 'Assistir no YouTube' em nova aba com noopener, e as chaves de UI nas 3 línguas (regra 6f)",
+          _tab988.includes('data-i18n="tv_h">🎓 TUDO QUE AGÊNCIAS COBRAM — AQUI É GRÁTIS') && _tab988.includes('id="tv-tab-videos"') && _tab988.includes('id="tv-pane-videos"') && _tab988.includes('id="tv-pane-aulas"') && _abre === _fecha &&
+          _idx160.includes('id="si-tutorial"') && _idx160.includes("sb-edu") && _idx160.includes("mm-edu") && _idx160.includes('id="home-edu"') &&
+          !/<iframe/i.test(_rend) && _rend.includes("https://i.ytimg.com/vi/") && _rend.includes('target="_blank" rel="noopener noreferrer"') && _rend.includes("https://www.youtube.com/watch?v=") &&
+          _appJs160.includes('"https://www.youtube.com/embed/"+id') && !/youtube-nocookie/.test(_appJs160) && _appJs160.includes("function tvPararTodos") && _appJs160.includes("else{try{tvPararTodos();}catch(e){}}") &&
+          _appJs160.includes('if(v!=="tutorial"){try{tvPararTodos();}catch(e){}}') /* botão Voltar (popstate) também para o vídeo */ &&
+          _rend.includes('aria-label="${esc(t("tv_play")+": "+ti)}"') && _rend.includes('aria-label="${esc(t("tv_yt")+": "+ti)}"') /* 40 botões iguais ganham o título do vídeo pro leitor de tela */ &&
+          /\.tv-thumb:focus-visible/.test(_idx160) && !/\.(tv-hero|sb-item\.sb-edu|home-edu|mm-item\.mm-edu)(:hover)?\{[^}]*#f59e0b/.test(_idx160) /* degradê do destaque sem o laranja claro que reprovava contraste WCAG */ &&
+          /prazo = setTimeout\(\(\) => req\.destroy\(new Error\("timeout total"\)\)/.test(fs.readFileSync(path.join(__dirname, "mod-videos-diego.js"), "utf8")) &&
+          _keys988.every((k) => (_appJs160.match(new RegExp('"' + k + '":"', "g")) || []).length === 3),
+          JSON.stringify({ abre: _abre, fecha: _fecha, faltam: _keys988.filter((k) => (_appJs160.match(new RegExp('"' + k + '":"', "g")) || []).length !== 3) }));
+        check("🎬 v988: aviso honesto sempre visível na sub-aba (gratuito, não é agência, nada garante vaga/visto/resultado) nas 3 línguas, e os textos dos vídeos passam por esc() (nada do JSON/RSS vira HTML cru)",
+          /nada aqui garante/.test(_appJs160) && /nothing here guarantees/.test(_appJs160) && /nada aqu(í|\\u00ed) garantiza/.test(_appJs160) && /n(ã|\\u00e3)o (é|\\u00e9) (uma )?ag(ê|\\u00ea)ncia/.test(_appJs160) &&
+          !/\bv\.(titulo|assista)\b(?!\|\||\))/.test(_rend.replace(/esc\([^)]*\)/g, "").replace(/_tvNb\([^)]*\)/g, "")),
+          "aviso ou escape ausente");
+        // comportamento de verdade (não só texto): o hífen que não quebra linha vira "H‑2B" (U+2011) — já saiu "H-22B" por um $1 errado
+        const _nb = new Function("esc", _appJs160.match(/function _tvNb\(x\)\{[^\n]*\}/)[0] + "; return _tvNb;")((x) => String(x));
+        check("🎬 v988: _tvNb troca o hífen de H-2B/H-2A por hífen que não quebra linha SEM mexer no resto do texto (regressão real: virou 'H-22B')",
+          _nb("Como aplicar H-2B e H-2A") === "Como aplicar H‑2B e H‑2A" && _nb("EB-3 e H-4") === "EB-3 e H-4",
+          JSON.stringify(_nb("Como aplicar H-2B e H-2A")));
+      }
       const _imgsRef = [...new Set((_frag160.match(/\/tut-img\/[a-z0-9-]+\.jpg/g) || []))];
       const _faltando = _imgsRef.filter((u2) => !fs.existsSync(path.join(__dirname, "tutorial-img", u2.split("/").pop())));
       // v170 (09/09): 5 prints do fluxo antigo de diamante/doação/código saíram

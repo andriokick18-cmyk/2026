@@ -7667,6 +7667,9 @@ const PLANILHAS = _createPlanilhas({
 // Notificações) envia o código de confirmação do cadastro, o código de
 // recuperação de senha e o aviso de pedido novo pro Andrio e pro Diego.
 // Nunca lê caixa de entrada (só gmail.send). Detalhes em mod-notif.js.
+// 🎬 v988 — vídeos do canal do Diego (aba 🎓 Tudo que agências cobram → "Todos os vídeos do Diego"): dados em videos-diego.json
+// + vídeos novos do canal (feed RSS) mesclados em segundo plano. Detalhes em mod-videos-diego.js.
+const VIDEOS_DIEGO = require("./mod-videos-diego.js").createVideosDiego({ fs, path, DATA_DIR, baseFile: path.join(__dirname, "videos-diego.json") });
 const { createNotif: _createNotif } = require("./mod-notif.js");
 const NOTIF = _createNotif({
   fs, path, DATA_DIR, httpsReq, buildMime: (o) => buildMime(o), encStr, decStr,
@@ -7869,7 +7872,7 @@ const server=http.createServer(async(req,res)=>{
     // v34-GA: googletagmanager liberado — o funil inteiro tinha gaEvent()
     // instrumentado mas a CSP bloqueava o script do Analytics em silêncio.
     "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://pagead2.googlesyndication.com https://*.googlesyndication.com https://*.adtrafficquality.google https://www.google.com https://*.doubleclick.net",
-    "frame-src 'self' https://googleads.g.doubleclick.net https://*.googlesyndication.com https://*.doubleclick.net https://*.adtrafficquality.google https://www.google.com",
+    "frame-src 'self' https://www.youtube.com https://googleads.g.doubleclick.net https://*.googlesyndication.com https://*.doubleclick.net https://*.adtrafficquality.google https://www.google.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://unpkg.com",
     "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://unpkg.com",
     "img-src 'self' data: https:",
@@ -7908,6 +7911,16 @@ const server=http.createServer(async(req,res)=>{
   // 🔎 v978 (SEO): fragmentos HTML sem <title>/canonical que o app carrega por fetch — públicos, mas NUNCA
   // devem virar "documento fraco" no índice competindo com as páginas reais (X-Robots-Tag não afeta o fetch do app).
   if(pathname==="/tutorial-conteudo"){res.setHeader("X-Robots-Tag","noindex, nofollow");return serveHtml("tutorial-conteudo.html");}
+  // 🎬 v988 — lista de vídeos do Diego pra sub-aba da Central (público: são vídeos já públicos do YouTube; sem dado de usuário).
+  // O RSS do canal é consultado em segundo plano; a resposta nunca espera o YouTube. ?sync=1 só existe no npm test (aguarda o RSS falso).
+  if(pathname==="/api/videos-diego"&&req.method==="GET"){
+    res.setHeader("X-Robots-Tag","noindex, nofollow");
+    try{
+      if(process.env.TEST_LOGIN_TOKEN&&u.searchParams.get("sync")==="1")await VIDEOS_DIEGO.refresh(true);
+      res.setHeader("Cache-Control","public, max-age=300");
+      return json(res,200,VIDEOS_DIEGO.getPayload());
+    }catch(e){return json(res,500,{ok:false,error:"Não deu pra carregar os vídeos agora."});}
+  }
   if(pathname==="/aprenda-conteudo"){res.setHeader("X-Robots-Tag","noindex, nofollow");return serveHtml("aprenda-conteudo.html");}
   // 📖 v160 — prints da Central de Tutoriais (aba Tutorial do app): arquivos
   // reais em /tutorial-img (nunca base64 no HTML — 29 fotos embutidas
@@ -8259,6 +8272,7 @@ const server=http.createServer(async(req,res)=>{
 
     <h2>8. Publicidade e cookies</h2>
     <p>O H2BApply pode exibir anúncios de terceiros, como o Google AdSense, e links de parceiros ou patrocinadores, para manter o serviço gratuito. Quem tem plano pago ativo não vê anúncios. Fornecedores terceiros, incluindo o Google, usam cookies para exibir anúncios com base em visitas anteriores a este e a outros sites. O uso de cookies de publicidade pelo Google permite que ele e seus parceiros exibam anúncios para você. Você pode desativar a publicidade personalizada em <a href="https://adssettings.google.com" rel="noopener" target="_blank">adssettings.google.com</a> e saber mais em <a href="https://policies.google.com/technologies/ads" rel="noopener" target="_blank">policies.google.com/technologies/ads</a>. Nunca compartilhamos o conteúdo do seu Gmail, seu currículo nem seus e-mails enviados com anunciantes. Usamos também cookies essenciais de sessão e, quando configurado, o Google Analytics para medir o uso do site.</p>
+    <p>Os vídeos da aba "Tudo que agências cobram" aparecem no player oficial do YouTube (Google) e só carregam depois que você toca em "Assistir aqui". Ao tocar, o YouTube pode definir cookies e coletar dados de visualização, conforme a política dele (<a href="https://policies.google.com/privacy" rel="noopener" target="_blank">policies.google.com/privacy</a>). Nada do seu Gmail, currículo ou e-mails enviados é compartilhado com o YouTube.</p>
 
     <h2>9. Contato</h2>
     <p>Para dúvidas sobre privacidade, entre em contato:</p>

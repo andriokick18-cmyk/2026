@@ -1,0 +1,348 @@
+{
+ "_comentario": "Vídeos do canal do Diego (YouTube) mostrados na aba 🎓 Tudo que agências cobram → 'Todos os vídeos do Diego'. Pra adicionar um vídeo novo: copie um objeto da lista 'videos', troque id (os 11 caracteres depois de v= na URL do YouTube), titulo, categoria (um id de 'categorias'), ordem (menor aparece primeiro) e assista (começa com 'Assista se...', português simples, sem prometer vaga/resultado). Vídeos novos do canal que ainda não estão aqui entram sozinhos na seção 'Outros vídeos do canal' (feed RSS, mod-videos-diego.js).",
+ "canal": {
+  "handle": "@diegopelomundo",
+  "url": "https://www.youtube.com/@diegopelomundo"
+ },
+ "categorias": [
+  {
+   "id": "comece",
+   "titulo": "Comece por aqui",
+   "emoji": "🚀",
+   "ordem": 1,
+   "descricao": "Assista nesta ordem. São os vídeos que explicam o caminho inteiro, do zero."
+  },
+  {
+   "id": "candidatura",
+   "titulo": "Como se candidatar e lista randomizada",
+   "emoji": "📨",
+   "ordem": 2,
+   "descricao": "Como funciona a candidatura por e-mail e o que fazer quando a lista randomizada sai."
+  },
+  {
+   "id": "vagas",
+   "titulo": "Vagas e recrutadores",
+   "emoji": "🔎",
+   "ordem": 3,
+   "descricao": "Onde achar vagas, como se antecipar para a temporada e como outras pessoas chegaram até a vaga."
+  },
+  {
+   "id": "entrevistas",
+   "titulo": "Entrevistas H-2B",
+   "emoji": "🎤",
+   "ordem": 4,
+   "descricao": "Entrevistas ao vivo para você ver como a conversa com o empregador costuma ser."
+  },
+  {
+   "id": "duvidas",
+   "titulo": "Dúvidas e novidades",
+   "emoji": "💬",
+   "ordem": 5,
+   "descricao": "Respostas a perguntas de inscritos, avisos e correções de informação que circula por aí."
+  },
+  {
+   "id": "eb3",
+   "titulo": "Green Card EB-3",
+   "emoji": "🟩",
+   "ordem": 6,
+   "descricao": "Para quem quer entender o caminho do Green Card pela categoria EB-3."
+  },
+  {
+   "id": "vida",
+   "titulo": "Vida nos EUA",
+   "emoji": "🇺🇸",
+   "ordem": 7,
+   "descricao": "Dinheiro, banco, rotina de trabalho e a volta para o Brasil."
+  },
+  {
+   "id": "outros",
+   "titulo": "Outros vídeos do canal",
+   "emoji": "🎞️",
+   "ordem": 8,
+   "descricao": "Vídeos mais recentes e outros assuntos do canal do Diego (vlogs, outros países e novidades)."
+  }
+ ],
+ "videos": [
+  {
+   "id": "uKDNkqakFb4",
+   "titulo": "Aprenda AGORA como se candidatar às vagas H-2B e H-2A",
+   "categoria": "comece",
+   "ordem": 1,
+   "assista": "Assista se você nunca se candidatou e quer entender o caminho inteiro, do começo, em português simples. É o vídeo nº 1: veja este antes de todos os outros.",
+   "duracao": "21 min"
+  },
+  {
+   "id": "f2ZrgVi5n80",
+   "titulo": "Como aplicar para H-2B, H-2A e H-4 passo a passo + lista randomizada",
+   "categoria": "comece",
+   "ordem": 2,
+   "assista": "Assista se você já entendeu o básico e quer ver o passo a passo de como aplicar, incluindo como a lista randomizada entra nessa história. É o vídeo nº 2."
+  },
+  {
+   "id": "e5Z3of7SiJ4",
+   "titulo": "Trabalho nos EUA 2026: H-2B e H-2A, o manual definitivo",
+   "categoria": "comece",
+   "ordem": 3,
+   "assista": "Assista se você quer um resumo geral e atualizado de como funciona o trabalho com H-2B e H-2A em 2026. É o vídeo nº 3."
+  },
+  {
+   "id": "0u2bF1E2D20",
+   "titulo": "H-2B ao vivo: Diego e Andrio revelam tudo sobre o visto",
+   "categoria": "comece",
+   "ordem": 4,
+   "assista": "Assista se você prefere acompanhar uma conversa ao vivo entre o Diego e o Andrio sobre o visto, em vez de uma aula. É o vídeo nº 4."
+  },
+  {
+   "id": "J2HtcZluSY8",
+   "titulo": "H-2B e H-2A 2026: mitos e novidades",
+   "categoria": "comece",
+   "ordem": 5,
+   "assista": "Assista se você já ouviu muita coisa por aí e quer ouvir o que o Diego diz sobre mitos e boatos de H-2B e H-2A. Confira sempre as regras nos sites oficiais (DOL e USCIS). É o vídeo nº 5."
+  },
+  {
+   "id": "mqEKqbH8kk4",
+   "titulo": "Lista H-2B 2026 saiu: como achar recrutadores na lista randomizada",
+   "categoria": "candidatura",
+   "ordem": 1,
+   "assista": "Assista se a lista de 2026 saiu e você não sabe por onde começar a procurar recrutadores nela. Veja primeiro."
+  },
+  {
+   "id": "BWUuaUuG56Q",
+   "titulo": "Visto H-2 2026: lista atualizada de recrutadores (SeasonalJobs)",
+   "categoria": "candidatura",
+   "ordem": 2,
+   "assista": "Assista se você quer ver a lista de recrutadores atualizada no SeasonalJobs e entender como ler as informações."
+  },
+  {
+   "id": "SwW8vNxcO3Q",
+   "titulo": "Aula: como usar a lista randomizada a seu favor",
+   "categoria": "candidatura",
+   "ordem": 3,
+   "assista": "Assista se você quer uma aula sobre como aproveitar melhor a lista randomizada na hora de se candidatar."
+  },
+  {
+   "id": "6WRgiMQFwA0",
+   "titulo": "Breaking news: lista randomizada e prazos",
+   "categoria": "candidatura",
+   "ordem": 4,
+   "assista": "Assista se você quer saber das novidades sobre a lista randomizada e os prazos. Confira a data do vídeo: avisos de prazo mudam com o tempo."
+  },
+  {
+   "id": "KL5BuJIA9XY",
+   "titulo": "Novidade para ajudar seus envios de e-mails H-2B e H-2A",
+   "categoria": "candidatura",
+   "ordem": 5,
+   "assista": "Assista se você manda e-mails para empregadores e quer uma novidade que ajuda nesses envios."
+  },
+  {
+   "id": "wUz9ijDO_qg",
+   "titulo": "Quer trabalhar legalmente nos EUA com visto H-2A ou H-2B? (sistema)",
+   "categoria": "candidatura",
+   "ordem": 6,
+   "assista": "Assista se você quer conhecer o sistema que ajuda nas candidaturas para H-2A e H-2B."
+  },
+  {
+   "id": "PekIyykTiWQ",
+   "titulo": "Quer trabalhar legalmente nos EUA com visto H-2A ou H-2B? (sistema, versão 2)",
+   "categoria": "candidatura",
+   "ordem": 7,
+   "assista": "Assista se você viu o vídeo anterior e quer a segunda versão, com outra explicação do mesmo assunto."
+  },
+  {
+   "id": "B3jd2NBmeBw",
+   "titulo": "Como encontrar novas vagas no SeasonalJobs",
+   "categoria": "vagas",
+   "ordem": 1,
+   "assista": "Assista se você quer aprender a procurar vagas novas no SeasonalJobs por conta própria. Veja primeiro."
+  },
+  {
+   "id": "McyGpDmSFdE",
+   "titulo": "Onde e como encontrar vagas de H-2B",
+   "categoria": "vagas",
+   "ordem": 2,
+   "assista": "Assista se você ainda não sabe onde ficam as vagas de H-2B e como procurar."
+  },
+  {
+   "id": "iriMlwDhlNI",
+   "titulo": "Como se antecipar para a temporada de verão 2026",
+   "categoria": "vagas",
+   "ordem": 3,
+   "assista": "Assista se você quer se organizar antes da temporada de verão, e não só quando as vagas já estão abertas."
+  },
+  {
+   "id": "f7QiqBbJ8V8",
+   "titulo": "Dicas valiosas para a nova temporada sazonal",
+   "categoria": "vagas",
+   "ordem": 4,
+   "assista": "Assista se você quer dicas rápidas para encarar uma nova temporada."
+  },
+  {
+   "id": "v_6dkwOyQj4",
+   "titulo": "Vagas H-2B e H-2A para o verão: como se candidatar",
+   "categoria": "vagas",
+   "ordem": 5,
+   "assista": "Assista se você quer se candidatar a vagas de verão e precisa de um guia direto."
+  },
+  {
+   "id": "za318z6O2Y8",
+   "titulo": "Como já começar a preparação para as vagas do verão",
+   "categoria": "vagas",
+   "ordem": 6,
+   "assista": "Assista se você quer começar a se preparar desde já para as vagas do verão, em vez de esperar as vagas abrirem."
+  },
+  {
+   "id": "CQtHK4OTEtE",
+   "titulo": "Do e-mail à aprovação: como consegui minha vaga H-2B",
+   "categoria": "vagas",
+   "ordem": 7,
+   "assista": "Assista se você quer ouvir um relato real, do primeiro e-mail até a aprovação. É a história de uma pessoa: o seu caminho pode ser diferente."
+  },
+  {
+   "id": "1oDyYngR8Gg",
+   "titulo": "Como consegui minha vaga H-2B com tudo pago pela empresa",
+   "categoria": "vagas",
+   "ordem": 8,
+   "assista": "Assista se você quer entender como foi o caso de quem teve os custos pagos pela empresa. É o relato de uma pessoa: não vale automaticamente para todo mundo."
+  },
+  {
+   "id": "9_B2UGvP4-o",
+   "titulo": "Entrevista H-2B ao vivo: americano entrevistando candidatos",
+   "categoria": "entrevistas",
+   "ordem": 1,
+   "assista": "Assista se você nunca fez uma entrevista com empregador americano e quer ver como ela acontece. Veja primeiro."
+  },
+  {
+   "id": "z-zzc_MfyZs",
+   "titulo": "Entrevista H-2B ao vivo: como um americano entrevista candidatos",
+   "categoria": "entrevistas",
+   "ordem": 2,
+   "assista": "Assista se você quer ver mais uma entrevista ao vivo, com outras perguntas e outros candidatos."
+  },
+  {
+   "id": "fxMGMRPFe2E",
+   "titulo": "Entrevista com o seguidor Lucas",
+   "categoria": "entrevistas",
+   "ordem": 3,
+   "assista": "Assista se você quer ver uma conversa do Diego com um seguidor do canal, o Lucas."
+  },
+  {
+   "id": "HJs9TDwnpWo",
+   "titulo": "Resposta de um inscrito: pode ser a sua dúvida",
+   "categoria": "duvidas",
+   "ordem": 1,
+   "assista": "Assista se você tem uma dúvida simples e quer ver se ela já foi respondida."
+  },
+  {
+   "id": "qvkkJQxdrIM",
+   "titulo": "CUIDADO: resposta a um comentário",
+   "categoria": "duvidas",
+   "ordem": 2,
+   "assista": "Assista se você quer ficar atento a um alerta que o Diego fez em resposta a um comentário."
+  },
+  {
+   "id": "LMytcTCm4OU",
+   "titulo": "Corrigindo as mentiras sobre H-2B e H-2A",
+   "categoria": "duvidas",
+   "ordem": 3,
+   "assista": "Assista se você viu informação estranha em grupos e redes e quer ouvir a correção do Diego. Confira sempre as regras nos sites oficiais (DOL e USCIS)."
+  },
+  {
+   "id": "97UbP3iJir8",
+   "titulo": "Dica importante sobre H-2B e H-2A",
+   "categoria": "duvidas",
+   "ordem": 4,
+   "assista": "Assista se você quer ouvir uma dica importante do Diego sobre H-2B e H-2A antes de se candidatar."
+  },
+  {
+   "id": "Z524ZGahklk",
+   "titulo": "Respondendo a uma dúvida sobre H-2A e H-2B",
+   "categoria": "duvidas",
+   "ordem": 5,
+   "assista": "Assista se a sua dúvida é sobre H-2A e H-2B e você quer ver a resposta que o Diego deu a outra pessoa."
+  },
+  {
+   "id": "UFpPb9H0G5Y",
+   "titulo": "Informações novas sobre H-2B e H-2A: como se adiantar",
+   "categoria": "duvidas",
+   "ordem": 6,
+   "assista": "Assista se você quer saber das novidades e como se adiantar para a próxima temporada."
+  },
+  {
+   "id": "qGCivCQ4gpw",
+   "titulo": "Um pouco sobre o visto H-2B",
+   "categoria": "duvidas",
+   "ordem": 7,
+   "assista": "Assista se você está começando e quer ouvir um pouco sobre o visto H-2B."
+  },
+  {
+   "id": "wa6RhFfdRfo",
+   "titulo": "Dicas sobre o visto H-2B Seasonal",
+   "categoria": "duvidas",
+   "ordem": 8,
+   "assista": "Assista se você quer dicas sobre as vagas sazonais (Seasonal) do H-2B."
+  },
+  {
+   "id": "a2qzezfy8NQ",
+   "titulo": "Como conseguir o Green Card pelo EB-3 em 2026",
+   "categoria": "eb3",
+   "ordem": 1,
+   "assista": "Assista se você quer entender o que é o EB-3 e como ele funciona em 2026. Veja primeiro."
+  },
+  {
+   "id": "PIrvXkcmRrk",
+   "titulo": "EB-1, EB-2 ou EB-3: qual Green Card é melhor?",
+   "categoria": "eb3",
+   "ordem": 2,
+   "assista": "Assista se você está na dúvida entre as categorias de Green Card e quer comparar."
+  },
+  {
+   "id": "tq-pmG2vRns",
+   "titulo": "Green Card pelo EB-3: a oportunidade",
+   "categoria": "eb3",
+   "ordem": 3,
+   "assista": "Assista se você quer ver por que o EB-3 chama atenção de quem trabalha nos EUA."
+  },
+  {
+   "id": "CDNOrukJewU",
+   "titulo": "Visão rápida do processo EB-3",
+   "categoria": "eb3",
+   "ordem": 4,
+   "assista": "Assista se você quer uma visão rápida do processo EB-3."
+  },
+  {
+   "id": "uXvVuEghlH4",
+   "titulo": "Mais uma vaga de EB-3",
+   "categoria": "eb3",
+   "ordem": 5,
+   "assista": "Assista se você quer ver mais um exemplo de vaga de EB-3 comentada no canal."
+  },
+  {
+   "id": "6xboO44Elzo",
+   "titulo": "Quanto realmente sobra do H-2B (paycheck + tax)",
+   "categoria": "vida",
+   "ordem": 1,
+   "assista": "Assista se você quer entender como é o contracheque, os descontos e quanto costuma sobrar no fim. Os valores variam de empresa para empresa."
+  },
+  {
+   "id": "0smz0zPi2b8",
+   "titulo": "Como abrir conta no Bank of America e em outros bancos",
+   "categoria": "vida",
+   "ordem": 2,
+   "assista": "Assista se você vai trabalhar nos EUA e quer saber como abrir conta em banco por lá."
+  },
+  {
+   "id": "dhW8QPNEPZE",
+   "titulo": "Meu dia a dia como lifeguard nos EUA",
+   "categoria": "vida",
+   "ordem": 3,
+   "assista": "Assista se você quer ver como é a rotina de quem trabalha como lifeguard (salva-vidas) nos EUA."
+  },
+  {
+   "id": "ffScQ3xVBpo",
+   "titulo": "Voltando ao Brasil depois do H-2B (despedida dos EUA)",
+   "categoria": "vida",
+   "ordem": 4,
+   "assista": "Assista se você quer ver como é o fim da temporada e a volta para casa."
+  }
+ ]
+}

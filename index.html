@@ -969,6 +969,24 @@ textarea.input{resize:vertical;min-height:100px;line-height:1.6}
 .sb-item:hover{background:#edf0ff!important;color:#1e1b4b!important}
 .sb-item.active{background:rgba(99,102,241,.12)!important;color:#4f46e5!important;font-weight:800}
 .sb-item.active i{color:#4f46e5!important}
+/* 🎓 v988 — aba "TUDO QUE AGÊNCIAS COBRAM — AQUI É GRÁTIS": destaque GRANDE (sidebar, menu Mais, Home). Ordem do dono (18/11/2026):
+   maior e mais colorida que qualquer outra aba. Especificidade maior que .sb-item/.mm-item (que usam !important). */
+.sb-item.sb-edu{background:linear-gradient(135deg,#c2410c 0%,#dc2626 52%,#6d28d9 100%)!important;color:#fff!important;padding:13px 12px;margin-bottom:8px;border-radius:15px;gap:10px;line-height:1.15;box-shadow:0 6px 18px rgba(239,68,68,.32)}
+.sb-item.sb-edu:hover{background:linear-gradient(135deg,#ea580c 0%,#e11d48 52%,#7c3aed 100%)!important;color:#fff!important;transform:translateY(-1px)}
+.sb-item.sb-edu i{font-size:26px;color:#fff!important}
+.sb-item.sb-edu .sb-edu-t{display:flex;flex-direction:column;text-align:left;min-width:0}
+.sb-item.sb-edu .sb-edu-t b{font-size:12.5px;font-weight:900;letter-spacing:.02em}
+.sb-item.sb-edu .sb-edu-t em{font-style:normal;font-size:16px;font-weight:900;color:#fef08a;letter-spacing:.04em}
+.sb-item.sb-edu.active{outline:3px solid rgba(250,204,21,.75);outline-offset:1px;color:#fff!important;background:linear-gradient(135deg,#c2410c 0%,#dc2626 52%,#6d28d9 100%)!important}
+.sb-item.sb-edu.active i{color:#fff!important}
+.mm-item.mm-edu{background:linear-gradient(135deg,#c2410c 0%,#dc2626 52%,#6d28d9 100%)!important;color:#fff!important;font-weight:900;padding:14px 12px;border-radius:14px;margin-bottom:6px;line-height:1.2;box-shadow:0 4px 14px rgba(239,68,68,.28)}
+.mm-item.mm-edu i{color:#fff!important;font-size:24px}
+.home-edu{width:100%;display:flex;align-items:center;gap:12px;text-align:left;font-family:inherit;border:none;cursor:pointer;color:#fff;padding:15px 14px;border-radius:18px;background:linear-gradient(135deg,#c2410c 0%,#dc2626 52%,#6d28d9 100%);box-shadow:0 8px 22px rgba(239,68,68,.30)}
+.home-edu-ic{flex-shrink:0;width:48px;height:48px;border-radius:14px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:28px}
+.home-edu-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.home-edu-txt b{font-family:'Sora',sans-serif;font-size:15px;font-weight:900;line-height:1.2}
+.home-edu-txt span{font-size:12px;font-weight:600;opacity:.92;line-height:1.35}
+.home-edu-cta{flex-shrink:0;background:#fff;color:#b91c1c;font-weight:900;font-size:12px;padding:8px 12px;border-radius:99px;white-space:nowrap}
 .sb-lbl{color:#a5a8cc!important}
 .sb-profile{background:var(--sf2)!important;border-color:var(--border)!important;color:var(--text)!important}
 /* v19: sb-auto-btn virou item normal de navegação (layout do print) — sem
@@ -2668,6 +2686,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
            Manual/Currículos/Enviadas voltaram a ser itens de topo. -->
       <div class="sb-sec" style="margin-top:6px">
         <button class="sb-item active" id="si-home" onclick="sv('home')"><i class="ti ti-home-2"></i><span data-i18n="inicio">Início</span></button>
+        <button class="sb-item sb-edu" id="si-tutorial" onclick="sv('tutorial')"><i class="ti ti-school"></i><span class="sb-edu-t"><b data-i18n="tv_sb1">🎓 TUDO QUE AGÊNCIAS COBRAM</b><em data-i18n="tv_sb2">AQUI É GRÁTIS</em></span></button>
         <button class="sb-item" id="si-aprenda" onclick="sv('aprenda')" style="background:linear-gradient(135deg,rgba(29,78,216,.14),rgba(185,28,28,.14));border:1.5px solid rgba(29,78,216,.25)"><i class="ti ti-flag-3" style="color:#1d4ed8"></i><span data-i18n="si_aprenda">🇺🇸 Aprenda H-2B/H-2A</span></button>
         <button class="sb-item" id="si-profile" onclick="sv('profile')"><i class="ti ti-user"></i>Meu Perfil</button>
         <button class="sb-item" id="si-cvs" onclick="sv('profile');setTimeout(()=>{if(typeof switchProfileTab==='function')switchProfileTab('profiles')},120)"><i class="ti ti-file-cv"></i>Currículos</button>
@@ -2829,6 +2848,15 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
               💡 <span data-i18n="home_cv_tip">Mantenha seu currículo sempre atualizado.</span>
               <a href="javascript:void(0)" onclick="sv('profile');setTimeout(()=>{if(typeof switchProfileTab==='function')switchProfileTab('profiles')},120)" style="color:var(--purple,#7c3aed);font-weight:800;text-decoration:none;white-space:nowrap" data-i18n="home_cv_tip_link">Editar currículo →</a>
             </div>
+          </div>
+
+          <!-- 🎓 v988 — destaque da aba "TUDO QUE AGÊNCIAS COBRAM — AQUI É GRÁTIS" (aulas + vídeos do Diego) pra quem está no celular (sem sidebar) -->
+          <div id="home-edu" style="padding:12px 14px 0">
+            <button type="button" class="home-edu" onclick="sv('tutorial')">
+              <span class="home-edu-ic" aria-hidden="true"><i class="ti ti-school"></i></span>
+              <span class="home-edu-txt"><b data-i18n="tv_home_t">🎓 TUDO QUE AGÊNCIAS COBRAM — AQUI É GRÁTIS</b><span data-i18n="tv_home_s">Aulas passo a passo e todos os vídeos do Diego, sem pagar nada.</span></span>
+              <span class="home-edu-cta" data-i18n="tv_home_cta">Ver agora</span>
+            </button>
           </div>
 
           <!-- ══ PEDIDO EM ANÁLISE — pagamento aguardando aprovação (renderPendingOrderCard) ══ -->
@@ -3339,7 +3367,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
                 <span style="font-size:12px;font-weight:800;color:var(--text)" data-i18n="g_239c">Mais</span>
               </div>
               <div style="padding:8px;display:flex;flex-direction:column;gap:2px">
-                <button class="btn btn-secondary w100" style="justify-content:flex-start;border:none;background:none" onclick="sv('tutorial')"><i class="ti ti-book"></i> <span data-i18n="tut_center">Central de Tutoriais</span></button>
+                <button class="btn btn-secondary w100" style="justify-content:flex-start;border:none;background:linear-gradient(135deg,#c2410c 0%,#dc2626 52%,#6d28d9 100%);color:#fff;font-weight:900;white-space:normal;text-align:left;line-height:1.25;height:auto;padding:12px 14px" onclick="sv('tutorial')"><i class="ti ti-school"></i> <span data-i18n="tut_center">🎓 TUDO QUE AGÊNCIAS COBRAM — AQUI É GRÁTIS</span></button>
                 <button class="btn btn-secondary w100" style="justify-content:flex-start;border:none;background:none" onclick="sv('settings')"><i class="ti ti-settings"></i> <span data-i18n="settings_adv">Configurações avançadas</span></button>
               </div>
             </div>
@@ -4137,16 +4165,64 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
         .tut-dica{background:#f0fdf4;border-left:3px solid #22c55e;border-radius:8px;padding:8px 11px;margin:9px 0;font-size:12.5px;color:#166534}
         .tut-prob{background:#fffbeb;border-left:3px solid #f59e0b;border-radius:8px;padding:8px 11px;margin:9px 0;font-size:12.5px;color:#92400e}
         .tut-oculto{display:none!important}
+        /* 🎓 v988 — hero + sub-abas + vídeos do Diego (tema claro/escuro pelas variáveis do app) */
+        .tv-hero{background:linear-gradient(135deg,#c2410c 0%,#dc2626 52%,#6d28d9 100%);color:#fff;padding:24px 18px 22px;text-align:center}
+        .tv-hero-ic{width:64px;height:64px;border-radius:20px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:34px}
+        .tv-hero-t{font-family:'Sora',sans-serif;font-size:24px;font-weight:900;line-height:1.18;margin-bottom:8px;text-shadow:0 2px 10px rgba(0,0,0,.22)}
+        .tv-hero-s{font-size:13.5px;opacity:.95;line-height:1.45;max-width:560px;margin:0 auto}
+        .tv-tabs{display:flex;gap:8px;padding:12px 14px 0}
+        .tv-tab{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;gap:7px;font-family:inherit;font-size:13.5px;font-weight:800;padding:12px 8px;border-radius:14px;border:2px solid var(--border);background:var(--surface);color:var(--t2);cursor:pointer;line-height:1.2}
+        .tv-tab i{font-size:20px;flex-shrink:0}
+        .tv-tab.active{background:linear-gradient(135deg,#dc2626,#6d28d9);border-color:transparent;color:#fff;box-shadow:0 4px 14px rgba(124,58,237,.30)}
+        .tv-intro{margin:14px 14px 0;font-size:13px;line-height:1.55;color:var(--t2);background:var(--surface);border:1.5px solid var(--border);border-radius:14px;padding:12px 14px}
+        .tv-chips{display:flex;gap:7px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:12px 14px 8px;position:sticky;top:0;z-index:5;background:var(--bg,var(--surface));scrollbar-width:none}
+        .tv-chips::-webkit-scrollbar{display:none}
+        .tv-chip{flex-shrink:0;font-family:inherit;font-size:12.5px;font-weight:800;padding:8px 12px;border-radius:99px;border:1.5px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;white-space:nowrap}
+        .tv-sec{padding:6px 14px 6px;scroll-margin-top:58px}
+        .tv-sec-t{font-family:'Sora',sans-serif;font-size:17px;font-weight:900;color:var(--text);margin:10px 0 2px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+        .tv-sec-n{font-family:inherit;font-size:11px;font-weight:800;color:var(--t3);background:var(--sf2);border-radius:99px;padding:3px 9px}
+        .tv-sec-d{font-size:12.5px;color:var(--t2);line-height:1.5;margin:0 0 10px}
+        .tv-grid{display:grid;grid-template-columns:1fr;gap:14px}
+        @media(min-width:760px){.tv-grid{grid-template-columns:1fr 1fr}}
+        @media(min-width:1180px){.tv-grid{grid-template-columns:1fr 1fr 1fr}}
+        .tv-card{background:var(--surface);border:1.5px solid var(--border);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 4px 14px rgba(15,23,42,.06)}
+        .tv-media{position:relative;aspect-ratio:16/9;background:#0f172a;overflow:hidden}
+        .tv-media iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+        .tv-thumb{position:absolute;inset:0;width:100%;height:100%;padding:0;border:0;background:linear-gradient(135deg,#1e293b,#4c1d95);cursor:pointer;display:block}
+        .tv-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+        .tv-play-ic{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:62px;height:62px;border-radius:50%;background:rgba(220,38,38,.94);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 6px 18px rgba(0,0,0,.4)}
+        .tv-dur{position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.78);color:#fff;font-size:11px;font-weight:800;padding:2px 7px;border-radius:6px}
+        .tv-body{padding:12px 14px 14px;display:flex;flex-direction:column;gap:9px;flex:1}
+        .tv-meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+        .tv-n{font-size:11px;font-weight:900;color:#4f46e5;background:rgba(99,102,241,.12);border-radius:99px;padding:3px 9px}
+        .tv-novo{font-size:10.5px;font-weight:900;color:#fff;background:#15803d;border-radius:99px;padding:3px 8px}
+        .tv-title{font-size:14.5px;font-weight:800;color:var(--text);line-height:1.3;margin:0}
+        .tv-assista{display:flex;gap:8px;align-items:flex-start;background:rgba(250,204,21,.16);border:1.5px solid rgba(234,179,8,.55);border-radius:12px;padding:9px 11px;font-size:12.5px;line-height:1.5;color:var(--text)}
+        .tv-assista i{font-size:17px;color:#b45309;flex-shrink:0;margin-top:1px}
+        .tv-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto}
+        .tv-btn-play,.tv-btn-yt{flex:1;min-width:130px;justify-content:center;font-size:12.5px;font-weight:800;padding:10px 10px;border-radius:12px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-family:inherit}
+        .tv-btn-play{background:#dc2626;color:#fff;border:none}
+        .tv-btn-yt{background:var(--sf2);color:var(--text);border:1.5px solid var(--border2,var(--border))}
+        .tv-thumb:focus-visible,.tv-btn-play:focus-visible,.tv-btn-yt:focus-visible,.tv-tab:focus-visible,.tv-chip:focus-visible{outline:3px solid #facc15;outline-offset:-4px}
+        [data-theme="dark"] .tv-n{color:#a5b4fc;background:rgba(129,140,248,.18)}
+        .tv-aviso{margin:14px 14px 0;font-size:11.5px;line-height:1.5;color:var(--t3);text-align:center}
+        .tv-canal{display:flex;justify-content:center;padding:6px 14px 0}
+        .tv-btn-canal{flex:0 1 auto;min-width:220px}
         </style>
 
-        <!-- Header -->
-        <div style="background:linear-gradient(135deg,#064e3b,#065f46,#047857);color:#fff;padding:24px 20px;text-align:center">
-          <div style="width:64px;height:64px;border-radius:20px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
-            <i class="ti ti-book-2" style="font-size:32px"></i>
-          </div>
-          <div style="font-family:'Sora',sans-serif;font-size:22px;font-weight:800;margin-bottom:6px" data-i18n="tut_t">Central de Tutoriais</div>
-          <div style="font-size:13px;opacity:.85" data-i18n="tut_s">18 passo a passos — tudo o que dá pra fazer no H2BApply, explicado tela por tela (vários já com fotos reais)</div>
+        <!-- 🎓 v988 — hero grande: "TUDO QUE AGÊNCIAS COBRAM — AQUI É GRÁTIS" + sub-abas (aulas / vídeos do Diego) -->
+        <div class="tv-hero">
+          <div class="tv-hero-ic" aria-hidden="true"><i class="ti ti-school"></i></div>
+          <div class="tv-hero-t" data-i18n="tv_h">🎓 TUDO QUE AGÊNCIAS COBRAM — AQUI É GRÁTIS</div>
+          <div class="tv-hero-s" data-i18n="tv_hs">Aulas passo a passo e todos os vídeos do Diego, de graça, dentro do H2BApply. Somos gratuitos e não somos agência.</div>
         </div>
+        <div class="tv-tabs">
+          <button type="button" class="tv-tab active" id="tv-tab-aulas" aria-pressed="true" onclick="tutAba('aulas')"><i class="ti ti-book-2" aria-hidden="true"></i><span data-i18n="tut_t">Central de Tutoriais</span></button>
+          <button type="button" class="tv-tab" id="tv-tab-videos" aria-pressed="false" onclick="tutAba('videos')"><i class="ti ti-brand-youtube" aria-hidden="true"></i><span data-i18n="tv_tab">Todos os vídeos do Diego</span></button>
+        </div>
+
+        <div id="tv-pane-aulas">
+          <div style="padding:12px 16px 0;text-align:center;font-size:12.5px;color:var(--t2)" data-i18n="tut_s">18 passo a passos — tudo o que dá pra fazer no H2BApply, explicado tela por tela (vários já com fotos reais)</div>
 
         <!-- Busca -->
         <div style="padding:14px 16px 0">
@@ -4157,6 +4233,14 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
         <div id="tut-conteudo">
           <div style="text-align:center;color:#64748b;font-size:13px;padding:34px 0" data-i18n="tut_load">⏳ Carregando os tutoriais...</div>
         </div>
+        </div><!-- /tv-pane-aulas -->
+
+        <!-- 🎬 v988 — Todos os vídeos do Diego (conteúdo montado por loadVideosDiego a partir de /api/videos-diego) -->
+        <div id="tv-pane-videos" class="tut-oculto">
+          <div id="tv-videos">
+            <div style="text-align:center;color:#64748b;font-size:13px;padding:34px 0" data-i18n="tv_load">⏳ Carregando os vídeos do Diego...</div>
+          </div>
+        </div><!-- /tv-pane-videos -->
 
       </div></div>
 
@@ -4257,7 +4341,7 @@ html.no-ti .ti-x::before{content:"✕"}html.no-ti .ti-arrow-up-right::before{con
         <button class="mm-item" onclick="g('#more-menu-overlay').classList.add('gone');sv('plans')"><i class="ti ti-diamond"></i><span data-i18n="plans">💎 Planos</span></button>
         <button class="mm-item" onclick="g('#more-menu-overlay').classList.add('gone');sv('aprenda')"><i class="ti ti-flag-3"></i><span data-i18n="mm_aprenda">🇺🇸 Aprenda H-2B/H-2A</span></button>
         <button class="mm-item" onclick="g('#more-menu-overlay').classList.add('gone');openAutoModal()"><i class="ti ti-robot"></i><span data-i18n="bn_auto">Envio Automático</span></button>
-        <button class="mm-item" onclick="g('#more-menu-overlay').classList.add('gone');sv('tutorial')"><i class="ti ti-book-2"></i><span data-i18n="bn_tutorial">Central de Tutoriais</span></button>
+        <button class="mm-item mm-edu" onclick="g('#more-menu-overlay').classList.add('gone');sv('tutorial')"><i class="ti ti-school"></i><span data-i18n="bn_tutorial">🎓 TUDO QUE AGÊNCIAS COBRAM — AQUI É GRÁTIS</span></button>
         <button class="mm-item" onclick="g('#more-menu-overlay').classList.add('gone');sv('settings')"><i class="ti ti-settings"></i><span data-i18n="bn_settings">Configurações</span></button>
         <button class="mm-item" id="mm-admin-link" style="display:none" onclick="g('#more-menu-overlay').classList.add('gone');location.href='/admin'"><i class="ti ti-shield"></i><span data-i18n="admin">Painel Admin</span></button>
         <div style="border-top:1px solid var(--border);margin:6px 4px"></div>

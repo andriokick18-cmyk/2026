@@ -92,6 +92,7 @@ const SAFE_FNS = {
   "_planResumoLinhasHTML(linhas)": "linhas [chave,valor] do resumo do plano (v962) — cada célula passa por esc()",
   "_lrAjudaHTML()":             "cartão '?' com mini calendário — HTML 100% literal do código, sem NENHUM dado de fora (só texto fixo, meses e cores)",
   "_lrIntroHTML()":             "card ilustrado das Listas randomizadas — HTML 100% literal do código, sem NENHUM dado de fora (só texto fixo, ícones e cores)",
+  "_tvPaginaHTML(d)":           "página 'Todos os vídeos do Diego' (v988) — todo texto do videos-diego.json/RSS passa por esc()/_tvNb(esc) e o id do vídeo é validado por regex (^[A-Za-z0-9_-]{11}$) antes de virar URL",
   "_lrExplicacaoHTML()":         "explicação das Listas randomizadas — HTML 100% literal do código, sem NENHUM dado de fora (só texto fixo e ícones)",
 };
 const SAFE_FN_NAMES = Object.keys(SAFE_FNS).map((k) => k.slice(0, k.indexOf("(")));
